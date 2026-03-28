@@ -129,7 +129,10 @@ pub fn App() -> Element {
                 class: "composer",
                 onsubmit: move |event| {
                     event.prevent_default();
-                    controller.write().submit_prompt();
+                    let command = controller.write().submit_prompt_command_json();
+                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                        stream.send_command(command);
+                    }
                 },
                 textarea {
                     class: "composer-input",

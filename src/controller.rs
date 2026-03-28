@@ -199,6 +199,29 @@ impl AppController {
         self.session.model_mut().submit()
     }
 
+    pub fn submit_prompt_command_json(&mut self) -> Option<String> {
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let trimmed = session.composer().draft().trim().to_string();
+                if trimmed.is_empty() || !session.can_submit() {
+                    return None;
+                }
+                if !session.submit() {
+                    return None;
+                }
+                Some(
+                    serde_json::json!({
+                        "type": "user_prompt",
+                        "text": trimmed,
+                    })
+                    .to_string(),
+                )
+            }
+            SessionSource::Mock(session) => session.submit().then(|| String::new()),
+        }
+        .filter(|command| !command.is_empty())
+    }
+
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
         match &mut self.session {
             SessionSource::Remote(session) => session.apply_event_json(json),
@@ -210,6 +233,7 @@ impl AppController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::MessageRole;
 
     const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;
 
@@ -258,6 +282,17 @@ mod tests {
         assert_eq!(controller.composer().draft(), "hello world");
         assert!(controller.submit_prompt());
         assert_eq!(controller.messages().len(), 3);
+    }
+
+    #[test]
+    fn remote_submit_emits_user_prompt_command_json() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        controller.update_draft("ship it");
+
+        let command = controller.submit_prompt_command_json().unwrap();
+
+        assert_eq!(command, r#"{"text":"ship it","type":"user_prompt"}"#);
+        assert_eq!(controller.messages()[1].role, MessageRole::User);
     }
 
     #[test]

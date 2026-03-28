@@ -51,6 +51,26 @@ impl EventStreamHandle {
             EventStreamSource::WebSocket { url } => url,
         }
     }
+
+    pub fn send_command(&self, command_json: String) {
+        let command_url = self.url().to_string();
+        let feedback = self.clone();
+
+        thread::spawn(move || match tungstenite::connect(command_url.as_str()) {
+            Ok((mut socket, _response)) => {
+                if let Err(error) = socket.send(Message::Text(command_json.into())) {
+                    feedback.push_system_notice(format!(
+                        "Could not send command to Omegon event stream: {error}"
+                    ));
+                }
+                let _ = socket.close(None);
+            }
+            Err(error) => feedback.push_system_notice(format!(
+                "Could not open command channel to Omegon event stream at {}: {}",
+                feedback.url(), error
+            )),
+        });
+    }
 }
 
 pub fn derive_ws_url_from_state_url(state_url: &str) -> Result<String, String> {
@@ -155,5 +175,18 @@ mod tests {
             ]
         );
         assert!(inbox.drain().is_empty());
+    }
+
+    #[test]
+    fn send_command_failure_is_reported_as_system_notice() {
+        let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
+        handle.send_command(r#"{"type":"user_prompt","text":"hello"}"#.to_string());
+        std::thread::sleep(std::time::Duration::from_millis(50));
+
+        assert!(handle
+            .inbox
+            .drain()
+            .into_iter()
+            .any(|event| event.contains("Could not open command channel")));
     }
 }

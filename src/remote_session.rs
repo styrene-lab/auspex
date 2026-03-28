@@ -53,7 +53,7 @@ impl RemoteHostSession {
                 self.pending_text.clear();
                 true
             }
-            OmegonEvent::MessageChunk { text } => {
+            OmegonEvent::MessageChunk { text } | OmegonEvent::ThinkingChunk { text } => {
                 if self.pending_role.is_some() {
                     self.pending_text.push_str(&text);
                     true
@@ -96,10 +96,57 @@ impl RemoteHostSession {
                 self.pending_text.clear();
                 true
             }
-            OmegonEvent::TurnStart { .. }
-            | OmegonEvent::TurnEnd { .. }
-            | OmegonEvent::ToolStart { .. }
-            | OmegonEvent::ToolEnd { .. } => true,
+            OmegonEvent::TurnStart { turn } => {
+                self.summary.activity = format!("Turn {turn} in progress");
+                true
+            }
+            OmegonEvent::TurnEnd { turn } => {
+                self.summary.activity = format!("Turn {turn} completed");
+                true
+            }
+            OmegonEvent::ToolStart { name, .. } => {
+                self.summary.activity = format!("Running tool {name}");
+                true
+            }
+            OmegonEvent::ToolUpdate { .. } => true,
+            OmegonEvent::ToolEnd { is_error, .. } => {
+                self.summary.activity = if is_error {
+                    "Tool run completed with an error".into()
+                } else {
+                    "Tool run completed".into()
+                };
+                true
+            }
+            OmegonEvent::AgentEnd => {
+                self.summary.activity = "Agent turn finished".into();
+                true
+            }
+            OmegonEvent::PhaseChanged { phase } => {
+                self.summary.activity = format!("Lifecycle phase: {phase}");
+                true
+            }
+            OmegonEvent::DecompositionStarted { children } => {
+                self.summary.activity = format!("Cleave started with {} child task(s)", children.len());
+                true
+            }
+            OmegonEvent::DecompositionChildCompleted { label, success } => {
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    text: format!(
+                        "Cleave child {label} {}",
+                        if success { "completed successfully" } else { "failed" }
+                    ),
+                });
+                true
+            }
+            OmegonEvent::DecompositionCompleted { merged } => {
+                self.summary.activity = if merged {
+                    "Cleave completed and merged".into()
+                } else {
+                    "Cleave completed without merge".into()
+                };
+                true
+            }
         }
     }
 
@@ -162,10 +209,6 @@ impl HostSessionModel for RemoteHostSession {
         self.messages.push(ChatMessage {
             role: MessageRole::User,
             text: trimmed.to_string(),
-        });
-        self.messages.push(ChatMessage {
-            role: MessageRole::System,
-            text: "Remote prompt queued in Auspex. WebSocket transport wiring is the next implementation slice.".into(),
         });
         self.summary.activity = "Queued prompt for Omegon remote session".into();
         self.composer.clear();
@@ -339,5 +382,25 @@ mod tests {
         assert_eq!(session.shell_state(), ShellState::Degraded);
         assert_eq!(session.scenario(), DevScenario::Degraded);
         assert_eq!(session.summary().activity, "Memory database unavailable");
+    }
+
+    #[test]
+    fn tool_and_decomposition_events_refresh_activity_and_notices() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"tool_start","id":"1","name":"read","args":{}}"#)
+            .unwrap();
+        assert_eq!(session.summary().activity, "Running tool read");
+
+        session
+            .apply_event_json(r#"{"type":"tool_end","id":"1","is_error":false,"result":"ok"}"#)
+            .unwrap();
+        assert_eq!(session.summary().activity, "Tool run completed");
+
+        session
+            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#)
+            .unwrap();
+        assert!(session.messages().last().unwrap().text.contains("child-a completed successfully"));
     }
 }
