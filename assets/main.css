@@ -47,8 +47,39 @@ body {
   border: 1px solid #30363d;
   border-radius: 999px;
   padding: 0.35rem 0.75rem;
-  color: #7ee787;
   background: #0d1117;
+}
+
+.status-ready {
+  color: #7ee787;
+}
+
+.status-pending {
+  color: #d29922;
+}
+
+.status-degraded {
+  color: #ffa657;
+}
+
+.status-failed {
+  color: #ff7b72;
+}
+
+.devbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #8b949e;
+}
+
+.devbar select {
+  border-radius: 10px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 0.45rem 0.7rem;
+  font: inherit;
 }
 
 .transcript {
@@ -89,6 +120,13 @@ body {
   border: 1px solid #30363d;
 }
 
+.bubble-system {
+  align-self: center;
+  max-width: 100%;
+  background: #1a1f2b;
+  border: 1px dashed #484f58;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
@@ -106,6 +144,10 @@ body {
   font: inherit;
 }
 
+.composer-input:disabled {
+  opacity: 0.6;
+}
+
 .composer-submit {
   align-self: flex-end;
   border: 0;
@@ -120,4 +162,9 @@ body {
 
 .composer-submit:hover {
   background: #2ea043;
+}
+
+.composer-submit:disabled {
+  background: #30363d;
+  cursor: not-allowed;
 }
