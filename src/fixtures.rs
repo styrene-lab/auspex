@@ -134,91 +134,111 @@ impl Default for MockHostSession {
 }
 
 impl MockHostSession {
+    pub fn ready_session() -> Self {
+        Self {
+            shell_state: ShellState::Ready,
+            scenario: DevScenario::Ready,
+            summary: HostSessionSummary {
+                connection: "Connected to local host session".into(),
+                activity: "Idle — waiting for your next prompt".into(),
+                work: "No focused work item yet".into(),
+            },
+            messages: vec![ChatMessage {
+                role: MessageRole::Assistant,
+                text: "Auspex scaffold ready. Type a prompt to grow the shell from here."
+                    .into(),
+            }],
+            composer: ComposerState::default(),
+        }
+    }
+
+    pub fn booting_session() -> Self {
+        Self {
+            shell_state: ShellState::StartingOmegon,
+            scenario: DevScenario::Booting,
+            summary: HostSessionSummary {
+                connection: "Starting bundled runtime".into(),
+                activity: "Launching Styrene and Omegon".into(),
+                work: "Work state unavailable during startup".into(),
+            },
+            messages: vec![ChatMessage {
+                role: MessageRole::System,
+                text: "Auspex is starting Styrene and Omegon. The conversation shell will become interactive when the host session is ready.".into(),
+            }],
+            composer: ComposerState::default(),
+        }
+    }
+
+    pub fn degraded_session() -> Self {
+        Self {
+            shell_state: ShellState::Degraded,
+            scenario: DevScenario::Degraded,
+            summary: HostSessionSummary {
+                connection: "Connected locally, relay degraded".into(),
+                activity: "Continuing with degraded remote connectivity".into(),
+                work: "1 cached work item in progress".into(),
+            },
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::Assistant,
+                    text: "Cached session restored. The local shell is still usable.".into(),
+                },
+                ChatMessage {
+                    role: MessageRole::System,
+                    text: "Styrene relay is degraded. Phone clients may reconnect automatically while local work continues.".into(),
+                },
+            ],
+            composer: ComposerState::default(),
+        }
+    }
+
+    pub fn compatibility_failure_session() -> Self {
+        Self {
+            shell_state: ShellState::Failed,
+            scenario: DevScenario::CompatibilityFailure,
+            summary: HostSessionSummary {
+                connection: "Host incompatible".into(),
+                activity: "Startup blocked by compatibility failure".into(),
+                work: "No session available".into(),
+            },
+            messages: vec![ChatMessage {
+                role: MessageRole::System,
+                text: "Compatibility failure: Auspex expects Omegon control-plane schema 1, but the detected host did not satisfy the declared contract.".into(),
+            }],
+            composer: ComposerState::default(),
+        }
+    }
+
+    pub fn reconnecting_session() -> Self {
+        Self {
+            shell_state: ShellState::CompatibilityChecking,
+            scenario: DevScenario::Reconnecting,
+            summary: HostSessionSummary {
+                connection: "Reconnecting to desktop host".into(),
+                activity: "Restoring remote session link".into(),
+                work: "Showing last known focused work".into(),
+            },
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::Assistant,
+                    text: "Last known session state is still visible.".into(),
+                },
+                ChatMessage {
+                    role: MessageRole::System,
+                    text: "Connection to the host is reconnecting. New input is temporarily paused while Auspex restores the session link.".into(),
+                },
+            ],
+            composer: ComposerState::default(),
+        }
+    }
+
     pub fn from_scenario(scenario: DevScenario) -> Self {
         match scenario {
-            DevScenario::Ready => Self {
-                shell_state: ShellState::Ready,
-                scenario,
-                summary: HostSessionSummary {
-                    connection: "Connected to local host session".into(),
-                    activity: "Idle — waiting for your next prompt".into(),
-                    work: "No focused work item yet".into(),
-                },
-                messages: vec![ChatMessage {
-                    role: MessageRole::Assistant,
-                    text: "Auspex scaffold ready. Type a prompt to grow the shell from here."
-                        .into(),
-                }],
-                composer: ComposerState::default(),
-            },
-            DevScenario::Booting => Self {
-                shell_state: ShellState::StartingOmegon,
-                scenario,
-                summary: HostSessionSummary {
-                    connection: "Starting bundled runtime".into(),
-                    activity: "Launching Styrene and Omegon".into(),
-                    work: "Work state unavailable during startup".into(),
-                },
-                messages: vec![ChatMessage {
-                    role: MessageRole::System,
-                    text: "Auspex is starting Styrene and Omegon. The conversation shell will become interactive when the host session is ready.".into(),
-                }],
-                composer: ComposerState::default(),
-            },
-            DevScenario::Degraded => Self {
-                shell_state: ShellState::Degraded,
-                scenario,
-                summary: HostSessionSummary {
-                    connection: "Connected locally, relay degraded".into(),
-                    activity: "Continuing with degraded remote connectivity".into(),
-                    work: "1 cached work item in progress".into(),
-                },
-                messages: vec![
-                    ChatMessage {
-                        role: MessageRole::Assistant,
-                        text: "Cached session restored. The local shell is still usable.".into(),
-                    },
-                    ChatMessage {
-                        role: MessageRole::System,
-                        text: "Styrene relay is degraded. Phone clients may reconnect automatically while local work continues.".into(),
-                    },
-                ],
-                composer: ComposerState::default(),
-            },
-            DevScenario::CompatibilityFailure => Self {
-                shell_state: ShellState::Failed,
-                scenario,
-                summary: HostSessionSummary {
-                    connection: "Host incompatible".into(),
-                    activity: "Startup blocked by compatibility failure".into(),
-                    work: "No session available".into(),
-                },
-                messages: vec![ChatMessage {
-                    role: MessageRole::System,
-                    text: "Compatibility failure: Auspex expects Omegon control-plane schema 1, but the detected host did not satisfy the declared contract.".into(),
-                }],
-                composer: ComposerState::default(),
-            },
-            DevScenario::Reconnecting => Self {
-                shell_state: ShellState::CompatibilityChecking,
-                scenario,
-                summary: HostSessionSummary {
-                    connection: "Reconnecting to desktop host".into(),
-                    activity: "Restoring remote session link".into(),
-                    work: "Showing last known focused work".into(),
-                },
-                messages: vec![
-                    ChatMessage {
-                        role: MessageRole::Assistant,
-                        text: "Last known session state is still visible.".into(),
-                    },
-                    ChatMessage {
-                        role: MessageRole::System,
-                        text: "Connection to the host is reconnecting. New input is temporarily paused while Auspex restores the session link.".into(),
-                    },
-                ],
-                composer: ComposerState::default(),
-            },
+            DevScenario::Ready => Self::ready_session(),
+            DevScenario::Booting => Self::booting_session(),
+            DevScenario::Degraded => Self::degraded_session(),
+            DevScenario::CompatibilityFailure => Self::compatibility_failure_session(),
+            DevScenario::Reconnecting => Self::reconnecting_session(),
         }
     }
 
