@@ -36,4 +36,4 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 
 ## Notes
 
-This is intentionally documentation-first. The backend contract and screen model need to settle before a Dioxus app skeleton is worth creating.
+This started documentation-first, but now includes a minimal Dioxus scaffold proving the basic conversation shell. The backend contract and remote-runtime layers still need to settle before a real Omegon/Styrene integration should harden.

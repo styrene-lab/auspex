@@ -1,0 +1,123 @@
+:root {
+  color-scheme: dark;
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  background: #0b0f14;
+  color: #e6edf3;
+}
+
+html, body {
+  margin: 0;
+  min-height: 100%;
+  background: #0b0f14;
+}
+
+body {
+  display: flex;
+}
+
+.shell {
+  display: flex;
+  flex-direction: column;
+  width: min(900px, 100%);
+  min-height: 100vh;
+  margin: 0 auto;
+  padding: 1rem;
+  box-sizing: border-box;
+  gap: 1rem;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.header h1 {
+  margin: 0;
+  font-size: 1.5rem;
+}
+
+.header p {
+  margin: 0.25rem 0 0;
+  color: #8b949e;
+}
+
+.status {
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  color: #7ee787;
+  background: #0d1117;
+}
+
+.transcript {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  flex: 1;
+}
+
+.bubble {
+  border-radius: 16px;
+  padding: 0.9rem 1rem;
+  max-width: 80%;
+  line-height: 1.45;
+}
+
+.bubble h2 {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+}
+
+.bubble p {
+  margin: 0;
+  white-space: pre-wrap;
+}
+
+.bubble-user {
+  align-self: flex-end;
+  background: #1f6feb;
+}
+
+.bubble-assistant {
+  align-self: flex-start;
+  background: #161b22;
+  border: 1px solid #30363d;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+.composer-input {
+  resize: vertical;
+  min-height: 4.5rem;
+  border-radius: 12px;
+  border: 1px solid #30363d;
+  background: #0d1117;
+  color: #e6edf3;
+  padding: 0.85rem 1rem;
+  font: inherit;
+}
+
+.composer-submit {
+  align-self: flex-end;
+  border: 0;
+  border-radius: 999px;
+  background: #238636;
+  color: white;
+  padding: 0.7rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer-submit:hover {
+  background: #2ea043;
+}
