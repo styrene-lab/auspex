@@ -34,6 +34,18 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - **Backend:** local Omegon control-plane (`/api/state`, `/api/graph`, `/ws`)
 - **Frontend target:** Dioxus across desktop and mobile (desktop-first MVP, mobile-targeted architecture)
 
+## Release cadence
+
+Auspex should establish release guardrails early rather than inventing them later under pressure.
+
+Current release workflow is scaffolded via `Justfile` and follows a simple line:
+- validate locally (`just lint`)
+- cut RCs from `main` (`just rc`)
+- cut stable releases from RC versions (`just release`)
+- advance to the next dev cycle (`just next`)
+
+The exact CI/release pipeline can evolve later, but the version and tagging cadence should remain explicit from the beginning.
+
 ## Notes
 
 This started documentation-first, but now includes a minimal Dioxus scaffold proving the basic conversation shell. The backend contract and remote-runtime layers still need to settle before a real Omegon/Styrene integration should harden.
