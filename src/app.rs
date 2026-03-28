@@ -15,13 +15,13 @@ pub fn App() -> Element {
                     h1 { "Auspex" }
                     p { "Conversation-first scaffold" }
                 }
-                div { class: controller.read().session().shell_state().status_class(), "{controller.read().session().shell_state().label()}" }
+                div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
             }
 
             section { class: "devbar",
                 label { "Scenario" }
                 select {
-                    value: controller.read().session().scenario().key(),
+                    value: controller.read().scenario().key(),
                     onchange: move |event| controller.write().select_scenario(event.value().as_str()),
                     for scenario in DevScenario::ALL {
                         option { value: scenario.key(), "{scenario.label()}" }
@@ -32,20 +32,20 @@ pub fn App() -> Element {
             section { class: "summary-bar",
                 div { class: "summary-card",
                     h2 { "Connection" }
-                    p { "{controller.read().session().summary().connection}" }
+                    p { "{controller.read().summary().connection}" }
                 }
                 div { class: "summary-card",
                     h2 { "Activity" }
-                    p { "{controller.read().session().summary().activity}" }
+                    p { "{controller.read().summary().activity}" }
                 }
                 div { class: "summary-card",
                     h2 { "Work" }
-                    p { "{controller.read().session().summary().work}" }
+                    p { "{controller.read().summary().work}" }
                 }
             }
 
             main { class: "transcript",
-                for message in controller.read().session().messages().iter() {
+                for message in controller.read().messages().iter() {
                     article {
                         class: match message.role {
                             MessageRole::User => "bubble bubble-user",
@@ -73,9 +73,9 @@ pub fn App() -> Element {
                 textarea {
                     class: "composer-input",
                     rows: "3",
-                    value: controller.read().session().composer().draft().to_string(),
-                    disabled: !controller.read().session().can_submit(),
-                    placeholder: if controller.read().session().can_submit() {
+                    value: controller.read().composer().draft().to_string(),
+                    disabled: !controller.read().can_submit(),
+                    placeholder: if controller.read().can_submit() {
                         "Start with the smallest useful prompt…"
                     } else {
                         "Conversation input is unavailable in the current host state."
@@ -85,7 +85,7 @@ pub fn App() -> Element {
                 button {
                     class: "composer-submit",
                     r#type: "submit",
-                    disabled: !controller.read().session().can_submit(),
+                    disabled: !controller.read().can_submit(),
                     "Send"
                 }
             }
@@ -115,14 +115,11 @@ mod tests {
         controller.update_draft("hello world");
 
         assert!(controller.submit_prompt());
-        assert_eq!(controller.session().composer().draft(), "");
-        assert_eq!(controller.session().messages().len(), 3);
-        assert_eq!(controller.session().messages()[1].role, MessageRole::User);
-        assert_eq!(controller.session().messages()[1].text, "hello world");
-        assert_eq!(
-            controller.session().messages()[2].role,
-            MessageRole::Assistant
-        );
+        assert_eq!(controller.composer().draft(), "");
+        assert_eq!(controller.messages().len(), 3);
+        assert_eq!(controller.messages()[1].role, MessageRole::User);
+        assert_eq!(controller.messages()[1].text, "hello world");
+        assert_eq!(controller.messages()[2].role, MessageRole::Assistant);
     }
 
     #[test]
@@ -155,7 +152,7 @@ mod tests {
     #[test]
     fn trait_can_read_core_fields() {
         let controller = AppController::default();
-        let model: &dyn HostSessionModel = controller.session();
+        let model: &dyn HostSessionModel = controller.as_model();
 
         assert_eq!(model.shell_state(), crate::fixtures::ShellState::Ready);
         assert_eq!(model.scenario(), DevScenario::Ready);

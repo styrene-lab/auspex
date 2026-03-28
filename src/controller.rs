@@ -1,4 +1,6 @@
-use crate::fixtures::{DevScenario, MockHostSession};
+use crate::fixtures::{
+    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MockHostSession, ShellState,
+};
 use crate::session_model::HostSessionModel;
 
 pub struct AppController {
@@ -14,12 +16,32 @@ impl Default for AppController {
 }
 
 impl AppController {
-    pub fn session(&self) -> &dyn HostSessionModel {
-        &self.session
+    pub fn shell_state(&self) -> ShellState {
+        self.session.shell_state()
     }
 
-    pub fn session_mut(&mut self) -> &mut dyn HostSessionModel {
-        &mut self.session
+    pub fn scenario(&self) -> DevScenario {
+        self.session.scenario()
+    }
+
+    pub fn summary(&self) -> &HostSessionSummary {
+        self.session.summary()
+    }
+
+    pub fn messages(&self) -> &[ChatMessage] {
+        self.session.messages()
+    }
+
+    pub fn composer(&self) -> &ComposerState {
+        self.session.composer()
+    }
+
+    pub fn can_submit(&self) -> bool {
+        self.session.can_submit()
+    }
+
+    pub fn as_model(&self) -> &dyn HostSessionModel {
+        &self.session
     }
 
     pub fn set_scenario(&mut self, scenario: DevScenario) {
@@ -55,13 +77,10 @@ mod tests {
         let mut controller = AppController::default();
 
         controller.select_scenario("degraded");
-        assert_eq!(controller.session().scenario(), DevScenario::Degraded);
+        assert_eq!(controller.scenario(), DevScenario::Degraded);
 
         controller.select_scenario("compat-failure");
-        assert_eq!(
-            controller.session().scenario(),
-            DevScenario::CompatibilityFailure
-        );
+        assert_eq!(controller.scenario(), DevScenario::CompatibilityFailure);
     }
 
     #[test]
@@ -69,7 +88,7 @@ mod tests {
         let mut controller = AppController::default();
         controller.select_scenario("not-a-real-scenario");
 
-        assert_eq!(controller.session().scenario(), DevScenario::Ready);
+        assert_eq!(controller.scenario(), DevScenario::Ready);
     }
 
     #[test]
@@ -78,6 +97,6 @@ mod tests {
         controller.update_draft("hello world");
 
         assert!(controller.submit_prompt());
-        assert_eq!(controller.session().messages().len(), 3);
+        assert_eq!(controller.messages().len(), 3);
     }
 }
