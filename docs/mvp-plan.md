@@ -26,6 +26,7 @@ Create the shortest path from design work to an implementation-ready Auspex repo
 3. Add `schemaVersion`.
 4. Add machine-readable server startup/discovery.
 5. Pin/document the WebSocket protocol.
+6. Expose Omegon version and control-plane schema identity so Auspex can enforce released-version compatibility.
 
 ### Why this comes first
 A Dioxus client built against drifting backend internals will accumulate translation debt immediately.

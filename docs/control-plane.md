@@ -4,6 +4,8 @@
 
 Define the normalized Omegon backend contract Auspex should target.
 
+This contract must be tied to versioned Omegon releases rather than an implicit moving backend target.
+
 The current Omegon implementation already exposes useful routes and event streams, but the public contract should be stabilized before the Dioxus client hardens against backend drift.
 
 ## Current backend boundary

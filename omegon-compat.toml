@@ -1,0 +1,20 @@
+# Omegon Compatibility Manifest
+
+This file is a placeholder for Auspex's explicit runtime compatibility contract with released Omegon versions.
+
+## Proposed shape
+
+```toml
+[omegon]
+minimum_version = "0.16.0"
+maximum_tested_version = "0.16.x"
+control_plane_schema = 1
+```
+
+## Purpose
+
+Auspex should not attach blindly to arbitrary Omegon instances. It should declare which Omegon release line and control-plane schema it supports, then verify that at runtime.
+
+## Status
+
+Documentation placeholder only. Actual manifest format can change once the app skeleton exists.

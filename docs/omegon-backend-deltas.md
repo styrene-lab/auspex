@@ -80,6 +80,8 @@ Those names match the actual domain language already used elsewhere in Omegon do
 
 ### 5. Add machine-readable startup/discovery output
 
+The startup payload should include both Omegon application version and control-plane schema version.
+
 #### Current issue
 Current startup/open behavior is operator/TUI oriented, not client-process oriented.
 
@@ -92,6 +94,7 @@ Add a machine-readable control-plane startup mode, for example:
   "cwd": "/path/to/repo",
   "addr": "127.0.0.1:7842",
   "token": "...",
+  "omegonVersion": "0.16.0",
   "schemaVersion": 1
 }
 ```
@@ -101,7 +104,24 @@ Auspex should not scrape human logs or depend on incidental startup text.
 
 ---
 
-### 6. Treat `/api/graph` as a public contract, not an implementation detail
+### 6. Expose Omegon version and schema identity in the public control-plane
+
+#### Current issue
+Auspex has no explicit runtime mechanism to verify that the connected Omegon instance matches its supported release line and schema contract.
+
+#### Required change
+Expose at least:
+- Omegon application version
+- control-plane schema version
+
+through startup/discovery output and preferably also in the HTTP snapshot.
+
+#### Why
+Auspex should hard-fail on incompatible releases instead of guessing.
+
+---
+
+### 7. Treat `/api/graph` as a public contract, not an implementation detail
 
 #### Current issue
 The route exists, but its stability and field meaning are not yet documented as a public API.
@@ -118,7 +138,7 @@ Graph clients become brittle quickly if enum meanings are implicit.
 
 ---
 
-### 7. Pin the WebSocket protocol as a public contract
+### 8. Pin the WebSocket protocol as a public contract
 
 #### Current issue
 The WebSocket protocol is implemented in code but not yet fully hardened as a documented contract.
@@ -137,7 +157,7 @@ Auspex should target an API contract, not reverse-engineer source files.
 
 ---
 
-### 8. Keep HTTP read-only and WebSocket command-oriented for v1
+### 9. Keep HTTP read-only and WebSocket command-oriented for v1
 
 #### Current issue
 There is a temptation to add write-capable HTTP routes once a GUI client exists.
@@ -154,7 +174,7 @@ This is already the right seam and avoids unnecessary API sprawl.
 
 ---
 
-### 9. Add read-only slice routes after the normalized snapshot lands
+### 10. Add read-only slice routes after the normalized snapshot lands
 
 #### Recommended routes
 - `GET /api/design-tree`

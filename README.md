@@ -11,6 +11,7 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/vision.md` — product positioning, mode model, MVP scope
 - `docs/control-plane.md` — proposed Omegon backend contract for Auspex
 - `docs/mvp-plan.md` — phased path from design to implementation
+- `docs/omegon-release-dependency.md` — policy for tracking versioned Omegon releases
 
 ## v1 product direction
 
