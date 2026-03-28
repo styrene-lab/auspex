@@ -23,6 +23,8 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/phone-command-event-surface.md` — initial semantic relay surface for phone commands and events
 - `docs/host-projection-model.md` — how the desktop host reduces Omegon state for phone clients
 - `docs/phone-simple-mode-projection.md` — minimum phone Simple mode state projection
+- `docs/relay-state-machine.md` — lifecycle and transitions for the desktop relay host
+- `docs/host-event-projection-rules.md` — when host/backend changes produce phone-facing updates
 - `docs/auspex-in-the-stack.md` — Auspex-specific role within the broader Black Meridian stack doctrine
 
 ## v1 product direction
