@@ -3,49 +3,74 @@ use crate::fixtures::{
 };
 use crate::session_model::HostSessionModel;
 
+#[derive(Debug)]
+enum SessionSource {
+    Mock(MockHostSession),
+}
+
+impl Default for SessionSource {
+    fn default() -> Self {
+        Self::Mock(MockHostSession::default())
+    }
+}
+
+impl SessionSource {
+    fn model(&self) -> &dyn HostSessionModel {
+        match self {
+            Self::Mock(session) => session,
+        }
+    }
+
+    fn model_mut(&mut self) -> &mut dyn HostSessionModel {
+        match self {
+            Self::Mock(session) => session,
+        }
+    }
+}
+
 pub struct AppController {
-    session: MockHostSession,
+    session: SessionSource,
 }
 
 impl Default for AppController {
     fn default() -> Self {
         Self {
-            session: MockHostSession::default(),
+            session: SessionSource::default(),
         }
     }
 }
 
 impl AppController {
     pub fn shell_state(&self) -> ShellState {
-        self.session.shell_state()
+        self.session.model().shell_state()
     }
 
     pub fn scenario(&self) -> DevScenario {
-        self.session.scenario()
+        self.session.model().scenario()
     }
 
     pub fn summary(&self) -> &HostSessionSummary {
-        self.session.summary()
+        self.session.model().summary()
     }
 
     pub fn messages(&self) -> &[ChatMessage] {
-        self.session.messages()
+        self.session.model().messages()
     }
 
     pub fn composer(&self) -> &ComposerState {
-        self.session.composer()
+        self.session.model().composer()
     }
 
     pub fn can_submit(&self) -> bool {
-        self.session.can_submit()
+        self.session.model().can_submit()
     }
 
     pub fn as_model(&self) -> &dyn HostSessionModel {
-        &self.session
+        self.session.model()
     }
 
     pub fn set_scenario(&mut self, scenario: DevScenario) {
-        self.session.set_scenario(scenario);
+        self.session.model_mut().set_scenario(scenario);
     }
 
     pub fn select_scenario(&mut self, raw: &str) {
@@ -60,17 +85,26 @@ impl AppController {
     }
 
     pub fn update_draft(&mut self, value: impl Into<String>) {
-        self.session.composer_mut().set_draft(value);
+        self.session.model_mut().composer_mut().set_draft(value);
     }
 
     pub fn submit_prompt(&mut self) -> bool {
-        self.session.submit()
+        self.session.model_mut().submit()
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn default_controller_uses_mock_session_source() {
+        let controller = AppController::default();
+
+        assert_eq!(controller.scenario(), DevScenario::Ready);
+        assert_eq!(controller.messages().len(), 1);
+        assert_eq!(controller.summary().connection, "Connected to local host session");
+    }
 
     #[test]
     fn select_scenario_maps_known_values() {
@@ -92,10 +126,11 @@ mod tests {
     }
 
     #[test]
-    fn submit_prompt_uses_session_model() {
+    fn update_draft_and_submit_route_through_session_source() {
         let mut controller = AppController::default();
         controller.update_draft("hello world");
 
+        assert_eq!(controller.composer().draft(), "hello world");
         assert!(controller.submit_prompt());
         assert_eq!(controller.messages().len(), 3);
     }
