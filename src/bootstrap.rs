@@ -2,7 +2,10 @@ use std::env;
 use std::fs;
 
 use crate::controller::AppController;
-use crate::event_stream::{derive_ws_url_from_state_url, spawn_websocket_event_stream, EventStreamHandle, WS_URL_ENV};
+use crate::event_stream::{
+    apply_ws_auth_token, derive_authenticated_ws_url, spawn_websocket_event_stream,
+    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV,
+};
 
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
@@ -70,6 +73,10 @@ pub fn websocket_url_from_env() -> Option<String> {
     non_empty_env(WS_URL_ENV)
 }
 
+pub fn websocket_token_from_env() -> Option<String> {
+    non_empty_env(WS_TOKEN_ENV)
+}
+
 pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read snapshot file: {error}"))?;
@@ -97,8 +104,16 @@ pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
         .map_err(|error| format!("could not read response body: {error}"))?;
     let controller = AppController::from_remote_snapshot_json(&body)
         .map_err(|error| format!("invalid state payload: {error}"))?;
+    let ws_token = websocket_token_from_env();
     let ws_url = websocket_url_from_env()
-        .unwrap_or_else(|| derive_ws_url_from_state_url(url).unwrap_or_else(|_| DEFAULT_STATE_URL.replace("http://", "ws://").replace("https://", "wss://").replace("/api/state", "/ws")));
+        .map(|url| apply_ws_auth_token(&url, ws_token.as_deref()))
+        .unwrap_or_else(|| derive_authenticated_ws_url(url, ws_token.as_deref()))
+        .unwrap_or_else(|_| {
+            DEFAULT_STATE_URL
+                .replace("http://", "ws://")
+                .replace("https://", "wss://")
+                .replace("/api/state", "/ws")
+        });
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
 
     Ok(BootstrapResult {
@@ -187,6 +202,19 @@ mod tests {
     #[test]
     fn default_state_url_is_local_omegon_endpoint() {
         assert_eq!(DEFAULT_STATE_URL, "http://127.0.0.1:7842/api/state");
+    }
+
+    #[test]
+    fn websocket_token_env_is_opt_in() {
+        let key = format!("{}_TEST_ONLY", WS_TOKEN_ENV);
+        assert_eq!(non_empty_env(&key), None);
+        assert_eq!(websocket_token_from_env(), env::var(WS_TOKEN_ENV).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()));
+    }
+
+    #[test]
+    fn explicit_websocket_url_can_be_tokenized() {
+        let ws_url = apply_ws_auth_token("ws://127.0.0.1:7842/ws", Some("secret-token")).unwrap();
+        assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=secret-token");
     }
 
     fn temp_snapshot_path(name: &str) -> PathBuf {

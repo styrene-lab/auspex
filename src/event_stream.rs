@@ -5,6 +5,7 @@ use reqwest::Url;
 use tungstenite::Message;
 
 pub const WS_URL_ENV: &str = "AUSPEX_OMEGON_WS_URL";
+pub const WS_TOKEN_ENV: &str = "AUSPEX_OMEGON_WS_TOKEN";
 
 #[derive(Clone, Debug, Default)]
 pub struct EventInbox {
@@ -92,6 +93,26 @@ pub fn derive_ws_url_from_state_url(state_url: &str) -> Result<String, String> {
     Ok(url.to_string())
 }
 
+pub fn apply_ws_auth_token(url: &str, token: Option<&str>) -> Result<String, String> {
+    let Some(token) = token.map(str::trim).filter(|token| !token.is_empty()) else {
+        return Ok(url.to_string());
+    };
+
+    let mut parsed = Url::parse(url)
+        .map_err(|error| format!("invalid websocket URL: {error}"))?;
+    let has_token = parsed.query_pairs().any(|(key, _)| key == "token");
+    if !has_token {
+        parsed.query_pairs_mut().append_pair("token", token);
+    }
+
+    Ok(parsed.to_string())
+}
+
+pub fn derive_authenticated_ws_url(state_url: &str, token: Option<&str>) -> Result<String, String> {
+    let ws_url = derive_ws_url_from_state_url(state_url)?;
+    apply_ws_auth_token(&ws_url, token)
+}
+
 pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
     let handle = EventStreamHandle::websocket(url);
     let worker_handle = handle.clone();
@@ -159,6 +180,24 @@ mod tests {
     fn derive_ws_url_rewrites_https_to_wss() {
         let ws_url = derive_ws_url_from_state_url("https://example.test/api/state?token=abc").unwrap();
         assert_eq!(ws_url, "wss://example.test/ws");
+    }
+
+    #[test]
+    fn apply_ws_auth_token_adds_token_query() {
+        let ws_url = apply_ws_auth_token("ws://127.0.0.1:7842/ws", Some("secret-token")).unwrap();
+        assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=secret-token");
+    }
+
+    #[test]
+    fn apply_ws_auth_token_preserves_existing_token() {
+        let ws_url = apply_ws_auth_token("ws://127.0.0.1:7842/ws?token=existing", Some("ignored")).unwrap();
+        assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=existing");
+    }
+
+    #[test]
+    fn derive_authenticated_ws_url_rewrites_and_authenticates() {
+        let ws_url = derive_authenticated_ws_url("http://127.0.0.1:7842/api/state", Some("abc123")).unwrap();
+        assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=abc123");
     }
 
     #[test]

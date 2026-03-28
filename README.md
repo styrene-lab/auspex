@@ -62,9 +62,11 @@ Auspex now supports two early remote bootstrap seams before full live transport 
 - `AUSPEX_REMOTE_SNAPSHOT_PATH=/path/to/state.json` — load an Omegon-shaped snapshot from disk
 - `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch `/api/state` over HTTP at startup
 - `AUSPEX_OMEGON_WS_URL=ws://127.0.0.1:7842/ws` — optional explicit event-stream override when HTTP bootstrap is used
+- `AUSPEX_OMEGON_WS_TOKEN=...` — optional Omegon WebSocket auth token appended as `?token=` when missing
 
 Behavior is intentionally simple:
 - snapshot file wins if both are set
 - HTTP bootstrap is opt-in
 - HTTP bootstrap also attaches a WebSocket event stream, defaulting from the state URL to `/ws`
+- if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the WebSocket URL unless a `token` query is already present
 - if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI
