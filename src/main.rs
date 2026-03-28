@@ -1,4 +1,5 @@
 mod app;
+mod controller;
 mod fixtures;
 mod session_model;
 

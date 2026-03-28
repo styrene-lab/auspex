@@ -1,11 +1,11 @@
 use dioxus::prelude::*;
 
-use crate::fixtures::{DevScenario, MessageRole, MockHostSession};
-use crate::session_model::HostSessionModel;
+use crate::controller::AppController;
+use crate::fixtures::{DevScenario, MessageRole};
 
 #[component]
 pub fn App() -> Element {
-    let mut session = use_signal(MockHostSession::default);
+    let mut controller = use_signal(AppController::default);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -15,13 +15,13 @@ pub fn App() -> Element {
                     h1 { "Auspex" }
                     p { "Conversation-first scaffold" }
                 }
-                div { class: session.read().shell_state().status_class(), "{session.read().shell_state().label()}" }
+                div { class: controller.read().session().shell_state().status_class(), "{controller.read().session().shell_state().label()}" }
             }
 
             section { class: "devbar",
                 label { "Scenario" }
                 select {
-                    value: session.read().scenario().key(),
+                    value: controller.read().session().scenario().key(),
                     onchange: move |event| {
                         let next = match event.value().as_str() {
                             "booting" => DevScenario::Booting,
@@ -30,7 +30,7 @@ pub fn App() -> Element {
                             "reconnecting" => DevScenario::Reconnecting,
                             _ => DevScenario::Ready,
                         };
-                        session.write().set_scenario(next);
+                        controller.write().set_scenario(next);
                     },
                     for scenario in DevScenario::ALL {
                         option { value: scenario.key(), "{scenario.label()}" }
@@ -41,20 +41,20 @@ pub fn App() -> Element {
             section { class: "summary-bar",
                 div { class: "summary-card",
                     h2 { "Connection" }
-                    p { "{session.read().summary().connection}" }
+                    p { "{controller.read().session().summary().connection}" }
                 }
                 div { class: "summary-card",
                     h2 { "Activity" }
-                    p { "{session.read().summary().activity}" }
+                    p { "{controller.read().session().summary().activity}" }
                 }
                 div { class: "summary-card",
                     h2 { "Work" }
-                    p { "{session.read().summary().work}" }
+                    p { "{controller.read().session().summary().work}" }
                 }
             }
 
             main { class: "transcript",
-                for message in session.read().messages().iter() {
+                for message in controller.read().session().messages().iter() {
                     article {
                         class: match message.role {
                             MessageRole::User => "bubble bubble-user",
@@ -77,24 +77,24 @@ pub fn App() -> Element {
                 class: "composer",
                 onsubmit: move |event| {
                     event.prevent_default();
-                    session.write().submit();
+                    controller.write().session_mut().submit();
                 },
                 textarea {
                     class: "composer-input",
                     rows: "3",
-                    value: session.read().composer().draft().to_string(),
-                    disabled: !session.read().can_submit(),
-                    placeholder: if session.read().can_submit() {
+                    value: controller.read().session().composer().draft().to_string(),
+                    disabled: !controller.read().session().can_submit(),
+                    placeholder: if controller.read().session().can_submit() {
                         "Start with the smallest useful prompt…"
                     } else {
                         "Conversation input is unavailable in the current host state."
                     },
-                    oninput: move |event| session.write().composer_mut().set_draft(event.value()),
+                    oninput: move |event| controller.write().session_mut().composer_mut().set_draft(event.value()),
                 }
                 button {
                     class: "composer-submit",
                     r#type: "submit",
-                    disabled: !session.read().can_submit(),
+                    disabled: !controller.read().session().can_submit(),
                     "Send"
                 }
             }
@@ -104,6 +104,7 @@ pub fn App() -> Element {
 
 #[cfg(test)]
 mod tests {
+    use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
 
@@ -159,8 +160,8 @@ mod tests {
 
     #[test]
     fn trait_can_read_core_fields() {
-        let session = MockHostSession::ready_session();
-        let model: &dyn HostSessionModel = &session;
+        let controller = AppController::default();
+        let model: &dyn HostSessionModel = controller.session();
 
         assert_eq!(model.shell_state(), crate::fixtures::ShellState::Ready);
         assert_eq!(model.scenario(), DevScenario::Ready);
