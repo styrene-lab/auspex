@@ -22,16 +22,7 @@ pub fn App() -> Element {
                 label { "Scenario" }
                 select {
                     value: controller.read().session().scenario().key(),
-                    onchange: move |event| {
-                        let next = match event.value().as_str() {
-                            "booting" => DevScenario::Booting,
-                            "degraded" => DevScenario::Degraded,
-                            "compat-failure" => DevScenario::CompatibilityFailure,
-                            "reconnecting" => DevScenario::Reconnecting,
-                            _ => DevScenario::Ready,
-                        };
-                        controller.write().set_scenario(next);
-                    },
+                    onchange: move |event| controller.write().select_scenario(event.value().as_str()),
                     for scenario in DevScenario::ALL {
                         option { value: scenario.key(), "{scenario.label()}" }
                     }

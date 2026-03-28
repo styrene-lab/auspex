@@ -25,4 +25,42 @@ impl AppController {
     pub fn set_scenario(&mut self, scenario: DevScenario) {
         self.session.set_scenario(scenario);
     }
+
+    pub fn select_scenario(&mut self, raw: &str) {
+        let next = match raw {
+            "booting" => DevScenario::Booting,
+            "degraded" => DevScenario::Degraded,
+            "compat-failure" => DevScenario::CompatibilityFailure,
+            "reconnecting" => DevScenario::Reconnecting,
+            _ => DevScenario::Ready,
+        };
+        self.set_scenario(next);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn select_scenario_maps_known_values() {
+        let mut controller = AppController::default();
+
+        controller.select_scenario("degraded");
+        assert_eq!(controller.session().scenario(), DevScenario::Degraded);
+
+        controller.select_scenario("compat-failure");
+        assert_eq!(
+            controller.session().scenario(),
+            DevScenario::CompatibilityFailure
+        );
+    }
+
+    #[test]
+    fn select_scenario_defaults_unknown_values_to_ready() {
+        let mut controller = AppController::default();
+        controller.select_scenario("not-a-real-scenario");
+
+        assert_eq!(controller.session().scenario(), DevScenario::Ready);
+    }
 }
