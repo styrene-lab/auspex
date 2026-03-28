@@ -1,7 +1,6 @@
-mod fixtures;
-
 use dioxus::prelude::*;
-use fixtures::{ConversationState, DevScenario, MessageRole};
+
+use crate::fixtures::{ConversationState, DevScenario, MessageRole};
 
 #[component]
 pub fn App() -> Element {
@@ -89,7 +88,7 @@ pub fn App() -> Element {
 
 #[cfg(test)]
 mod tests {
-    use super::fixtures::*;
+    use crate::fixtures::*;
 
     #[test]
     fn blank_draft_does_not_submit() {
