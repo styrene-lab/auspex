@@ -68,7 +68,7 @@ pub fn App() -> Element {
                 class: "composer",
                 onsubmit: move |event| {
                     event.prevent_default();
-                    controller.write().session_mut().submit();
+                    controller.write().submit_prompt();
                 },
                 textarea {
                     class: "composer-input",
@@ -80,7 +80,7 @@ pub fn App() -> Element {
                     } else {
                         "Conversation input is unavailable in the current host state."
                     },
-                    oninput: move |event| controller.write().session_mut().composer_mut().set_draft(event.value()),
+                    oninput: move |event| controller.write().update_draft(event.value()),
                 }
                 button {
                     class: "composer-submit",
@@ -111,15 +111,18 @@ mod tests {
 
     #[test]
     fn submit_appends_user_and_placeholder_reply() {
-        let mut session = MockHostSession::default();
-        session.composer_mut().set_draft("hello world");
+        let mut controller = AppController::default();
+        controller.update_draft("hello world");
 
-        assert!(session.submit());
-        assert_eq!(session.composer().draft(), "");
-        assert_eq!(session.messages().len(), 3);
-        assert_eq!(session.messages()[1].role, MessageRole::User);
-        assert_eq!(session.messages()[1].text, "hello world");
-        assert_eq!(session.messages()[2].role, MessageRole::Assistant);
+        assert!(controller.submit_prompt());
+        assert_eq!(controller.session().composer().draft(), "");
+        assert_eq!(controller.session().messages().len(), 3);
+        assert_eq!(controller.session().messages()[1].role, MessageRole::User);
+        assert_eq!(controller.session().messages()[1].text, "hello world");
+        assert_eq!(
+            controller.session().messages()[2].role,
+            MessageRole::Assistant
+        );
     }
 
     #[test]

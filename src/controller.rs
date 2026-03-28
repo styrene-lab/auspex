@@ -36,6 +36,14 @@ impl AppController {
         };
         self.set_scenario(next);
     }
+
+    pub fn update_draft(&mut self, value: impl Into<String>) {
+        self.session.composer_mut().set_draft(value);
+    }
+
+    pub fn submit_prompt(&mut self) -> bool {
+        self.session.submit()
+    }
 }
 
 #[cfg(test)]
@@ -62,5 +70,14 @@ mod tests {
         controller.select_scenario("not-a-real-scenario");
 
         assert_eq!(controller.session().scenario(), DevScenario::Ready);
+    }
+
+    #[test]
+    fn submit_prompt_uses_session_model() {
+        let mut controller = AppController::default();
+        controller.update_draft("hello world");
+
+        assert!(controller.submit_prompt());
+        assert_eq!(controller.session().messages().len(), 3);
     }
 }
