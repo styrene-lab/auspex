@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::controller::AppController;
+use crate::controller::{AppController, SessionMode};
 use crate::fixtures::{DevScenario, MessageRole};
 
 #[component]
@@ -13,19 +13,38 @@ pub fn App() -> Element {
             header { class: "header",
                 div {
                     h1 { "Auspex" }
-                    p { "Conversation-first scaffold" }
+                    p {
+                        if controller.read().is_remote() {
+                            "Conversation-first scaffold · remote control-plane projection"
+                        } else {
+                            "Conversation-first scaffold"
+                        }
+                    }
                 }
                 div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
             }
 
             section { class: "devbar",
-                label { "Scenario" }
+                label { "Source" }
                 select {
-                    value: controller.read().scenario().key(),
-                    onchange: move |event| controller.write().select_scenario(event.value().as_str()),
-                    for scenario in DevScenario::ALL {
-                        option { value: scenario.key(), "{scenario.label()}" }
+                    value: controller.read().session_mode().key(),
+                    onchange: move |event| controller.write().switch_session_mode(event.value().as_str()),
+                    for mode in SessionMode::ALL {
+                        option { value: mode.key(), "{mode.label()}" }
                     }
+                }
+
+                if !controller.read().is_remote() {
+                    label { "Scenario" }
+                    select {
+                        value: controller.read().scenario().key(),
+                        onchange: move |event| controller.write().select_scenario(event.value().as_str()),
+                        for scenario in DevScenario::ALL {
+                            option { value: scenario.key(), "{scenario.label()}" }
+                        }
+                    }
+                } else {
+                    span { class: "devbar-note", "Remote mode is snapshot-driven; scenario overrides are disabled." }
                 }
             }
 
@@ -157,5 +176,14 @@ mod tests {
         assert_eq!(model.shell_state(), crate::fixtures::ShellState::Ready);
         assert_eq!(model.scenario(), DevScenario::Ready);
         assert_eq!(model.messages().len(), 1);
+    }
+
+    #[test]
+    fn remote_demo_controller_exposes_remote_mode() {
+        let controller = AppController::remote_demo();
+
+        assert!(controller.is_remote());
+        assert!(controller.summary().connection.contains("Attached to Omegon host"));
+        assert_eq!(controller.messages().len(), 1);
     }
 }

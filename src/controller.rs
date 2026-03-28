@@ -4,6 +4,59 @@ use crate::fixtures::{
 use crate::remote_session::RemoteHostSession;
 use crate::session_model::HostSessionModel;
 
+const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
+    "design": {
+        "focused": {
+            "id": "auspex-remote",
+            "title": "Remote session adapter",
+            "status": "implementing",
+            "open_questions": ["How should reconnect work?"],
+            "decisions": 1,
+            "children": 2
+        },
+        "implementing": [{"id": "auspex-remote", "title": "Remote session adapter", "status": "implementing"}],
+        "actionable": [{"id": "compat-handshake", "title": "Compatibility handshake", "status": "ready"}]
+    },
+    "openspec": {"totalTasks": 5, "doneTasks": 2},
+    "cleave": {"active": false, "totalChildren": 0, "completed": 0, "failed": 0},
+    "session": {"turns": 12, "toolCalls": 34, "compactions": 1},
+    "harness": {
+        "gitBranch": "main",
+        "gitDetached": false,
+        "thinkingLevel": "medium",
+        "capabilityTier": "victory",
+        "providers": [{"name": "Anthropic", "authenticated": true, "authMethod": "api-key", "model": "claude-sonnet"}],
+        "memoryAvailable": true,
+        "cleaveAvailable": true,
+        "memoryWarning": null,
+        "activeDelegates": []
+    }
+}"#;
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SessionMode {
+    Mock,
+    RemoteDemo,
+}
+
+impl SessionMode {
+    pub const ALL: [Self; 2] = [Self::Mock, Self::RemoteDemo];
+
+    pub fn key(self) -> &'static str {
+        match self {
+            Self::Mock => "mock",
+            Self::RemoteDemo => "remote-demo",
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Mock => "Mock local",
+            Self::RemoteDemo => "Remote demo",
+        }
+    }
+}
+
 #[derive(Debug)]
 enum SessionSource {
     Mock(MockHostSession),
@@ -30,6 +83,13 @@ impl SessionSource {
             Self::Remote(session) => session,
         }
     }
+
+    fn mode(&self) -> SessionMode {
+        match self {
+            Self::Mock(_) => SessionMode::Mock,
+            Self::Remote(_) => SessionMode::RemoteDemo,
+        }
+    }
 }
 
 pub struct AppController {
@@ -50,6 +110,29 @@ impl AppController {
         Ok(Self {
             session: SessionSource::Remote(session),
         })
+    }
+
+    pub fn remote_demo() -> Self {
+        Self::from_remote_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
+            .expect("embedded remote demo snapshot must stay valid")
+    }
+
+    pub fn session_mode(&self) -> SessionMode {
+        self.session.mode()
+    }
+
+    pub fn is_remote(&self) -> bool {
+        self.session_mode() == SessionMode::RemoteDemo
+    }
+
+    pub fn switch_session_mode(&mut self, raw: &str) {
+        self.session = match raw {
+            "remote-demo" => SessionSource::Remote(
+                RemoteHostSession::from_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
+                    .expect("embedded remote demo snapshot must stay valid"),
+            ),
+            _ => SessionSource::Mock(MockHostSession::default()),
+        };
     }
 
     pub fn shell_state(&self) -> ShellState {
@@ -115,34 +198,7 @@ impl AppController {
 mod tests {
     use super::*;
 
-    const REMOTE_SNAPSHOT_JSON: &str = r#"{
-        "design": {
-            "focused": {
-                "id": "auspex-remote",
-                "title": "Remote session adapter",
-                "status": "implementing",
-                "open_questions": ["How should reconnect work?"],
-                "decisions": 1,
-                "children": 2
-            },
-            "implementing": [{"id": "auspex-remote", "title": "Remote session adapter", "status": "implementing"}],
-            "actionable": []
-        },
-        "openspec": {"totalTasks": 5, "doneTasks": 2},
-        "cleave": {"active": false, "totalChildren": 0, "completed": 0, "failed": 0},
-        "session": {"turns": 12, "toolCalls": 34, "compactions": 1},
-        "harness": {
-            "gitBranch": "main",
-            "gitDetached": false,
-            "thinkingLevel": "medium",
-            "capabilityTier": "victory",
-            "providers": [{"name": "Anthropic", "authenticated": true, "authMethod": "api-key", "model": "claude-sonnet"}],
-            "memoryAvailable": true,
-            "cleaveAvailable": true,
-            "memoryWarning": null,
-            "activeDelegates": []
-        }
-    }"#;
+    const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;
 
     #[test]
     fn default_controller_uses_mock_session_source() {
@@ -210,5 +266,20 @@ mod tests {
         assert!(!mock_controller
             .apply_remote_event_json(r#"{"type":"message_start","role":"assistant"}"#)
             .unwrap());
+    }
+
+    #[test]
+    fn switch_session_mode_swaps_between_mock_and_remote_demo() {
+        let mut controller = AppController::default();
+        assert_eq!(controller.session_mode(), SessionMode::Mock);
+
+        controller.switch_session_mode("remote-demo");
+        assert_eq!(controller.session_mode(), SessionMode::RemoteDemo);
+        assert!(controller.summary().connection.contains("Attached to Omegon host"));
+        assert_eq!(controller.messages().len(), 1);
+
+        controller.switch_session_mode("mock");
+        assert_eq!(controller.session_mode(), SessionMode::Mock);
+        assert_eq!(controller.summary().connection, "Connected to local host session");
     }
 }
