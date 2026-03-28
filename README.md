@@ -19,6 +19,7 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/mock-fixture-strategy.md` — path from scenario scaffolding to reusable host-session fixtures
 - `docs/controller-architecture.md` — role and evolution path for the app controller layer
 - `docs/session-source-model.md` — next abstraction step for swapping mock and runtime session sources
+- `docs/session-source-implementation-notes.md` — implementation note for introducing SessionSource in code
 - `docs/embedded-runtime-model.md` — bundled subsystem model for Omegon and Styrene under Auspex
 - `docs/supervision-startup-states.md` — host lifecycle and supervision states for embedded subsystems
 - `docs/remote-connection-model.md` — desktop-hosted remote phone connection strategy using Styrene
