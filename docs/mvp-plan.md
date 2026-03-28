@@ -63,11 +63,23 @@ The default experience feels like a usable local chat client, not an internal te
 - Graph screen bound to `/api/graph`
 - Work screen bound to design/OpenSpec/cleave state
 - Session screen bound to `harness`
+- desktop-hosted remote session path for phone clients
 
 ### Success criteria
 The operator can inspect and understand the full harness surface without leaving the app.
 
-## Phase 5 — post-MVP direction
+## Phase 5 — remote phone client
+
+### Deliverables
+- phone client connects to desktop Auspex rather than directly to Omegon
+- Styrene-backed transport / comms path
+- Simple mode on phone first
+- remote cancel / prompt / transcript / compact work state
+
+### Success criteria
+A phone operator can act as a trustworthy remote client without the Omegon backend needing to become phone-facing first.
+
+## Phase 6 — post-MVP direction
 
 Potential next steps, not required for v1:
 - richer workbench / notes model
@@ -75,7 +87,7 @@ Potential next steps, not required for v1:
 - deeper OpenSpec browsing
 - context-aware prompting from active selection
 - Styrene-backed collaboration
-- mobile targets
+- mobile-local MLX inference
 
 ## Repo path principle
 

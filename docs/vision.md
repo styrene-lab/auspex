@@ -125,11 +125,12 @@ Four primary surfaces:
 - graph view
 - work view
 - session/system view
+- remote-phone-oriented connection model with desktop Auspex as the initial bridge point
 
 ### Explicitly out of scope for v1
 - full notes replacement
 - full diagramming system
-- collaboration via Styrene
+- direct phone-to-Omegon attachment as the primary mobile path
 - native mobile parity in the initial MVP release
 - multi-repo workspace management
 - embedded document browser

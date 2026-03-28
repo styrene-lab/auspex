@@ -16,6 +16,7 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/release-coordination.md` — release coupling model between Auspex and Omegon
 - `docs/error-empty-states.md` — operator-facing loading, degraded, and empty-state behavior
 - `docs/app-skeleton-readiness.md` — criteria for when a Dioxus app skeleton is justified
+- `docs/remote-connection-model.md` — desktop-hosted remote phone connection strategy using Styrene
 
 ## v1 product direction
 
