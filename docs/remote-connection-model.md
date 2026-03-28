@@ -78,6 +78,10 @@ For the remote phone-to-desktop link, the right direction is to use Styrene as t
 
 That is better than inventing an ad-hoc second remote transport for Auspex.
 
+The important boundary distinction is:
+- Omegon <-> desktop Auspex: current JSON HTTP/WS control-plane
+- desktop Auspex <-> phone Auspex over Styrene: semantic relay protocol with transport-native encoding, likely MessagePack over LXMF
+
 ## Why Styrene fits this role
 
 ### Trust and identity

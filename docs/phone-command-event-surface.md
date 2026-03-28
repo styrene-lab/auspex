@@ -4,7 +4,7 @@
 
 Define the initial command and event surface between the phone client and the desktop Auspex host over the Styrene relay path.
 
-This is not yet a transport encoding spec. It is the semantic surface.
+This is not a JSON wire spec. It is the semantic surface.
 
 ## Phone -> desktop host commands
 
@@ -41,6 +41,10 @@ This is not yet a transport encoding spec. It is the semantic surface.
 The desktop host should not simply mirror every Omegon event 1:1 to the phone. The phone is consuming a remote session abstraction, not just a raw backend debug stream.
 
 A filtered semantic surface keeps the mobile path simpler and gives the desktop host room to normalize or collapse noisy backend detail.
+
+## Encoding note
+
+The first phone relay protocol should be free to use Styrene-native transport encoding, likely MessagePack over LXMF. These command and event names describe semantic messages, not a requirement that the phone relay mirror the Omegon JSON boundary directly.
 
 ## Guiding rule
 

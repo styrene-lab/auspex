@@ -19,6 +19,12 @@ It is not about:
 - full collaborative multi-operator sessions
 - final Styrene transport implementation details
 
+## Encoding note
+
+This relay layer should be defined semantically, not as a JSON-first wire contract.
+
+The Omegon control-plane remains JSON at the HTTP/WS boundary, but the Styrene relay path should assume transport-native encoding — most likely MessagePack over LXMF — rather than inheriting JSON assumptions from the local control-plane.
+
 ## Core decision
 
 ### The phone sees a desktop-hosted session model, not raw Omegon internals

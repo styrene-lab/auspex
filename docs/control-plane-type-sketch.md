@@ -8,10 +8,10 @@ This is the bridge from high-level API requirements to concrete Rust-side struct
 
 ## Design constraints
 
-- Must be serializable as JSON.
 - Must be stable enough to become a public client contract.
 - Must be shaped around existing Omegon runtime state where possible.
 - Must carry both Omegon version identity and control-plane schema identity.
+- Must define the current Omegon-side HTTP/WS JSON representation without implying that every downstream transport also uses JSON.
 
 ## Top-level shape
 
@@ -29,7 +29,7 @@ pub struct ControlPlaneStateV1 {
 }
 ```
 
-### Public JSON form
+### Current Omegon JSON form
 
 ```json
 {
@@ -163,7 +163,7 @@ pub struct ControlPlaneStartupInfo {
 
 ## Suggested serde naming policy
 
-Use Rust snake_case internally, with JSON camelCase externally.
+Use Rust snake_case internally, with JSON camelCase externally for the Omegon HTTP/WS boundary.
 
 That implies:
 - `schema_version` -> `schemaVersion`
@@ -196,6 +196,12 @@ Primary likely targets:
 - `omegon/core/crates/omegon/src/web/mod.rs`
 - `omegon/core/crates/omegon/src/status.rs`
 - `omegon/core/crates/omegon/src/main.rs`
+
+## Boundary note
+
+`ControlPlaneStateV1` is the Omegon-side public contract and current JSON representation for the local control-plane.
+
+That does **not** mean every later transport must use JSON on the wire. In particular, the Styrene phone relay should define a semantic message schema that can be encoded using transport-native formats such as MessagePack over LXMF.
 
 ## Guiding rule
 
