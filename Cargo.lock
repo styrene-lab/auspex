@@ -183,6 +183,8 @@ version = "0.1.0"
 dependencies = [
  "dioxus",
  "pretty_assertions",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
