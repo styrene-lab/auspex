@@ -1,6 +1,7 @@
 use dioxus::prelude::*;
 
 use crate::fixtures::{DevScenario, MessageRole, MockHostSession};
+use crate::session_model::HostSessionModel;
 
 #[component]
 pub fn App() -> Element {
@@ -104,6 +105,7 @@ pub fn App() -> Element {
 #[cfg(test)]
 mod tests {
     use crate::fixtures::*;
+    use crate::session_model::HostSessionModel;
 
     #[test]
     fn blank_draft_does_not_submit() {
@@ -156,11 +158,12 @@ mod tests {
     }
 
     #[test]
-    fn ready_state_has_compact_summaries() {
-        let session = MockHostSession::from_scenario(DevScenario::Ready);
+    fn trait_can_read_core_fields() {
+        let session = MockHostSession::ready_session();
+        let model: &dyn HostSessionModel = &session;
 
-        assert!(session.summary().connection.contains("Connected"));
-        assert!(session.summary().activity.contains("Idle"));
-        assert!(session.summary().work.contains("No focused work"));
+        assert_eq!(model.shell_state(), crate::fixtures::ShellState::Ready);
+        assert_eq!(model.scenario(), DevScenario::Ready);
+        assert_eq!(model.messages().len(), 1);
     }
 }

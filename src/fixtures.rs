@@ -1,3 +1,5 @@
+use crate::session_model::HostSessionModel;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChatMessage {
     pub role: MessageRole,
@@ -145,8 +147,7 @@ impl MockHostSession {
             },
             messages: vec![ChatMessage {
                 role: MessageRole::Assistant,
-                text: "Auspex scaffold ready. Type a prompt to grow the shell from here."
-                    .into(),
+                text: "Auspex scaffold ready. Type a prompt to grow the shell from here.".into(),
             }],
             composer: ComposerState::default(),
         }
@@ -241,40 +242,42 @@ impl MockHostSession {
             DevScenario::Reconnecting => Self::reconnecting_session(),
         }
     }
+}
 
-    pub fn shell_state(&self) -> ShellState {
+impl HostSessionModel for MockHostSession {
+    fn shell_state(&self) -> ShellState {
         self.shell_state
     }
 
-    pub fn scenario(&self) -> DevScenario {
+    fn scenario(&self) -> DevScenario {
         self.scenario
     }
 
-    pub fn summary(&self) -> &HostSessionSummary {
+    fn summary(&self) -> &HostSessionSummary {
         &self.summary
     }
 
-    pub fn messages(&self) -> &[ChatMessage] {
+    fn messages(&self) -> &[ChatMessage] {
         &self.messages
     }
 
-    pub fn composer(&self) -> &ComposerState {
+    fn composer(&self) -> &ComposerState {
         &self.composer
     }
 
-    pub fn composer_mut(&mut self) -> &mut ComposerState {
+    fn composer_mut(&mut self) -> &mut ComposerState {
         &mut self.composer
     }
 
-    pub fn set_scenario(&mut self, scenario: DevScenario) {
+    fn set_scenario(&mut self, scenario: DevScenario) {
         *self = Self::from_scenario(scenario);
     }
 
-    pub fn can_submit(&self) -> bool {
+    fn can_submit(&self) -> bool {
         self.shell_state == ShellState::Ready || self.shell_state == ShellState::Degraded
     }
 
-    pub fn submit(&mut self) -> bool {
+    fn submit(&mut self) -> bool {
         if !self.can_submit() {
             return false;
         }
