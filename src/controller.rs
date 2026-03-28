@@ -57,7 +57,7 @@ impl SessionMode {
     }
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Eq)]
 enum SessionSource {
     Mock(MockHostSession),
     Remote(RemoteHostSession),
@@ -92,14 +92,17 @@ impl SessionSource {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppController {
     session: SessionSource,
+    bootstrap_note: Option<String>,
 }
 
 impl Default for AppController {
     fn default() -> Self {
         Self {
             session: SessionSource::default(),
+            bootstrap_note: None,
         }
     }
 }
@@ -109,6 +112,7 @@ impl AppController {
         let session = RemoteHostSession::from_snapshot_json(json)?;
         Ok(Self {
             session: SessionSource::Remote(session),
+            bootstrap_note: None,
         })
     }
 
@@ -119,6 +123,14 @@ impl AppController {
 
     pub fn session_mode(&self) -> SessionMode {
         self.session.mode()
+    }
+
+    pub fn bootstrap_note(&self) -> Option<&str> {
+        self.bootstrap_note.as_deref()
+    }
+
+    pub fn set_bootstrap_note(&mut self, note: Option<String>) {
+        self.bootstrap_note = note;
     }
 
     pub fn is_remote(&self) -> bool {
@@ -133,6 +145,7 @@ impl AppController {
             ),
             _ => SessionSource::Mock(MockHostSession::default()),
         };
+        self.bootstrap_note = None;
     }
 
     pub fn shell_state(&self) -> ShellState {

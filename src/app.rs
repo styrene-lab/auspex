@@ -1,11 +1,21 @@
 use dioxus::prelude::*;
 
+use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::fixtures::{DevScenario, MessageRole};
 
 #[component]
 pub fn App() -> Element {
-    let mut controller = use_signal(AppController::default);
+    let bootstrap = try_consume_context::<BootstrapResult>();
+    let mut controller = use_signal(move || {
+        if let Some(bootstrap) = bootstrap {
+            let mut controller = bootstrap.controller;
+            controller.set_bootstrap_note(bootstrap.note);
+            controller
+        } else {
+            AppController::default()
+        }
+    });
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -45,6 +55,13 @@ pub fn App() -> Element {
                     }
                 } else {
                     span { class: "devbar-note", "Remote mode is snapshot-driven; scenario overrides are disabled." }
+                }
+            }
+
+            if let Some(note) = controller.read().bootstrap_note() {
+                section { class: "bootstrap-note",
+                    strong { "Bootstrap" }
+                    p { "{note}" }
                 }
             }
 

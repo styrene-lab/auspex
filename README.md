@@ -54,3 +54,15 @@ The exact CI/release pipeline can evolve later, but the version and tagging cade
 ## Notes
 
 This started documentation-first, but now includes a minimal Dioxus scaffold proving the basic conversation shell. The backend contract and remote-runtime layers still need to settle before a real Omegon/Styrene integration should harden.
+
+## Bootstrap paths
+
+Auspex now supports two early remote bootstrap seams before full live transport hardens:
+
+- `AUSPEX_REMOTE_SNAPSHOT_PATH=/path/to/state.json` — load an Omegon-shaped snapshot from disk
+- `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch `/api/state` over HTTP at startup
+
+Behavior is intentionally simple:
+- snapshot file wins if both are set
+- HTTP bootstrap is opt-in via `AUSPEX_OMEGON_STATE_URL`
+- if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI

@@ -78,6 +78,27 @@ body {
   font-size: 0.92rem;
 }
 
+.bootstrap-note {
+  background: #1a1f2b;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem;
+}
+
+.bootstrap-note strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+}
+
+.bootstrap-note p {
+  margin: 0;
+  line-height: 1.4;
+}
+
 .devbar select {
   border-radius: 10px;
   border: 1px solid #30363d;
