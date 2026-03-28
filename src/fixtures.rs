@@ -85,52 +85,94 @@ impl DevScenario {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-pub struct ConversationState {
-    draft: String,
-    messages: Vec<ChatMessage>,
-    shell_state: ShellState,
-    scenario: DevScenario,
-    connection_summary: String,
-    activity_summary: String,
-    work_summary: String,
+pub struct HostSessionSummary {
+    pub connection: String,
+    pub activity: String,
+    pub work: String,
 }
 
-impl Default for ConversationState {
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ComposerState {
+    draft: String,
+}
+
+impl Default for ComposerState {
+    fn default() -> Self {
+        Self {
+            draft: String::new(),
+        }
+    }
+}
+
+impl ComposerState {
+    pub fn draft(&self) -> &str {
+        &self.draft
+    }
+
+    pub fn set_draft(&mut self, value: impl Into<String>) {
+        self.draft = value.into();
+    }
+
+    pub fn clear(&mut self) {
+        self.draft.clear();
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct MockHostSession {
+    shell_state: ShellState,
+    scenario: DevScenario,
+    summary: HostSessionSummary,
+    messages: Vec<ChatMessage>,
+    composer: ComposerState,
+}
+
+impl Default for MockHostSession {
     fn default() -> Self {
         Self::from_scenario(DevScenario::Ready)
     }
 }
 
-impl ConversationState {
+impl MockHostSession {
     pub fn from_scenario(scenario: DevScenario) -> Self {
         match scenario {
             DevScenario::Ready => Self {
-                draft: String::new(),
+                shell_state: ShellState::Ready,
+                scenario,
+                summary: HostSessionSummary {
+                    connection: "Connected to local host session".into(),
+                    activity: "Idle — waiting for your next prompt".into(),
+                    work: "No focused work item yet".into(),
+                },
                 messages: vec![ChatMessage {
                     role: MessageRole::Assistant,
                     text: "Auspex scaffold ready. Type a prompt to grow the shell from here."
                         .into(),
                 }],
-                shell_state: ShellState::Ready,
-                scenario,
-                connection_summary: "Connected to local host session".into(),
-                activity_summary: "Idle — waiting for your next prompt".into(),
-                work_summary: "No focused work item yet".into(),
+                composer: ComposerState::default(),
             },
             DevScenario::Booting => Self {
-                draft: String::new(),
+                shell_state: ShellState::StartingOmegon,
+                scenario,
+                summary: HostSessionSummary {
+                    connection: "Starting bundled runtime".into(),
+                    activity: "Launching Styrene and Omegon".into(),
+                    work: "Work state unavailable during startup".into(),
+                },
                 messages: vec![ChatMessage {
                     role: MessageRole::System,
                     text: "Auspex is starting Styrene and Omegon. The conversation shell will become interactive when the host session is ready.".into(),
                 }],
-                shell_state: ShellState::StartingOmegon,
-                scenario,
-                connection_summary: "Starting bundled runtime".into(),
-                activity_summary: "Launching Styrene and Omegon".into(),
-                work_summary: "Work state unavailable during startup".into(),
+                composer: ComposerState::default(),
             },
             DevScenario::Degraded => Self {
-                draft: String::new(),
+                shell_state: ShellState::Degraded,
+                scenario,
+                summary: HostSessionSummary {
+                    connection: "Connected locally, relay degraded".into(),
+                    activity: "Continuing with degraded remote connectivity".into(),
+                    work: "1 cached work item in progress".into(),
+                },
                 messages: vec![
                     ChatMessage {
                         role: MessageRole::Assistant,
@@ -141,26 +183,30 @@ impl ConversationState {
                         text: "Styrene relay is degraded. Phone clients may reconnect automatically while local work continues.".into(),
                     },
                 ],
-                shell_state: ShellState::Degraded,
-                scenario,
-                connection_summary: "Connected locally, relay degraded".into(),
-                activity_summary: "Continuing with degraded remote connectivity".into(),
-                work_summary: "1 cached work item in progress".into(),
+                composer: ComposerState::default(),
             },
             DevScenario::CompatibilityFailure => Self {
-                draft: String::new(),
+                shell_state: ShellState::Failed,
+                scenario,
+                summary: HostSessionSummary {
+                    connection: "Host incompatible".into(),
+                    activity: "Startup blocked by compatibility failure".into(),
+                    work: "No session available".into(),
+                },
                 messages: vec![ChatMessage {
                     role: MessageRole::System,
                     text: "Compatibility failure: Auspex expects Omegon control-plane schema 1, but the detected host did not satisfy the declared contract.".into(),
                 }],
-                shell_state: ShellState::Failed,
-                scenario,
-                connection_summary: "Host incompatible".into(),
-                activity_summary: "Startup blocked by compatibility failure".into(),
-                work_summary: "No session available".into(),
+                composer: ComposerState::default(),
             },
             DevScenario::Reconnecting => Self {
-                draft: String::new(),
+                shell_state: ShellState::CompatibilityChecking,
+                scenario,
+                summary: HostSessionSummary {
+                    connection: "Reconnecting to desktop host".into(),
+                    activity: "Restoring remote session link".into(),
+                    work: "Showing last known focused work".into(),
+                },
                 messages: vec![
                     ChatMessage {
                         role: MessageRole::Assistant,
@@ -171,21 +217,9 @@ impl ConversationState {
                         text: "Connection to the host is reconnecting. New input is temporarily paused while Auspex restores the session link.".into(),
                     },
                 ],
-                shell_state: ShellState::CompatibilityChecking,
-                scenario,
-                connection_summary: "Reconnecting to desktop host".into(),
-                activity_summary: "Restoring remote session link".into(),
-                work_summary: "Showing last known focused work".into(),
+                composer: ComposerState::default(),
             },
         }
-    }
-
-    pub fn draft(&self) -> &str {
-        &self.draft
-    }
-
-    pub fn messages(&self) -> &[ChatMessage] {
-        &self.messages
     }
 
     pub fn shell_state(&self) -> ShellState {
@@ -196,20 +230,20 @@ impl ConversationState {
         self.scenario
     }
 
-    pub fn connection_summary(&self) -> &str {
-        &self.connection_summary
+    pub fn summary(&self) -> &HostSessionSummary {
+        &self.summary
     }
 
-    pub fn activity_summary(&self) -> &str {
-        &self.activity_summary
+    pub fn messages(&self) -> &[ChatMessage] {
+        &self.messages
     }
 
-    pub fn work_summary(&self) -> &str {
-        &self.work_summary
+    pub fn composer(&self) -> &ComposerState {
+        &self.composer
     }
 
-    pub fn set_draft(&mut self, value: impl Into<String>) {
-        self.draft = value.into();
+    pub fn composer_mut(&mut self) -> &mut ComposerState {
+        &mut self.composer
     }
 
     pub fn set_scenario(&mut self, scenario: DevScenario) {
@@ -225,7 +259,7 @@ impl ConversationState {
             return false;
         }
 
-        let trimmed = self.draft.trim();
+        let trimmed = self.composer.draft().trim();
         if trimmed.is_empty() {
             return false;
         }
@@ -240,8 +274,8 @@ impl ConversationState {
                 "No engine is attached yet. This scaffold only proves the basic conversation shell."
                     .into(),
         });
-        self.activity_summary = "Waiting for attached engine integration".into();
-        self.draft.clear();
+        self.summary.activity = "Waiting for attached engine integration".into();
+        self.composer.clear();
         true
     }
 }

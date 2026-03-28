@@ -1,10 +1,10 @@
 use dioxus::prelude::*;
 
-use crate::fixtures::{ConversationState, DevScenario, MessageRole};
+use crate::fixtures::{DevScenario, MessageRole, MockHostSession};
 
 #[component]
 pub fn App() -> Element {
-    let mut state = use_signal(ConversationState::default);
+    let mut session = use_signal(MockHostSession::default);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -14,13 +14,13 @@ pub fn App() -> Element {
                     h1 { "Auspex" }
                     p { "Conversation-first scaffold" }
                 }
-                div { class: state.read().shell_state().status_class(), "{state.read().shell_state().label()}" }
+                div { class: session.read().shell_state().status_class(), "{session.read().shell_state().label()}" }
             }
 
             section { class: "devbar",
                 label { "Scenario" }
                 select {
-                    value: state.read().scenario().key(),
+                    value: session.read().scenario().key(),
                     onchange: move |event| {
                         let next = match event.value().as_str() {
                             "booting" => DevScenario::Booting,
@@ -29,7 +29,7 @@ pub fn App() -> Element {
                             "reconnecting" => DevScenario::Reconnecting,
                             _ => DevScenario::Ready,
                         };
-                        state.write().set_scenario(next);
+                        session.write().set_scenario(next);
                     },
                     for scenario in DevScenario::ALL {
                         option { value: scenario.key(), "{scenario.label()}" }
@@ -40,20 +40,20 @@ pub fn App() -> Element {
             section { class: "summary-bar",
                 div { class: "summary-card",
                     h2 { "Connection" }
-                    p { "{state.read().connection_summary()}" }
+                    p { "{session.read().summary().connection}" }
                 }
                 div { class: "summary-card",
                     h2 { "Activity" }
-                    p { "{state.read().activity_summary()}" }
+                    p { "{session.read().summary().activity}" }
                 }
                 div { class: "summary-card",
                     h2 { "Work" }
-                    p { "{state.read().work_summary()}" }
+                    p { "{session.read().summary().work}" }
                 }
             }
 
             main { class: "transcript",
-                for message in state.read().messages().iter() {
+                for message in session.read().messages().iter() {
                     article {
                         class: match message.role {
                             MessageRole::User => "bubble bubble-user",
@@ -76,24 +76,24 @@ pub fn App() -> Element {
                 class: "composer",
                 onsubmit: move |event| {
                     event.prevent_default();
-                    state.write().submit();
+                    session.write().submit();
                 },
                 textarea {
                     class: "composer-input",
                     rows: "3",
-                    value: state.read().draft().to_string(),
-                    disabled: !state.read().can_submit(),
-                    placeholder: if state.read().can_submit() {
+                    value: session.read().composer().draft().to_string(),
+                    disabled: !session.read().can_submit(),
+                    placeholder: if session.read().can_submit() {
                         "Start with the smallest useful prompt…"
                     } else {
                         "Conversation input is unavailable in the current host state."
                     },
-                    oninput: move |event| state.write().set_draft(event.value()),
+                    oninput: move |event| session.write().composer_mut().set_draft(event.value()),
                 }
                 button {
                     class: "composer-submit",
                     r#type: "submit",
-                    disabled: !state.read().can_submit(),
+                    disabled: !session.read().can_submit(),
                     "Send"
                 }
             }
@@ -107,60 +107,60 @@ mod tests {
 
     #[test]
     fn blank_draft_does_not_submit() {
-        let mut state = ConversationState::default();
-        state.set_draft("   ");
+        let mut session = MockHostSession::default();
+        session.composer_mut().set_draft("   ");
 
-        assert!(!state.submit());
-        assert_eq!(state.messages().len(), 1);
-        assert_eq!(state.draft(), "   ");
+        assert!(!session.submit());
+        assert_eq!(session.messages().len(), 1);
+        assert_eq!(session.composer().draft(), "   ");
     }
 
     #[test]
     fn submit_appends_user_and_placeholder_reply() {
-        let mut state = ConversationState::default();
-        state.set_draft("hello world");
+        let mut session = MockHostSession::default();
+        session.composer_mut().set_draft("hello world");
 
-        assert!(state.submit());
-        assert_eq!(state.draft(), "");
-        assert_eq!(state.messages().len(), 3);
-        assert_eq!(state.messages()[1].role, MessageRole::User);
-        assert_eq!(state.messages()[1].text, "hello world");
-        assert_eq!(state.messages()[2].role, MessageRole::Assistant);
+        assert!(session.submit());
+        assert_eq!(session.composer().draft(), "");
+        assert_eq!(session.messages().len(), 3);
+        assert_eq!(session.messages()[1].role, MessageRole::User);
+        assert_eq!(session.messages()[1].text, "hello world");
+        assert_eq!(session.messages()[2].role, MessageRole::Assistant);
     }
 
     #[test]
     fn booting_state_blocks_submit() {
-        let mut state = ConversationState::from_scenario(DevScenario::Booting);
-        state.set_draft("hello world");
+        let mut session = MockHostSession::from_scenario(DevScenario::Booting);
+        session.composer_mut().set_draft("hello world");
 
-        assert!(!state.submit());
-        assert_eq!(state.messages().len(), 1);
+        assert!(!session.submit());
+        assert_eq!(session.messages().len(), 1);
     }
 
     #[test]
     fn degraded_state_allows_submit() {
-        let mut state = ConversationState::from_scenario(DevScenario::Degraded);
-        state.set_draft("still there?");
+        let mut session = MockHostSession::from_scenario(DevScenario::Degraded);
+        session.composer_mut().set_draft("still there?");
 
-        assert!(state.submit());
-        assert_eq!(state.messages().len(), 4);
+        assert!(session.submit());
+        assert_eq!(session.messages().len(), 4);
     }
 
     #[test]
     fn reconnecting_state_blocks_submit() {
-        let mut state = ConversationState::from_scenario(DevScenario::Reconnecting);
-        state.set_draft("can you hear me?");
+        let mut session = MockHostSession::from_scenario(DevScenario::Reconnecting);
+        session.composer_mut().set_draft("can you hear me?");
 
-        assert!(!state.submit());
-        assert_eq!(state.messages().len(), 2);
+        assert!(!session.submit());
+        assert_eq!(session.messages().len(), 2);
     }
 
     #[test]
     fn ready_state_has_compact_summaries() {
-        let state = ConversationState::from_scenario(DevScenario::Ready);
+        let session = MockHostSession::from_scenario(DevScenario::Ready);
 
-        assert!(state.connection_summary().contains("Connected"));
-        assert!(state.activity_summary().contains("Idle"));
-        assert!(state.work_summary().contains("No focused work"));
+        assert!(session.summary().connection.contains("Connected"));
+        assert!(session.summary().activity.contains("Idle"));
+        assert!(session.summary().work.contains("No focused work"));
     }
 }
