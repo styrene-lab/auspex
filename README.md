@@ -12,6 +12,8 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/control-plane.md` — proposed Omegon backend contract for Auspex
 - `docs/mvp-plan.md` — phased path from design to implementation
 - `docs/omegon-release-dependency.md` — policy for tracking versioned Omegon releases
+- `docs/compatibility-handshake.md` — runtime verification model for Omegon compatibility
+- `docs/release-coordination.md` — release coupling model between Auspex and Omegon
 
 ## v1 product direction
 
