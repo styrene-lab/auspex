@@ -37,6 +37,21 @@ pub fn App() -> Element {
                 }
             }
 
+            section { class: "summary-bar",
+                div { class: "summary-card",
+                    h2 { "Connection" }
+                    p { "{state.read().connection_summary()}" }
+                }
+                div { class: "summary-card",
+                    h2 { "Activity" }
+                    p { "{state.read().activity_summary()}" }
+                }
+                div { class: "summary-card",
+                    h2 { "Work" }
+                    p { "{state.read().work_summary()}" }
+                }
+            }
+
             main { class: "transcript",
                 for message in state.read().messages().iter() {
                     article {
@@ -138,5 +153,14 @@ mod tests {
 
         assert!(!state.submit());
         assert_eq!(state.messages().len(), 2);
+    }
+
+    #[test]
+    fn ready_state_has_compact_summaries() {
+        let state = ConversationState::from_scenario(DevScenario::Ready);
+
+        assert!(state.connection_summary().contains("Connected"));
+        assert!(state.activity_summary().contains("Idle"));
+        assert!(state.work_summary().contains("No focused work"));
     }
 }

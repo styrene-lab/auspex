@@ -90,6 +90,9 @@ pub struct ConversationState {
     messages: Vec<ChatMessage>,
     shell_state: ShellState,
     scenario: DevScenario,
+    connection_summary: String,
+    activity_summary: String,
+    work_summary: String,
 }
 
 impl Default for ConversationState {
@@ -110,6 +113,9 @@ impl ConversationState {
                 }],
                 shell_state: ShellState::Ready,
                 scenario,
+                connection_summary: "Connected to local host session".into(),
+                activity_summary: "Idle — waiting for your next prompt".into(),
+                work_summary: "No focused work item yet".into(),
             },
             DevScenario::Booting => Self {
                 draft: String::new(),
@@ -119,6 +125,9 @@ impl ConversationState {
                 }],
                 shell_state: ShellState::StartingOmegon,
                 scenario,
+                connection_summary: "Starting bundled runtime".into(),
+                activity_summary: "Launching Styrene and Omegon".into(),
+                work_summary: "Work state unavailable during startup".into(),
             },
             DevScenario::Degraded => Self {
                 draft: String::new(),
@@ -134,6 +143,9 @@ impl ConversationState {
                 ],
                 shell_state: ShellState::Degraded,
                 scenario,
+                connection_summary: "Connected locally, relay degraded".into(),
+                activity_summary: "Continuing with degraded remote connectivity".into(),
+                work_summary: "1 cached work item in progress".into(),
             },
             DevScenario::CompatibilityFailure => Self {
                 draft: String::new(),
@@ -143,6 +155,9 @@ impl ConversationState {
                 }],
                 shell_state: ShellState::Failed,
                 scenario,
+                connection_summary: "Host incompatible".into(),
+                activity_summary: "Startup blocked by compatibility failure".into(),
+                work_summary: "No session available".into(),
             },
             DevScenario::Reconnecting => Self {
                 draft: String::new(),
@@ -158,6 +173,9 @@ impl ConversationState {
                 ],
                 shell_state: ShellState::CompatibilityChecking,
                 scenario,
+                connection_summary: "Reconnecting to desktop host".into(),
+                activity_summary: "Restoring remote session link".into(),
+                work_summary: "Showing last known focused work".into(),
             },
         }
     }
@@ -176,6 +194,18 @@ impl ConversationState {
 
     pub fn scenario(&self) -> DevScenario {
         self.scenario
+    }
+
+    pub fn connection_summary(&self) -> &str {
+        &self.connection_summary
+    }
+
+    pub fn activity_summary(&self) -> &str {
+        &self.activity_summary
+    }
+
+    pub fn work_summary(&self) -> &str {
+        &self.work_summary
     }
 
     pub fn set_draft(&mut self, value: impl Into<String>) {
@@ -210,6 +240,7 @@ impl ConversationState {
                 "No engine is attached yet. This scaffold only proves the basic conversation shell."
                     .into(),
         });
+        self.activity_summary = "Waiting for attached engine integration".into();
         self.draft.clear();
         true
     }

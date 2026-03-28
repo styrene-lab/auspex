@@ -82,6 +82,32 @@ body {
   font: inherit;
 }
 
+.summary-bar {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+}
+
+.summary-card {
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 14px;
+  padding: 0.85rem 0.95rem;
+}
+
+.summary-card h2 {
+  margin: 0 0 0.35rem;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #8b949e;
+}
+
+.summary-card p {
+  margin: 0;
+  line-height: 1.4;
+}
+
 .transcript {
   display: flex;
   flex-direction: column;
@@ -167,4 +193,14 @@ body {
 .composer-submit:disabled {
   background: #30363d;
   cursor: not-allowed;
+}
+
+@media (max-width: 720px) {
+  .summary-bar {
+    grid-template-columns: 1fr;
+  }
+
+  .bubble {
+    max-width: 100%;
+  }
 }
