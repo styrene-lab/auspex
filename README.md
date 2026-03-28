@@ -14,6 +14,8 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 - `docs/omegon-release-dependency.md` — policy for tracking versioned Omegon releases
 - `docs/compatibility-handshake.md` — runtime verification model for Omegon compatibility
 - `docs/release-coordination.md` — release coupling model between Auspex and Omegon
+- `docs/error-empty-states.md` — operator-facing loading, degraded, and empty-state behavior
+- `docs/app-skeleton-readiness.md` — criteria for when a Dioxus app skeleton is justified
 
 ## v1 product direction
 
