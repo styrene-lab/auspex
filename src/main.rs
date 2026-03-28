@@ -1,6 +1,7 @@
 mod app;
 mod bootstrap;
 mod controller;
+mod event_stream;
 mod fixtures;
 mod omegon_control;
 mod remote_session;

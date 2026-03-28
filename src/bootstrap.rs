@@ -2,6 +2,7 @@ use std::env;
 use std::fs;
 
 use crate::controller::AppController;
+use crate::event_stream::{derive_ws_url_from_state_url, spawn_websocket_event_stream, EventStreamHandle, WS_URL_ENV};
 
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
@@ -14,11 +15,12 @@ pub enum BootstrapSource {
     HttpState { url: String },
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug)]
 pub struct BootstrapResult {
     pub controller: AppController,
     pub source: BootstrapSource,
     pub note: Option<String>,
+    pub event_stream: Option<EventStreamHandle>,
 }
 
 impl BootstrapResult {
@@ -27,6 +29,7 @@ impl BootstrapResult {
             controller: AppController::default(),
             source: BootstrapSource::MockDefault,
             note,
+            event_stream: None,
         }
     }
 }
@@ -63,6 +66,10 @@ pub fn state_url_from_env() -> Option<String> {
     non_empty_env(STATE_URL_ENV)
 }
 
+pub fn websocket_url_from_env() -> Option<String> {
+    non_empty_env(WS_URL_ENV)
+}
+
 pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read snapshot file: {error}"))?;
@@ -75,6 +82,7 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
             path: path.to_string(),
         },
         note: Some(format!("Loaded Omegon snapshot from {path}")),
+        event_stream: None,
     })
 }
 
@@ -89,13 +97,17 @@ pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
         .map_err(|error| format!("could not read response body: {error}"))?;
     let controller = AppController::from_remote_snapshot_json(&body)
         .map_err(|error| format!("invalid state payload: {error}"))?;
+    let ws_url = websocket_url_from_env()
+        .unwrap_or_else(|| derive_ws_url_from_state_url(url).unwrap_or_else(|_| DEFAULT_STATE_URL.replace("http://", "ws://").replace("https://", "wss://").replace("/api/state", "/ws")));
+    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
 
     Ok(BootstrapResult {
         controller,
         source: BootstrapSource::HttpState {
             url: url.to_string(),
         },
-        note: Some(format!("Attached to Omegon state endpoint at {url}")),
+        note: Some(format!("Attached to Omegon state endpoint at {url}. Streaming events from {ws_url}")),
+        event_stream,
     })
 }
 

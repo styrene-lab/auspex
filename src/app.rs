@@ -2,18 +2,40 @@ use dioxus::prelude::*;
 
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
+use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole};
 
 #[component]
 pub fn App() -> Element {
     let bootstrap = try_consume_context::<BootstrapResult>();
+    let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
+            event_stream.set(bootstrap.event_stream);
             let mut controller = bootstrap.controller;
             controller.set_bootstrap_note(bootstrap.note);
             controller
         } else {
             AppController::default()
+        }
+    });
+
+    use_future(move || {
+        let mut controller = controller;
+        let event_stream = event_stream;
+        async move {
+            loop {
+                if let Some(handle) = event_stream.read().clone() {
+                    let events = handle.inbox.drain();
+                    if !events.is_empty() {
+                        let mut controller = controller.write();
+                        for event in events {
+                            let _ = controller.apply_remote_event_json(&event);
+                        }
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+            }
         }
     });
 
@@ -55,6 +77,9 @@ pub fn App() -> Element {
                     }
                 } else {
                     span { class: "devbar-note", "Remote mode is snapshot-driven; scenario overrides are disabled." }
+                    if event_stream.read().is_some() {
+                        span { class: "devbar-note", "Live WS event stream attached." }
+                    }
                 }
             }
 
