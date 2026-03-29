@@ -25,12 +25,18 @@ const SPAWN_POLL: Duration = Duration::from_millis(250);
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BootstrapSource {
     MockDefault,
-    SnapshotFile { path: String },
-    HttpState { url: String },
+    SnapshotFile {
+        path: String,
+    },
+    HttpState {
+        url: String,
+    },
     /// Bootstrap is deferred — Omegon binary found but not yet spawned.
     /// The app should start in StartingOmegon state and complete the
     /// spawn asynchronously via spawn_and_attach_omegon().
-    SpawningOmegon { binary: String },
+    SpawningOmegon {
+        binary: String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -72,9 +78,7 @@ impl BootstrapResult {
         controller.set_bootstrap_note(Some(format!("Starting Omegon at {label}\u{2026}")));
         Self {
             controller,
-            source: BootstrapSource::SpawningOmegon {
-                binary: label,
-            },
+            source: BootstrapSource::SpawningOmegon { binary: label },
             note: None,
             event_stream: None,
         }
