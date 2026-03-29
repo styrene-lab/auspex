@@ -33,6 +33,10 @@ body {
   gap: 1rem;
 }
 
+.header-copy {
+  min-width: 0;
+}
+
 .header h1 {
   margin: 0;
   font-size: 1.5rem;
@@ -41,6 +45,24 @@ body {
 .header p {
   margin: 0.25rem 0 0;
   color: #8b949e;
+}
+
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  flex-shrink: 0;
+}
+
+.version-chip {
+  border: 1px solid #30363d;
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  background: #161b22;
+  color: #8b949e;
+  font-size: 0.82rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 
 .status {
@@ -567,6 +589,16 @@ body {
 .graph-node-row:last-child { border-bottom: none; }
 
 @media (max-width: 720px) {
+  .header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .header-meta {
+    width: 100%;
+    justify-content: space-between;
+  }
+
   .summary-bar {
     grid-template-columns: 1fr;
   }

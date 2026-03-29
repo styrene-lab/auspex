@@ -9,6 +9,7 @@ use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
 /// the stylesheet is always available in the bundled .app.
 const MAIN_CSS: &str = include_str!("../assets/main.css");
+const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
@@ -101,10 +102,7 @@ pub fn App() -> Element {
 
     let shell_state = controller.read().shell_state();
     let is_fatal = matches!(shell_state, ShellState::Failed);
-    let is_starting = matches!(
-        shell_state,
-        ShellState::Booting | ShellState::StartingStyrene | ShellState::StartingOmegon
-    );
+    let is_starting = matches!(shell_state, ShellState::StartingOmegon);
     let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
     let mut tab = use_signal(|| Tab::Chat);
 
@@ -112,7 +110,7 @@ pub fn App() -> Element {
         document::Style { "{MAIN_CSS}" }
         div { class: "shell",
             header { class: "header",
-                div {
+                div { class: "header-copy",
                     h1 { "Auspex" }
                     p {
                         if controller.read().is_remote() {
@@ -122,7 +120,10 @@ pub fn App() -> Element {
                         }
                     }
                 }
-                div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
+                div { class: "header-meta",
+                    span { class: "version-chip", "v{APP_VERSION}" }
+                    div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
+                }
             }
 
             section { class: "devbar",

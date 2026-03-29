@@ -28,11 +28,15 @@ fmt:
 fmt-check:
     cargo fmt --check
 
-# Full local validation (check + fmt + test).
-lint:
-    cargo check
+# Full local validation (format + typecheck + lint + test).
+validate:
     cargo fmt --check
+    cargo check
+    cargo clippy --all-targets -- -D warnings
     cargo test
+
+# Back-compat alias.
+lint: validate
 
 # ─── Build & distribution ───────────────────────────────────
 
@@ -46,7 +50,7 @@ bundle:
     dx bundle --platform desktop --release
 
 # Validate, bundle, and open in one shot.
-dist: lint bundle
+dist: validate bundle
     open dist/Auspex.app
 
 # Open the last-built .app without rebuilding.
@@ -64,7 +68,7 @@ clean:
 version:
     @grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/'
 
-# Cut a release candidate tag from main after full validation.
+# Cut a release candidate tag from main after strict validation.
 # Policy: RCs are cut from main with a clean working tree.
 rc:
     #!/usr/bin/env bash
@@ -100,13 +104,20 @@ rc:
         NEW_VERSION="${MAJOR}.${MINOR}.$((PATCH + 1))-rc.1"
     fi
 
+    if git rev-parse -q --verify "refs/tags/v${NEW_VERSION}" >/dev/null; then
+        echo "✗ Tag v${NEW_VERSION} already exists."
+        exit 1
+    fi
+
     echo "New version: $NEW_VERSION"
     sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEW_VERSION}\"/" Cargo.toml
 
-    cargo fmt
+    cargo fmt --check
+    cargo check
+    cargo clippy --all-targets -- -D warnings
     cargo test
 
-    git add -u
+    git add Cargo.toml Cargo.lock
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 
@@ -143,13 +154,20 @@ release:
     fi
 
     NEW_VERSION=$(echo "$CURRENT" | sed 's/-rc\.[0-9]*//')
+    if git rev-parse -q --verify "refs/tags/v${NEW_VERSION}" >/dev/null; then
+        echo "✗ Tag v${NEW_VERSION} already exists."
+        exit 1
+    fi
+
     echo "Stable version: $NEW_VERSION"
     sed -i '' "s/^version = \"${CURRENT}\"/version = \"${NEW_VERSION}\"/" Cargo.toml
 
-    cargo fmt
+    cargo fmt --check
+    cargo check
+    cargo clippy --all-targets -- -D warnings
     cargo test
 
-    git add -u
+    git add Cargo.toml Cargo.lock
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 

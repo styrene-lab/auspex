@@ -80,8 +80,6 @@ pub enum MessageRole {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum ShellState {
-    Booting,
-    StartingStyrene,
     StartingOmegon,
     CompatibilityChecking,
     Ready,
@@ -92,8 +90,6 @@ pub enum ShellState {
 impl ShellState {
     pub fn label(self) -> &'static str {
         match self {
-            Self::Booting => "Booting",
-            Self::StartingStyrene => "Starting Styrene",
             Self::StartingOmegon => "Starting Omegon",
             Self::CompatibilityChecking => "Checking compatibility",
             Self::Ready => "Ready",
