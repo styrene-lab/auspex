@@ -3,3 +3,7 @@ target/
 
 # dx bundle output
 dist/
+
+# local agent/runtime artifacts
+.omegon/
+ai/memory/

@@ -279,8 +279,10 @@ fn omegon_is_running() -> bool {
 ///
 /// Priority order:
 /// 1. `AUSPEX_OMEGON_BIN` env var — explicit override
-/// 2. `~/.cargo/bin/omegon` — default `cargo install` location
-/// 3. `which omegon` — PATH lookup
+/// 2. `~/.local/bin/omegon` — common user-local install location
+/// 3. `~/.cargo/bin/omegon` — default `cargo install` location
+/// 4. `/usr/local/bin/omegon` and `/opt/homebrew/bin/omegon` — common system paths
+/// 5. `which omegon` — PATH lookup
 pub fn find_omegon_binary() -> Option<PathBuf> {
     if let Some(path) = non_empty_env(OMEGON_BIN_ENV) {
         let p = PathBuf::from(path);
@@ -527,9 +529,57 @@ mod tests {
         unsafe { std::env::remove_var(OMEGON_BIN_ENV) };
     }
 
+    #[test]
+    fn find_omegon_binary_prefers_local_bin_over_cargo_bin() {
+        let home = temp_test_home("binary-priority");
+        let local_bin = home.join(".local/bin");
+        let cargo_bin = home.join(".cargo/bin");
+        fs::create_dir_all(&local_bin).unwrap();
+        fs::create_dir_all(&cargo_bin).unwrap();
+
+        let local_omegon = local_bin.join("omegon");
+        let cargo_omegon = cargo_bin.join("omegon");
+        fs::write(&local_omegon, b"local").unwrap();
+        fs::write(&cargo_omegon, b"cargo").unwrap();
+
+        let original_home = env::var("HOME").ok();
+        // SAFETY: single-threaded test context
+        unsafe {
+            env::set_var("HOME", &home);
+            env::remove_var(OMEGON_BIN_ENV);
+        }
+
+        let found = find_omegon_binary();
+
+        // SAFETY: single-threaded test context
+        unsafe {
+            if let Some(value) = original_home {
+                env::set_var("HOME", value);
+            } else {
+                env::remove_var("HOME");
+            }
+        }
+
+        fs::remove_file(local_omegon).unwrap();
+        fs::remove_file(cargo_omegon).unwrap();
+        fs::remove_dir_all(home).unwrap();
+
+        assert_eq!(found, Some(local_bin.join("omegon")));
+    }
+
     fn temp_snapshot_path(name: &str) -> PathBuf {
         let mut path = std::env::temp_dir();
         path.push(format!("auspex-bootstrap-{}-{}", std::process::id(), name));
+        path
+    }
+
+    fn temp_test_home(name: &str) -> PathBuf {
+        let mut path = std::env::temp_dir();
+        path.push(format!(
+            "auspex-bootstrap-home-{}-{}",
+            std::process::id(),
+            name
+        ));
         path
     }
 }
