@@ -1,18 +1,26 @@
 use std::env;
 use std::fs;
+use std::path::PathBuf;
+use std::thread;
+use std::time::{Duration, Instant};
 
 use crate::controller::AppController;
 use crate::event_stream::{
-    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV, apply_ws_auth_token, derive_authenticated_ws_url,
-    spawn_websocket_event_stream,
+    apply_ws_auth_token, derive_authenticated_ws_url, spawn_websocket_event_stream, EventStreamHandle,
+    WS_TOKEN_ENV, WS_URL_ENV,
 };
 use crate::omegon_control::OmegonStartupInfo;
 
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
 pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
+/// Explicit path to the Omegon binary. Overrides discovery.
+pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 1;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
+
+const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
+const SPAWN_POLL: Duration = Duration::from_millis(250);
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BootstrapSource {
@@ -53,30 +61,49 @@ impl BootstrapResult {
 }
 
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
+    // 1. Explicit snapshot file wins.
     if let Some(path) = snapshot_path_from_env() {
         return bootstrap_from_snapshot_file(&path).unwrap_or_else(|error| {
-            let note = format!(
-                "Snapshot bootstrap failed for {}: {}. Falling back to mock local session.",
-                path, error
-            );
-            BootstrapResult::mock(Some(note))
+            BootstrapResult::mock(Some(format!(
+                "Snapshot bootstrap failed for {path}: {error}. Falling back to mock local session."
+            )))
         });
     }
 
+    // 2. Explicit state URL — attach without spawning.
     if let Some(url) = state_url_from_env() {
         return bootstrap_from_http_state(&url).unwrap_or_else(|error| {
             if error.contains("control-plane schema") {
                 return BootstrapResult::compatibility_failure(error);
             }
-            let note = format!(
-                "HTTP bootstrap failed for {}: {}. Falling back to mock local session.",
-                url, error
-            );
-            BootstrapResult::mock(Some(note))
+            BootstrapResult::mock(Some(format!(
+                "HTTP bootstrap failed for {url}: {error}. Falling back to mock local session."
+            )))
         });
     }
 
-    BootstrapResult::mock(None)
+    // 3. No explicit config — auto-discover or spawn.
+    // Try to attach if Omegon is already running at the default address.
+    if omegon_is_running() {
+        return bootstrap_from_http_state(DEFAULT_STATE_URL).unwrap_or_else(|error| {
+            if error.contains("control-plane schema") {
+                return BootstrapResult::compatibility_failure(error);
+            }
+            BootstrapResult::mock(Some(format!(
+                "Auto-attach to running Omegon failed: {error}."
+            )))
+        });
+    }
+
+    // Not running — find the binary and spawn it.
+    if let Some(binary) = find_omegon_binary() {
+        return spawn_and_attach_omegon(&binary);
+    }
+
+    // Omegon not found anywhere.
+    BootstrapResult::mock(Some(
+        "Omegon not found. Install it or set AUSPEX_OMEGON_BIN to its path.".into(),
+    ))
 }
 
 pub fn snapshot_path_from_env() -> Option<String> {
@@ -210,6 +237,99 @@ fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
     Ok(())
 }
 
+/// Check if Omegon is already running at the default address (quick 1s timeout).
+fn omegon_is_running() -> bool {
+    reqwest::blocking::Client::builder()
+        .timeout(Duration::from_secs(1))
+        .build()
+        .ok()
+        .and_then(|client| client.get(DEFAULT_STATE_URL).send().ok())
+        .map(|r| r.status().is_success())
+        .unwrap_or(false)
+}
+
+/// Locate the Omegon binary.
+///
+/// Priority order:
+/// 1. `AUSPEX_OMEGON_BIN` env var — explicit override
+/// 2. `~/.cargo/bin/omegon` — default `cargo install` location
+/// 3. `which omegon` — PATH lookup
+pub fn find_omegon_binary() -> Option<PathBuf> {
+    if let Some(path) = non_empty_env(OMEGON_BIN_ENV) {
+        let p = PathBuf::from(path);
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    if let Ok(home) = std::env::var("HOME") {
+        let p = PathBuf::from(home).join(".cargo/bin/omegon");
+        if p.exists() {
+            return Some(p);
+        }
+    }
+
+    if let Ok(output) = std::process::Command::new("which").arg("omegon").output() {
+        if output.status.success() {
+            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !s.is_empty() {
+                let p = PathBuf::from(s);
+                if p.exists() {
+                    return Some(p);
+                }
+            }
+        }
+    }
+
+    None
+}
+
+/// Spawn Omegon, wait for it to accept connections, then bootstrap from it.
+fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
+    let label = binary.display().to_string();
+
+    match std::process::Command::new(binary).spawn() {
+        Err(error) => BootstrapResult::mock(Some(format!(
+            "Could not spawn Omegon at {label}: {error}. Running in mock mode."
+        ))),
+        Ok(_child) => {
+            let startup_url = startup_url_from_state_url(DEFAULT_STATE_URL);
+            let deadline = Instant::now() + SPAWN_TIMEOUT;
+
+            while Instant::now() < deadline {
+                let ready = reqwest::blocking::Client::builder()
+                    .timeout(Duration::from_secs(1))
+                    .build()
+                    .ok()
+                    .and_then(|c| c.get(&startup_url).send().ok())
+                    .map(|r| r.status().is_success())
+                    .unwrap_or(false);
+
+                if ready {
+                    return bootstrap_from_http_state(DEFAULT_STATE_URL)
+                        .unwrap_or_else(|error| {
+                            if error.contains("control-plane schema") {
+                                BootstrapResult::compatibility_failure(error)
+                            } else {
+                                BootstrapResult::mock(Some(format!(
+                                    "Spawned Omegon at {label} but bootstrap failed: {error}"
+                                )))
+                            }
+                        });
+                }
+
+                thread::sleep(SPAWN_POLL);
+            }
+
+            BootstrapResult::mock(Some(format!(
+                "Spawned Omegon at {label} but it did not become ready within {}s. \
+                 Running in mock mode.",
+                SPAWN_TIMEOUT.as_secs()
+            )))
+        }
+    }
+}
+
 fn non_empty_env(key: &str) -> Option<String> {
     env::var(key)
         .ok()
@@ -341,6 +461,29 @@ mod tests {
     fn explicit_websocket_url_can_be_tokenized() {
         let ws_url = apply_ws_auth_token("ws://127.0.0.1:7842/ws", Some("secret-token")).unwrap();
         assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=secret-token");
+    }
+
+    #[test]
+    fn omegon_not_running_returns_false_quickly() {
+        assert!(!omegon_is_running());
+    }
+
+    #[test]
+    fn find_omegon_binary_respects_env_override() {
+        let me = std::env::current_exe().unwrap();
+        // SAFETY: single-threaded test context
+        unsafe { std::env::set_var(OMEGON_BIN_ENV, me.to_str().unwrap()) };
+        let found = find_omegon_binary();
+        unsafe { std::env::remove_var(OMEGON_BIN_ENV) };
+        assert_eq!(found, Some(me));
+    }
+
+    #[test]
+    fn find_omegon_binary_ignores_nonexistent_override() {
+        // SAFETY: single-threaded test context
+        unsafe { std::env::set_var(OMEGON_BIN_ENV, "/does/not/exist/omegon") };
+        let _ = find_omegon_binary();
+        unsafe { std::env::remove_var(OMEGON_BIN_ENV) };
     }
 
     fn temp_snapshot_path(name: &str) -> PathBuf {

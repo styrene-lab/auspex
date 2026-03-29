@@ -6,6 +6,10 @@ use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, ShellState};
 use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 
+/// CSS embedded at compile time — bypasses the asset-serving pipeline so
+/// the stylesheet is always available in the bundled .app.
+const MAIN_CSS: &str = include_str!("../assets/main.css");
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
     Chat,
@@ -68,7 +72,7 @@ pub fn App() -> Element {
     let mut tab = use_signal(|| Tab::Chat);
 
     rsx! {
-        document::Stylesheet { href: asset!("/assets/main.css") }
+        document::Style { "{MAIN_CSS}" }
         div { class: "shell",
             header { class: "header",
                 div {
