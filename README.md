@@ -70,6 +70,7 @@ Behavior is intentionally simple:
 - HTTP bootstrap is opt-in
 - when available, Auspex prefers Omegon startup discovery at `/api/startup`
 - startup discovery supplies the canonical state URL, WS URL, token, and auth mode/source
+- Auspex currently requires control-plane schema `1` and treats other schema versions as a visible compatibility failure
 - if discovery is unavailable, Auspex falls back to the configured state URL and derived `/ws`
 - if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the fallback WebSocket URL unless a `token` query is already present
 - if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI

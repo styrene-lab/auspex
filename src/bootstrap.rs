@@ -11,6 +11,7 @@ use crate::omegon_control::OmegonStartupInfo;
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
 pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
+pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 1;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -37,6 +38,18 @@ impl BootstrapResult {
             event_stream: None,
         }
     }
+
+    fn compatibility_failure(note: String) -> Self {
+        let mut controller = AppController::default();
+        controller.set_scenario(crate::fixtures::DevScenario::CompatibilityFailure);
+        controller.set_bootstrap_note(Some(note.clone()));
+        Self {
+            controller,
+            source: BootstrapSource::MockDefault,
+            note: Some(note),
+            event_stream: None,
+        }
+    }
 }
 
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
@@ -52,6 +65,9 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
 
     if let Some(url) = state_url_from_env() {
         return bootstrap_from_http_state(&url).unwrap_or_else(|error| {
+            if error.contains("control-plane schema") {
+                return BootstrapResult::compatibility_failure(error);
+            }
             let note = format!(
                 "HTTP bootstrap failed for {}: {}. Falling back to mock local session.",
                 url, error
@@ -101,6 +117,9 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
 
 pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
     let startup = fetch_startup_info(url).ok();
+    if let Some(startup) = startup.as_ref() {
+        validate_startup_info(startup)?;
+    }
     let state_url = startup
         .as_ref()
         .map(|startup| startup.state_url.as_str())
@@ -177,6 +196,17 @@ fn fetch_startup_info(state_url: &str) -> Result<OmegonStartupInfo, String> {
 
 fn startup_url_from_state_url(state_url: &str) -> String {
     state_url.replace("/api/state", "/api/startup")
+}
+
+fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
+    if startup.schema_version != EXPECTED_CONTROL_PLANE_SCHEMA {
+        return Err(format!(
+            "Auspex requires control-plane schema {}, but Omegon reported schema {}.",
+            EXPECTED_CONTROL_PLANE_SCHEMA, startup.schema_version
+        ));
+    }
+
+    Ok(())
 }
 
 fn non_empty_env(key: &str) -> Option<String> {
@@ -258,6 +288,23 @@ mod tests {
             startup_url_from_state_url("http://127.0.0.1:7842/api/state"),
             "http://127.0.0.1:7842/api/startup"
         );
+    }
+
+    #[test]
+    fn startup_schema_mismatch_is_rejected() {
+        let error = validate_startup_info(&OmegonStartupInfo {
+            schema_version: 2,
+            addr: "127.0.0.1:7842".into(),
+            http_base: "http://127.0.0.1:7842".into(),
+            state_url: "http://127.0.0.1:7842/api/state".into(),
+            ws_url: "ws://127.0.0.1:7842/ws?token=test".into(),
+            token: "test".into(),
+            auth_mode: "signed-attach".into(),
+            auth_source: "keyring".into(),
+        })
+        .unwrap_err();
+
+        assert!(error.contains("requires control-plane schema 1"));
     }
 
     #[test]
