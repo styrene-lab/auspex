@@ -6,8 +6,8 @@ use std::time::{Duration, Instant};
 
 use crate::controller::AppController;
 use crate::event_stream::{
-    apply_ws_auth_token, derive_authenticated_ws_url, spawn_websocket_event_stream, EventStreamHandle,
-    WS_TOKEN_ENV, WS_URL_ENV,
+    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV, apply_ws_auth_token, derive_authenticated_ws_url,
+    spawn_websocket_event_stream,
 };
 use crate::omegon_control::OmegonStartupInfo;
 
@@ -306,16 +306,15 @@ fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
                     .unwrap_or(false);
 
                 if ready {
-                    return bootstrap_from_http_state(DEFAULT_STATE_URL)
-                        .unwrap_or_else(|error| {
-                            if error.contains("control-plane schema") {
-                                BootstrapResult::compatibility_failure(error)
-                            } else {
-                                BootstrapResult::mock(Some(format!(
-                                    "Spawned Omegon at {label} but bootstrap failed: {error}"
-                                )))
-                            }
-                        });
+                    return bootstrap_from_http_state(DEFAULT_STATE_URL).unwrap_or_else(|error| {
+                        if error.contains("control-plane schema") {
+                            BootstrapResult::compatibility_failure(error)
+                        } else {
+                            BootstrapResult::mock(Some(format!(
+                                "Spawned Omegon at {label} but bootstrap failed: {error}"
+                            )))
+                        }
+                    });
                 }
 
                 thread::sleep(SPAWN_POLL);
