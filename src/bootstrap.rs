@@ -104,9 +104,7 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
             if error.contains("control-plane schema") {
                 return BootstrapResult::compatibility_failure(error);
             }
-            BootstrapResult::startup_failure(format!(
-                "Remote attach failed for {url}: {error}."
-            ))
+            BootstrapResult::startup_failure(format!("Remote attach failed for {url}: {error}."))
         });
     }
 
@@ -491,8 +489,14 @@ mod tests {
     #[test]
     fn startup_failure_uses_failed_scenario() {
         let result = BootstrapResult::startup_failure("boom".into());
-        assert_eq!(result.controller.scenario(), crate::fixtures::DevScenario::StartupFailure);
-        assert_eq!(result.controller.shell_state(), crate::fixtures::ShellState::Failed);
+        assert_eq!(
+            result.controller.scenario(),
+            crate::fixtures::DevScenario::StartupFailure
+        );
+        assert_eq!(
+            result.controller.shell_state(),
+            crate::fixtures::ShellState::Failed
+        );
         assert_eq!(result.note.as_deref(), Some("boom"));
     }
 
