@@ -6,9 +6,11 @@ use crate::event_stream::{
     apply_ws_auth_token, derive_authenticated_ws_url, spawn_websocket_event_stream,
     EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV,
 };
+use crate::omegon_control::OmegonStartupInfo;
 
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
+pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -69,6 +71,10 @@ pub fn state_url_from_env() -> Option<String> {
     non_empty_env(STATE_URL_ENV)
 }
 
+pub fn startup_url_from_env() -> Option<String> {
+    non_empty_env(STARTUP_URL_ENV)
+}
+
 pub fn websocket_url_from_env() -> Option<String> {
     non_empty_env(WS_URL_ENV)
 }
@@ -94,7 +100,14 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
 }
 
 pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
-    let response = reqwest::blocking::get(url)
+    let startup = fetch_startup_info(url).ok();
+    let state_url = startup
+        .as_ref()
+        .map(|startup| startup.state_url.as_str())
+        .filter(|state_url| !state_url.is_empty())
+        .unwrap_or(url);
+
+    let response = reqwest::blocking::get(state_url)
         .map_err(|error| format!("request failed: {error}"))?
         .error_for_status()
         .map_err(|error| format!("state endpoint returned error: {error}"))?;
@@ -105,25 +118,65 @@ pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
     let controller = AppController::from_remote_snapshot_json(&body)
         .map_err(|error| format!("invalid state payload: {error}"))?;
     let ws_token = websocket_token_from_env();
-    let ws_url = websocket_url_from_env()
-        .map(|url| apply_ws_auth_token(&url, ws_token.as_deref()))
-        .unwrap_or_else(|| derive_authenticated_ws_url(url, ws_token.as_deref()))
-        .unwrap_or_else(|_| {
+    let ws_url = startup
+        .as_ref()
+        .map(|startup| startup.ws_url.clone())
+        .filter(|ws_url| !ws_url.is_empty())
+        .or_else(|| {
+            websocket_url_from_env()
+                .map(|url| apply_ws_auth_token(&url, ws_token.as_deref()))
+                .transpose()
+                .ok()
+                .flatten()
+        })
+        .or_else(|| derive_authenticated_ws_url(state_url, ws_token.as_deref()).ok())
+        .unwrap_or_else(|| {
             DEFAULT_STATE_URL
                 .replace("http://", "ws://")
                 .replace("https://", "wss://")
                 .replace("/api/state", "/ws")
         });
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
+    let note = startup
+        .as_ref()
+        .map(|startup| {
+            format!(
+                "Attached via Omegon startup discovery at {} (auth: {} via {}). Streaming events from {}",
+                startup_url_from_state_url(url),
+                startup.auth_mode,
+                startup.auth_source,
+                ws_url
+            )
+        })
+        .unwrap_or_else(|| {
+            format!("Attached to Omegon state endpoint at {state_url}. Streaming events from {ws_url}")
+        });
 
     Ok(BootstrapResult {
         controller,
         source: BootstrapSource::HttpState {
-            url: url.to_string(),
+            url: state_url.to_string(),
         },
-        note: Some(format!("Attached to Omegon state endpoint at {url}. Streaming events from {ws_url}")),
+        note: Some(note),
         event_stream,
     })
+}
+
+fn fetch_startup_info(state_url: &str) -> Result<OmegonStartupInfo, String> {
+    let startup_url = startup_url_from_env().unwrap_or_else(|| startup_url_from_state_url(state_url));
+    let response = reqwest::blocking::get(&startup_url)
+        .map_err(|error| format!("startup discovery request failed: {error}"))?
+        .error_for_status()
+        .map_err(|error| format!("startup discovery returned error: {error}"))?;
+    let body = response
+        .text()
+        .map_err(|error| format!("could not read startup discovery response: {error}"))?;
+    serde_json::from_str::<OmegonStartupInfo>(&body)
+        .map_err(|error| format!("invalid startup discovery payload: {error}"))
+}
+
+fn startup_url_from_state_url(state_url: &str) -> String {
+    state_url.replace("/api/state", "/api/startup")
 }
 
 fn non_empty_env(key: &str) -> Option<String> {
@@ -197,6 +250,14 @@ mod tests {
         let key = format!("{}_TEST_ONLY", STATE_URL_ENV);
         assert_eq!(non_empty_env(&key), None);
         assert_eq!(state_url_from_env(), env::var(STATE_URL_ENV).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()));
+    }
+
+    #[test]
+    fn startup_url_derives_from_state_url() {
+        assert_eq!(
+            startup_url_from_state_url("http://127.0.0.1:7842/api/state"),
+            "http://127.0.0.1:7842/api/startup"
+        );
     }
 
     #[test]

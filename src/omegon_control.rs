@@ -2,6 +2,27 @@ use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
+pub struct OmegonStartupInfo {
+    #[serde(default)]
+    pub schema_version: u32,
+    #[serde(default)]
+    pub addr: String,
+    #[serde(default)]
+    pub http_base: String,
+    #[serde(default)]
+    pub state_url: String,
+    #[serde(default)]
+    pub ws_url: String,
+    #[serde(default)]
+    pub token: String,
+    #[serde(default)]
+    pub auth_mode: String,
+    #[serde(default)]
+    pub auth_source: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
 pub struct OmegonStateSnapshot {
     #[serde(default)]
     pub design: DesignSnapshot,

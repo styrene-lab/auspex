@@ -60,13 +60,16 @@ This started documentation-first, but now includes a minimal Dioxus scaffold pro
 Auspex now supports two early remote bootstrap seams before full live transport hardens:
 
 - `AUSPEX_REMOTE_SNAPSHOT_PATH=/path/to/state.json` — load an Omegon-shaped snapshot from disk
-- `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch `/api/state` over HTTP at startup
-- `AUSPEX_OMEGON_WS_URL=ws://127.0.0.1:7842/ws` — optional explicit event-stream override when HTTP bootstrap is used
-- `AUSPEX_OMEGON_WS_TOKEN=...` — optional Omegon WebSocket auth token appended as `?token=` when missing
+- `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch Omegon over HTTP at startup
+- `AUSPEX_OMEGON_STARTUP_URL=http://127.0.0.1:7842/api/startup` — optional explicit startup discovery override
+- `AUSPEX_OMEGON_WS_URL=ws://127.0.0.1:7842/ws` — optional explicit event-stream override when discovery is unavailable
+- `AUSPEX_OMEGON_WS_TOKEN=...` — optional fallback WebSocket auth token appended as `?token=` when missing
 
 Behavior is intentionally simple:
 - snapshot file wins if both are set
 - HTTP bootstrap is opt-in
-- HTTP bootstrap also attaches a WebSocket event stream, defaulting from the state URL to `/ws`
-- if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the WebSocket URL unless a `token` query is already present
+- when available, Auspex prefers Omegon startup discovery at `/api/startup`
+- startup discovery supplies the canonical state URL, WS URL, token, and auth mode/source
+- if discovery is unavailable, Auspex falls back to the configured state URL and derived `/ws`
+- if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the fallback WebSocket URL unless a `token` query is already present
 - if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI
