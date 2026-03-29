@@ -106,7 +106,7 @@ rc:
     cargo fmt
     cargo test
 
-    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
+    git add -u
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 
@@ -149,7 +149,7 @@ release:
     cargo fmt
     cargo test
 
-    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
+    git add -u
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 
@@ -182,7 +182,7 @@ next:
 
     cargo fmt
 
-    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
+    git add -u
     git commit -m "chore(release): begin ${NEW_VERSION}"
 
     echo "✓ Advanced to ${NEW_VERSION}"
