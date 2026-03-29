@@ -21,6 +21,14 @@ enum Tab {
 #[component]
 pub fn App() -> Element {
     let bootstrap = try_consume_context::<BootstrapResult>();
+    // Extract spawning binary before bootstrap is consumed by use_signal.
+    let spawning_binary: Option<String> = bootstrap.as_ref().and_then(|b| {
+        if let crate::bootstrap::BootstrapSource::SpawningOmegon { binary } = &b.source {
+            Some(binary.clone())
+        } else {
+            None
+        }
+    });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
@@ -52,6 +60,31 @@ pub fn App() -> Element {
         }
     });
 
+    // Async Omegon spawn: handle SpawningOmegon bootstrap source without
+    // blocking the UI thread. Updates controller + event_stream on completion.
+    use_future(move || {
+        let binary = spawning_binary.clone();
+        let mut controller = controller;
+        let mut event_stream = event_stream;
+        async move {
+            let Some(binary_str) = binary else { return };
+            let binary_path = std::path::PathBuf::from(binary_str);
+            let result = tokio::task::spawn_blocking(move || {
+                crate::bootstrap::spawn_and_attach_omegon(&binary_path)
+            })
+            .await
+            .expect("spawn task panicked");
+            if let Some(stream) = result.event_stream {
+                event_stream.set(Some(stream));
+            }
+            let mut c = result.controller;
+            if let Some(note) = result.note {
+                c.set_bootstrap_note(Some(note));
+            }
+            controller.set(c);
+        }
+    });
+
     // Auto-scroll transcript to the latest message whenever messages change.
     use_effect(move || {
         let _ = controller.read().messages().len();
@@ -68,6 +101,10 @@ pub fn App() -> Element {
 
     let shell_state = controller.read().shell_state();
     let is_fatal = matches!(shell_state, ShellState::Failed);
+    let is_starting = matches!(
+        shell_state,
+        ShellState::Booting | ShellState::StartingStyrene | ShellState::StartingOmegon
+    );
     let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
     let mut tab = use_signal(|| Tab::Chat);
 
@@ -122,155 +159,164 @@ pub fn App() -> Element {
                 }
             }
 
-            // Reconnecting banner — shown when WS dropped but session data is still valid
-            if is_reconnecting {
-                section { class: "banner banner-reconnecting",
-                    strong { "Reconnecting…" }
-                    span { " The connection to the host is being restored. New input is temporarily paused. Cached session state is shown." }
-                }
-            }
-
-            section { class: "summary-bar",
-                div { class: "summary-card",
-                    h2 { "Connection" }
-                    p { "{controller.read().summary().connection}" }
-                }
-                div { class: "summary-card",
-                    h2 { "Work" }
-                    p { "{controller.read().summary().work}" }
-                }
-            }
-
-            // Activity strip — event-driven; dot pulses green while a run is in progress
-            section { class: "activity-strip",
-                div {
-                    class: if controller.read().is_run_active() {
-                        "run-dot run-dot-active"
-                    } else {
-                        "run-dot run-dot-idle"
+            if is_starting {
+                // Startup screen — shown while async Omegon spawn is in progress
+                section { class: "state-screen state-screen-starting",
+                    div { class: "state-screen-icon", "⏳" }
+                    h2 { "{controller.read().shell_state().label()}" }
+                    p { class: "state-screen-detail",
+                        "Launching the Omegon engine. \
+                         The conversation shell will activate automatically once ready."
                     }
                 }
-                span { class: "activity-label", "{controller.read().summary().activity}" }
-            }
-
-            // Power-mode tab bar — only shown in remote mode
-            if controller.read().is_remote() {
-                nav { class: "tab-bar",
-                    button {
-                        class: if *tab.read() == Tab::Chat { "tab tab-active" } else { "tab" },
-                        onclick: move |_| tab.set(Tab::Chat),
-                        "Chat"
-                    }
-                    button {
-                        class: if *tab.read() == Tab::Work { "tab tab-active" } else { "tab" },
-                        onclick: move |_| tab.set(Tab::Work),
-                        "Work"
-                    }
-                    button {
-                        class: if *tab.read() == Tab::Graph { "tab tab-active" } else { "tab" },
-                        onclick: move |_| tab.set(Tab::Graph),
-                        "Graph"
-                    }
-                    button {
-                        class: if *tab.read() == Tab::Session { "tab tab-active" } else { "tab" },
-                        onclick: move |_| tab.set(Tab::Session),
-                        "Session"
-                    }
-                }
-            }
-
-            // Compatibility failure overlay — blocks normal operation as required by spec
-            if is_fatal {
-                section { class: "compat-failure",
-                    strong { "Compatibility failure" }
-                    p { "{controller.read().summary().connection}" }
-                    p { class: "compat-detail", "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart." }
-                }
-            } else if *tab.read() == Tab::Work {
-                WorkScreen { data: controller.read().work_data() }
-            } else if *tab.read() == Tab::Graph {
-                GraphScreen { data: controller.read().graph_data() }
-            } else if *tab.read() == Tab::Session {
-                SessionScreen { data: controller.read().session_data() }
             } else {
-                main { class: "transcript",
-                    for message in controller.read().messages().iter() {
-                        article {
-                            class: match message.role {
-                                MessageRole::User => "bubble bubble-user",
-                                MessageRole::Assistant => "bubble bubble-assistant",
-                                MessageRole::System => "bubble bubble-system",
-                            },
-                            h2 {
-                                match message.role {
-                                    MessageRole::User => "You",
-                                    MessageRole::Assistant => "Auspex",
-                                    MessageRole::System => "System",
-                                }
-                            }
-                            p { "{message.text}" }
-                        }
+                // Reconnecting banner — shown when WS dropped but session data is still valid
+                if is_reconnecting {
+                    section { class: "banner banner-reconnecting",
+                        strong { "Reconnecting…" }
+                        span { " The connection to the host is being restored. New input is temporarily paused. Cached session state is shown." }
                     }
-                    // Scroll sentinel — scrolled into view by the effect above on every new message
-                    div { id: "transcript-end" }
                 }
 
-                form {
-                    class: "composer",
-                    onsubmit: move |event| {
-                        event.prevent_default();
-                        let command = controller.write().submit_prompt_command_json();
-                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                            stream.send_command(command);
-                        }
-                    },
-                    textarea {
-                        class: "composer-input",
-                        rows: "3",
-                        value: controller.read().composer().draft().to_string(),
-                        disabled: !controller.read().can_submit(),
-                        placeholder: if controller.read().can_submit() {
-                            "Start with the smallest useful prompt…"
-                        } else {
-                            "Conversation input is unavailable in the current host state."
-                        },
-                        oninput: move |event| controller.write().update_draft(event.value()),
-                        // Ctrl+Enter / ⌘+Enter submits without leaving the textarea
-                        onkeydown: move |event| {
-                            if event.key() == Key::Enter
-                                && (event.modifiers().contains(Modifiers::CONTROL)
-                                    || event.modifiers().contains(Modifiers::META))
-                            {
-                                let command = controller.write().submit_prompt_command_json();
-                                if let (Some(command), Some(stream)) =
-                                    (command, event_stream.read().clone())
-                                {
-                                    stream.send_command(command);
-                                }
-                            }
-                        },
+                section { class: "summary-bar",
+                    div { class: "summary-card",
+                        h2 { "Connection" }
+                        p { "{controller.read().summary().connection}" }
                     }
-                    div { class: "composer-actions",
-                        // Cancel button — only rendered when a run is active
-                        if controller.read().is_run_active() {
-                            button {
-                                class: "composer-cancel",
-                                r#type: "button",
-                                onclick: move |_| {
-                                    if let Some(command) = controller.read().cancel_command_json() {
-                                        if let Some(stream) = event_stream.read().clone() {
-                                            stream.send_command(command);
-                                        }
-                                    }
-                                },
-                                "Cancel"
-                            }
+                    div { class: "summary-card",
+                        h2 { "Work" }
+                        p { "{controller.read().summary().work}" }
+                    }
+                }
+
+                // Activity strip — event-driven; dot pulses green while a run is in progress
+                section { class: "activity-strip",
+                    div {
+                        class: if controller.read().is_run_active() {
+                            "run-dot run-dot-active"
+                        } else {
+                            "run-dot run-dot-idle"
+                        }
+                    }
+                    span { class: "activity-label", "{controller.read().summary().activity}" }
+                }
+
+                // Power-mode tab bar — only shown in remote mode
+                if controller.read().is_remote() {
+                    nav { class: "tab-bar",
+                        button {
+                            class: if *tab.read() == Tab::Chat { "tab tab-active" } else { "tab" },
+                            onclick: move |_| tab.set(Tab::Chat),
+                            "Chat"
                         }
                         button {
-                            class: "composer-submit",
-                            r#type: "submit",
+                            class: if *tab.read() == Tab::Work { "tab tab-active" } else { "tab" },
+                            onclick: move |_| tab.set(Tab::Work),
+                            "Work"
+                        }
+                        button {
+                            class: if *tab.read() == Tab::Graph { "tab tab-active" } else { "tab" },
+                            onclick: move |_| tab.set(Tab::Graph),
+                            "Graph"
+                        }
+                        button {
+                            class: if *tab.read() == Tab::Session { "tab tab-active" } else { "tab" },
+                            onclick: move |_| tab.set(Tab::Session),
+                            "Session"
+                        }
+                    }
+                }
+
+                // Compatibility failure overlay — blocks normal operation as required by spec
+                if is_fatal {
+                    section { class: "compat-failure",
+                        strong { "Compatibility failure" }
+                        p { "{controller.read().summary().connection}" }
+                        p { class: "compat-detail", "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart." }
+                    }
+                } else if *tab.read() == Tab::Work {
+                    WorkScreen { data: controller.read().work_data() }
+                } else if *tab.read() == Tab::Graph {
+                    GraphScreen { data: controller.read().graph_data() }
+                } else if *tab.read() == Tab::Session {
+                    SessionScreen { data: controller.read().session_data() }
+                } else {
+                    main { class: "transcript",
+                        for message in controller.read().messages().iter() {
+                            article {
+                                class: match message.role {
+                                    MessageRole::User => "bubble bubble-user",
+                                    MessageRole::Assistant => "bubble bubble-assistant",
+                                    MessageRole::System => "bubble bubble-system",
+                                },
+                                h2 {
+                                    match message.role {
+                                        MessageRole::User => "You",
+                                        MessageRole::Assistant => "Auspex",
+                                        MessageRole::System => "System",
+                                    }
+                                }
+                                p { "{message.text}" }
+                            }
+                        }
+                        div { id: "transcript-end" }
+                    }
+
+                    form {
+                        class: "composer",
+                        onsubmit: move |event| {
+                            event.prevent_default();
+                            let command = controller.write().submit_prompt_command_json();
+                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                stream.send_command(command);
+                            }
+                        },
+                        textarea {
+                            class: "composer-input",
+                            rows: "3",
+                            value: controller.read().composer().draft().to_string(),
                             disabled: !controller.read().can_submit(),
-                            "Send"
+                            placeholder: if controller.read().can_submit() {
+                                "Start with the smallest useful prompt…"
+                            } else {
+                                "Conversation input is unavailable in the current host state."
+                            },
+                            oninput: move |event| controller.write().update_draft(event.value()),
+                            onkeydown: move |event| {
+                                if event.key() == Key::Enter
+                                    && (event.modifiers().contains(Modifiers::CONTROL)
+                                        || event.modifiers().contains(Modifiers::META))
+                                {
+                                    let command = controller.write().submit_prompt_command_json();
+                                    if let (Some(command), Some(stream)) =
+                                        (command, event_stream.read().clone())
+                                    {
+                                        stream.send_command(command);
+                                    }
+                                }
+                            },
+                        }
+                        div { class: "composer-actions",
+                            if controller.read().is_run_active() {
+                                button {
+                                    class: "composer-cancel",
+                                    r#type: "button",
+                                    onclick: move |_| {
+                                        if let Some(command) = controller.read().cancel_command_json() {
+                                            if let Some(stream) = event_stream.read().clone() {
+                                                stream.send_command(command);
+                                            }
+                                        }
+                                    },
+                                    "Cancel"
+                                }
+                            }
+                            button {
+                                class: "composer-submit",
+                                r#type: "submit",
+                                disabled: !controller.read().can_submit(),
+                                "Send"
+                            }
                         }
                     }
                 }

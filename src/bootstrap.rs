@@ -27,6 +27,10 @@ pub enum BootstrapSource {
     MockDefault,
     SnapshotFile { path: String },
     HttpState { url: String },
+    /// Bootstrap is deferred — Omegon binary found but not yet spawned.
+    /// The app should start in StartingOmegon state and complete the
+    /// spawn asynchronously via spawn_and_attach_omegon().
+    SpawningOmegon { binary: String },
 }
 
 #[derive(Clone, Debug)]
@@ -55,6 +59,23 @@ impl BootstrapResult {
             controller,
             source: BootstrapSource::MockDefault,
             note: Some(note),
+            event_stream: None,
+        }
+    }
+
+    /// Initial result returned when Omegon needs to be spawned.
+    /// The app shows StartingOmegon state while the async spawn runs.
+    pub fn spawning_omegon(binary: PathBuf) -> Self {
+        let label = binary.display().to_string();
+        let mut controller = AppController::default();
+        controller.set_scenario(crate::fixtures::DevScenario::Booting);
+        controller.set_bootstrap_note(Some(format!("Starting Omegon at {label}\u{2026}")));
+        Self {
+            controller,
+            source: BootstrapSource::SpawningOmegon {
+                binary: label,
+            },
+            note: None,
             event_stream: None,
         }
     }
@@ -95,9 +116,11 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
         });
     }
 
-    // Not running — find the binary and spawn it.
+    // Not running — find the binary and return a deferred spawn result.
+    // The actual spawn happens asynchronously in the app component so
+    // the UI can start immediately in StartingOmegon state.
     if let Some(binary) = find_omegon_binary() {
-        return spawn_and_attach_omegon(&binary);
+        return BootstrapResult::spawning_omegon(binary);
     }
 
     // Omegon not found anywhere.
@@ -285,7 +308,8 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
 }
 
 /// Spawn Omegon, wait for it to accept connections, then bootstrap from it.
-fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
+/// Called from the app component's use_future after returning SpawningOmegon.
+pub fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
     let label = binary.display().to_string();
 
     match std::process::Command::new(binary).spawn() {
