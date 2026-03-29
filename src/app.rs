@@ -39,6 +39,18 @@ pub fn App() -> Element {
         }
     });
 
+    // Auto-scroll transcript to the latest message whenever messages change.
+    use_effect(move || {
+        let _ = controller.read().messages().len();
+        spawn(async move {
+            let _ = document::eval(r#"
+                var el = document.getElementById('transcript-end');
+                if (el) el.scrollIntoView({ behavior: 'instant' });
+            "#)
+            .await;
+        });
+    });
+
     let shell_state = controller.read().shell_state();
     let is_fatal = matches!(shell_state, ShellState::Failed);
     let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
@@ -108,13 +120,21 @@ pub fn App() -> Element {
                     p { "{controller.read().summary().connection}" }
                 }
                 div { class: "summary-card",
-                    h2 { "Activity" }
-                    p { "{controller.read().summary().activity}" }
-                }
-                div { class: "summary-card",
                     h2 { "Work" }
                     p { "{controller.read().summary().work}" }
                 }
+            }
+
+            // Activity strip — event-driven; dot pulses green while a run is in progress
+            section { class: "activity-strip",
+                div {
+                    class: if controller.read().is_run_active() {
+                        "run-dot run-dot-active"
+                    } else {
+                        "run-dot run-dot-idle"
+                    }
+                }
+                span { class: "activity-label", "{controller.read().summary().activity}" }
             }
 
             main { class: "transcript",
@@ -135,6 +155,8 @@ pub fn App() -> Element {
                         p { "{message.text}" }
                     }
                 }
+                // Scroll sentinel — scrolled into view by the effect above on every new message
+                div { id: "transcript-end" }
             }
 
             // Compatibility failure overlay — blocks normal operation as required by spec
@@ -165,6 +187,20 @@ pub fn App() -> Element {
                             "Conversation input is unavailable in the current host state."
                         },
                         oninput: move |event| controller.write().update_draft(event.value()),
+                        // Ctrl+Enter / ⌘+Enter submits without leaving the textarea
+                        onkeydown: move |event| {
+                            if event.key() == Key::Enter
+                                && (event.modifiers().contains(Modifiers::CONTROL)
+                                    || event.modifiers().contains(Modifiers::META))
+                            {
+                                let command = controller.write().submit_prompt_command_json();
+                                if let (Some(command), Some(stream)) =
+                                    (command, event_stream.read().clone())
+                                {
+                                    stream.send_command(command);
+                                }
+                            }
+                        },
                     }
                     div { class: "composer-actions",
                         // Cancel button — only rendered when a run is active
