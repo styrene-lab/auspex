@@ -23,16 +23,25 @@ Rejected as the normal dependency model:
 
 ## 2. The dependency must be declared in Auspex itself
 
-Auspex should carry an explicit compatibility declaration, for example:
+Auspex now carries an explicit compatibility declaration in `Cargo.toml`:
 
 ```toml
-[omegon]
+[package.metadata.omegon]
+minimum_version = "0.15.4-rc.16"
+maximum_tested_version = "0.15.4-rc.16"
+control_plane_schema = 1
+```
+
+General shape:
+
+```toml
+[package.metadata.omegon]
 minimum_version = "0.16.0"
 maximum_tested_version = "0.16.x"
 control_plane_schema = 1
 ```
 
-The exact file format can be decided later, but the principle is fixed: Auspex must know which Omegon releases it supports.
+The principle is fixed: Auspex must know which Omegon releases it supports.
 
 ## 3. Omegon must expose enough version/protocol identity for runtime verification
 

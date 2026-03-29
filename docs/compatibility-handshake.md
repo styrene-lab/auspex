@@ -15,10 +15,19 @@ Auspex should compare:
 
 ## Required manifest inputs on the Auspex side
 
-Example:
+Current Auspex declaration:
 
 ```toml
-[omegon]
+[package.metadata.omegon]
+minimum_version = "0.15.4-rc.16"
+maximum_tested_version = "0.15.4-rc.16"
+control_plane_schema = 1
+```
+
+General shape:
+
+```toml
+[package.metadata.omegon]
 minimum_version = "0.16.0"
 maximum_tested_version = "0.16.x"
 control_plane_schema = 1

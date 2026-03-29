@@ -3,6 +3,11 @@ name = "auspex"
 version = "0.0.1-rc.6"
 edition = "2024"
 
+[package.metadata.omegon]
+minimum_version = "0.15.4-rc.16"
+maximum_tested_version = "0.15.4-rc.16"
+control_plane_schema = 1
+
 [dependencies]
 dioxus = { version = "0.6", features = ["desktop"] }
 reqwest = { version = "0.12", default-features = false, features = ["blocking", "json", "rustls-tls"] }

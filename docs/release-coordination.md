@@ -76,4 +76,8 @@ For the first usable release line, keep it strict:
 - one declared Omegon release line
 - one visible compatibility check path
 
+Current paired line:
+- Auspex `0.0.1-rc.6+` is declared against Omegon `0.15.4-rc.16`
+- required control-plane schema: `1`
+
 This is intentionally conservative. It is the right discipline while the boundary is still stabilizing.
