@@ -1,5 +1,6 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MessageRole, ShellState,
+    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MessageRole, ProviderInfo,
+    SessionData, ShellState, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -14,6 +15,12 @@ pub struct RemoteHostSession {
     pending_role: Option<MessageRole>,
     pending_text: String,
     run_active: bool,
+    // Raw snapshot sub-sections kept for Power mode screens.
+    design: crate::omegon_control::DesignSnapshot,
+    openspec: crate::omegon_control::OpenSpecSnapshot,
+    cleave: crate::omegon_control::CleaveSnapshot,
+    session_stats: crate::omegon_control::SessionSnapshot,
+    harness_snapshot: Option<HarnessStatusSnapshot>,
 }
 
 impl RemoteHostSession {
@@ -33,6 +40,11 @@ impl RemoteHostSession {
             pending_role: None,
             pending_text: String::new(),
             run_active: false,
+            design: snapshot.design,
+            openspec: snapshot.openspec,
+            cleave: snapshot.cleave,
+            session_stats: snapshot.session,
+            harness_snapshot: snapshot.harness.clone(),
         }
     }
 
@@ -48,6 +60,11 @@ impl RemoteHostSession {
                 self.shell_state = shell_state;
                 self.scenario = scenario;
                 self.summary = summary_from_snapshot(&data);
+                self.design = data.design;
+                self.openspec = data.openspec;
+                self.cleave = data.cleave;
+                self.session_stats = data.session;
+                self.harness_snapshot = data.harness;
                 true
             }
             OmegonEvent::MessageStart { role } => {
@@ -86,6 +103,7 @@ impl RemoteHostSession {
                 self.shell_state = shell_state;
                 self.scenario = scenario;
                 apply_harness_summary(&mut self.summary, &status);
+                self.harness_snapshot = Some(status);
                 true
             }
             OmegonEvent::SessionReset => {
@@ -209,6 +227,71 @@ impl HostSessionModel for RemoteHostSession {
 
     fn is_run_active(&self) -> bool {
         self.run_active
+    }
+
+    fn work_data(&self) -> WorkData {
+        let focused = self.design.focused.as_ref();
+        WorkData {
+            focused_id: focused.map(|n| n.id.clone()),
+            focused_title: focused.map(|n| n.title.clone()),
+            focused_status: focused.map(|n| n.status.clone()),
+            open_question_count: focused.map(|n| n.open_questions.len()).unwrap_or(0),
+            implementing: self
+                .design
+                .implementing
+                .iter()
+                .map(|n| WorkNode {
+                    id: n.id.clone(),
+                    title: n.title.clone(),
+                    status: n.status.clone(),
+                })
+                .collect(),
+            actionable: self
+                .design
+                .actionable
+                .iter()
+                .map(|n| WorkNode {
+                    id: n.id.clone(),
+                    title: n.title.clone(),
+                    status: n.status.clone(),
+                })
+                .collect(),
+            openspec_total: self.openspec.total_tasks,
+            openspec_done: self.openspec.done_tasks,
+            cleave_active: self.cleave.active,
+            cleave_total: self.cleave.total_children,
+            cleave_completed: self.cleave.completed,
+            cleave_failed: self.cleave.failed,
+        }
+    }
+
+    fn session_data(&self) -> SessionData {
+        let h = self.harness_snapshot.as_ref();
+        SessionData {
+            git_branch: h.and_then(|h| h.git_branch.clone()),
+            git_detached: h.map(|h| h.git_detached).unwrap_or(false),
+            thinking_level: h.map(|h| h.thinking_level.clone()).unwrap_or_default(),
+            capability_tier: h.map(|h| h.capability_tier.clone()).unwrap_or_default(),
+            providers: h
+                .map(|h| {
+                    h.providers
+                        .iter()
+                        .map(|p| ProviderInfo {
+                            name: p.name.clone(),
+                            authenticated: p.authenticated,
+                            model: p.model.clone(),
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
+            memory_available: h.map(|h| h.memory_available).unwrap_or(true),
+            cleave_available: h.map(|h| h.cleave_available).unwrap_or(true),
+            memory_warning: h.and_then(|h| h.memory_warning.clone()),
+            active_delegate_count: h.map(|h| h.active_delegates.len()).unwrap_or(0),
+            session_turns: self.session_stats.turns,
+            session_tool_calls: self.session_stats.tool_calls,
+            session_compactions: self.session_stats.compactions,
+        }
     }
 
     fn submit(&mut self) -> bool {

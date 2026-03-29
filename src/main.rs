@@ -5,6 +5,7 @@ mod event_stream;
 mod fixtures;
 mod omegon_control;
 mod remote_session;
+mod screens;
 mod session_model;
 
 fn main() {

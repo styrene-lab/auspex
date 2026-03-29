@@ -1,4 +1,4 @@
-use crate::fixtures::{ChatMessage, ComposerState, DevScenario, HostSessionSummary, ShellState};
+use crate::fixtures::{ChatMessage, ComposerState, DevScenario, HostSessionSummary, SessionData, ShellState, WorkData};
 
 pub trait HostSessionModel {
     fn shell_state(&self) -> ShellState;
@@ -11,4 +11,6 @@ pub trait HostSessionModel {
     fn can_submit(&self) -> bool;
     fn submit(&mut self) -> bool;
     fn is_run_active(&self) -> bool;
+    fn work_data(&self) -> WorkData;
+    fn session_data(&self) -> SessionData;
 }

@@ -1,5 +1,6 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MockHostSession, ShellState,
+    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MockHostSession, SessionData,
+    ShellState, WorkData,
 };
 use crate::remote_session::RemoteHostSession;
 use crate::session_model::HostSessionModel;
@@ -174,6 +175,14 @@ impl AppController {
 
     pub fn is_run_active(&self) -> bool {
         self.session.model().is_run_active()
+    }
+
+    pub fn work_data(&self) -> WorkData {
+        self.session.model().work_data()
+    }
+
+    pub fn session_data(&self) -> SessionData {
+        self.session.model().session_data()
     }
 
     pub fn as_model(&self) -> &dyn HostSessionModel {

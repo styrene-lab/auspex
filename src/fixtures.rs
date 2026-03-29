@@ -1,5 +1,60 @@
 use crate::session_model::HostSessionModel;
 
+// ── View-model types ────────────────────────────────────────
+
+/// Brief description of a design-tree node for work-state lists.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct WorkNode {
+    pub id: String,
+    pub title: String,
+    pub status: String,
+}
+
+/// Provider entry for the Session screen.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ProviderInfo {
+    pub name: String,
+    pub authenticated: bool,
+    pub model: Option<String>,
+}
+
+/// Snapshot of work state for the Work power-mode screen.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct WorkData {
+    pub focused_id: Option<String>,
+    pub focused_title: Option<String>,
+    pub focused_status: Option<String>,
+    /// Number of open questions on the focused node.
+    pub open_question_count: usize,
+    pub implementing: Vec<WorkNode>,
+    pub actionable: Vec<WorkNode>,
+    pub openspec_total: usize,
+    pub openspec_done: usize,
+    pub cleave_active: bool,
+    pub cleave_total: usize,
+    pub cleave_completed: usize,
+    pub cleave_failed: usize,
+}
+
+/// Snapshot of harness and session state for the Session power-mode screen.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct SessionData {
+    pub git_branch: Option<String>,
+    pub git_detached: bool,
+    pub thinking_level: String,
+    pub capability_tier: String,
+    pub providers: Vec<ProviderInfo>,
+    pub memory_available: bool,
+    pub cleave_available: bool,
+    pub memory_warning: Option<String>,
+    pub active_delegate_count: usize,
+    pub session_turns: u32,
+    pub session_tool_calls: u32,
+    pub session_compactions: u32,
+}
+
+// ── Chat types ───────────────────────────────────────────────
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ChatMessage {
     pub role: MessageRole,
@@ -279,6 +334,32 @@ impl HostSessionModel for MockHostSession {
 
     fn is_run_active(&self) -> bool {
         false
+    }
+
+    fn work_data(&self) -> WorkData {
+        WorkData {
+            focused_title: Some("Phase 3 — Simple mode MVP".into()),
+            focused_status: Some("decided".into()),
+            ..Default::default()
+        }
+    }
+
+    fn session_data(&self) -> SessionData {
+        SessionData {
+            git_branch: Some("main".into()),
+            thinking_level: "medium".into(),
+            capability_tier: "victory".into(),
+            providers: vec![ProviderInfo {
+                name: "Anthropic".into(),
+                authenticated: true,
+                model: Some("claude-sonnet".into()),
+            }],
+            memory_available: true,
+            cleave_available: true,
+            session_turns: 4,
+            session_tool_calls: 12,
+            ..Default::default()
+        }
     }
 
     fn submit(&mut self) -> bool {

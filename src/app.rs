@@ -4,6 +4,14 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, ShellState};
+use crate::screens::{SessionScreen, WorkScreen};
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum Tab {
+    Chat,
+    Work,
+    Session,
+}
 
 #[component]
 pub fn App() -> Element {
@@ -56,6 +64,7 @@ pub fn App() -> Element {
     let shell_state = controller.read().shell_state();
     let is_fatal = matches!(shell_state, ShellState::Failed);
     let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
+    let mut tab = use_signal(|| Tab::Chat);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -139,26 +148,25 @@ pub fn App() -> Element {
                 span { class: "activity-label", "{controller.read().summary().activity}" }
             }
 
-            main { class: "transcript",
-                for message in controller.read().messages().iter() {
-                    article {
-                        class: match message.role {
-                            MessageRole::User => "bubble bubble-user",
-                            MessageRole::Assistant => "bubble bubble-assistant",
-                            MessageRole::System => "bubble bubble-system",
-                        },
-                        h2 {
-                            match message.role {
-                                MessageRole::User => "You",
-                                MessageRole::Assistant => "Auspex",
-                                MessageRole::System => "System",
-                            }
-                        }
-                        p { "{message.text}" }
+            // Power-mode tab bar — only shown in remote mode
+            if controller.read().is_remote() {
+                nav { class: "tab-bar",
+                    button {
+                        class: if *tab.read() == Tab::Chat { "tab tab-active" } else { "tab" },
+                        onclick: move |_| tab.set(Tab::Chat),
+                        "Chat"
+                    }
+                    button {
+                        class: if *tab.read() == Tab::Work { "tab tab-active" } else { "tab" },
+                        onclick: move |_| tab.set(Tab::Work),
+                        "Work"
+                    }
+                    button {
+                        class: if *tab.read() == Tab::Session { "tab tab-active" } else { "tab" },
+                        onclick: move |_| tab.set(Tab::Session),
+                        "Session"
                     }
                 }
-                // Scroll sentinel — scrolled into view by the effect above on every new message
-                div { id: "transcript-end" }
             }
 
             // Compatibility failure overlay — blocks normal operation as required by spec
@@ -168,7 +176,33 @@ pub fn App() -> Element {
                     p { "{controller.read().summary().connection}" }
                     p { class: "compat-detail", "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart." }
                 }
+            } else if *tab.read() == Tab::Work {
+                WorkScreen { data: controller.read().work_data() }
+            } else if *tab.read() == Tab::Session {
+                SessionScreen { data: controller.read().session_data() }
             } else {
+                main { class: "transcript",
+                    for message in controller.read().messages().iter() {
+                        article {
+                            class: match message.role {
+                                MessageRole::User => "bubble bubble-user",
+                                MessageRole::Assistant => "bubble bubble-assistant",
+                                MessageRole::System => "bubble bubble-system",
+                            },
+                            h2 {
+                                match message.role {
+                                    MessageRole::User => "You",
+                                    MessageRole::Assistant => "Auspex",
+                                    MessageRole::System => "System",
+                                }
+                            }
+                            p { "{message.text}" }
+                        }
+                    }
+                    // Scroll sentinel — scrolled into view by the effect above on every new message
+                    div { id: "transcript-end" }
+                }
+
                 form {
                     class: "composer",
                     onsubmit: move |event| {
