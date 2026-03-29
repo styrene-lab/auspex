@@ -48,11 +48,14 @@ pub struct BootstrapResult {
 }
 
 impl BootstrapResult {
-    fn mock(note: Option<String>) -> Self {
+    fn startup_failure(note: String) -> Self {
+        let mut controller = AppController::default();
+        controller.set_scenario(crate::fixtures::DevScenario::StartupFailure);
+        controller.set_bootstrap_note(Some(note.clone()));
         Self {
-            controller: AppController::default(),
+            controller,
             source: BootstrapSource::MockDefault,
-            note,
+            note: Some(note),
             event_stream: None,
         }
     }
@@ -86,51 +89,48 @@ impl BootstrapResult {
 }
 
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
-    // 1. Explicit snapshot file wins.
+    // 1. Explicit snapshot file wins for dev/test snapshots.
     if let Some(path) = snapshot_path_from_env() {
         return bootstrap_from_snapshot_file(&path).unwrap_or_else(|error| {
-            BootstrapResult::mock(Some(format!(
-                "Snapshot bootstrap failed for {path}: {error}. Falling back to mock local session."
-            )))
+            BootstrapResult::startup_failure(format!(
+                "Snapshot bootstrap failed for {path}: {error}."
+            ))
         });
     }
 
-    // 2. Explicit state URL — attach without spawning.
+    // 2. Explicit state URL — remote attach is an opt-in mode.
     if let Some(url) = state_url_from_env() {
         return bootstrap_from_http_state(&url).unwrap_or_else(|error| {
             if error.contains("control-plane schema") {
                 return BootstrapResult::compatibility_failure(error);
             }
-            BootstrapResult::mock(Some(format!(
-                "HTTP bootstrap failed for {url}: {error}. Falling back to mock local session."
-            )))
+            BootstrapResult::startup_failure(format!(
+                "Remote attach failed for {url}: {error}."
+            ))
         });
     }
 
-    // 3. No explicit config — auto-discover or spawn.
-    // Try to attach if Omegon is already running at the default address.
+    // 3. Default mode: Auspex owns an embedded local Omegon backend.
+    // If a compatible control plane is already present, attach to it.
     if omegon_is_running() {
         return bootstrap_from_http_state(DEFAULT_STATE_URL).unwrap_or_else(|error| {
             if error.contains("control-plane schema") {
                 return BootstrapResult::compatibility_failure(error);
             }
-            BootstrapResult::mock(Some(format!(
-                "Auto-attach to running Omegon failed: {error}."
-            )))
+            BootstrapResult::startup_failure(format!(
+                "Embedded Omegon endpoint was reachable but bootstrap failed: {error}."
+            ))
         });
     }
 
-    // Not running — find the binary and return a deferred spawn result.
-    // The actual spawn happens asynchronously in the app component so
-    // the UI can start immediately in StartingOmegon state.
+    // Otherwise, start the embedded backend.
     if let Some(binary) = find_omegon_binary() {
         return BootstrapResult::spawning_omegon(binary);
     }
 
-    // Omegon not found anywhere.
-    BootstrapResult::mock(Some(
-        "Omegon not found. Install it or set AUSPEX_OMEGON_BIN to its path.".into(),
-    ))
+    BootstrapResult::startup_failure(
+        "Auspex could not locate its embedded Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
+    )
 }
 
 pub fn snapshot_path_from_env() -> Option<String> {
@@ -327,15 +327,16 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
     None
 }
 
-/// Spawn Omegon, wait for it to accept connections, then bootstrap from it.
-/// Called from the app component's use_future after returning SpawningOmegon.
+/// Spawn the embedded Omegon backend, wait for it to accept connections,
+/// then bootstrap from it. Called from the app component's use_future after
+/// returning SpawningOmegon.
 pub fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
     let label = binary.display().to_string();
 
     match std::process::Command::new(binary).spawn() {
-        Err(error) => BootstrapResult::mock(Some(format!(
-            "Could not spawn Omegon at {label}: {error}. Running in mock mode."
-        ))),
+        Err(error) => BootstrapResult::startup_failure(format!(
+            "Could not spawn embedded Omegon backend at {label}: {error}."
+        )),
         Ok(_child) => {
             let startup_url = startup_url_from_state_url(DEFAULT_STATE_URL);
             let deadline = Instant::now() + SPAWN_TIMEOUT;
@@ -354,9 +355,9 @@ pub fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
                         if error.contains("control-plane schema") {
                             BootstrapResult::compatibility_failure(error)
                         } else {
-                            BootstrapResult::mock(Some(format!(
-                                "Spawned Omegon at {label} but bootstrap failed: {error}"
-                            )))
+                            BootstrapResult::startup_failure(format!(
+                                "Embedded Omegon backend started at {label} but bootstrap failed: {error}"
+                            ))
                         }
                     });
                 }
@@ -364,11 +365,11 @@ pub fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
                 thread::sleep(SPAWN_POLL);
             }
 
-            BootstrapResult::mock(Some(format!(
-                "Spawned Omegon at {label} but it did not become ready within {}s. \
-                 Running in mock mode.",
+            BootstrapResult::startup_failure(format!(
+                "Embedded Omegon backend at {label} did not expose {} within {}s. Auspex cannot continue until Omegon provides a machine-start control-plane contract.",
+                startup_url,
                 SPAWN_TIMEOUT.as_secs()
-            )))
+            ))
         }
     }
 }
@@ -485,6 +486,14 @@ mod tests {
     #[test]
     fn default_state_url_is_local_omegon_endpoint() {
         assert_eq!(DEFAULT_STATE_URL, "http://127.0.0.1:7842/api/state");
+    }
+
+    #[test]
+    fn startup_failure_uses_failed_scenario() {
+        let result = BootstrapResult::startup_failure("boom".into());
+        assert_eq!(result.controller.scenario(), crate::fixtures::DevScenario::StartupFailure);
+        assert_eq!(result.controller.shell_state(), crate::fixtures::ShellState::Failed);
+        assert_eq!(result.note.as_deref(), Some("boom"));
     }
 
     #[test]

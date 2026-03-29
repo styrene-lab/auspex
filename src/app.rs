@@ -227,12 +227,26 @@ pub fn App() -> Element {
                     }
                 }
 
-                // Compatibility failure overlay — blocks normal operation as required by spec
+                // Fatal startup overlay — blocks normal operation until the
+                // embedded backend or explicit remote attach succeeds.
                 if is_fatal {
                     section { class: "compat-failure",
-                        strong { "Compatibility failure" }
+                        strong {
+                            if controller.read().scenario() == DevScenario::CompatibilityFailure {
+                                "Compatibility failure"
+                            } else {
+                                "Embedded backend startup failed"
+                            }
+                        }
                         p { "{controller.read().summary().connection}" }
-                        p { class: "compat-detail", "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart." }
+                        p {
+                            class: "compat-detail",
+                            if controller.read().scenario() == DevScenario::CompatibilityFailure {
+                                "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart."
+                            } else {
+                                "Auspex requires its embedded Omegon backend for local operation. Fix backend startup and relaunch, or explicitly attach to a remote Omegon control plane."
+                            }
+                        }
                     }
                 } else if *tab.read() == Tab::Work {
                     WorkScreen { data: controller.read().work_data() }

@@ -117,15 +117,17 @@ pub enum DevScenario {
     Ready,
     Booting,
     Degraded,
+    StartupFailure,
     CompatibilityFailure,
     Reconnecting,
 }
 
 impl DevScenario {
-    pub const ALL: [Self; 5] = [
+    pub const ALL: [Self; 6] = [
         Self::Ready,
         Self::Booting,
         Self::Degraded,
+        Self::StartupFailure,
         Self::CompatibilityFailure,
         Self::Reconnecting,
     ];
@@ -135,6 +137,7 @@ impl DevScenario {
             Self::Ready => "ready",
             Self::Booting => "booting",
             Self::Degraded => "degraded",
+            Self::StartupFailure => "startup-failure",
             Self::CompatibilityFailure => "compat-failure",
             Self::Reconnecting => "reconnecting",
         }
@@ -145,6 +148,7 @@ impl DevScenario {
             Self::Ready => "Ready",
             Self::Booting => "Booting",
             Self::Degraded => "Degraded",
+            Self::StartupFailure => "Startup failure",
             Self::CompatibilityFailure => "Compat failure",
             Self::Reconnecting => "Reconnecting",
         }
@@ -258,6 +262,23 @@ impl MockHostSession {
         }
     }
 
+    pub fn startup_failure_session() -> Self {
+        Self {
+            shell_state: ShellState::Failed,
+            scenario: DevScenario::StartupFailure,
+            summary: HostSessionSummary {
+                connection: "Embedded Omegon backend unavailable".into(),
+                activity: "Startup blocked by embedded backend failure".into(),
+                work: "No local session available".into(),
+            },
+            messages: vec![ChatMessage {
+                role: MessageRole::System,
+                text: "Auspex could not start its embedded Omegon backend. Local operation is blocked until the backend startup contract succeeds.".into(),
+            }],
+            composer: ComposerState::default(),
+        }
+    }
+
     pub fn compatibility_failure_session() -> Self {
         Self {
             shell_state: ShellState::Failed,
@@ -303,6 +324,7 @@ impl MockHostSession {
             DevScenario::Ready => Self::ready_session(),
             DevScenario::Booting => Self::booting_session(),
             DevScenario::Degraded => Self::degraded_session(),
+            DevScenario::StartupFailure => Self::startup_failure_session(),
             DevScenario::CompatibilityFailure => Self::compatibility_failure_session(),
             DevScenario::Reconnecting => Self::reconnecting_session(),
         }

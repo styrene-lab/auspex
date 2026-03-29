@@ -201,6 +201,7 @@ impl AppController {
         let next = match raw {
             "booting" => DevScenario::Booting,
             "degraded" => DevScenario::Degraded,
+            "startup-failure" => DevScenario::StartupFailure,
             "compat-failure" => DevScenario::CompatibilityFailure,
             "reconnecting" => DevScenario::Reconnecting,
             _ => DevScenario::Ready,
@@ -290,6 +291,9 @@ mod tests {
 
         controller.select_scenario("degraded");
         assert_eq!(controller.scenario(), DevScenario::Degraded);
+
+        controller.select_scenario("startup-failure");
+        assert_eq!(controller.scenario(), DevScenario::StartupFailure);
 
         controller.select_scenario("compat-failure");
         assert_eq!(controller.scenario(), DevScenario::CompatibilityFailure);

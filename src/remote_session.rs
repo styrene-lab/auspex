@@ -216,7 +216,7 @@ impl HostSessionModel for RemoteHostSession {
             DevScenario::Ready => ShellState::Ready,
             DevScenario::Booting => ShellState::StartingOmegon,
             DevScenario::Degraded => ShellState::Degraded,
-            DevScenario::CompatibilityFailure => ShellState::Failed,
+            DevScenario::StartupFailure | DevScenario::CompatibilityFailure => ShellState::Failed,
             DevScenario::Reconnecting => ShellState::CompatibilityChecking,
         };
     }
