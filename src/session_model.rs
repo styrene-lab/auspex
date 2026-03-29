@@ -10,4 +10,5 @@ pub trait HostSessionModel {
     fn set_scenario(&mut self, scenario: DevScenario);
     fn can_submit(&self) -> bool;
     fn submit(&mut self) -> bool;
+    fn is_run_active(&self) -> bool;
 }

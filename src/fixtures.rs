@@ -277,6 +277,10 @@ impl HostSessionModel for MockHostSession {
         self.shell_state == ShellState::Ready || self.shell_state == ShellState::Degraded
     }
 
+    fn is_run_active(&self) -> bool {
+        false
+    }
+
     fn submit(&mut self) -> bool {
         if !self.can_submit() {
             return false;

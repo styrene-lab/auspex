@@ -13,6 +13,7 @@ pub struct RemoteHostSession {
     composer: ComposerState,
     pending_role: Option<MessageRole>,
     pending_text: String,
+    run_active: bool,
 }
 
 impl RemoteHostSession {
@@ -31,6 +32,7 @@ impl RemoteHostSession {
             composer: ComposerState::default(),
             pending_role: None,
             pending_text: String::new(),
+            run_active: false,
         }
     }
 
@@ -94,13 +96,16 @@ impl RemoteHostSession {
                 });
                 self.pending_role = None;
                 self.pending_text.clear();
+                self.run_active = false;
                 true
             }
             OmegonEvent::TurnStart { turn } => {
+                self.run_active = true;
                 self.summary.activity = format!("Turn {turn} in progress");
                 true
             }
             OmegonEvent::TurnEnd { turn } => {
+                self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
                 true
             }
@@ -118,6 +123,7 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::AgentEnd => {
+                self.run_active = false;
                 self.summary.activity = "Agent turn finished".into();
                 true
             }
@@ -193,7 +199,11 @@ impl HostSessionModel for RemoteHostSession {
     }
 
     fn can_submit(&self) -> bool {
-        matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
+        !self.run_active && matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
+    }
+
+    fn is_run_active(&self) -> bool {
+        self.run_active
     }
 
     fn submit(&mut self) -> bool {

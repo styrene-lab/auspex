@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
-use crate::fixtures::{DevScenario, MessageRole};
+use crate::fixtures::{DevScenario, MessageRole, ShellState};
 
 #[component]
 pub fn App() -> Element {
@@ -38,6 +38,10 @@ pub fn App() -> Element {
             }
         }
     });
+
+    let shell_state = controller.read().shell_state();
+    let is_fatal = matches!(shell_state, ShellState::Failed);
+    let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
 
     rsx! {
         document::Stylesheet { href: asset!("/assets/main.css") }
@@ -90,6 +94,14 @@ pub fn App() -> Element {
                 }
             }
 
+            // Reconnecting banner — shown when WS dropped but session data is still valid
+            if is_reconnecting {
+                section { class: "banner banner-reconnecting",
+                    strong { "Reconnecting…" }
+                    span { " The connection to the host is being restored. New input is temporarily paused. Cached session state is shown." }
+                }
+            }
+
             section { class: "summary-bar",
                 div { class: "summary-card",
                     h2 { "Connection" }
@@ -125,32 +137,58 @@ pub fn App() -> Element {
                 }
             }
 
-            form {
-                class: "composer",
-                onsubmit: move |event| {
-                    event.prevent_default();
-                    let command = controller.write().submit_prompt_command_json();
-                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                        stream.send_command(command);
-                    }
-                },
-                textarea {
-                    class: "composer-input",
-                    rows: "3",
-                    value: controller.read().composer().draft().to_string(),
-                    disabled: !controller.read().can_submit(),
-                    placeholder: if controller.read().can_submit() {
-                        "Start with the smallest useful prompt…"
-                    } else {
-                        "Conversation input is unavailable in the current host state."
-                    },
-                    oninput: move |event| controller.write().update_draft(event.value()),
+            // Compatibility failure overlay — blocks normal operation as required by spec
+            if is_fatal {
+                section { class: "compat-failure",
+                    strong { "Compatibility failure" }
+                    p { "{controller.read().summary().connection}" }
+                    p { class: "compat-detail", "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart." }
                 }
-                button {
-                    class: "composer-submit",
-                    r#type: "submit",
-                    disabled: !controller.read().can_submit(),
-                    "Send"
+            } else {
+                form {
+                    class: "composer",
+                    onsubmit: move |event| {
+                        event.prevent_default();
+                        let command = controller.write().submit_prompt_command_json();
+                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                            stream.send_command(command);
+                        }
+                    },
+                    textarea {
+                        class: "composer-input",
+                        rows: "3",
+                        value: controller.read().composer().draft().to_string(),
+                        disabled: !controller.read().can_submit(),
+                        placeholder: if controller.read().can_submit() {
+                            "Start with the smallest useful prompt…"
+                        } else {
+                            "Conversation input is unavailable in the current host state."
+                        },
+                        oninput: move |event| controller.write().update_draft(event.value()),
+                    }
+                    div { class: "composer-actions",
+                        // Cancel button — only rendered when a run is active
+                        if controller.read().is_run_active() {
+                            button {
+                                class: "composer-cancel",
+                                r#type: "button",
+                                onclick: move |_| {
+                                    if let Some(command) = controller.read().cancel_command_json() {
+                                        if let Some(stream) = event_stream.read().clone() {
+                                            stream.send_command(command);
+                                        }
+                                    }
+                                },
+                                "Cancel"
+                            }
+                        }
+                        button {
+                            class: "composer-submit",
+                            r#type: "submit",
+                            disabled: !controller.read().can_submit(),
+                            "Send"
+                        }
+                    }
                 }
             }
         }

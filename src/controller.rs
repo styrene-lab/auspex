@@ -172,6 +172,10 @@ impl AppController {
         self.session.model().can_submit()
     }
 
+    pub fn is_run_active(&self) -> bool {
+        self.session.model().is_run_active()
+    }
+
     pub fn as_model(&self) -> &dyn HostSessionModel {
         self.session.model()
     }
@@ -220,6 +224,15 @@ impl AppController {
             SessionSource::Mock(session) => session.submit().then(|| String::new()),
         }
         .filter(|command| !command.is_empty())
+    }
+
+    pub fn cancel_command_json(&self) -> Option<String> {
+        match &self.session {
+            SessionSource::Remote(session) if session.is_run_active() => Some(
+                serde_json::json!({ "type": "cancel" }).to_string(),
+            ),
+            _ => None,
+        }
     }
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
@@ -329,5 +342,74 @@ mod tests {
         controller.switch_session_mode("mock");
         assert_eq!(controller.session_mode(), SessionMode::Mock);
         assert_eq!(controller.summary().connection, "Connected to local host session");
+    }
+
+    #[test]
+    fn is_run_active_false_by_default() {
+        let controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        assert!(!controller.is_run_active());
+    }
+
+    #[test]
+    fn is_run_active_becomes_true_on_turn_start_and_false_on_turn_end() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+        assert!(controller.is_run_active());
+
+        controller
+            .apply_remote_event_json(r#"{"type":"turn_end","turn":1}"#)
+            .unwrap();
+        assert!(!controller.is_run_active());
+    }
+
+    #[test]
+    fn run_active_blocks_submit() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+
+        assert!(!controller.can_submit());
+
+        controller.update_draft("rush message");
+        let result = controller.submit_prompt_command_json();
+        assert!(result.is_none(), "submit must be blocked while run is active");
+    }
+
+    #[test]
+    fn cancel_command_json_produced_when_run_active() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        assert!(controller.cancel_command_json().is_none());
+
+        controller
+            .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+
+        let cancel = controller.cancel_command_json().expect("cancel command expected during active run");
+        assert_eq!(cancel, r#"{"type":"cancel"}"#);
+    }
+
+    #[test]
+    fn session_reset_clears_run_active() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+        assert!(controller.is_run_active());
+
+        controller
+            .apply_remote_event_json(r#"{"type":"session_reset"}"#)
+            .unwrap();
+        assert!(!controller.is_run_active());
     }
 }

@@ -221,6 +221,68 @@ body {
   cursor: not-allowed;
 }
 
+.composer-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+}
+
+.composer-cancel {
+  border: 1px solid #484f58;
+  border-radius: 999px;
+  background: transparent;
+  color: #ff7b72;
+  padding: 0.7rem 1.1rem;
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer-cancel:hover {
+  background: #1f1c1c;
+  border-color: #ff7b72;
+}
+
+.banner {
+  border-radius: 12px;
+  padding: 0.75rem 1rem;
+  font-size: 0.95rem;
+}
+
+.banner-reconnecting {
+  background: #1c1a0e;
+  border: 1px solid #d29922;
+  color: #e3b341;
+}
+
+.banner-reconnecting strong {
+  color: #f0c040;
+}
+
+.compat-failure {
+  border: 1px solid #ff7b72;
+  border-radius: 14px;
+  padding: 1.25rem 1.4rem;
+  background: #1c0e0e;
+  color: #ff7b72;
+}
+
+.compat-failure strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.compat-failure p {
+  margin: 0 0 0.35rem;
+  line-height: 1.5;
+}
+
+.compat-detail {
+  color: #8b949e;
+  font-size: 0.92rem;
+}
+
 @media (max-width: 720px) {
   .summary-bar {
     grid-template-columns: 1fr;
