@@ -302,10 +302,7 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
 
     // Check common system-wide locations (useful when PATH is stripped in
     // a bundled .app launch context).
-    for abs in &[
-        "/usr/local/bin/omegon",
-        "/opt/homebrew/bin/omegon",
-    ] {
+    for abs in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
         let p = PathBuf::from(abs);
         if p.exists() {
             return Some(p);
