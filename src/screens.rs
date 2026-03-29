@@ -4,7 +4,72 @@
 /// derived from the Omegon snapshot; no additional backend calls needed.
 use dioxus::prelude::*;
 
-use crate::fixtures::{SessionData, WorkData};
+use crate::fixtures::{GraphData, SessionData, WorkData};
+
+// ── Graph screen ──────────────────────────────────────────────────────────────
+
+#[component]
+pub fn GraphScreen(data: GraphData) -> Element {
+    // Group nodes by status for display
+    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
+    let mut seen: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
+    for node in &data.nodes {
+        seen.entry(node.status.clone()).or_default().push(node.title.clone());
+    }
+    // Render in a meaningful order
+    for status in &["implementing", "decided", "actionable", "exploring", "seed", "blocked"] {
+        if let Some(titles) = seen.remove(*status) {
+            groups.push((status.to_string(), titles));
+        }
+    }
+    // Remaining statuses not in the priority list
+    let mut rest: Vec<_> = seen.into_iter().collect();
+    rest.sort_by(|a, b| a.0.cmp(&b.0));
+    groups.extend(rest);
+
+    rsx! {
+        div { class: "screen screen-graph",
+            if !data.is_full_inventory && !data.nodes.is_empty() {
+                p { class: "graph-partial-notice",
+                    "Showing implementing and actionable nodes only. A full inventory "
+                    "will be available once Omegon exposes the /api/graph endpoint."
+                }
+            }
+
+            if !data.counts.is_empty() {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Counts" }
+                    div { class: "graph-counts",
+                        for (status, count) in &data.counts {
+                            div { class: "graph-count-chip",
+                                span { class: status_badge_class(status), "{status}" }
+                                span { class: "graph-count-num", "{count}" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            if groups.is_empty() {
+                p { class: "screen-empty", "No design-tree nodes in snapshot." }
+            } else {
+                for (status, titles) in &groups {
+                    section { class: "screen-section",
+                        h2 { class: "screen-section-title",
+                            span { class: status_badge_class(status), "{status}" }
+                            " ({titles.len()})"
+                        }
+                        div { class: "graph-node-list",
+                            for title in titles {
+                                div { class: "graph-node-row", "{title}" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
 
 // ── Work screen ──────────────────────────────────────────────────────────────
 

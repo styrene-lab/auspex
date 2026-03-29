@@ -45,6 +45,12 @@ pub struct DesignSnapshot {
     pub implementing: Vec<NodeBrief>,
     #[serde(default)]
     pub actionable: Vec<NodeBrief>,
+    /// Full node inventory from /api/graph (omitted in lightweight snapshots).
+    #[serde(default)]
+    pub all_nodes: Vec<NodeBrief>,
+    /// Aggregate counts keyed by status string (e.g. "implementing": 3).
+    #[serde(default)]
+    pub counts: std::collections::HashMap<String, usize>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]

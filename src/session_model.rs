@@ -1,4 +1,4 @@
-use crate::fixtures::{ChatMessage, ComposerState, DevScenario, HostSessionSummary, SessionData, ShellState, WorkData};
+use crate::fixtures::{ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, SessionData, ShellState, WorkData};
 
 pub trait HostSessionModel {
     fn shell_state(&self) -> ShellState;
@@ -13,4 +13,5 @@ pub trait HostSessionModel {
     fn is_run_active(&self) -> bool;
     fn work_data(&self) -> WorkData;
     fn session_data(&self) -> SessionData;
+    fn graph_data(&self) -> GraphData;
 }

@@ -4,12 +4,13 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, ShellState};
-use crate::screens::{SessionScreen, WorkScreen};
+use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Tab {
     Chat,
     Work,
+    Graph,
     Session,
 }
 
@@ -162,6 +163,11 @@ pub fn App() -> Element {
                         "Work"
                     }
                     button {
+                        class: if *tab.read() == Tab::Graph { "tab tab-active" } else { "tab" },
+                        onclick: move |_| tab.set(Tab::Graph),
+                        "Graph"
+                    }
+                    button {
                         class: if *tab.read() == Tab::Session { "tab tab-active" } else { "tab" },
                         onclick: move |_| tab.set(Tab::Session),
                         "Session"
@@ -178,6 +184,8 @@ pub fn App() -> Element {
                 }
             } else if *tab.read() == Tab::Work {
                 WorkScreen { data: controller.read().work_data() }
+            } else if *tab.read() == Tab::Graph {
+                GraphScreen { data: controller.read().graph_data() }
             } else if *tab.read() == Tab::Session {
                 SessionScreen { data: controller.read().session_data() }
             } else {

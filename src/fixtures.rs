@@ -18,6 +18,16 @@ pub struct ProviderInfo {
     pub model: Option<String>,
 }
 
+/// Snapshot of design-tree state for the Graph power-mode screen.
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct GraphData {
+    /// All nodes, or the best available subset (implementing + actionable fallback).
+    pub nodes: Vec<WorkNode>,
+    /// True when `nodes` is a full inventory; false when it's a partial fallback.
+    pub is_full_inventory: bool,
+    pub counts: Vec<(String, usize)>,
+}
+
 /// Snapshot of work state for the Work power-mode screen.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct WorkData {
@@ -359,6 +369,23 @@ impl HostSessionModel for MockHostSession {
             session_turns: 4,
             session_tool_calls: 12,
             ..Default::default()
+        }
+    }
+
+    fn graph_data(&self) -> GraphData {
+        GraphData {
+            nodes: vec![
+                WorkNode { id: "auspex-mvp".into(),   title: "Auspex MVP".into(),            status: "implementing".into() },
+                WorkNode { id: "simple-mode".into(),  title: "Phase 3 — Simple mode".into(), status: "decided".into() },
+                WorkNode { id: "power-mode".into(),   title: "Phase 4 — Power mode".into(),  status: "implementing".into() },
+                WorkNode { id: "phone-client".into(), title: "Phase 5 — Phone".into(),       status: "seed".into() },
+            ],
+            is_full_inventory: true,
+            counts: vec![
+                ("implementing".into(), 2),
+                ("decided".into(), 1),
+                ("seed".into(), 1),
+            ],
         }
     }
 

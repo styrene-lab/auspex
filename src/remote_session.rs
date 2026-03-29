@@ -1,6 +1,6 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, HostSessionSummary, MessageRole, ProviderInfo,
-    SessionData, ShellState, WorkData, WorkNode,
+    ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, MessageRole,
+    ProviderInfo, SessionData, ShellState, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -292,6 +292,45 @@ impl HostSessionModel for RemoteHostSession {
             session_tool_calls: self.session_stats.tool_calls,
             session_compactions: self.session_stats.compactions,
         }
+    }
+
+    fn graph_data(&self) -> GraphData {
+        let (nodes, is_full) = if !self.design.all_nodes.is_empty() {
+            let nodes = self
+                .design
+                .all_nodes
+                .iter()
+                .map(|n| WorkNode {
+                    id: n.id.clone(),
+                    title: n.title.clone(),
+                    status: n.status.clone(),
+                })
+                .collect();
+            (nodes, true)
+        } else {
+            let nodes = self
+                .design
+                .implementing
+                .iter()
+                .chain(self.design.actionable.iter())
+                .map(|n| WorkNode {
+                    id: n.id.clone(),
+                    title: n.title.clone(),
+                    status: n.status.clone(),
+                })
+                .collect();
+            (nodes, false)
+        };
+
+        let mut counts: Vec<(String, usize)> = self
+            .design
+            .counts
+            .iter()
+            .map(|(k, v)| (k.clone(), *v))
+            .collect();
+        counts.sort_by(|a, b| b.1.cmp(&a.1));
+
+        GraphData { nodes, is_full_inventory: is_full, counts }
     }
 
     fn submit(&mut self) -> bool {
