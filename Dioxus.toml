@@ -1,0 +1,28 @@
+[application]
+# Build output directory
+out_dir = "dist"
+
+[bundle]
+# Reverse-DNS bundle identifier used by macOS / Windows / Linux packagers
+identifier = "com.black-meridian.auspex"
+
+# Publisher shown in OS package metadata
+publisher = "Black Meridian"
+
+# App icon — 512×512 PNG recommended; multiple sizes can be listed.
+# Leave empty until an icon is produced; dx bundle will warn but continue.
+icon = []
+
+# Copyright
+copyright = "© 2026 Black Meridian"
+
+# macOS category: matches Apple's app category enum
+# https://developer.apple.com/documentation/bundleresources/information_property_list/lsapplicationcategorytype
+category = "public.app-category.developer-tools"
+
+short_description = "Desktop and mobile interface for Omegon."
+
+long_description = """
+Auspex is the conversation-first interface for Omegon, the Black Meridian AI harness.
+It provides a Simple mode chat shell and a Power mode with full harness-state visibility.
+"""

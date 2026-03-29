@@ -38,6 +38,12 @@ lint:
 build:
     cargo build --release
 
+# Bundle a distributable desktop app using dx bundle.
+# Produces a .app (macOS), .exe + nsis installer (Windows), or .deb (Linux)
+# in the dist/ directory.
+bundle:
+    dx bundle --platform desktop --release
+
 # Remove build artifacts.
 clean:
     cargo clean
