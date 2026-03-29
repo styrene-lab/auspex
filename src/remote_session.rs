@@ -330,7 +330,11 @@ impl HostSessionModel for RemoteHostSession {
             .collect();
         counts.sort_by(|a, b| b.1.cmp(&a.1));
 
-        GraphData { nodes, is_full_inventory: is_full, counts }
+        GraphData {
+            nodes,
+            is_full_inventory: is_full,
+            counts,
+        }
     }
 
     fn submit(&mut self) -> bool {

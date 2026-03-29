@@ -375,10 +375,26 @@ impl HostSessionModel for MockHostSession {
     fn graph_data(&self) -> GraphData {
         GraphData {
             nodes: vec![
-                WorkNode { id: "auspex-mvp".into(),   title: "Auspex MVP".into(),            status: "implementing".into() },
-                WorkNode { id: "simple-mode".into(),  title: "Phase 3 — Simple mode".into(), status: "decided".into() },
-                WorkNode { id: "power-mode".into(),   title: "Phase 4 — Power mode".into(),  status: "implementing".into() },
-                WorkNode { id: "phone-client".into(), title: "Phase 5 — Phone".into(),       status: "seed".into() },
+                WorkNode {
+                    id: "auspex-mvp".into(),
+                    title: "Auspex MVP".into(),
+                    status: "implementing".into(),
+                },
+                WorkNode {
+                    id: "simple-mode".into(),
+                    title: "Phase 3 — Simple mode".into(),
+                    status: "decided".into(),
+                },
+                WorkNode {
+                    id: "power-mode".into(),
+                    title: "Phase 4 — Power mode".into(),
+                    status: "implementing".into(),
+                },
+                WorkNode {
+                    id: "phone-client".into(),
+                    title: "Phase 5 — Phone".into(),
+                    status: "seed".into(),
+                },
             ],
             is_full_inventory: true,
             counts: vec![

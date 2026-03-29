@@ -14,10 +14,19 @@ pub fn GraphScreen(data: GraphData) -> Element {
     let mut groups: Vec<(String, Vec<String>)> = Vec::new();
     let mut seen: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
     for node in &data.nodes {
-        seen.entry(node.status.clone()).or_default().push(node.title.clone());
+        seen.entry(node.status.clone())
+            .or_default()
+            .push(node.title.clone());
     }
     // Render in a meaningful order
-    for status in &["implementing", "decided", "actionable", "exploring", "seed", "blocked"] {
+    for status in &[
+        "implementing",
+        "decided",
+        "actionable",
+        "exploring",
+        "seed",
+        "blocked",
+    ] {
         if let Some(titles) = seen.remove(*status) {
             groups.push((status.to_string(), titles));
         }

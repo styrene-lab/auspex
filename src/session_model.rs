@@ -1,4 +1,7 @@
-use crate::fixtures::{ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, SessionData, ShellState, WorkData};
+use crate::fixtures::{
+    ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, SessionData,
+    ShellState, WorkData,
+};
 
 pub trait HostSessionModel {
     fn shell_state(&self) -> ShellState;
