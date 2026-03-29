@@ -16,7 +16,7 @@ run:
 check:
     cargo check
 
-# Run tests.
+# Run all tests.
 test:
     cargo test
 
@@ -28,33 +28,43 @@ fmt:
 fmt-check:
     cargo fmt --check
 
-# Full local validation pass.
+# Full local validation (check + fmt + test).
 lint:
     cargo check
     cargo fmt --check
     cargo test
 
-# Build a release binary.
+# ─── Build & distribution ───────────────────────────────────
+
+# Build a release binary — fast, no bundle.
 build:
     cargo build --release
 
-# Bundle a distributable desktop app using dx bundle.
-# Produces a .app (macOS), .exe + nsis installer (Windows), or .deb (Linux)
-# in the dist/ directory.
+# Bundle a distributable desktop app (.app + .dmg on macOS).
+# Output lands in dist/
 bundle:
     dx bundle --platform desktop --release
 
-# Remove build artifacts.
+# Validate, bundle, and open in one shot.
+dist: lint bundle
+    open dist/Auspex.app
+
+# Open the last-built .app without rebuilding.
+open:
+    open dist/Auspex.app
+
+# Remove build artefacts and bundle output.
 clean:
     cargo clean
+    rm -rf dist
 
 # ─── Release guardrails ─────────────────────────────────────
 
-# Show current package version from Cargo.toml.
+# Show current package version.
 version:
     @grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/'
 
-# Cut a release candidate tag after validation.
+# Cut a release candidate tag from main after full validation.
 # Policy: RCs are cut from main with a clean working tree.
 rc:
     #!/usr/bin/env bash
@@ -96,14 +106,15 @@ rc:
     cargo fmt
     cargo test
 
-    git add Cargo.toml Cargo.lock Justfile README.md
+    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 
     echo "✓ Cut RC v${NEW_VERSION}"
-    echo "  push with: git push origin main --tags"
+    echo "  build:  just bundle"
+    echo "  push:   git push origin main --tags"
 
-# Cut a stable release tag from an existing RC version.
+# Promote current RC to a stable release.
 release:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -127,7 +138,7 @@ release:
 
     CURRENT=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     if ! echo "$CURRENT" | grep -q '\-rc\.'; then
-        echo "✗ Stable release expects an rc version. Current version: $CURRENT"
+        echo "✗ Stable release expects an RC version. Current: $CURRENT"
         exit 1
     fi
 
@@ -138,17 +149,25 @@ release:
     cargo fmt
     cargo test
 
-    git add Cargo.toml Cargo.lock Justfile README.md
+    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
     git commit -m "chore(release): ${NEW_VERSION}"
     git tag "v${NEW_VERSION}"
 
     echo "✓ Cut release v${NEW_VERSION}"
-    echo "  push with: git push origin main --tags"
+    echo "  build:  just bundle"
+    echo "  push:   git push origin main --tags"
 
-# Prepare next development version after a stable release.
+# Open the next development cycle after a stable release.
 next:
     #!/usr/bin/env bash
     set -euo pipefail
+
+    DIRTY=$(git status --porcelain)
+    if [ -n "$DIRTY" ]; then
+        echo "✗ Working tree is dirty. Commit or stash first."
+        echo "$DIRTY"
+        exit 1
+    fi
 
     CURRENT=$(grep '^version = ' Cargo.toml | head -1 | sed 's/version = "\(.*\)"/\1/')
     if echo "$CURRENT" | grep -q '\-rc\.'; then
@@ -163,7 +182,7 @@ next:
 
     cargo fmt
 
-    git add Cargo.toml Cargo.lock Justfile README.md
+    git add Cargo.toml Cargo.lock Justfile Dioxus.toml
     git commit -m "chore(release): begin ${NEW_VERSION}"
 
     echo "✓ Advanced to ${NEW_VERSION}"

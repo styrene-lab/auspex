@@ -43,10 +43,12 @@ pub fn App() -> Element {
     use_effect(move || {
         let _ = controller.read().messages().len();
         spawn(async move {
-            let _ = document::eval(r#"
+            let _ = document::eval(
+                r#"
                 var el = document.getElementById('transcript-end');
                 if (el) el.scrollIntoView({ behavior: 'instant' });
-            "#)
+            "#,
+            )
             .await;
         });
     });
@@ -302,7 +304,12 @@ mod tests {
         let controller = AppController::remote_demo();
 
         assert!(controller.is_remote());
-        assert!(controller.summary().connection.contains("Attached to Omegon host"));
+        assert!(
+            controller
+                .summary()
+                .connection
+                .contains("Attached to Omegon host")
+        );
         assert_eq!(controller.messages().len(), 1);
     }
 }

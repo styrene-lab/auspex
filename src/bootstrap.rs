@@ -3,8 +3,8 @@ use std::fs;
 
 use crate::controller::AppController;
 use crate::event_stream::{
-    apply_ws_auth_token, derive_authenticated_ws_url, spawn_websocket_event_stream,
-    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV,
+    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV, apply_ws_auth_token, derive_authenticated_ws_url,
+    spawn_websocket_event_stream,
 };
 use crate::omegon_control::OmegonStartupInfo;
 
@@ -182,7 +182,8 @@ pub fn bootstrap_from_http_state(url: &str) -> Result<BootstrapResult, String> {
 }
 
 fn fetch_startup_info(state_url: &str) -> Result<OmegonStartupInfo, String> {
-    let startup_url = startup_url_from_env().unwrap_or_else(|| startup_url_from_state_url(state_url));
+    let startup_url =
+        startup_url_from_env().unwrap_or_else(|| startup_url_from_state_url(state_url));
     let response = reqwest::blocking::get(&startup_url)
         .map_err(|error| format!("startup discovery request failed: {error}"))?
         .error_for_status()
@@ -257,7 +258,12 @@ mod tests {
 
         let result = bootstrap_from_snapshot_file(path.to_str().unwrap()).unwrap();
 
-        assert_eq!(result.source, BootstrapSource::SnapshotFile { path: path.to_string_lossy().to_string() });
+        assert_eq!(
+            result.source,
+            BootstrapSource::SnapshotFile {
+                path: path.to_string_lossy().to_string()
+            }
+        );
         assert!(result.controller.is_remote());
         assert!(result.note.unwrap().contains("Loaded Omegon snapshot"));
 
@@ -279,7 +285,13 @@ mod tests {
     fn state_url_env_is_opt_in() {
         let key = format!("{}_TEST_ONLY", STATE_URL_ENV);
         assert_eq!(non_empty_env(&key), None);
-        assert_eq!(state_url_from_env(), env::var(STATE_URL_ENV).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()));
+        assert_eq!(
+            state_url_from_env(),
+            env::var(STATE_URL_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        );
     }
 
     #[test]
@@ -316,7 +328,13 @@ mod tests {
     fn websocket_token_env_is_opt_in() {
         let key = format!("{}_TEST_ONLY", WS_TOKEN_ENV);
         assert_eq!(non_empty_env(&key), None);
-        assert_eq!(websocket_token_from_env(), env::var(WS_TOKEN_ENV).ok().map(|value| value.trim().to_string()).filter(|value| !value.is_empty()));
+        assert_eq!(
+            websocket_token_from_env(),
+            env::var(WS_TOKEN_ENV)
+                .ok()
+                .map(|value| value.trim().to_string())
+                .filter(|value| !value.is_empty())
+        );
     }
 
     #[test]

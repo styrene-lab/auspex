@@ -1,5 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::thread;
+use std::time::Duration;
 
 use reqwest::Url;
 use tungstenite::Message;
@@ -68,15 +69,15 @@ impl EventStreamHandle {
             }
             Err(error) => feedback.push_system_notice(format!(
                 "Could not open command channel to Omegon event stream at {}: {}",
-                feedback.url(), error
+                feedback.url(),
+                error
             )),
         });
     }
 }
 
 pub fn derive_ws_url_from_state_url(state_url: &str) -> Result<String, String> {
-    let mut url = Url::parse(state_url)
-        .map_err(|error| format!("invalid state URL: {error}"))?;
+    let mut url = Url::parse(state_url).map_err(|error| format!("invalid state URL: {error}"))?;
 
     let ws_scheme = match url.scheme() {
         "http" => "ws",
@@ -98,8 +99,7 @@ pub fn apply_ws_auth_token(url: &str, token: Option<&str>) -> Result<String, Str
         return Ok(url.to_string());
     };
 
-    let mut parsed = Url::parse(url)
-        .map_err(|error| format!("invalid websocket URL: {error}"))?;
+    let mut parsed = Url::parse(url).map_err(|error| format!("invalid websocket URL: {error}"))?;
     let has_token = parsed.query_pairs().any(|(key, _)| key == "token");
     if !has_token {
         parsed.query_pairs_mut().append_pair("token", token);
@@ -118,39 +118,64 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
     let worker_handle = handle.clone();
     let url = url.to_string();
 
-    thread::spawn(move || match tungstenite::connect(url.as_str()) {
-        Ok((mut socket, _response)) => {
-            worker_handle.push_system_notice(format!(
-                "Connected to Omegon event stream at {}",
-                worker_handle.url()
-            ));
+    thread::spawn(move || {
+        let mut backoff = Duration::from_secs(1);
+        const MAX_BACKOFF: Duration = Duration::from_secs(30);
+        let mut first_attempt = true;
 
-            loop {
-                match socket.read() {
-                    Ok(Message::Text(text)) => worker_handle.inbox.push(text.to_string()),
-                    Ok(Message::Binary(_)) => worker_handle.push_system_notice(
-                        "Ignoring binary websocket frame from Omegon event stream",
-                    ),
-                    Ok(Message::Close(_)) => {
-                        worker_handle.push_system_notice(
-                            "Omegon event stream closed. Live updates are paused.",
-                        );
-                        break;
-                    }
-                    Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {}
-                    Err(error) => {
-                        worker_handle.push_system_notice(format!(
-                            "Omegon event stream disconnected: {error}"
-                        ));
-                        break;
+        loop {
+            // Sleep before every reconnect attempt, but not before the very first.
+            if !first_attempt {
+                worker_handle.push_system_notice(format!(
+                    "Reconnecting to Omegon event stream in {}s\u{2026}",
+                    backoff.as_secs()
+                ));
+                thread::sleep(backoff);
+                backoff = (backoff * 2).min(MAX_BACKOFF);
+            }
+            first_attempt = false;
+
+            match tungstenite::connect(url.as_str()) {
+                Err(error) => {
+                    worker_handle.push_system_notice(format!(
+                        "Could not connect to Omegon event stream at {}: {error}",
+                        worker_handle.url()
+                    ));
+                    // outer loop will sleep and retry
+                }
+                Ok((mut socket, _response)) => {
+                    // Successful connection — reset backoff.
+                    backoff = Duration::from_secs(1);
+                    worker_handle.push_system_notice(format!(
+                        "Connected to Omegon event stream at {}",
+                        worker_handle.url()
+                    ));
+
+                    loop {
+                        match socket.read() {
+                            Ok(Message::Text(text)) => worker_handle.inbox.push(text.to_string()),
+                            Ok(Message::Binary(_)) => worker_handle.push_system_notice(
+                                "Ignoring binary WebSocket frame from Omegon event stream",
+                            ),
+                            Ok(Message::Close(_)) => {
+                                worker_handle.push_system_notice(
+                                    "Omegon event stream closed by server. Will reconnect.",
+                                );
+                                break;
+                            }
+                            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {
+                            }
+                            Err(error) => {
+                                worker_handle.push_system_notice(format!(
+                                    "Omegon event stream error: {error}. Will reconnect."
+                                ));
+                                break;
+                            }
+                        }
                     }
                 }
             }
         }
-        Err(error) => worker_handle.push_system_notice(format!(
-            "Could not attach to Omegon event stream at {}: {}",
-            worker_handle.url(), error
-        )),
     });
 
     handle
@@ -178,7 +203,8 @@ mod tests {
 
     #[test]
     fn derive_ws_url_rewrites_https_to_wss() {
-        let ws_url = derive_ws_url_from_state_url("https://example.test/api/state?token=abc").unwrap();
+        let ws_url =
+            derive_ws_url_from_state_url("https://example.test/api/state?token=abc").unwrap();
         assert_eq!(ws_url, "wss://example.test/ws");
     }
 
@@ -190,13 +216,15 @@ mod tests {
 
     #[test]
     fn apply_ws_auth_token_preserves_existing_token() {
-        let ws_url = apply_ws_auth_token("ws://127.0.0.1:7842/ws?token=existing", Some("ignored")).unwrap();
+        let ws_url =
+            apply_ws_auth_token("ws://127.0.0.1:7842/ws?token=existing", Some("ignored")).unwrap();
         assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=existing");
     }
 
     #[test]
     fn derive_authenticated_ws_url_rewrites_and_authenticates() {
-        let ws_url = derive_authenticated_ws_url("http://127.0.0.1:7842/api/state", Some("abc123")).unwrap();
+        let ws_url =
+            derive_authenticated_ws_url("http://127.0.0.1:7842/api/state", Some("abc123")).unwrap();
         assert_eq!(ws_url, "ws://127.0.0.1:7842/ws?token=abc123");
     }
 
@@ -222,10 +250,12 @@ mod tests {
         handle.send_command(r#"{"type":"user_prompt","text":"hello"}"#.to_string());
         std::thread::sleep(std::time::Duration::from_millis(50));
 
-        assert!(handle
-            .inbox
-            .drain()
-            .into_iter()
-            .any(|event| event.contains("Could not open command channel")));
+        assert!(
+            handle
+                .inbox
+                .drain()
+                .into_iter()
+                .any(|event| event.contains("Could not open command channel"))
+        );
     }
 }

@@ -139,22 +139,58 @@ pub struct DelegateSummarySnapshot {
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OmegonEvent {
-    StateSnapshot { data: OmegonStateSnapshot },
-    MessageStart { role: String },
-    MessageChunk { text: String },
-    ThinkingChunk { text: String },
+    StateSnapshot {
+        data: OmegonStateSnapshot,
+    },
+    MessageStart {
+        role: String,
+    },
+    MessageChunk {
+        text: String,
+    },
+    ThinkingChunk {
+        text: String,
+    },
     MessageEnd,
-    SystemNotification { message: String },
-    HarnessStatusChanged { status: HarnessStatusSnapshot },
+    SystemNotification {
+        message: String,
+    },
+    HarnessStatusChanged {
+        status: HarnessStatusSnapshot,
+    },
     SessionReset,
-    TurnStart { turn: u32 },
-    TurnEnd { turn: u32 },
-    ToolStart { id: String, name: String, args: Option<serde_json::Value> },
-    ToolUpdate { id: String, partial: String },
-    ToolEnd { id: String, is_error: bool, result: Option<String> },
+    TurnStart {
+        turn: u32,
+    },
+    TurnEnd {
+        turn: u32,
+    },
+    ToolStart {
+        id: String,
+        name: String,
+        args: Option<serde_json::Value>,
+    },
+    ToolUpdate {
+        id: String,
+        partial: String,
+    },
+    ToolEnd {
+        id: String,
+        is_error: bool,
+        result: Option<String>,
+    },
     AgentEnd,
-    PhaseChanged { phase: String },
-    DecompositionStarted { children: Vec<String> },
-    DecompositionChildCompleted { label: String, success: bool },
-    DecompositionCompleted { merged: bool },
+    PhaseChanged {
+        phase: String,
+    },
+    DecompositionStarted {
+        children: Vec<String>,
+    },
+    DecompositionChildCompleted {
+        label: String,
+        success: bool,
+    },
+    DecompositionCompleted {
+        merged: bool,
+    },
 }

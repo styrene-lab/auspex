@@ -132,7 +132,8 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::DecompositionStarted { children } => {
-                self.summary.activity = format!("Cleave started with {} child task(s)", children.len());
+                self.summary.activity =
+                    format!("Cleave started with {} child task(s)", children.len());
                 true
             }
             OmegonEvent::DecompositionChildCompleted { label, success } => {
@@ -140,7 +141,11 @@ impl RemoteHostSession {
                     role: MessageRole::System,
                     text: format!(
                         "Cleave child {label} {}",
-                        if success { "completed successfully" } else { "failed" }
+                        if success {
+                            "completed successfully"
+                        } else {
+                            "failed"
+                        }
                     ),
                 });
                 true
@@ -233,7 +238,12 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             let provider = harness
                 .providers
                 .iter()
-                .find_map(|provider| provider.model.as_ref().map(|model| format!("{} {model}", provider.name)))
+                .find_map(|provider| {
+                    provider
+                        .model
+                        .as_ref()
+                        .map(|model| format!("{} {model}", provider.name))
+                })
                 .unwrap_or_else(|| "provider unknown".into());
             format!("Attached to Omegon host on branch {branch} ({provider})")
         }
@@ -257,7 +267,10 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
     let work = if let Some(focused) = snapshot.design.focused.as_ref() {
         format!("Focused node: {}", focused.title)
     } else if !snapshot.design.implementing.is_empty() {
-        format!("{} implementation item(s) active", snapshot.design.implementing.len())
+        format!(
+            "{} implementation item(s) active",
+            snapshot.design.implementing.len()
+        )
     } else if snapshot.openspec.total_tasks > 0 {
         format!(
             "OpenSpec progress: {}/{} tasks done",
@@ -298,10 +311,7 @@ fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStat
     if let Some(warning) = harness.memory_warning.as_ref() {
         summary.activity = warning.clone();
     } else if !harness.active_delegates.is_empty() {
-        summary.activity = format!(
-            "{} delegate task(s) active",
-            harness.active_delegates.len()
-        );
+        summary.activity = format!("{} delegate task(s) active", harness.active_delegates.len());
     }
 }
 
@@ -354,7 +364,10 @@ mod tests {
         assert_eq!(session.scenario(), DevScenario::Ready);
         assert!(session.summary().connection.contains("main"));
         assert!(session.summary().activity.contains("Parallel work running"));
-        assert_eq!(session.summary().work, "Focused node: Remote session adapter");
+        assert_eq!(
+            session.summary().work,
+            "Focused node: Remote session adapter"
+        );
         assert_eq!(session.messages().len(), 1);
     }
 
@@ -362,20 +375,31 @@ mod tests {
     fn websocket_message_events_append_transcript() {
         let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
 
-        assert!(session
-            .apply_event_json(r#"{"type":"message_start","role":"assistant"}"#)
-            .unwrap());
-        assert!(session
-            .apply_event_json(r#"{"type":"message_chunk","text":"hello "}"#)
-            .unwrap());
-        assert!(session
-            .apply_event_json(r#"{"type":"message_chunk","text":"world"}"#)
-            .unwrap());
-        assert!(session
-            .apply_event_json(r#"{"type":"message_end"}"#)
-            .unwrap());
+        assert!(
+            session
+                .apply_event_json(r#"{"type":"message_start","role":"assistant"}"#)
+                .unwrap()
+        );
+        assert!(
+            session
+                .apply_event_json(r#"{"type":"message_chunk","text":"hello "}"#)
+                .unwrap()
+        );
+        assert!(
+            session
+                .apply_event_json(r#"{"type":"message_chunk","text":"world"}"#)
+                .unwrap()
+        );
+        assert!(
+            session
+                .apply_event_json(r#"{"type":"message_end"}"#)
+                .unwrap()
+        );
 
-        assert_eq!(session.messages().last().unwrap().role, MessageRole::Assistant);
+        assert_eq!(
+            session.messages().last().unwrap().role,
+            MessageRole::Assistant
+        );
         assert_eq!(session.messages().last().unwrap().text, "hello world");
     }
 
@@ -409,8 +433,17 @@ mod tests {
         assert_eq!(session.summary().activity, "Tool run completed");
 
         session
-            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#)
+            .apply_event_json(
+                r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#,
+            )
             .unwrap();
-        assert!(session.messages().last().unwrap().text.contains("child-a completed successfully"));
+        assert!(
+            session
+                .messages()
+                .last()
+                .unwrap()
+                .text
+                .contains("child-a completed successfully")
+        );
     }
 }

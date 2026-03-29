@@ -228,9 +228,9 @@ impl AppController {
 
     pub fn cancel_command_json(&self) -> Option<String> {
         match &self.session {
-            SessionSource::Remote(session) if session.is_run_active() => Some(
-                serde_json::json!({ "type": "cancel" }).to_string(),
-            ),
+            SessionSource::Remote(session) if session.is_run_active() => {
+                Some(serde_json::json!({ "type": "cancel" }).to_string())
+            }
             _ => None,
         }
     }
@@ -256,7 +256,10 @@ mod tests {
 
         assert_eq!(controller.scenario(), DevScenario::Ready);
         assert_eq!(controller.messages().len(), 1);
-        assert_eq!(controller.summary().connection, "Connected to local host session");
+        assert_eq!(
+            controller.summary().connection,
+            "Connected to local host session"
+        );
     }
 
     #[test]
@@ -299,7 +302,8 @@ mod tests {
 
     #[test]
     fn remote_submit_emits_user_prompt_command_json() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.update_draft("ship it");
 
         let command = controller.submit_prompt_command_json().unwrap();
@@ -310,23 +314,32 @@ mod tests {
 
     #[test]
     fn remote_events_route_only_for_remote_session_source() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
-        assert!(controller
-            .apply_remote_event_json(r#"{"type":"message_start","role":"assistant"}"#)
-            .unwrap());
-        assert!(controller
-            .apply_remote_event_json(r#"{"type":"message_chunk","text":"hello remote"}"#)
-            .unwrap());
-        assert!(controller
-            .apply_remote_event_json(r#"{"type":"message_end"}"#)
-            .unwrap());
+        assert!(
+            controller
+                .apply_remote_event_json(r#"{"type":"message_start","role":"assistant"}"#)
+                .unwrap()
+        );
+        assert!(
+            controller
+                .apply_remote_event_json(r#"{"type":"message_chunk","text":"hello remote"}"#)
+                .unwrap()
+        );
+        assert!(
+            controller
+                .apply_remote_event_json(r#"{"type":"message_end"}"#)
+                .unwrap()
+        );
         assert_eq!(controller.messages().last().unwrap().text, "hello remote");
 
         let mut mock_controller = AppController::default();
-        assert!(!mock_controller
-            .apply_remote_event_json(r#"{"type":"message_start","role":"assistant"}"#)
-            .unwrap());
+        assert!(
+            !mock_controller
+                .apply_remote_event_json(r#"{"type":"message_start","role":"assistant"}"#)
+                .unwrap()
+        );
     }
 
     #[test]
@@ -336,12 +349,20 @@ mod tests {
 
         controller.switch_session_mode("remote-demo");
         assert_eq!(controller.session_mode(), SessionMode::RemoteDemo);
-        assert!(controller.summary().connection.contains("Attached to Omegon host"));
+        assert!(
+            controller
+                .summary()
+                .connection
+                .contains("Attached to Omegon host")
+        );
         assert_eq!(controller.messages().len(), 1);
 
         controller.switch_session_mode("mock");
         assert_eq!(controller.session_mode(), SessionMode::Mock);
-        assert_eq!(controller.summary().connection, "Connected to local host session");
+        assert_eq!(
+            controller.summary().connection,
+            "Connected to local host session"
+        );
     }
 
     #[test]
@@ -379,7 +400,10 @@ mod tests {
 
         controller.update_draft("rush message");
         let result = controller.submit_prompt_command_json();
-        assert!(result.is_none(), "submit must be blocked while run is active");
+        assert!(
+            result.is_none(),
+            "submit must be blocked while run is active"
+        );
     }
 
     #[test]
@@ -393,7 +417,9 @@ mod tests {
             .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
             .unwrap();
 
-        let cancel = controller.cancel_command_json().expect("cancel command expected during active run");
+        let cancel = controller
+            .cancel_command_json()
+            .expect("cancel command expected during active run");
         assert_eq!(cancel, r#"{"type":"cancel"}"#);
     }
 
