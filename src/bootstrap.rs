@@ -289,13 +289,30 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
         }
     }
 
+    // Check common user-local binary directories. Note: .exists() follows
+    // symlinks, so broken symlinks correctly return false.
     if let Ok(home) = std::env::var("HOME") {
-        let p = PathBuf::from(home).join(".cargo/bin/omegon");
+        for rel in &[".local/bin/omegon", ".cargo/bin/omegon"] {
+            let p = PathBuf::from(&home).join(rel);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
+    // Check common system-wide locations (useful when PATH is stripped in
+    // a bundled .app launch context).
+    for abs in &[
+        "/usr/local/bin/omegon",
+        "/opt/homebrew/bin/omegon",
+    ] {
+        let p = PathBuf::from(abs);
         if p.exists() {
             return Some(p);
         }
     }
 
+    // Finally, try PATH via `which`.
     if let Ok(output) = std::process::Command::new("which").arg("omegon").output() {
         if output.status.success() {
             let s = String::from_utf8_lossy(&output.stdout).trim().to_string();

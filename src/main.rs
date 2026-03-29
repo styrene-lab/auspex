@@ -11,6 +11,13 @@ mod session_model;
 fn main() {
     let bootstrap = bootstrap::bootstrap_controller_from_env();
     dioxus::LaunchBuilder::desktop()
+        .with_cfg(
+            dioxus::desktop::Config::new().with_window(
+                dioxus::desktop::WindowBuilder::new()
+                    .with_title("Auspex")
+                    .with_resizable(true),
+            ),
+        )
         .with_context(bootstrap)
         .launch(app::App);
 }
