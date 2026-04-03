@@ -29,6 +29,26 @@ impl EventInbox {
     }
 }
 
+#[derive(Clone, Debug, Default)]
+pub struct CommandOutbox {
+    queue: Arc<Mutex<Vec<String>>>,
+}
+
+impl CommandOutbox {
+    pub fn push(&self, command_json: impl Into<String>) {
+        if let Ok(mut queue) = self.queue.lock() {
+            queue.push(command_json.into());
+        }
+    }
+
+    pub fn drain(&self) -> Vec<String> {
+        if let Ok(mut queue) = self.queue.lock() {
+            return std::mem::take(&mut *queue);
+        }
+        Vec::new()
+    }
+}
+
 #[derive(Clone, Debug)]
 pub enum EventStreamSource {
     WebSocket { url: String },
@@ -38,6 +58,7 @@ pub enum EventStreamSource {
 pub struct EventStreamHandle {
     pub inbox: EventInbox,
     pub source: EventStreamSource,
+    outbox: CommandOutbox,
 }
 
 impl EventStreamHandle {
@@ -45,6 +66,7 @@ impl EventStreamHandle {
         Self {
             inbox: EventInbox::default(),
             source: EventStreamSource::WebSocket { url: url.into() },
+            outbox: CommandOutbox::default(),
         }
     }
 
@@ -54,25 +76,11 @@ impl EventStreamHandle {
         }
     }
 
+    /// Queue a command to be sent over the existing WebSocket connection.
+    /// The background reader thread picks these up and sends them on the
+    /// same socket that receives events.
     pub fn send_command(&self, command_json: String) {
-        let command_url = self.url().to_string();
-        let feedback = self.clone();
-
-        thread::spawn(move || match tungstenite::connect(command_url.as_str()) {
-            Ok((mut socket, _response)) => {
-                if let Err(error) = socket.send(Message::Text(command_json.into())) {
-                    feedback.push_system_notice(format!(
-                        "Could not send command to Omegon event stream: {error}"
-                    ));
-                }
-                let _ = socket.close(None);
-            }
-            Err(error) => feedback.push_system_notice(format!(
-                "Could not open command channel to Omegon event stream at {}: {}",
-                feedback.url(),
-                error
-            )),
-        });
+        self.outbox.push(command_json);
     }
 }
 
@@ -151,7 +159,25 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                         worker_handle.url()
                     ));
 
+                    // Set the underlying TCP stream to non-blocking so we can
+                    // interleave reading events with sending queued commands.
+                    let stream = socket.get_ref();
+                    if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = stream {
+                        let _ = tcp.set_nonblocking(true);
+                    }
+
                     loop {
+                        // Drain any queued outbound commands first.
+                        for cmd in worker_handle.outbox.drain() {
+                            if let Err(error) =
+                                socket.send(Message::Text(cmd.into()))
+                            {
+                                worker_handle.push_system_notice(format!(
+                                    "Failed to send command to Omegon: {error}"
+                                ));
+                            }
+                        }
+
                         match socket.read() {
                             Ok(Message::Text(text)) => worker_handle.inbox.push(text.to_string()),
                             Ok(Message::Binary(_)) => worker_handle.push_system_notice(
@@ -164,6 +190,13 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                                 break;
                             }
                             Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {
+                            }
+                            Err(tungstenite::Error::Io(ref e))
+                                if e.kind() == std::io::ErrorKind::WouldBlock =>
+                            {
+                                // Non-blocking read returned nothing — sleep briefly
+                                // then loop to check for outbound commands.
+                                thread::sleep(Duration::from_millis(50));
                             }
                             Err(error) => {
                                 worker_handle.push_system_notice(format!(
@@ -245,17 +278,12 @@ mod tests {
     }
 
     #[test]
-    fn send_command_failure_is_reported_as_system_notice() {
+    fn send_command_queues_to_outbox() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
         handle.send_command(r#"{"type":"user_prompt","text":"hello"}"#.to_string());
-        std::thread::sleep(std::time::Duration::from_millis(50));
 
-        assert!(
-            handle
-                .inbox
-                .drain()
-                .into_iter()
-                .any(|event| event.contains("Could not open command channel"))
-        );
+        let commands = handle.outbox.drain();
+        assert_eq!(commands.len(), 1);
+        assert!(commands[0].contains("user_prompt"));
     }
 }

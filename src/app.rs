@@ -114,9 +114,9 @@ pub fn App() -> Element {
                     h1 { "Auspex" }
                     p {
                         if controller.read().is_remote() {
-                            "Conversation-first scaffold · remote control-plane projection"
+                            "Connected to Omegon control plane"
                         } else {
-                            "Conversation-first scaffold"
+                            "Offline mock mode"
                         }
                     }
                 }

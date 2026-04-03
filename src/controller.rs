@@ -37,23 +37,23 @@ const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SessionMode {
     Mock,
-    RemoteDemo,
+    Live,
 }
 
 impl SessionMode {
-    pub const ALL: [Self; 2] = [Self::Mock, Self::RemoteDemo];
+    pub const ALL: [Self; 2] = [Self::Live, Self::Mock];
 
     pub fn key(self) -> &'static str {
         match self {
             Self::Mock => "mock",
-            Self::RemoteDemo => "remote-demo",
+            Self::Live => "live",
         }
     }
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Mock => "Mock local",
-            Self::RemoteDemo => "Remote demo",
+            Self::Mock => "Mock (offline)",
+            Self::Live => "Live",
         }
     }
 }
@@ -88,7 +88,7 @@ impl SessionSource {
     fn mode(&self) -> SessionMode {
         match self {
             Self::Mock(_) => SessionMode::Mock,
-            Self::Remote(_) => SessionMode::RemoteDemo,
+            Self::Remote(_) => SessionMode::Live,
         }
     }
 }
@@ -128,12 +128,12 @@ impl AppController {
     }
 
     pub fn is_remote(&self) -> bool {
-        self.session_mode() == SessionMode::RemoteDemo
+        self.session_mode() == SessionMode::Live
     }
 
     pub fn switch_session_mode(&mut self, raw: &str) {
         self.session = match raw {
-            "remote-demo" => SessionSource::Remote(Box::new(
+            "live" => SessionSource::Remote(Box::new(
                 RemoteHostSession::from_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
                     .expect("embedded remote demo snapshot must stay valid"),
             )),
@@ -359,8 +359,8 @@ mod tests {
         let mut controller = AppController::default();
         assert_eq!(controller.session_mode(), SessionMode::Mock);
 
-        controller.switch_session_mode("remote-demo");
-        assert_eq!(controller.session_mode(), SessionMode::RemoteDemo);
+        controller.switch_session_mode("live");
+        assert_eq!(controller.session_mode(), SessionMode::Live);
         assert!(
             controller
                 .summary()
