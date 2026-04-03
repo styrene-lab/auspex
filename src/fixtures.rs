@@ -2,6 +2,49 @@ use crate::session_model::HostSessionModel;
 
 // ── View-model types ────────────────────────────────────────
 
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TurnBlockText {
+    pub text: String,
+    pub collapsed: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ToolCard {
+    pub id: String,
+    pub name: String,
+    pub args: String,
+    pub partial_output: String,
+    pub result: Option<String>,
+    pub is_error: bool,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum TurnBlock {
+    Thinking(TurnBlockText),
+    Text(String),
+    Tool(ToolCard),
+    System(String),
+    Aborted(String),
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Turn {
+    pub number: u32,
+    pub blocks: Vec<TurnBlock>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct TranscriptData {
+    pub turns: Vec<Turn>,
+    pub active_turn: Option<u32>,
+    pub context_tokens: Option<u64>,
+}
+
 /// Brief description of a design-tree node for work-state lists.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct WorkNode {
@@ -61,6 +104,8 @@ pub struct SessionData {
     pub session_turns: u32,
     pub session_tool_calls: u32,
     pub session_compactions: u32,
+    pub context_tokens: Option<u64>,
+    pub context_window: Option<u64>,
 }
 
 // ── Chat types ───────────────────────────────────────────────

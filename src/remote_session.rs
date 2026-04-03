@@ -21,6 +21,8 @@ pub struct RemoteHostSession {
     cleave: crate::omegon_control::CleaveSnapshot,
     session_stats: crate::omegon_control::SessionSnapshot,
     harness_snapshot: Option<HarnessStatusSnapshot>,
+    context_tokens: Option<u64>,
+    context_window: Option<u64>,
 }
 
 impl RemoteHostSession {
@@ -45,6 +47,8 @@ impl RemoteHostSession {
             cleave: snapshot.cleave,
             session_stats: snapshot.session,
             harness_snapshot: snapshot.harness.clone(),
+            context_tokens: None,
+            context_window: None,
         }
     }
 
@@ -89,6 +93,22 @@ impl RemoteHostSession {
                     text: self.pending_text.trim().to_string(),
                 });
                 self.pending_text.clear();
+                true
+            }
+            OmegonEvent::MessageAbort => {
+                if let Some(role) = self.pending_role.take()
+                    && matches!(role, MessageRole::Assistant)
+                {
+                    self.messages.push(ChatMessage {
+                        role: MessageRole::System,
+                        text: format!(
+                            "Assistant message aborted: {}",
+                            self.pending_text.trim()
+                        ),
+                    });
+                }
+                self.pending_text.clear();
+                self.run_active = false;
                 true
             }
             OmegonEvent::SystemNotification { message } => {
@@ -138,6 +158,10 @@ impl RemoteHostSession {
                 } else {
                     "Tool run completed".into()
                 };
+                true
+            }
+            OmegonEvent::ContextUpdated { tokens } => {
+                self.context_tokens = Some(tokens);
                 true
             }
             OmegonEvent::AgentEnd => {
@@ -291,6 +315,8 @@ impl HostSessionModel for RemoteHostSession {
             session_turns: self.session_stats.turns,
             session_tool_calls: self.session_stats.tool_calls,
             session_compactions: self.session_stats.compactions,
+            context_tokens: self.context_tokens,
+            context_window: self.context_window,
         }
     }
 

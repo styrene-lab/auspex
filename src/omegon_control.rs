@@ -160,6 +160,7 @@ pub enum OmegonEvent {
         text: String,
     },
     MessageEnd,
+    MessageAbort,
     SystemNotification {
         message: String,
     },
@@ -190,6 +191,9 @@ pub enum OmegonEvent {
     AgentEnd,
     PhaseChanged {
         phase: String,
+    },
+    ContextUpdated {
+        tokens: u64,
     },
     DecompositionStarted {
         children: Vec<String>,
