@@ -182,6 +182,10 @@ impl AppController {
         self.session.model().graph_data()
     }
 
+    pub fn transcript(&self) -> &crate::fixtures::TranscriptData {
+        self.session.model().transcript()
+    }
+
     #[allow(dead_code)]
     pub fn as_model(&self) -> &dyn HostSessionModel {
         self.session.model()

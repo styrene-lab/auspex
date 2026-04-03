@@ -1,6 +1,6 @@
 use crate::fixtures::{
     ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, MessageRole,
-    ProviderInfo, SessionData, ShellState, WorkData, WorkNode,
+    ProviderInfo, SessionData, ShellState, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -23,6 +23,7 @@ pub struct RemoteHostSession {
     harness_snapshot: Option<HarnessStatusSnapshot>,
     context_tokens: Option<u64>,
     context_window: Option<u64>,
+    transcript: TranscriptData,
 }
 
 impl RemoteHostSession {
@@ -49,6 +50,7 @@ impl RemoteHostSession {
             harness_snapshot: snapshot.harness.clone(),
             context_tokens: None,
             context_window: None,
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -68,7 +70,7 @@ impl RemoteHostSession {
                 self.openspec = data.openspec;
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
-                self.harness_snapshot = data.harness;
+                self.transcript.context_tokens = self.context_tokens;
                 true
             }
             OmegonEvent::MessageStart { role } => {
@@ -138,11 +140,17 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::TurnStart { turn } => {
+                self.transcript.active_turn = Some(turn);
                 self.run_active = true;
                 self.summary.activity = format!("Turn {turn} in progress");
+                self.transcript.turns.push(crate::fixtures::Turn {
+                    number: turn,
+                    blocks: vec![],
+                });
                 true
             }
             OmegonEvent::TurnEnd { turn } => {
+                self.transcript.active_turn = None;
                 self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
                 true
@@ -161,6 +169,7 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::ContextUpdated { tokens } => {
+                self.transcript.context_tokens = Some(tokens);
                 self.context_tokens = Some(tokens);
                 true
             }
@@ -224,6 +233,10 @@ impl HostSessionModel for RemoteHostSession {
 
     fn messages(&self) -> &[ChatMessage] {
         &self.messages
+    }
+
+    fn transcript(&self) -> &TranscriptData {
+        &self.transcript
     }
 
     fn composer(&self) -> &ComposerState {

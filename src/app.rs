@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
-use crate::fixtures::{DevScenario, MessageRole, ShellState};
+use crate::fixtures::{DevScenario, MessageRole, ShellState, TranscriptData};
 use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
@@ -106,6 +106,17 @@ pub fn App() -> Element {
     let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
     let mut tab = use_signal(|| Tab::Chat);
 
+    let session = controller.read().session_data();
+    let context_status = if let Some(tokens) = session.context_tokens {
+        if let Some(window) = session.context_window {
+            format!("{tokens} / {window} tokens")
+        } else {
+            format!("{tokens} tokens")
+        }
+    } else {
+        "No context usage reported".to_string()
+    };
+
     rsx! {
         document::Style { "{MAIN_CSS}" }
         div { class: "shell",
@@ -185,8 +196,8 @@ pub fn App() -> Element {
                         p { "{controller.read().summary().connection}" }
                     }
                     div { class: "summary-card",
-                        h2 { "Work" }
-                        p { "{controller.read().summary().work}" }
+                        h2 { "Context" }
+                        p { "{context_status}" }
                     }
                 }
 
@@ -257,23 +268,7 @@ pub fn App() -> Element {
                     SessionScreen { data: controller.read().session_data() }
                 } else {
                     main { class: "transcript",
-                        for message in controller.read().messages().iter() {
-                            article {
-                                class: match message.role {
-                                    MessageRole::User => "bubble bubble-user",
-                                    MessageRole::Assistant => "bubble bubble-assistant",
-                                    MessageRole::System => "bubble bubble-system",
-                                },
-                                h2 {
-                                    match message.role {
-                                        MessageRole::User => "You",
-                                        MessageRole::Assistant => "Auspex",
-                                        MessageRole::System => "System",
-                                    }
-                                }
-                                p { "{message.text}" }
-                            }
-                        }
+                        {render_transcript(controller.read().transcript(), controller.read().messages())}
                         div { id: "transcript-end" }
                     }
 
@@ -332,6 +327,75 @@ pub fn App() -> Element {
                                 disabled: !controller.read().can_submit(),
                                 "Send"
                             }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {
+    if transcript.turns.is_empty() {
+        rsx! {
+            for message in messages.iter() {
+                article {
+                    class: match message.role {
+                        MessageRole::User => "bubble bubble-user",
+                        MessageRole::Assistant => "bubble bubble-assistant",
+                        MessageRole::System => "bubble bubble-system",
+                    },
+                    h2 {
+                        match message.role {
+                            MessageRole::User => "You",
+                            MessageRole::Assistant => "Auspex",
+                            MessageRole::System => "System",
+                        }
+                    }
+                    p { "{message.text}" }
+                }
+            }
+        }
+    } else {
+        rsx! {
+            for turn in &transcript.turns {
+                article { class: "turn-card",
+                    h2 { class: "turn-title", "Turn {turn.number}" }
+                    for block in &turn.blocks {
+                        match block {
+                            crate::fixtures::TurnBlock::Thinking(thinking) => rsx! {
+                                section { class: if thinking.collapsed { "block block-thinking block-collapsed" } else { "block block-thinking" },
+                                    h3 { "Thinking" }
+                                    p { "{thinking.text}" }
+                                }
+                            },
+                            crate::fixtures::TurnBlock::Text(text) => rsx! {
+                                section { class: "block block-text",
+                                    p { "{text}" }
+                                }
+                            },
+                            crate::fixtures::TurnBlock::Tool(tool) => rsx! {
+                                section { class: if tool.is_error { "block block-tool block-error" } else { "block block-tool" },
+                                    h3 { "{tool.name}" }
+                                    p { class: "tool-args", "{tool.args}" }
+                                    if !tool.partial_output.is_empty() {
+                                        p { class: "tool-partial", "{tool.partial_output}" }
+                                    }
+                                    if let Some(result) = &tool.result {
+                                        p { class: "tool-result", "{result}" }
+                                    }
+                                }
+                            },
+                            crate::fixtures::TurnBlock::System(text) => rsx! {
+                                section { class: "block block-system",
+                                    p { "{text}" }
+                                }
+                            },
+                            crate::fixtures::TurnBlock::Aborted(text) => rsx! {
+                                section { class: "block block-aborted",
+                                    p { "{text}" }
+                                }
+                            },
                         }
                     }
                 }

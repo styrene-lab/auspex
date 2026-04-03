@@ -37,7 +37,6 @@ pub struct Turn {
     pub blocks: Vec<TurnBlock>,
 }
 
-#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct TranscriptData {
     pub turns: Vec<Turn>,
@@ -379,6 +378,15 @@ impl HostSessionModel for MockHostSession {
 
     fn messages(&self) -> &[ChatMessage] {
         &self.messages
+    }
+
+    fn transcript(&self) -> &TranscriptData {
+        static EMPTY: TranscriptData = TranscriptData {
+            turns: Vec::new(),
+            active_turn: None,
+            context_tokens: None,
+        };
+        &EMPTY
     }
 
     fn composer(&self) -> &ComposerState {

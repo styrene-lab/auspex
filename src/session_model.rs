@@ -1,6 +1,6 @@
 use crate::fixtures::{
     ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, SessionData,
-    ShellState, WorkData,
+    ShellState, TranscriptData, WorkData,
 };
 
 pub trait HostSessionModel {
@@ -8,6 +8,7 @@ pub trait HostSessionModel {
     fn scenario(&self) -> DevScenario;
     fn summary(&self) -> &HostSessionSummary;
     fn messages(&self) -> &[ChatMessage];
+    fn transcript(&self) -> &TranscriptData;
     fn composer(&self) -> &ComposerState;
     fn composer_mut(&mut self) -> &mut ComposerState;
     fn set_scenario(&mut self, scenario: DevScenario);
