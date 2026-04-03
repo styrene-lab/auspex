@@ -5,13 +5,13 @@ status: exploring
 tags: []
 open_questions:
   - "Should detached-service workers remain owned by an Auspex background supervisor, or be allowed to drift into weaker external ownership after launch?"
-  - "How much auth, memory, and workspace state should supervised-child workers inherit by default from the primary driver?"
 dependencies: []
 related:
   - auspex-instance-registry-schema
   - auspex-worker-profiles
   - auspex-runtime-backends
   - auspex-detached-service-lifecycle
+  - auspex-worker-inheritance
 ---
 
 # Auspex multi-agent runtime and Omegon instance orchestration
@@ -121,6 +121,12 @@ Escalation to expensive models should be explicit rather than the default.
 
 Auspex should be design-compatible with running as a deployable service in Kubernetes, with Omegon workers instantiated as pod/job/deployment-backed runtimes under the same logical worker model.
 
+### Worker inheritance should be explicit, narrowed, and inspectable
+
+**Status:** accepted
+
+Child workers should inherit workspace identity and auth capability references, but not a blind clone of the parent's full mutable session state. Inheritance should flow through an explicit propagation object that can be inspected and explained.
+
 ## First-pass runtime model
 
 Auspex supervises a pool of logical workers.
@@ -131,6 +137,7 @@ Each worker has:
 3. **Control plane** — how Auspex talks to it
 4. **Policy** — which profile/knobs it gets
 5. **Task binding** — why it exists and who owns it
+6. **Propagation** — what context/capabilities were inherited from a parent
 
 ## First-pass worker lifecycle
 
@@ -162,7 +169,9 @@ Owns the normalized instantiation/reconciliation contract across local, OCI, and
 ### [[auspex-detached-service-lifecycle]]
 Owns the semantics of persistence, reattach, shutdown, abandonment, and cleanup for background agents.
 
+### [[auspex-worker-inheritance]]
+Owns the propagation rules for workspace, auth, memory, profile, and task context from parent workers into child or detached workers.
+
 ## Open Questions
 
 - Should detached-service workers remain owned by an Auspex background supervisor, or be allowed to drift into weaker external ownership after launch?
-- How much auth, memory, and workspace state should supervised-child workers inherit by default from the primary driver?

@@ -8,6 +8,7 @@ open_questions: []
 dependencies: []
 related:
   - auspex-multi-agent-runtime
+  - auspex-worker-inheritance
 ---
 
 # Auspex worker profiles and knob allocation
@@ -35,6 +36,18 @@ The orchestration/supervision path should use more capable models by default.
 **Status:** accepted
 
 Delegated work should default to Haiku, GPT-spark, or equivalent low-cost/local options unless explicitly escalated.
+
+### Inheritance resolves before profile overrides are finalized
+
+**Status:** accepted
+
+Effective worker policy should be resolved in this order:
+
+1. role/profile defaults
+2. inherited narrowing constraints
+3. explicit per-instance overrides
+
+This prevents parent inheritance from silently broadening a restricted profile.
 
 ## Canonical config format
 
