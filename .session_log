@@ -8,4 +8,40 @@ Append-only record of development sessions. Read recent entries for context.
   314cf80 docs: specify embedded omegon backend contract
   7ca35c0 chore: declare omegon rc.16 compatibility pin
   6deb573 fix: tighten release workflow and surface app version
+## 2026-04-03 — main (27t 427tc 5m45s)
+
+**Commits:**
+  8ea1136 refactor: unify WS command channel and rename session modes
+  8928b6d feat: align with omegon 0.15.7 embedded backend contract
+  314cf80 docs: specify embedded omegon backend contract
+## 2026-04-03 — main (9t 435tc 2m10s)
+
+**Commits:**
+  8ea1136 refactor: unify WS command channel and rename session modes
+  8928b6d feat: align with omegon 0.15.7 embedded backend contract
+  314cf80 docs: specify embedded omegon backend contract
+## 2026-04-03 — main (10t 458tc 5m39s)
+
+**Commits:**
+  8ea1136 refactor: unify WS command channel and rename session modes
+  8928b6d feat: align with omegon 0.15.7 embedded backend contract
+  314cf80 docs: specify embedded omegon backend contract
+## 2026-04-03 — main (32t 508tc 4m11s)
+
+**Active:**
+- auspex-data-model-v2 (0/20)
+
+**Commits:**
+  97a593c feat: scaffold auspex live-session data model v2
+  8ea1136 refactor: unify WS command channel and rename session modes
+  8928b6d feat: align with omegon 0.15.7 embedded backend contract
+## 2026-04-03 — main (40t 574tc 4m26s)
+
+**Active:**
+- auspex-data-model-v2 (0/20)
+
+**Commits:**
+  de32996 feat: stabilize live-session transcript scaffolding
+  97a593c feat: scaffold auspex live-session data model v2
+  8ea1136 refactor: unify WS command channel and rename session modes
 

@@ -90,24 +90,29 @@ impl RemoteHostSession {
                 let Some(role) = self.pending_role.take() else {
                     return false;
                 };
+                let text = self.pending_text.trim().to_string();
                 self.messages.push(ChatMessage {
                     role,
-                    text: self.pending_text.trim().to_string(),
+                    text: text.clone(),
                 });
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::Text(text));
+                }
                 self.pending_text.clear();
                 true
             }
             OmegonEvent::MessageAbort => {
+                let aborted = self.pending_text.trim().to_string();
                 if let Some(role) = self.pending_role.take()
                     && matches!(role, MessageRole::Assistant)
                 {
                     self.messages.push(ChatMessage {
                         role: MessageRole::System,
-                        text: format!(
-                            "Assistant message aborted: {}",
-                            self.pending_text.trim()
-                        ),
+                        text: format!("Assistant message aborted: {aborted}"),
                     });
+                }
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::Aborted(aborted));
                 }
                 self.pending_text.clear();
                 self.run_active = false;
@@ -116,8 +121,11 @@ impl RemoteHostSession {
             OmegonEvent::SystemNotification { message } => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
-                    text: message,
+                    text: message.clone(),
                 });
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                }
                 true
             }
             OmegonEvent::HarnessStatusChanged { status } => {
@@ -155,17 +163,45 @@ impl RemoteHostSession {
                 self.summary.activity = format!("Turn {turn} completed");
                 true
             }
-            OmegonEvent::ToolStart { name, .. } => {
+            OmegonEvent::ToolStart { id, name, args } => {
                 self.summary.activity = format!("Running tool {name}");
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::Tool(crate::fixtures::ToolCard {
+                        id,
+                        name,
+                        args: args.map(|v| v.to_string()).unwrap_or_default(),
+                        partial_output: String::new(),
+                        result: None,
+                        is_error: false,
+                    }));
+                }
                 true
             }
-            OmegonEvent::ToolUpdate { .. } => true,
-            OmegonEvent::ToolEnd { is_error, .. } => {
+            OmegonEvent::ToolUpdate { id, partial } => {
+                if let Some(turn) = self.transcript.turns.last_mut()
+                    && let Some(crate::fixtures::TurnBlock::Tool(tool)) = turn.blocks.last_mut()
+                    && tool.id == id
+                {
+                    if !tool.partial_output.is_empty() {
+                        tool.partial_output.push('\n');
+                    }
+                    tool.partial_output.push_str(&partial);
+                }
+                true
+            }
+            OmegonEvent::ToolEnd { id, is_error, result } => {
                 self.summary.activity = if is_error {
                     "Tool run completed with an error".into()
                 } else {
                     "Tool run completed".into()
                 };
+                if let Some(turn) = self.transcript.turns.last_mut()
+                    && let Some(crate::fixtures::TurnBlock::Tool(tool)) = turn.blocks.last_mut()
+                    && tool.id == id
+                {
+                    tool.is_error = is_error;
+                    tool.result = result;
+                }
                 true
             }
             OmegonEvent::ContextUpdated { tokens } => {
