@@ -1,7 +1,6 @@
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct OmegonStartupInfo {
     #[serde(default)]
     pub schema_version: u32,
@@ -12,6 +11,12 @@ pub struct OmegonStartupInfo {
     #[serde(default)]
     pub state_url: String,
     #[serde(default)]
+    pub startup_url: String,
+    #[serde(default)]
+    pub health_url: String,
+    #[serde(default)]
+    pub ready_url: String,
+    #[serde(default)]
     pub ws_url: String,
     #[serde(default)]
     pub token: String,
@@ -19,10 +24,11 @@ pub struct OmegonStartupInfo {
     pub auth_mode: String,
     #[serde(default)]
     pub auth_source: String,
+    #[serde(default)]
+    pub control_plane_state: String,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct OmegonStateSnapshot {
     #[serde(default)]
     pub design: DesignSnapshot,
@@ -37,7 +43,6 @@ pub struct OmegonStateSnapshot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct DesignSnapshot {
     #[serde(default)]
     pub focused: Option<FocusedNode>,
@@ -72,7 +77,6 @@ pub struct NodeBrief {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct OpenSpecSnapshot {
     #[serde(default)]
     pub total_tasks: usize,
@@ -81,7 +85,6 @@ pub struct OpenSpecSnapshot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct CleaveSnapshot {
     #[serde(default)]
     pub active: bool,
@@ -104,7 +107,6 @@ pub struct SessionSnapshot {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
-#[serde(rename_all = "camelCase")]
 pub struct HarnessStatusSnapshot {
     pub git_branch: Option<String>,
     #[serde(default)]
@@ -146,7 +148,7 @@ pub struct DelegateSummarySnapshot {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OmegonEvent {
     StateSnapshot {
-        data: OmegonStateSnapshot,
+        data: Box<OmegonStateSnapshot>,
     },
     MessageStart {
         role: String,
@@ -199,4 +201,126 @@ pub enum OmegonEvent {
     DecompositionCompleted {
         merged: bool,
     },
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// Actual /api/startup payload from `omegon embedded` v0.15.7.
+    const REAL_STARTUP_JSON: &str = r#"{
+        "schema_version": 2,
+        "addr": "127.0.0.1:7842",
+        "http_base": "http://127.0.0.1:7842",
+        "state_url": "http://127.0.0.1:7842/api/state",
+        "startup_url": "http://127.0.0.1:7842/api/startup",
+        "health_url": "http://127.0.0.1:7842/api/healthz",
+        "ready_url": "http://127.0.0.1:7842/api/readyz",
+        "ws_url": "ws://127.0.0.1:7842/ws?token=18a2d7bb93cce660131e9",
+        "token": "18a2d7bb93cce660131e9",
+        "auth_mode": "ephemeral-bearer",
+        "auth_source": "generated",
+        "control_plane_state": "ready"
+    }"#;
+
+    /// Actual /api/state payload from `omegon embedded` v0.15.7 (empty session).
+    const REAL_STATE_JSON: &str = r#"{
+        "design": {
+            "counts": {
+                "total": 0, "seed": 0, "exploring": 0, "resolved": 0,
+                "decided": 0, "implementing": 0, "implemented": 0,
+                "blocked": 0, "deferred": 0, "open_questions": 0
+            },
+            "focused": null,
+            "implementing": [],
+            "actionable": [],
+            "all_nodes": []
+        },
+        "openspec": {"changes": [], "total_tasks": 0, "done_tasks": 0},
+        "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0, "children": []},
+        "session": {"turns": 0, "tool_calls": 0, "compactions": 0}
+    }"#;
+
+    /// Actual stdout startup line from `omegon embedded` v0.15.7.
+    const REAL_STDOUT_STARTUP_JSON: &str = r#"{
+        "type": "omegon.startup",
+        "schema_version": 2,
+        "pid": 78313,
+        "http_base": "http://127.0.0.1:7842",
+        "startup_url": "http://127.0.0.1:7842/api/startup",
+        "health_url": "http://127.0.0.1:7842/api/healthz",
+        "ready_url": "http://127.0.0.1:7842/api/readyz",
+        "ws_url": "ws://127.0.0.1:7842/ws?token=18a2d7bb93cce660131e9",
+        "auth_mode": "ephemeral-bearer",
+        "auth_source": "generated"
+    }"#;
+
+    #[test]
+    fn deserialize_real_startup_payload() {
+        let info: OmegonStartupInfo = serde_json::from_str(REAL_STARTUP_JSON).unwrap();
+
+        assert_eq!(info.schema_version, 2);
+        assert_eq!(info.addr, "127.0.0.1:7842");
+        assert_eq!(info.http_base, "http://127.0.0.1:7842");
+        assert_eq!(info.state_url, "http://127.0.0.1:7842/api/state");
+        assert_eq!(info.startup_url, "http://127.0.0.1:7842/api/startup");
+        assert_eq!(info.health_url, "http://127.0.0.1:7842/api/healthz");
+        assert_eq!(info.ready_url, "http://127.0.0.1:7842/api/readyz");
+        assert!(info.ws_url.contains("token="));
+        assert_eq!(info.token, "18a2d7bb93cce660131e9");
+        assert_eq!(info.auth_mode, "ephemeral-bearer");
+        assert_eq!(info.auth_source, "generated");
+        assert_eq!(info.control_plane_state, "ready");
+    }
+
+    #[test]
+    fn deserialize_real_state_payload() {
+        let snapshot: OmegonStateSnapshot = serde_json::from_str(REAL_STATE_JSON).unwrap();
+
+        assert_eq!(snapshot.session.turns, 0);
+        assert_eq!(snapshot.session.tool_calls, 0);
+        assert_eq!(snapshot.openspec.total_tasks, 0);
+        assert_eq!(snapshot.cleave.active, false);
+        assert!(snapshot.design.focused.is_none());
+        assert!(snapshot.design.all_nodes.is_empty());
+        assert!(snapshot.harness.is_none());
+    }
+
+    #[test]
+    fn deserialize_real_stdout_startup_line() {
+        // The stdout line has extra fields (type, pid) that OmegonStartupInfo
+        // doesn't model — serde should ignore them with #[serde(default)].
+        let info: OmegonStartupInfo = serde_json::from_str(REAL_STDOUT_STARTUP_JSON).unwrap();
+
+        assert_eq!(info.schema_version, 2);
+        assert_eq!(info.http_base, "http://127.0.0.1:7842");
+        assert_eq!(info.auth_mode, "ephemeral-bearer");
+        // token is not in the stdout line — should default to empty
+        assert_eq!(info.token, "");
+    }
+
+    #[test]
+    fn state_with_counts_deserializes_correctly() {
+        let json = r#"{
+            "design": {
+                "counts": {"total": 5, "implementing": 2, "seed": 3},
+                "focused": null,
+                "implementing": [],
+                "actionable": [],
+                "all_nodes": []
+            },
+            "openspec": {"total_tasks": 10, "done_tasks": 7},
+            "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+            "session": {"turns": 3, "tool_calls": 15, "compactions": 0}
+        }"#;
+
+        let snapshot: OmegonStateSnapshot = serde_json::from_str(json).unwrap();
+
+        assert_eq!(snapshot.design.counts.get("total"), Some(&5));
+        assert_eq!(snapshot.design.counts.get("implementing"), Some(&2));
+        assert_eq!(snapshot.openspec.total_tasks, 10);
+        assert_eq!(snapshot.openspec.done_tasks, 7);
+        assert_eq!(snapshot.session.turns, 3);
+        assert_eq!(snapshot.session.tool_calls, 15);
+    }
 }

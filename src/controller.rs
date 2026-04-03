@@ -18,19 +18,19 @@ const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
         "implementing": [{"id": "auspex-remote", "title": "Remote session adapter", "status": "implementing"}],
         "actionable": [{"id": "compat-handshake", "title": "Compatibility handshake", "status": "ready"}]
     },
-    "openspec": {"totalTasks": 5, "doneTasks": 2},
-    "cleave": {"active": false, "totalChildren": 0, "completed": 0, "failed": 0},
-    "session": {"turns": 12, "toolCalls": 34, "compactions": 1},
+    "openspec": {"total_tasks": 5, "done_tasks": 2},
+    "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+    "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
     "harness": {
-        "gitBranch": "main",
-        "gitDetached": false,
-        "thinkingLevel": "medium",
-        "capabilityTier": "victory",
-        "providers": [{"name": "Anthropic", "authenticated": true, "authMethod": "api-key", "model": "claude-sonnet"}],
-        "memoryAvailable": true,
-        "cleaveAvailable": true,
-        "memoryWarning": null,
-        "activeDelegates": []
+        "git_branch": "main",
+        "git_detached": false,
+        "thinking_level": "medium",
+        "capability_tier": "victory",
+        "providers": [{"name": "Anthropic", "authenticated": true, "auth_method": "api-key", "model": "claude-sonnet"}],
+        "memory_available": true,
+        "cleave_available": true,
+        "memory_warning": null,
+        "active_delegates": []
     }
 }"#;
 
@@ -61,7 +61,7 @@ impl SessionMode {
 #[derive(Debug, Clone, PartialEq, Eq)]
 enum SessionSource {
     Mock(MockHostSession),
-    Remote(RemoteHostSession),
+    Remote(Box<RemoteHostSession>),
 }
 
 impl Default for SessionSource {
@@ -74,14 +74,14 @@ impl SessionSource {
     fn model(&self) -> &dyn HostSessionModel {
         match self {
             Self::Mock(session) => session,
-            Self::Remote(session) => session,
+            Self::Remote(session) => session.as_ref(),
         }
     }
 
     fn model_mut(&mut self) -> &mut dyn HostSessionModel {
         match self {
             Self::Mock(session) => session,
-            Self::Remote(session) => session,
+            Self::Remote(session) => session.as_mut(),
         }
     }
 
@@ -94,29 +94,22 @@ impl SessionSource {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Default)]
 pub struct AppController {
     session: SessionSource,
     bootstrap_note: Option<String>,
-}
-
-impl Default for AppController {
-    fn default() -> Self {
-        Self {
-            session: SessionSource::default(),
-            bootstrap_note: None,
-        }
-    }
 }
 
 impl AppController {
     pub fn from_remote_snapshot_json(json: &str) -> Result<Self, serde_json::Error> {
         let session = RemoteHostSession::from_snapshot_json(json)?;
         Ok(Self {
-            session: SessionSource::Remote(session),
+            session: SessionSource::Remote(Box::new(session)),
             bootstrap_note: None,
         })
     }
 
+    #[allow(dead_code)]
     pub fn remote_demo() -> Self {
         Self::from_remote_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
             .expect("embedded remote demo snapshot must stay valid")
@@ -140,10 +133,10 @@ impl AppController {
 
     pub fn switch_session_mode(&mut self, raw: &str) {
         self.session = match raw {
-            "remote-demo" => SessionSource::Remote(
+            "remote-demo" => SessionSource::Remote(Box::new(
                 RemoteHostSession::from_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
                     .expect("embedded remote demo snapshot must stay valid"),
-            ),
+            )),
             _ => SessionSource::Mock(MockHostSession::default()),
         };
         self.bootstrap_note = None;
@@ -189,6 +182,7 @@ impl AppController {
         self.session.model().graph_data()
     }
 
+    #[allow(dead_code)]
     pub fn as_model(&self) -> &dyn HostSessionModel {
         self.session.model()
     }
@@ -213,6 +207,7 @@ impl AppController {
         self.session.model_mut().composer_mut().set_draft(value);
     }
 
+    #[allow(dead_code)]
     pub fn submit_prompt(&mut self) -> bool {
         self.session.model_mut().submit()
     }
@@ -235,7 +230,7 @@ impl AppController {
                     .to_string(),
                 )
             }
-            SessionSource::Mock(session) => session.submit().then(|| String::new()),
+            SessionSource::Mock(session) => session.submit().then(String::new),
         }
         .filter(|command| !command.is_empty())
     }

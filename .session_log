@@ -1,0 +1,11 @@
+# Session Log
+
+Append-only record of development sessions. Read recent entries for context.
+
+## 2026-04-03 — main (12t 362tc 1m26s)
+
+**Commits:**
+  314cf80 docs: specify embedded omegon backend contract
+  7ca35c0 chore: declare omegon rc.16 compatibility pin
+  6deb573 fix: tighten release workflow and surface app version
+

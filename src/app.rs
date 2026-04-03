@@ -317,10 +317,10 @@ pub fn App() -> Element {
                                     class: "composer-cancel",
                                     r#type: "button",
                                     onclick: move |_| {
-                                        if let Some(command) = controller.read().cancel_command_json() {
-                                            if let Some(stream) = event_stream.read().clone() {
-                                                stream.send_command(command);
-                                            }
+                                        if let Some(command) = controller.read().cancel_command_json()
+                                            && let Some(stream) = event_stream.read().clone()
+                                        {
+                                            stream.send_command(command);
                                         }
                                     },
                                     "Cancel"

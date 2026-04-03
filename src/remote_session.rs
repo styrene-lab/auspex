@@ -466,19 +466,19 @@ mod tests {
             "implementing": [{"id": "auspex-remote", "title": "Remote session adapter", "status": "implementing"}],
             "actionable": []
         },
-        "openspec": {"totalTasks": 5, "doneTasks": 2},
-        "cleave": {"active": true, "totalChildren": 3, "completed": 1, "failed": 0},
+        "openspec": {"total_tasks": 5, "done_tasks": 2},
+        "cleave": {"active": true, "total_children": 3, "completed": 1, "failed": 0},
         "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
         "harness": {
-            "gitBranch": "main",
-            "gitDetached": false,
-            "thinkingLevel": "medium",
-            "capabilityTier": "victory",
+            "git_branch": "main",
+            "git_detached": false,
+            "thinking_level": "medium",
+            "capability_tier": "victory",
             "providers": [{"name": "Anthropic", "authenticated": true, "auth_method": "api-key", "model": "claude-sonnet"}],
-            "memoryAvailable": true,
-            "cleaveAvailable": true,
-            "memoryWarning": null,
-            "activeDelegates": []
+            "memory_available": true,
+            "cleave_available": true,
+            "memory_warning": null,
+            "active_delegates": []
         }
     }"#;
 
@@ -535,7 +535,7 @@ mod tests {
 
         session
             .apply_event_json(
-                r#"{"type":"harness_status_changed","status":{"gitBranch":"main","gitDetached":false,"thinkingLevel":"medium","capabilityTier":"victory","providers":[],"memoryAvailable":false,"cleaveAvailable":true,"memoryWarning":"Memory database unavailable","activeDelegates":[]}}"#,
+                r#"{"type":"harness_status_changed","status":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[],"memory_available":false,"cleave_available":true,"memory_warning":"Memory database unavailable","active_delegates":[]}}"#,
             )
             .unwrap();
 

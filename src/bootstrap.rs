@@ -16,7 +16,7 @@ pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
 pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 /// Explicit path to the Omegon binary. Overrides discovery.
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
-pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 1;
+pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 2;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -310,14 +310,14 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
     }
 
     // Finally, try PATH via `which`.
-    if let Ok(output) = std::process::Command::new("which").arg("omegon").output() {
-        if output.status.success() {
-            let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !s.is_empty() {
-                let p = PathBuf::from(s);
-                if p.exists() {
-                    return Some(p);
-                }
+    if let Ok(output) = std::process::Command::new("which").arg("omegon").output()
+        && output.status.success()
+    {
+        let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if !s.is_empty() {
+            let p = PathBuf::from(s);
+            if p.exists() {
+                return Some(p);
             }
         }
     }
@@ -325,51 +325,114 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
     None
 }
 
-/// Spawn the embedded Omegon backend, wait for it to accept connections,
-/// then bootstrap from it. Called from the app component's use_future after
-/// returning SpawningOmegon.
+/// Spawn the embedded Omegon backend, wait for its stdout startup line,
+/// then bootstrap from the control plane. Called from the app component's
+/// use_future after returning SpawningOmegon.
 pub fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
+    use std::io::BufRead;
+
     let label = binary.display().to_string();
 
-    match std::process::Command::new(binary).spawn() {
-        Err(error) => BootstrapResult::startup_failure(format!(
-            "Could not spawn embedded Omegon backend at {label}: {error}."
-        )),
-        Ok(_child) => {
-            let startup_url = startup_url_from_state_url(DEFAULT_STATE_URL);
-            let deadline = Instant::now() + SPAWN_TIMEOUT;
-
-            while Instant::now() < deadline {
-                let ready = reqwest::blocking::Client::builder()
-                    .timeout(Duration::from_secs(1))
-                    .build()
-                    .ok()
-                    .and_then(|c| c.get(&startup_url).send().ok())
-                    .map(|r| r.status().is_success())
-                    .unwrap_or(false);
-
-                if ready {
-                    return bootstrap_from_http_state(DEFAULT_STATE_URL).unwrap_or_else(|error| {
-                        if error.contains("control-plane schema") {
-                            BootstrapResult::compatibility_failure(error)
-                        } else {
-                            BootstrapResult::startup_failure(format!(
-                                "Embedded Omegon backend started at {label} but bootstrap failed: {error}"
-                            ))
-                        }
-                    });
-                }
-
-                thread::sleep(SPAWN_POLL);
-            }
-
-            BootstrapResult::startup_failure(format!(
-                "Embedded Omegon backend at {label} did not expose {} within {}s. Auspex cannot continue until Omegon provides a machine-start control-plane contract.",
-                startup_url,
-                SPAWN_TIMEOUT.as_secs()
+    let mut child = match std::process::Command::new(binary)
+        .arg("embedded")
+        .arg("--control-port")
+        .arg("7842")
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()
+    {
+        Err(error) => {
+            return BootstrapResult::startup_failure(format!(
+                "Could not spawn embedded Omegon backend at {label}: {error}."
             ))
         }
+        Ok(child) => child,
+    };
+
+    // Read stdout line-by-line looking for the startup JSON.
+    // Omegon `embedded` emits exactly one JSON line with type "omegon.startup"
+    // on stdout, then keeps running.
+    let stdout = match child.stdout.take() {
+        Some(stdout) => stdout,
+        None => {
+            return BootstrapResult::startup_failure(
+                "Embedded Omegon backend spawned but stdout was not captured.".into(),
+            )
+        }
+    };
+
+    let deadline = Instant::now() + SPAWN_TIMEOUT;
+    let reader = std::io::BufReader::new(stdout);
+    let mut startup_info: Option<OmegonStartupInfo> = None;
+
+    for line in reader.lines() {
+        if Instant::now() > deadline {
+            break;
+        }
+        let line = match line {
+            Ok(line) => line,
+            Err(_) => break,
+        };
+        let trimmed = line.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+        // Try to parse as startup JSON.
+        if let Ok(info) = serde_json::from_str::<OmegonStartupInfo>(trimmed)
+            && info.schema_version > 0
+        {
+            startup_info = Some(info);
+            break;
+        }
     }
+
+    let Some(info) = startup_info else {
+        return BootstrapResult::startup_failure(format!(
+            "Embedded Omegon backend at {label} did not emit a startup JSON line within {}s.",
+            SPAWN_TIMEOUT.as_secs()
+        ));
+    };
+
+    if let Err(error) = validate_startup_info(&info) {
+        return BootstrapResult::compatibility_failure(error);
+    }
+
+    // Use the state_url from startup info, falling back to default.
+    let state_url = if info.state_url.is_empty() {
+        DEFAULT_STATE_URL.to_string()
+    } else {
+        info.state_url.clone()
+    };
+
+    // Poll briefly for the HTTP endpoint to accept connections (the startup
+    // line may arrive slightly before the HTTP listener is ready).
+    let http_deadline = Instant::now() + Duration::from_secs(5);
+    while Instant::now() < http_deadline {
+        let ready = reqwest::blocking::Client::builder()
+            .timeout(Duration::from_secs(1))
+            .build()
+            .ok()
+            .and_then(|c| c.get(&state_url).send().ok())
+            .map(|r| r.status().is_success())
+            .unwrap_or(false);
+
+        if ready {
+            return bootstrap_from_http_state(&state_url).unwrap_or_else(|error| {
+                if error.contains("control-plane schema") {
+                    BootstrapResult::compatibility_failure(error)
+                } else {
+                    BootstrapResult::startup_failure(format!(
+                        "Embedded Omegon backend started at {label} but bootstrap failed: {error}"
+                    ))
+                }
+            });
+        }
+        thread::sleep(SPAWN_POLL);
+    }
+
+    BootstrapResult::startup_failure(format!(
+        "Embedded Omegon backend at {label} emitted startup info but HTTP endpoint at {state_url} did not become ready within 5s.",
+    ))
 }
 
 fn non_empty_env(key: &str) -> Option<String> {
@@ -397,19 +460,19 @@ mod tests {
             "implementing": [{"id": "auspex-remote", "title": "Remote session adapter", "status": "implementing"}],
             "actionable": []
         },
-        "openspec": {"totalTasks": 5, "doneTasks": 2},
-        "cleave": {"active": false, "totalChildren": 0, "completed": 0, "failed": 0},
-        "session": {"turns": 12, "toolCalls": 34, "compactions": 1},
+        "openspec": {"total_tasks": 5, "done_tasks": 2},
+        "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+        "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
         "harness": {
-            "gitBranch": "main",
-            "gitDetached": false,
-            "thinkingLevel": "medium",
-            "capabilityTier": "victory",
-            "providers": [{"name": "Anthropic", "authenticated": true, "authMethod": "api-key", "model": "claude-sonnet"}],
-            "memoryAvailable": true,
-            "cleaveAvailable": true,
-            "memoryWarning": null,
-            "activeDelegates": []
+            "git_branch": "main",
+            "git_detached": false,
+            "thinking_level": "medium",
+            "capability_tier": "victory",
+            "providers": [{"name": "Anthropic", "authenticated": true, "auth_method": "api-key", "model": "claude-sonnet"}],
+            "memory_available": true,
+            "cleave_available": true,
+            "memory_warning": null,
+            "active_delegates": []
         }
     }"#;
 
@@ -467,7 +530,7 @@ mod tests {
     #[test]
     fn startup_schema_mismatch_is_rejected() {
         let error = validate_startup_info(&OmegonStartupInfo {
-            schema_version: 2,
+            schema_version: 99,
             addr: "127.0.0.1:7842".into(),
             http_base: "http://127.0.0.1:7842".into(),
             state_url: "http://127.0.0.1:7842/api/state".into(),
@@ -475,10 +538,29 @@ mod tests {
             token: "test".into(),
             auth_mode: "signed-attach".into(),
             auth_source: "keyring".into(),
+            ..Default::default()
         })
         .unwrap_err();
 
-        assert!(error.contains("requires control-plane schema 1"));
+        assert!(error.contains("requires control-plane schema 2"));
+        assert!(error.contains("reported schema 99"));
+    }
+
+    #[test]
+    fn startup_schema_match_is_accepted() {
+        let result = validate_startup_info(&OmegonStartupInfo {
+            schema_version: 2,
+            addr: "127.0.0.1:7842".into(),
+            http_base: "http://127.0.0.1:7842".into(),
+            state_url: "http://127.0.0.1:7842/api/state".into(),
+            ws_url: "ws://127.0.0.1:7842/ws?token=test".into(),
+            token: "test".into(),
+            auth_mode: "ephemeral-bearer".into(),
+            auth_source: "generated".into(),
+            ..Default::default()
+        });
+
+        assert!(result.is_ok());
     }
 
     #[test]

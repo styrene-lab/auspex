@@ -158,17 +158,9 @@ pub struct HostSessionSummary {
     pub work: String,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ComposerState {
     draft: String,
-}
-
-impl Default for ComposerState {
-    fn default() -> Self {
-        Self {
-            draft: String::new(),
-        }
-    }
 }
 
 impl ComposerState {
@@ -286,7 +278,7 @@ impl MockHostSession {
             },
             messages: vec![ChatMessage {
                 role: MessageRole::System,
-                text: "Compatibility failure: Auspex expects Omegon control-plane schema 1, but the detected host did not satisfy the declared contract.".into(),
+                text: "Compatibility failure: Auspex expects Omegon control-plane schema 2, but the detected host did not satisfy the declared contract.".into(),
             }],
             composer: ComposerState::default(),
         }

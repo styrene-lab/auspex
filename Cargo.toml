@@ -4,9 +4,9 @@ version = "0.0.1-rc.6"
 edition = "2024"
 
 [package.metadata.omegon]
-minimum_version = "0.15.4-rc.16"
-maximum_tested_version = "0.15.4-rc.16"
-control_plane_schema = 1
+minimum_version = "0.15.7"
+maximum_tested_version = "0.15.7"
+control_plane_schema = 2
 
 [dependencies]
 dioxus = { version = "0.6", features = ["desktop"] }
