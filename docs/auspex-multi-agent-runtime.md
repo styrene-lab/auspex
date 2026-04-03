@@ -3,8 +3,7 @@ id: auspex-multi-agent-runtime
 title: "Auspex multi-agent runtime and Omegon instance orchestration"
 status: exploring
 tags: []
-open_questions:
-  - "Should detached-service workers remain owned by an Auspex background supervisor, or be allowed to drift into weaker external ownership after launch?"
+open_questions: []
 dependencies: []
 related:
   - auspex-instance-registry-schema
@@ -127,6 +126,18 @@ Auspex should be design-compatible with running as a deployable service in Kuber
 
 Child workers should inherit workspace identity and auth capability references, but not a blind clone of the parent's full mutable session state. Inheritance should flow through an explicit propagation object that can be inspected and explained.
 
+### Detached-service workers remain registry-owned and normally transition to daemon-owned supervision
+
+**Status:** accepted
+
+A detached worker may outlive the visible UI session, but it should remain owned by the registry and normally be adopted by an Auspex background supervisor rather than drifting into ambiguous ownership.
+
+### Detached reattach is identity- and control-plane-verified
+
+**Status:** accepted
+
+Reattachment should require registry identity, control-plane probe success, schema/version compatibility, and usable auth reference resolution. Process/container/pod existence alone is insufficient.
+
 ## First-pass runtime model
 
 Auspex supervises a pool of logical workers.
@@ -153,6 +164,11 @@ A worker instance should move through:
 - `exited`
 - `lost`
 
+Detached-service workers add:
+
+- `abandoned`
+- `reaped`
+
 This lifecycle must work for both local and Kubernetes-backed workers.
 
 ## First-pass child design split
@@ -171,7 +187,3 @@ Owns the semantics of persistence, reattach, shutdown, abandonment, and cleanup 
 
 ### [[auspex-worker-inheritance]]
 Owns the propagation rules for workspace, auth, memory, profile, and task context from parent workers into child or detached workers.
-
-## Open Questions
-
-- Should detached-service workers remain owned by an Auspex background supervisor, or be allowed to drift into weaker external ownership after launch?
