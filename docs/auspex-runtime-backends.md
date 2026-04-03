@@ -4,8 +4,7 @@ title: "Auspex runtime backends for local, OCI, and Kubernetes workers"
 status: exploring
 parent: auspex-multi-agent-runtime
 tags: []
-open_questions:
-  - "What common instantiation contract normalizes local-process, local-detached, OCI, and Kubernetes workers?"
+open_questions: []
 dependencies: []
 related:
   - auspex-multi-agent-runtime
@@ -17,41 +16,46 @@ related:
 
 Define the backend abstraction for launching and reconciling Omegon workers as local subprocesses, detached local services, OCI containers, or Kubernetes-managed workloads.
 
-## Decision
+## Decisions
 
-### Runtime backends share one logical worker contract
+### Runtime backends share one instantiation request schema
 
 **Status:** accepted
 
-Auspex should instantiate logical workers through a backend-agnostic request shape, then let the selected backend realize that worker in its own way.
+Auspex should instantiate logical workers through a backend-agnostic request shape, then let the selected backend realize the worker according to backend-specific semantics.
 
-## First-pass backend kinds
+### Kubernetes is a first-class backend
 
-- `local-process`
-- `local-detached`
-- `oci-container`
-- `kubernetes`
+**Status:** accepted
 
-## First-pass instantiation contract
+The runtime API and registry model must not assume localhost PID+port is the only execution model.
+
+## Canonical instantiate request schema
+
+This is the shape Auspex should use internally regardless of backend.
 
 ```json
 {
-  "role": "primary-driver | supervised-child | detached-service",
+  "schema_version": 1,
+  "role": "supervised-child",
   "profile": "cheap-subtask",
-  "backend": "local-process | local-detached | oci-container | kubernetes",
+  "backend": "kubernetes",
   "workspace": {
     "cwd": "/repo/path",
-    "workspace_id": "repo:hash"
+    "workspace_id": "repo:8f2f4c1",
+    "branch": "main"
   },
-  "parent_instance_id": "optional-parent-id",
+  "parent_instance_id": "omg_primary_01HV...",
   "task": {
     "task_id": "clv-child-2",
-    "purpose": "parallel subtask"
+    "purpose": "parallel subtask",
+    "spec_binding": "auspex-data-model-v2"
   },
   "overrides": {
     "model": "anthropic:claude-haiku",
     "thinking_level": "low",
     "max_runtime_seconds": 900,
+    "image": "ghcr.io/org/omegon:v0.15.7",
     "namespace": "auspex",
     "resources": {
       "cpu": "500m",
@@ -61,29 +65,34 @@ Auspex should instantiate logical workers through a backend-agnostic request sha
 }
 ```
 
-## Backend semantics
+## Backend adapter expectations
 
 ### `local-process`
-- child process of current Auspex session
-- best for low-latency interactive/delegated work
-- strongest ownership semantics
+- returns child pid and local port
+- strong session ownership
+- fastest startup path
 
 ### `local-detached`
-- local background service with durable registry entry
-- survives window restart
-- may require a background Auspex supervisor/agent-manager process
+- returns durable local service identity
+- may outlive the UI process
+- should still register token and placement metadata
 
 ### `oci-container`
-- worker runs in a container runtime on the local/remote host
-- stronger resource isolation than plain subprocess
-- useful stepping stone toward cluster deployment
+- launches through container runtime
+- returns container id / mapped port / image info
+- useful for local or remote host isolation
 
 ### `kubernetes`
-- worker realized as a pod/job/deployment-backed runtime
-- observed state must be reconciled asynchronously
-- registry must track desired and observed state separately
+- creates pod/job/deployment-backed runtime
+- returns placement id, namespace, and reconciliation handle
+- readiness becomes asynchronous and must update the registry later
 
-## Constraint
+## Reconciliation contract
 
-Kubernetes is a first-class backend.
-The schema and runtime API must not assume localhost PID+port is the only execution model.
+Backends should support:
+- `instantiate(request)`
+- `observe(instance_id)`
+- `stop(instance_id)`
+- `reap(instance_id)`
+
+This is enough for a first-pass supervisor implementation.
