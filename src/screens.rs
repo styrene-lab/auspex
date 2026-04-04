@@ -329,6 +329,9 @@ pub fn SessionScreen(
                     {kv_row("Turns",       &data.session_turns.to_string())}
                     {kv_row("Tool calls",  &data.session_tool_calls.to_string())}
                     {kv_row("Compactions", &data.session_compactions.to_string())}
+                    if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
+                        {kv_row("Context", &context_usage)}
+                    }
                     if data.active_delegate_count > 0 {
                         {kv_row(
                             "Active delegates",
@@ -551,6 +554,15 @@ fn switch_target_label(profile: Option<&str>, model: Option<&str>) -> String {
     }
 }
 
+fn format_context_usage(tokens: Option<u64>, window: Option<u64>) -> Option<String> {
+    match (tokens, window) {
+        (Some(tokens), Some(window)) => Some(format!("{tokens} / {window} tokens")),
+        (Some(tokens), None) => Some(format!("{tokens} tokens")),
+        (None, Some(window)) => Some(format!("window {window} tokens")),
+        (None, None) => None,
+    }
+}
+
 fn kv_row(key: &str, value: &str) -> Element {
     rsx! {
         div { class: "kv-row",
@@ -578,6 +590,23 @@ mod tests {
             available_options: vec![],
             switch_state: None,
         }
+    }
+
+    #[test]
+    fn format_context_usage_prefers_tokens_and_window() {
+        assert_eq!(
+            format_context_usage(Some(2048), Some(8192)).as_deref(),
+            Some("2048 / 8192 tokens")
+        );
+        assert_eq!(
+            format_context_usage(Some(2048), None).as_deref(),
+            Some("2048 tokens")
+        );
+        assert_eq!(
+            format_context_usage(None, Some(8192)).as_deref(),
+            Some("window 8192 tokens")
+        );
+        assert_eq!(format_context_usage(None, None), None);
     }
 
     #[test]
