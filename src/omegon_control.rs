@@ -284,7 +284,7 @@ mod tests {
         assert_eq!(snapshot.session.turns, 0);
         assert_eq!(snapshot.session.tool_calls, 0);
         assert_eq!(snapshot.openspec.total_tasks, 0);
-        assert_eq!(snapshot.cleave.active, false);
+        assert!(!snapshot.cleave.active);
         assert!(snapshot.design.focused.is_none());
         assert!(snapshot.design.all_nodes.is_empty());
         assert!(snapshot.harness.is_none());

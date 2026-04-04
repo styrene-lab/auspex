@@ -18,3 +18,4 @@ tungstenite = { version = "0.28", default-features = false, features = ["handsha
 
 [dev-dependencies]
 pretty_assertions = "1"
+toml = "0.8"
