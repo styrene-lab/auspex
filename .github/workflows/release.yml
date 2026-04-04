@@ -1,0 +1,98 @@
+name: Release Auspex desktop binary
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      tag_name:
+        description: 'Tag to release (e.g. v0.1.0-rc.1). Must already exist on origin.'
+        required: true
+        type: string
+
+permissions:
+  contents: write
+
+env:
+  CARGO_TERM_COLOR: always
+  RELEASE_TAG: ${{ inputs.tag_name || github.ref_name }}
+
+jobs:
+  build:
+    name: Build macOS arm64 release
+    runs-on: macos-14
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.tag_name || github.ref }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Build release binary
+        run: cargo build --release
+
+      - name: Create archive and checksum
+        run: |
+          set -euo pipefail
+          VERSION="${RELEASE_TAG#v}"
+          TARGET="aarch64-apple-darwin"
+          ARCHIVE="auspex-${VERSION}-${TARGET}.tar.gz"
+          tar czf "$ARCHIVE" -C target/release auspex
+          shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
+          echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-macos-arm64
+          path: |
+            ${{ env.ARCHIVE }}
+            ${{ env.ARCHIVE }}.sha256
+
+  release:
+    name: Create release
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+          merge-multiple: true
+
+      - name: Aggregate checksums
+        run: |
+          set -euo pipefail
+          cd artifacts
+          cat *.sha256 > checksums.sha256
+          cat checksums.sha256
+
+      - name: Generate release manifest
+        run: |
+          python3 scripts/release_manifest.py generate \
+            --tag "${RELEASE_TAG}" \
+            --checksums artifacts/checksums.sha256 \
+            --output artifacts/release-manifest.json \
+            --repo "${{ github.repository }}" \
+            --commit "${{ github.sha }}"
+          cat artifacts/release-manifest.json
+
+      - name: Create GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [[ "${RELEASE_TAG}" =~ -rc\.[0-9]+$ ]]; then
+            gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              --prerelease \
+              artifacts/*
+          else
+            gh release create "${RELEASE_TAG}" \
+              --title "${RELEASE_TAG}" \
+              artifacts/*
+          fi

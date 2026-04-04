@@ -41,15 +41,18 @@ This directory is the start of the Auspex repo path inside the Black Meridian wo
 
 ## Release cadence
 
-Auspex should establish release guardrails early rather than inventing them later under pressure.
+Auspex now aims to follow a small but explicit RC/stable release framework.
 
-Current release workflow is scaffolded via `Justfile` and follows a simple line:
-- validate locally (`just lint`)
-- cut RCs from `main` (`just rc`)
-- cut stable releases from RC versions (`just release`)
-- advance to the next dev cycle (`just next`)
+Current release discipline is:
+- maintain `CHANGELOG.md`
+- cut RCs via semver prerelease tags such as `v0.1.0-rc.1`
+- promote to stable with plain semver tags such as `v0.1.0`
+- run `python3 scripts/release_preflight.py` before stable promotion
+- let CI build release archives, checksums, and `release-manifest.json`
 
-The exact CI/release pipeline can evolve later, but the version and tagging cadence should remain explicit from the beginning.
+The initial release surface is intentionally narrow:
+- macOS arm64 raw archive artifacts only
+- unsigned release artifacts
 
 ## Notes
 
@@ -70,7 +73,7 @@ Behavior is intentionally simple:
 - HTTP bootstrap is opt-in
 - when available, Auspex prefers Omegon startup discovery at `/api/startup`
 - startup discovery supplies the canonical state URL, WS URL, token, and auth mode/source
-- Auspex currently requires control-plane schema `1` and treats other schema versions as a visible compatibility failure
+- Auspex currently requires control-plane schema `2` and treats other schema versions as a visible compatibility failure
 - if discovery is unavailable, Auspex falls back to the configured state URL and derived `/ws`
 - if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the fallback WebSocket URL unless a `token` query is already present
 - if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI
