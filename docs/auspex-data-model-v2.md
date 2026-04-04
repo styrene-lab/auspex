@@ -1,7 +1,7 @@
 ---
 id: auspex-data-model-v2
 title: "Auspex frontend data model v2 — live session fidelity"
-status: decided
+status: implemented
 tags: []
 open_questions: []
 dependencies: []
