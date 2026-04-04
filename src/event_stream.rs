@@ -1,5 +1,4 @@
 use std::sync::{Arc, Mutex};
-use std::thread;
 use std::time::Duration;
 
 use reqwest::Url;
@@ -77,7 +76,7 @@ impl EventStreamHandle {
     }
 
     /// Queue a command to be sent over the existing WebSocket connection.
-    /// The background reader thread picks these up and sends them on the
+    /// The background reader task picks these up and sends them on the
     /// same socket that receives events.
     pub fn send_command(&self, command_json: String) {
         self.outbox.push(command_json);
@@ -121,56 +120,57 @@ pub fn derive_authenticated_ws_url(state_url: &str, token: Option<&str>) -> Resu
     apply_ws_auth_token(&ws_url, token)
 }
 
+/// Spawn the async WebSocket event stream as a tokio task.
+///
+/// The task connects to the given URL, reads events into the handle's
+/// inbox, and sends queued commands from the handle's outbox. It
+/// automatically reconnects with exponential backoff on disconnection.
 pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
+    use futures_util::{SinkExt, StreamExt};
+
     let handle = EventStreamHandle::websocket(url);
     let worker_handle = handle.clone();
     let url = url.to_string();
 
-    thread::spawn(move || {
+    tokio::spawn(async move {
         let mut backoff = Duration::from_secs(1);
         const MAX_BACKOFF: Duration = Duration::from_secs(30);
         let mut first_attempt = true;
 
         loop {
-            // Sleep before every reconnect attempt, but not before the very first.
             if !first_attempt {
                 worker_handle.push_system_notice(format!(
                     "Reconnecting to Omegon event stream in {}s\u{2026}",
                     backoff.as_secs()
                 ));
-                thread::sleep(backoff);
+                tokio::time::sleep(backoff).await;
                 backoff = (backoff * 2).min(MAX_BACKOFF);
             }
             first_attempt = false;
 
-            match tungstenite::connect(url.as_str()) {
+            let connect_result = tokio_tungstenite::connect_async(&url).await;
+
+            match connect_result {
                 Err(error) => {
                     worker_handle.push_system_notice(format!(
                         "Could not connect to Omegon event stream at {}: {error}",
                         worker_handle.url()
                     ));
-                    // outer loop will sleep and retry
                 }
-                Ok((mut socket, _response)) => {
-                    // Successful connection — reset backoff.
+                Ok((ws_stream, _response)) => {
                     backoff = Duration::from_secs(1);
                     worker_handle.push_system_notice(format!(
                         "Connected to Omegon event stream at {}",
                         worker_handle.url()
                     ));
 
-                    // Set the underlying TCP stream to non-blocking so we can
-                    // interleave reading events with sending queued commands.
-                    let stream = socket.get_ref();
-                    if let tungstenite::stream::MaybeTlsStream::Plain(tcp) = stream {
-                        let _ = tcp.set_nonblocking(true);
-                    }
+                    let (mut sink, mut stream) = ws_stream.split();
 
                     loop {
-                        // Drain any queued outbound commands first.
+                        // Drain any queued outbound commands.
                         for cmd in worker_handle.outbox.drain() {
                             if let Err(error) =
-                                socket.send(Message::Text(cmd.into()))
+                                sink.send(Message::Text(cmd.into())).await
                             {
                                 worker_handle.push_system_notice(format!(
                                     "Failed to send command to Omegon: {error}"
@@ -178,31 +178,44 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                             }
                         }
 
-                        match socket.read() {
-                            Ok(Message::Text(text)) => worker_handle.inbox.push(text.to_string()),
-                            Ok(Message::Binary(_)) => worker_handle.push_system_notice(
-                                "Ignoring binary WebSocket frame from Omegon event stream",
-                            ),
-                            Ok(Message::Close(_)) => {
+                        // Read with a short timeout so we can loop back to
+                        // check the outbox periodically.
+                        let read_result = tokio::time::timeout(
+                            Duration::from_millis(50),
+                            stream.next(),
+                        )
+                        .await;
+
+                        match read_result {
+                            Ok(Some(Ok(Message::Text(text)))) => {
+                                worker_handle.inbox.push(text.to_string());
+                            }
+                            Ok(Some(Ok(Message::Binary(_)))) => {
+                                worker_handle.push_system_notice(
+                                    "Ignoring binary WebSocket frame from Omegon event stream",
+                                );
+                            }
+                            Ok(Some(Ok(Message::Close(_)))) => {
                                 worker_handle.push_system_notice(
                                     "Omegon event stream closed by server. Will reconnect.",
                                 );
                                 break;
                             }
-                            Ok(Message::Ping(_)) | Ok(Message::Pong(_)) | Ok(Message::Frame(_)) => {
-                            }
-                            Err(tungstenite::Error::Io(ref e))
-                                if e.kind() == std::io::ErrorKind::WouldBlock =>
-                            {
-                                // Non-blocking read returned nothing — sleep briefly
-                                // then loop to check for outbound commands.
-                                thread::sleep(Duration::from_millis(50));
-                            }
-                            Err(error) => {
+                            Ok(Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)))) => {}
+                            Ok(Some(Err(error))) => {
                                 worker_handle.push_system_notice(format!(
                                     "Omegon event stream error: {error}. Will reconnect."
                                 ));
                                 break;
+                            }
+                            Ok(None) => {
+                                worker_handle.push_system_notice(
+                                    "Omegon event stream ended. Will reconnect.",
+                                );
+                                break;
+                            }
+                            Err(_) => {
+                                // Timeout — no data ready, loop back to check outbox.
                             }
                         }
                     }

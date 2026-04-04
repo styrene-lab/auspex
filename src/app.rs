@@ -69,11 +69,8 @@ pub fn App() -> Element {
         async move {
             let Some(binary_str) = binary else { return };
             let binary_path = std::path::PathBuf::from(binary_str);
-            let result = tokio::task::spawn_blocking(move || {
-                crate::bootstrap::spawn_and_attach_omegon(&binary_path)
-            })
-            .await
-            .expect("spawn task panicked");
+            let result =
+                crate::bootstrap::spawn_and_attach_omegon(&binary_path).await;
             if let Some(stream) = result.event_stream {
                 event_stream.set(Some(stream));
             }
