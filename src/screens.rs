@@ -4,7 +4,10 @@
 /// derived from the Omegon snapshot; no additional backend calls needed.
 use dioxus::prelude::*;
 
-use crate::fixtures::{GraphData, SessionData, WorkData};
+use crate::fixtures::{
+    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData, SessionData,
+    WorkData,
+};
 
 // ── Graph screen ──────────────────────────────────────────────────────────────
 
@@ -256,10 +259,9 @@ pub fn SessionScreen(
                                 div { class: "dispatcher-option-list",
                                     for option in &dispatcher.available_options {
                                         button {
-                                            class: "dispatcher-option-button",
+                                            class: dispatcher_option_button_class(dispatcher, option),
                                             r#type: "button",
-                                            disabled: dispatcher.expected_profile == option.profile
-                                                && dispatcher.expected_model == option.model,
+                                            disabled: dispatcher_option_disabled(dispatcher, option),
                                             onclick: {
                                                 let profile = option.profile.clone();
                                                 let model = option.model.clone();
@@ -272,6 +274,9 @@ pub fn SessionScreen(
                                                 if let Some(model) = &option.model {
                                                     " · {model}"
                                                 }
+                                            }
+                                            if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
+                                                span { class: "dispatcher-option-status", "{status}" }
                                             }
                                         }
                                     }
@@ -295,21 +300,7 @@ pub fn SessionScreen(
                     }
 
                     if let Some(state) = &dispatcher.switch_state {
-                        section { class: "screen-subsection",
-                            h3 { class: "screen-section-title", "Switch state" }
-                            div { class: "kv-grid",
-                                {kv_row("Status", &state.status)}
-                                if let Some(profile) = &state.requested_profile {
-                                    {kv_row("Requested profile", profile)}
-                                }
-                                if let Some(model) = &state.requested_model {
-                                    {kv_row("Requested model", model)}
-                                }
-                                if let Some(note) = &state.note {
-                                    {kv_row("Note", note)}
-                                }
-                            }
-                        }
+                        {render_dispatcher_switch_state(dispatcher, state)}
                     }
                 }
             }
@@ -352,13 +343,211 @@ pub fn SessionScreen(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+fn render_dispatcher_switch_state(
+    dispatcher: &DispatcherBindingData,
+    state: &DispatcherSwitchStateData,
+) -> Element {
+    let view = dispatcher_switch_view(dispatcher, state);
+    let detail = view.detail.clone();
+
+    rsx! {
+        section { class: "screen-subsection",
+            h3 { class: "screen-section-title", "Switch state" }
+            div { class: "dispatcher-switch-card",
+                div { class: "dispatcher-switch-header",
+                    span { class: dispatcher_switch_badge_class(view.badge_status), "{view.badge_label}" }
+                    span { class: "dispatcher-switch-headline", "{view.headline}" }
+                }
+                if let Some(detail) = detail {
+                    p { class: "dispatcher-switch-detail", "{detail}" }
+                }
+            }
+            div { class: "kv-grid",
+                {kv_row("Status", &state.status)}
+                {kv_row("Binding", &view.binding_summary)}
+                if let Some(request_id) = &state.request_id {
+                    {kv_row("Request id", request_id)}
+                }
+                if let Some(profile) = &state.requested_profile {
+                    {kv_row("Requested profile", profile)}
+                }
+                if let Some(model) = &state.requested_model {
+                    {kv_row("Requested model", model)}
+                }
+                if let Some(failure_code) = &state.failure_code {
+                    {kv_row("Failure code", failure_code)}
+                }
+                if let Some(note) = &state.note {
+                    {kv_row("Note", note)}
+                }
+            }
+        }
+    }
+}
+
 fn status_badge_class(status: &str) -> &'static str {
     match status {
         "implementing" | "active" => "badge badge-active",
         "decided" | "done" | "resolved" => "badge badge-done",
-        "ready" | "actionable" => "badge badge-ready",
-        "blocked" => "badge badge-blocked",
+        "ready" | "actionable" | "pending" => "badge badge-ready",
+        "blocked" | "failed" => "badge badge-blocked",
+        "superseded" => "badge badge-neutral",
         _ => "badge badge-neutral",
+    }
+}
+
+fn dispatcher_switch_badge_class(status: &str) -> &'static str {
+    status_badge_class(status)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatcherSwitchView {
+    badge_status: &'static str,
+    badge_label: &'static str,
+    headline: String,
+    detail: Option<String>,
+    binding_summary: String,
+}
+
+fn dispatcher_option_disabled(
+    dispatcher: &DispatcherBindingData,
+    option: &DispatcherOptionData,
+) -> bool {
+    if dispatcher.expected_profile == option.profile && dispatcher.expected_model == option.model {
+        return true;
+    }
+
+    dispatcher.switch_state.as_ref().is_some_and(|state| {
+        state.status == "pending"
+            && state.requested_profile.as_deref() == Some(option.profile.as_str())
+            && state.requested_model == option.model
+    })
+}
+
+fn dispatcher_option_button_class(
+    dispatcher: &DispatcherBindingData,
+    option: &DispatcherOptionData,
+) -> &'static str {
+    if dispatcher.expected_profile == option.profile && dispatcher.expected_model == option.model {
+        "dispatcher-option-button dispatcher-option-button-active"
+    } else if dispatcher.switch_state.as_ref().is_some_and(|state| {
+        state.status == "pending"
+            && state.requested_profile.as_deref() == Some(option.profile.as_str())
+            && state.requested_model == option.model
+    }) {
+        "dispatcher-option-button dispatcher-option-button-pending"
+    } else {
+        "dispatcher-option-button"
+    }
+}
+
+fn dispatcher_option_status_text(
+    dispatcher: &DispatcherBindingData,
+    option: &DispatcherOptionData,
+) -> Option<&'static str> {
+    if dispatcher.expected_profile == option.profile && dispatcher.expected_model == option.model {
+        Some("Active binding")
+    } else if dispatcher.switch_state.as_ref().is_some_and(|state| {
+        state.status == "pending"
+            && state.requested_profile.as_deref() == Some(option.profile.as_str())
+            && state.requested_model == option.model
+    }) {
+        Some("Pending request")
+    } else {
+        None
+    }
+}
+
+fn dispatcher_switch_view(
+    dispatcher: &DispatcherBindingData,
+    state: &DispatcherSwitchStateData,
+) -> DispatcherSwitchView {
+    let binding_summary = switch_target_label(
+        Some(dispatcher.expected_profile.as_str()),
+        dispatcher.expected_model.as_deref(),
+    );
+    let requested_target = switch_target_label(
+        state.requested_profile.as_deref(),
+        state.requested_model.as_deref(),
+    );
+    let matches_binding = state.requested_profile.as_deref() == Some(dispatcher.expected_profile.as_str())
+        && match state.requested_model.as_deref() {
+            Some(model) => dispatcher.expected_model.as_deref() == Some(model),
+            None => true,
+        };
+
+    match state.status.as_str() {
+        "pending" => DispatcherSwitchView {
+            badge_status: "pending",
+            badge_label: "pending",
+            headline: format!("Awaiting confirmation for {requested_target}"),
+            detail: state
+                .request_id
+                .as_ref()
+                .map(|request_id| format!("Request {request_id} has not been confirmed by the backend yet.")),
+            binding_summary,
+        },
+        "active" if state.request_id.is_some() && matches_binding => DispatcherSwitchView {
+            badge_status: "active",
+            badge_label: "confirmed",
+            headline: format!("Confirmed switch to {requested_target}"),
+            detail: state
+                .request_id
+                .as_ref()
+                .map(|request_id| format!("Backend confirmed request {request_id} and updated the active binding.")),
+            binding_summary,
+        },
+        "active" if state.request_id.is_some() && !matches_binding => DispatcherSwitchView {
+            badge_status: "active",
+            badge_label: "active elsewhere",
+            headline: format!("Another request is active: {requested_target}"),
+            detail: state.request_id.as_ref().map(|request_id| {
+                format!(
+                    "Backend reports request {request_id} as active, but the bound dispatcher remains {binding_summary}."
+                )
+            }),
+            binding_summary,
+        },
+        "active" => DispatcherSwitchView {
+            badge_status: "active",
+            badge_label: "active",
+            headline: format!("Dispatcher bound to {binding_summary}"),
+            detail: state.note.clone(),
+            binding_summary,
+        },
+        "failed" => DispatcherSwitchView {
+            badge_status: "failed",
+            badge_label: "failed",
+            headline: format!("Switch failed for {requested_target}"),
+            detail: state.failure_code.as_ref().map(|code| format!("Backend reported failure code: {code}")),
+            binding_summary,
+        },
+        "superseded" => DispatcherSwitchView {
+            badge_status: "superseded",
+            badge_label: "superseded",
+            headline: format!("Switch superseded: {requested_target}"),
+            detail: state
+                .request_id
+                .as_ref()
+                .map(|request_id| format!("Request {request_id} was replaced before becoming active.")),
+            binding_summary,
+        },
+        _ => DispatcherSwitchView {
+            badge_status: "unknown",
+            badge_label: "status",
+            headline: format!("Dispatcher switch status: {}", state.status),
+            detail: state.note.clone(),
+            binding_summary,
+        },
+    }
+}
+
+fn switch_target_label(profile: Option<&str>, model: Option<&str>) -> String {
+    match (profile, model) {
+        (Some(profile), Some(model)) => format!("{profile} · {model}"),
+        (Some(profile), None) => profile.to_string(),
+        (None, Some(model)) => model.to_string(),
+        (None, None) => "unknown target".into(),
     }
 }
 
@@ -368,5 +557,90 @@ fn kv_row(key: &str, value: &str) -> Element {
             span { class: "kv-key", "{key}" }
             span { class: "kv-value", "{value}" }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn binding() -> DispatcherBindingData {
+        DispatcherBindingData {
+            session_id: "session_01".into(),
+            dispatcher_instance_id: "dispatcher_01".into(),
+            expected_role: "primary-driver".into(),
+            expected_profile: "primary-interactive".into(),
+            expected_model: Some("anthropic:claude-sonnet-4-6".into()),
+            control_plane_schema: 2,
+            token_ref: None,
+            observed_base_url: None,
+            last_verified_at: None,
+            available_options: vec![],
+            switch_state: None,
+        }
+    }
+
+    #[test]
+    fn dispatcher_switch_view_marks_matching_active_request_as_confirmed() {
+        let dispatcher = binding();
+        let state = DispatcherSwitchStateData {
+            request_id: Some("dispatcher-switch-7".into()),
+            requested_profile: Some("primary-interactive".into()),
+            requested_model: Some("anthropic:claude-sonnet-4-6".into()),
+            status: "active".into(),
+            failure_code: None,
+            note: Some("Dispatcher switch confirmed by snapshot".into()),
+        };
+
+        let view = dispatcher_switch_view(&dispatcher, &state);
+        assert_eq!(view.badge_label, "confirmed");
+        assert!(view.headline.contains("Confirmed switch"));
+        assert!(view.detail.unwrap().contains("dispatcher-switch-7"));
+    }
+
+    #[test]
+    fn dispatcher_switch_view_marks_different_active_request_as_active_elsewhere() {
+        let dispatcher = binding();
+        let state = DispatcherSwitchStateData {
+            request_id: Some("dispatcher-switch-999".into()),
+            requested_profile: Some("supervisor-heavy".into()),
+            requested_model: Some("openai:gpt-4.1".into()),
+            status: "active".into(),
+            failure_code: None,
+            note: Some("Different request became active".into()),
+        };
+
+        let view = dispatcher_switch_view(&dispatcher, &state);
+        assert_eq!(view.badge_label, "active elsewhere");
+        assert!(view.headline.contains("Another request is active"));
+        assert!(view.detail.unwrap().contains("bound dispatcher remains primary-interactive"));
+    }
+
+    #[test]
+    fn dispatcher_option_helpers_mark_pending_target() {
+        let mut dispatcher = binding();
+        dispatcher.switch_state = Some(DispatcherSwitchStateData {
+            request_id: Some("dispatcher-switch-2".into()),
+            requested_profile: Some("supervisor-heavy".into()),
+            requested_model: Some("openai:gpt-4.1".into()),
+            status: "pending".into(),
+            failure_code: None,
+            note: None,
+        });
+        let option = DispatcherOptionData {
+            profile: "supervisor-heavy".into(),
+            label: "Supervisor Heavy".into(),
+            model: Some("openai:gpt-4.1".into()),
+        };
+
+        assert!(dispatcher_option_disabled(&dispatcher, &option));
+        assert_eq!(
+            dispatcher_option_button_class(&dispatcher, &option),
+            "dispatcher-option-button dispatcher-option-button-pending"
+        );
+        assert_eq!(
+            dispatcher_option_status_text(&dispatcher, &option),
+            Some("Pending request")
+        );
     }
 }
