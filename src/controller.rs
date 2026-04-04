@@ -21,6 +21,17 @@ const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "openspec": {"total_tasks": 5, "done_tasks": 2},
     "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
     "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
+    "dispatcher": {
+        "session_id": "session_01HVDEMO",
+        "dispatcher_instance_id": "omg_primary_01HVDEMO",
+        "expected_role": "primary-driver",
+        "expected_profile": "primary-interactive",
+        "expected_model": "anthropic:claude-sonnet-4-6",
+        "control_plane_schema": 2,
+        "token_ref": "secret://auspex/instances/omg_primary_01HVDEMO/token",
+        "observed_base_url": "http://127.0.0.1:7842",
+        "last_verified_at": "2026-04-04T12:00:00Z"
+    },
     "harness": {
         "git_branch": "main",
         "git_detached": false,
@@ -282,6 +293,11 @@ mod tests {
         assert_eq!(controller.scenario(), DevScenario::Ready);
         assert!(controller.summary().connection.contains("main"));
         assert_eq!(controller.messages().len(), 1);
+        let session = controller.session_data();
+        let dispatcher = session.dispatcher_binding.as_ref().unwrap();
+        assert_eq!(dispatcher.dispatcher_instance_id, "omg_primary_01HVDEMO");
+        assert_eq!(dispatcher.expected_role, "primary-driver");
+        assert_eq!(dispatcher.expected_profile, "primary-interactive");
     }
 
     #[test]

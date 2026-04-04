@@ -88,6 +88,19 @@ pub struct WorkData {
     pub cleave_failed: usize,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct DispatcherBindingData {
+    pub session_id: String,
+    pub dispatcher_instance_id: String,
+    pub expected_role: String,
+    pub expected_profile: String,
+    pub expected_model: Option<String>,
+    pub control_plane_schema: u32,
+    pub token_ref: Option<String>,
+    pub observed_base_url: Option<String>,
+    pub last_verified_at: Option<String>,
+}
+
 /// Snapshot of harness and session state for the Session power-mode screen.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SessionData {
@@ -105,6 +118,7 @@ pub struct SessionData {
     pub session_compactions: u32,
     pub context_tokens: Option<u64>,
     pub context_window: Option<u64>,
+    pub dispatcher_binding: Option<DispatcherBindingData>,
 }
 
 // ── Chat types ───────────────────────────────────────────────

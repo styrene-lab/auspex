@@ -226,6 +226,28 @@ pub fn SessionScreen(data: SessionData) -> Element {
                 }
             }
 
+            if let Some(dispatcher) = &data.dispatcher_binding {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Dispatcher" }
+                    div { class: "kv-grid",
+                        {kv_row("Session", &dispatcher.session_id)}
+                        {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
+                        {kv_row("Role", &dispatcher.expected_role)}
+                        {kv_row("Profile", &dispatcher.expected_profile)}
+                        if let Some(model) = &dispatcher.expected_model {
+                            {kv_row("Model", model)}
+                        }
+                        {kv_row("Schema", &dispatcher.control_plane_schema.to_string())}
+                        if let Some(base_url) = &dispatcher.observed_base_url {
+                            {kv_row("Endpoint", base_url)}
+                        }
+                        if let Some(last_verified_at) = &dispatcher.last_verified_at {
+                            {kv_row("Last verified", last_verified_at)}
+                        }
+                    }
+                }
+            }
+
             // Session stats
             section { class: "screen-section",
                 h2 { class: "screen-section-title", "Session stats" }

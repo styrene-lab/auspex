@@ -40,6 +40,8 @@ pub struct OmegonStateSnapshot {
     pub session: SessionSnapshot,
     #[serde(default)]
     pub harness: Option<HarnessStatusSnapshot>,
+    #[serde(default)]
+    pub dispatcher: Option<DispatcherBindingSnapshot>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -124,6 +126,24 @@ pub struct HarnessStatusSnapshot {
     pub memory_warning: Option<String>,
     #[serde(default)]
     pub active_delegates: Vec<DelegateSummarySnapshot>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct DispatcherBindingSnapshot {
+    #[serde(default)]
+    pub session_id: String,
+    #[serde(default)]
+    pub dispatcher_instance_id: String,
+    #[serde(default)]
+    pub expected_role: String,
+    #[serde(default)]
+    pub expected_profile: String,
+    pub expected_model: Option<String>,
+    #[serde(default)]
+    pub control_plane_schema: u32,
+    pub token_ref: Option<String>,
+    pub observed_base_url: Option<String>,
+    pub last_verified_at: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]

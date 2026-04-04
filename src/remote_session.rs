@@ -1,6 +1,7 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, MessageRole,
-    ProviderInfo, SessionData, ShellState, TranscriptData, WorkData, WorkNode,
+    ChatMessage, ComposerState, DevScenario, DispatcherBindingData, GraphData,
+    HostSessionSummary, MessageRole, ProviderInfo, SessionData, ShellState, TranscriptData,
+    WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -23,6 +24,7 @@ pub struct RemoteHostSession {
     harness_snapshot: Option<HarnessStatusSnapshot>,
     context_tokens: Option<u64>,
     context_window: Option<u64>,
+    dispatcher_binding: Option<crate::omegon_control::DispatcherBindingSnapshot>,
     transcript: TranscriptData,
 }
 
@@ -50,6 +52,7 @@ impl RemoteHostSession {
             harness_snapshot: snapshot.harness.clone(),
             context_tokens: None,
             context_window: None,
+            dispatcher_binding: snapshot.dispatcher,
             transcript: TranscriptData::default(),
         }
     }
@@ -70,6 +73,7 @@ impl RemoteHostSession {
                 self.openspec = data.openspec;
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
+                self.dispatcher_binding = data.dispatcher;
                 self.transcript.context_tokens = self.context_tokens;
                 true
             }
@@ -386,6 +390,19 @@ impl HostSessionModel for RemoteHostSession {
             session_compactions: self.session_stats.compactions,
             context_tokens: self.context_tokens,
             context_window: self.context_window,
+            dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
+                DispatcherBindingData {
+                    session_id: binding.session_id.clone(),
+                    dispatcher_instance_id: binding.dispatcher_instance_id.clone(),
+                    expected_role: binding.expected_role.clone(),
+                    expected_profile: binding.expected_profile.clone(),
+                    expected_model: binding.expected_model.clone(),
+                    control_plane_schema: binding.control_plane_schema,
+                    token_ref: binding.token_ref.clone(),
+                    observed_base_url: binding.observed_base_url.clone(),
+                    last_verified_at: binding.last_verified_at.clone(),
+                }
+            }),
         }
     }
 
@@ -564,6 +581,17 @@ mod tests {
         "openspec": {"total_tasks": 5, "done_tasks": 2},
         "cleave": {"active": true, "total_children": 3, "completed": 1, "failed": 0},
         "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
+        "dispatcher": {
+            "session_id": "session_01HVTEST",
+            "dispatcher_instance_id": "omg_primary_01HVTEST",
+            "expected_role": "primary-driver",
+            "expected_profile": "primary-interactive",
+            "expected_model": "anthropic:claude-sonnet-4-6",
+            "control_plane_schema": 2,
+            "token_ref": "secret://auspex/instances/omg_primary_01HVTEST/token",
+            "observed_base_url": "http://127.0.0.1:7842",
+            "last_verified_at": "2026-04-04T12:00:00Z"
+        },
         "harness": {
             "git_branch": "main",
             "git_detached": false,
@@ -590,6 +618,13 @@ mod tests {
             "Focused node: Remote session adapter"
         );
         assert_eq!(session.messages().len(), 1);
+
+        let session_data = session.session_data();
+        let dispatcher = session_data.dispatcher_binding.as_ref().unwrap();
+        assert_eq!(dispatcher.session_id, "session_01HVTEST");
+        assert_eq!(dispatcher.dispatcher_instance_id, "omg_primary_01HVTEST");
+        assert_eq!(dispatcher.expected_model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
+        assert_eq!(dispatcher.control_plane_schema, 2);
     }
 
     #[test]
