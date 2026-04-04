@@ -30,7 +30,17 @@ const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
         "control_plane_schema": 2,
         "token_ref": "secret://auspex/instances/omg_primary_01HVDEMO/token",
         "observed_base_url": "http://127.0.0.1:7842",
-        "last_verified_at": "2026-04-04T12:00:00Z"
+        "last_verified_at": "2026-04-04T12:00:00Z",
+        "available_options": [
+            {"profile": "primary-interactive", "label": "Primary Interactive", "model": "anthropic:claude-sonnet-4-6"},
+            {"profile": "supervisor-heavy", "label": "Supervisor Heavy", "model": "openai:gpt-4.1"}
+        ],
+        "switch_state": {
+            "requested_profile": null,
+            "requested_model": null,
+            "status": "idle",
+            "note": null
+        }
     },
     "harness": {
         "git_branch": "main",
@@ -259,6 +269,27 @@ impl AppController {
         }
     }
 
+    pub fn request_dispatcher_switch_command_json(
+        &mut self,
+        profile: &str,
+        model: Option<&str>,
+    ) -> Option<String> {
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                session.request_dispatcher_switch(profile, model)?;
+                Some(
+                    serde_json::json!({
+                        "type": "switch_dispatcher",
+                        "profile": profile,
+                        "model": model,
+                    })
+                    .to_string(),
+                )
+            }
+            SessionSource::Mock(_) => None,
+        }
+    }
+
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
         match &mut self.session {
             SessionSource::Remote(session) => session.apply_event_json(json),
@@ -298,6 +329,8 @@ mod tests {
         assert_eq!(dispatcher.dispatcher_instance_id, "omg_primary_01HVDEMO");
         assert_eq!(dispatcher.expected_role, "primary-driver");
         assert_eq!(dispatcher.expected_profile, "primary-interactive");
+        assert_eq!(dispatcher.available_options.len(), 2);
+        assert_eq!(dispatcher.switch_state.as_ref().unwrap().status, "idle");
     }
 
     #[test]
@@ -469,5 +502,30 @@ mod tests {
             .apply_remote_event_json(r#"{"type":"session_reset"}"#)
             .unwrap();
         assert!(!controller.is_run_active());
+    }
+
+    #[test]
+    fn remote_dispatcher_switch_emits_command_and_updates_pending_state() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        let command = controller
+            .request_dispatcher_switch_command_json(
+                "supervisor-heavy",
+                Some("openai:gpt-4.1"),
+            )
+            .unwrap();
+
+        assert_eq!(
+            command,
+            r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","type":"switch_dispatcher"}"#
+        );
+
+        let session = controller.session_data();
+        let switch_state = &session.dispatcher_binding.as_ref().unwrap().switch_state;
+        let switch_state = switch_state.as_ref().unwrap();
+        assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
+        assert_eq!(switch_state.requested_model.as_deref(), Some("openai:gpt-4.1"));
+        assert_eq!(switch_state.status, "pending");
     }
 }

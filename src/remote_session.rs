@@ -1,7 +1,8 @@
 use crate::fixtures::{
     BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
-    DispatcherBindingData, GraphData, HostSessionSummary, MessageRole, OriginKind,
-    ProviderInfo, SessionData, ShellState, TranscriptData, WorkData, WorkNode,
+    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
+    HostSessionSummary, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
+    TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -60,6 +61,22 @@ impl RemoteHostSession {
     pub fn from_snapshot_json(json: &str) -> Result<Self, serde_json::Error> {
         let snapshot = serde_json::from_str::<OmegonStateSnapshot>(json)?;
         Ok(Self::from_snapshot(snapshot))
+    }
+
+    pub fn request_dispatcher_switch(&mut self, profile: &str, model: Option<&str>) -> Option<()> {
+        let dispatcher = self.dispatcher_binding.as_mut()?;
+        dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+            requested_profile: Some(profile.to_string()),
+            requested_model: model.map(str::to_string),
+            status: "pending".into(),
+            note: Some("Awaiting backend dispatcher switch confirmation".into()),
+        });
+        self.summary.activity = format!("Requesting dispatcher switch to {profile}");
+        self.messages.push(ChatMessage {
+            role: MessageRole::System,
+            text: format!("Dispatcher switch requested: {profile}"),
+        });
+        Some(())
     }
 
     pub fn apply_event(&mut self, event: OmegonEvent) -> bool {
@@ -475,6 +492,23 @@ impl HostSessionModel for RemoteHostSession {
                     token_ref: binding.token_ref.clone(),
                     observed_base_url: binding.observed_base_url.clone(),
                     last_verified_at: binding.last_verified_at.clone(),
+                    available_options: binding
+                        .available_options
+                        .iter()
+                        .map(|option| DispatcherOptionData {
+                            profile: option.profile.clone(),
+                            label: option.label.clone(),
+                            model: option.model.clone(),
+                        })
+                        .collect(),
+                    switch_state: binding.switch_state.as_ref().map(|state| {
+                        DispatcherSwitchStateData {
+                            requested_profile: state.requested_profile.clone(),
+                            requested_model: state.requested_model.clone(),
+                            status: state.status.clone(),
+                            note: state.note.clone(),
+                        }
+                    }),
                 }
             }),
         }

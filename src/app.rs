@@ -265,7 +265,17 @@ pub fn App() -> Element {
                 } else if *tab.read() == Tab::Graph {
                     GraphScreen { data: controller.read().graph_data() }
                 } else if *tab.read() == Tab::Session {
-                    SessionScreen { data: controller.read().session_data() }
+                    SessionScreen {
+                        data: controller.read().session_data(),
+                        on_dispatcher_switch: move |(profile, model): (String, Option<String>)| {
+                            let command = controller
+                                .write()
+                                .request_dispatcher_switch_command_json(&profile, model.as_deref());
+                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                stream.send_command(command);
+                            }
+                        },
+                    }
                 } else {
                     main { class: "transcript",
                         {render_transcript(controller.read().transcript(), controller.read().messages())}

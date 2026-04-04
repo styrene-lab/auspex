@@ -144,6 +144,28 @@ pub struct DispatcherBindingSnapshot {
     pub token_ref: Option<String>,
     pub observed_base_url: Option<String>,
     pub last_verified_at: Option<String>,
+    #[serde(default)]
+    pub available_options: Vec<DispatcherOptionSnapshot>,
+    #[serde(default)]
+    pub switch_state: Option<DispatcherSwitchStateSnapshot>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct DispatcherOptionSnapshot {
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub label: String,
+    pub model: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct DispatcherSwitchStateSnapshot {
+    pub requested_profile: Option<String>,
+    pub requested_model: Option<String>,
+    #[serde(default)]
+    pub status: String,
+    pub note: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]

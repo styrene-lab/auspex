@@ -120,6 +120,21 @@ pub struct WorkData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct DispatcherOptionData {
+    pub profile: String,
+    pub label: String,
+    pub model: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct DispatcherSwitchStateData {
+    pub requested_profile: Option<String>,
+    pub requested_model: Option<String>,
+    pub status: String,
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DispatcherBindingData {
     pub session_id: String,
     pub dispatcher_instance_id: String,
@@ -130,6 +145,8 @@ pub struct DispatcherBindingData {
     pub token_ref: Option<String>,
     pub observed_base_url: Option<String>,
     pub last_verified_at: Option<String>,
+    pub available_options: Vec<DispatcherOptionData>,
+    pub switch_state: Option<DispatcherSwitchStateData>,
 }
 
 /// Snapshot of harness and session state for the Session power-mode screen.

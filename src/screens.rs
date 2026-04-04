@@ -176,7 +176,10 @@ pub fn WorkScreen(data: WorkData) -> Element {
 // ── Session screen ────────────────────────────────────────────────────────────
 
 #[component]
-pub fn SessionScreen(data: SessionData) -> Element {
+pub fn SessionScreen(
+    data: SessionData,
+    on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+) -> Element {
     rsx! {
         div { class: "screen screen-session",
 
@@ -243,6 +246,69 @@ pub fn SessionScreen(data: SessionData) -> Element {
                         }
                         if let Some(last_verified_at) = &dispatcher.last_verified_at {
                             {kv_row("Last verified", last_verified_at)}
+                        }
+                    }
+
+                    if !dispatcher.available_options.is_empty() {
+                        section { class: "screen-subsection",
+                            h3 { class: "screen-section-title", "Available dispatcher options" }
+                            if let Some(handler) = on_dispatcher_switch {
+                                div { class: "dispatcher-option-list",
+                                    for option in &dispatcher.available_options {
+                                        button {
+                                            class: "dispatcher-option-button",
+                                            r#type: "button",
+                                            disabled: dispatcher.expected_profile == option.profile
+                                                && dispatcher.expected_model == option.model,
+                                            onclick: {
+                                                let profile = option.profile.clone();
+                                                let model = option.model.clone();
+                                                move |_| handler.call((profile.clone(), model.clone()))
+                                            },
+                                            strong { "{option.label}" }
+                                            span {
+                                                class: "dispatcher-option-meta",
+                                                "{option.profile}"
+                                                if let Some(model) = &option.model {
+                                                    " · {model}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                div { class: "kv-grid",
+                                    for option in &dispatcher.available_options {
+                                        div { class: "kv-row",
+                                            span { class: "kv-key", "{option.label}" }
+                                            span { class: "kv-value",
+                                                "{option.profile}"
+                                                if let Some(model) = &option.model {
+                                                    " · {model}"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    if let Some(state) = &dispatcher.switch_state {
+                        section { class: "screen-subsection",
+                            h3 { class: "screen-section-title", "Switch state" }
+                            div { class: "kv-grid",
+                                {kv_row("Status", &state.status)}
+                                if let Some(profile) = &state.requested_profile {
+                                    {kv_row("Requested profile", profile)}
+                                }
+                                if let Some(model) = &state.requested_model {
+                                    {kv_row("Requested model", model)}
+                                }
+                                if let Some(note) = &state.note {
+                                    {kv_row("Note", note)}
+                                }
+                            }
                         }
                     }
                 }
