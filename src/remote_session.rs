@@ -8,6 +8,12 @@ use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnaps
 use crate::session_model::HostSessionModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum DispatcherSwitchCommandOutcome {
+    Issued,
+    Noop,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoteHostSession {
     shell_state: ShellState,
     scenario: DevScenario,
@@ -63,20 +69,91 @@ impl RemoteHostSession {
         Ok(Self::from_snapshot(snapshot))
     }
 
-    pub fn request_dispatcher_switch(&mut self, profile: &str, model: Option<&str>) -> Option<()> {
+    pub fn request_dispatcher_switch(
+        &mut self,
+        profile: &str,
+        model: Option<&str>,
+    ) -> Option<DispatcherSwitchCommandOutcome> {
+        let origin = dispatcher_origin(&self.dispatcher_binding);
         let dispatcher = self.dispatcher_binding.as_mut()?;
+
+        let already_active = dispatcher.expected_profile == profile
+            && match model {
+                Some(model) => dispatcher.expected_model.as_deref() == Some(model),
+                None => true,
+            };
+        if already_active {
+            let note = format!("Dispatcher already active: {profile}");
+            dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                requested_profile: Some(profile.to_string()),
+                requested_model: model.map(str::to_string),
+                status: "active".into(),
+                failure_code: None,
+                note: Some(note.clone()),
+            });
+            self.summary.activity = note.clone();
+            self.messages.push(ChatMessage {
+                role: MessageRole::System,
+                text: note.clone(),
+            });
+            if let Some(turn) = self.transcript.turns.last_mut() {
+                turn.blocks.push(crate::fixtures::TurnBlock::System(
+                    crate::fixtures::AttributedText {
+                        text: note,
+                        origin: Some(origin),
+                    },
+                ));
+            }
+            return Some(DispatcherSwitchCommandOutcome::Noop);
+        }
+
+        if let Some(previous_switch) = dispatcher.switch_state.as_ref()
+            && previous_switch.status == "pending"
+        {
+            let superseded_target = switch_target_label(
+                previous_switch.requested_profile.as_deref(),
+                previous_switch.requested_model.as_deref(),
+            );
+            let superseded_message = format!("Dispatcher switch superseded: {superseded_target}");
+            self.messages.push(ChatMessage {
+                role: MessageRole::System,
+                text: superseded_message.clone(),
+            });
+            if let Some(turn) = self.transcript.turns.last_mut() {
+                turn.blocks.push(crate::fixtures::TurnBlock::System(
+                    crate::fixtures::AttributedText {
+                        text: superseded_message,
+                        origin: Some(origin.clone()),
+                    },
+                ));
+            }
+        }
+
         dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
             requested_profile: Some(profile.to_string()),
             requested_model: model.map(str::to_string),
             status: "pending".into(),
+            failure_code: None,
             note: Some("Awaiting backend dispatcher switch confirmation".into()),
         });
         self.summary.activity = format!("Requesting dispatcher switch to {profile}");
+        let request_message = format!(
+            "Dispatcher switch requested: {}",
+            switch_target_label(Some(profile), model)
+        );
         self.messages.push(ChatMessage {
             role: MessageRole::System,
-            text: format!("Dispatcher switch requested: {profile}"),
+            text: request_message.clone(),
         });
-        Some(())
+        if let Some(turn) = self.transcript.turns.last_mut() {
+            turn.blocks.push(crate::fixtures::TurnBlock::System(
+                crate::fixtures::AttributedText {
+                    text: request_message,
+                    origin: Some(origin),
+                },
+            ));
+        }
+        Some(DispatcherSwitchCommandOutcome::Issued)
     }
 
     pub fn apply_event(&mut self, event: OmegonEvent) -> bool {
@@ -90,9 +167,16 @@ impl RemoteHostSession {
                 self.openspec = data.openspec;
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
+                let previous_dispatcher = self.dispatcher_binding.take();
                 self.dispatcher_binding = reconcile_dispatcher_binding(
-                    self.dispatcher_binding.take(),
+                    previous_dispatcher.clone(),
                     data.dispatcher,
+                );
+                append_dispatcher_switch_transition_notice(
+                    &mut self.messages,
+                    &mut self.transcript,
+                    previous_dispatcher.as_ref(),
+                    self.dispatcher_binding.as_ref(),
                 );
                 self.transcript.context_tokens = self.context_tokens;
                 true
@@ -192,6 +276,14 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::SessionReset => {
+                if let Some(dispatcher) = self.dispatcher_binding.as_mut()
+                    && let Some(switch_state) = dispatcher.switch_state.as_mut()
+                    && switch_state.status == "pending"
+                {
+                    switch_state.status = "failed".into();
+                    switch_state.failure_code = Some("conflict".into());
+                    switch_state.note = Some("Session reset during dispatcher switch".into());
+                }
                 self.messages.clear();
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
@@ -509,6 +601,7 @@ impl HostSessionModel for RemoteHostSession {
                             requested_profile: state.requested_profile.clone(),
                             requested_model: state.requested_model.clone(),
                             status: state.status.clone(),
+                            failure_code: state.failure_code.clone(),
                             note: state.note.clone(),
                         }
                     }),
@@ -597,13 +690,20 @@ fn reconcile_dispatcher_binding(
     previous: Option<crate::omegon_control::DispatcherBindingSnapshot>,
     next: Option<crate::omegon_control::DispatcherBindingSnapshot>,
 ) -> Option<crate::omegon_control::DispatcherBindingSnapshot> {
+    let previous_switch = previous.as_ref().and_then(|binding| binding.switch_state.clone());
+    let previous_pending = previous_switch
+        .as_ref()
+        .filter(|switch_state| switch_state.status == "pending")
+        .cloned();
     let mut next = next?;
 
-    if next.switch_state.is_none()
-        && let Some(previous) = previous
-        && let Some(previous_switch) = previous.switch_state
-        && previous_switch.status == "pending"
+    if let Some(explicit_switch) = next.switch_state.as_ref()
+        && (explicit_switch.status == "failed" || explicit_switch.status == "superseded")
     {
+        return Some(next);
+    }
+
+    if next.switch_state.is_none() && let Some(previous_switch) = previous_pending {
         let requested_profile = previous_switch.requested_profile.as_deref();
         let requested_model = previous_switch.requested_model.as_deref();
         let profile_matches = requested_profile == Some(next.expected_profile.as_str());
@@ -617,6 +717,7 @@ fn reconcile_dispatcher_binding(
                 requested_profile: previous_switch.requested_profile,
                 requested_model: previous_switch.requested_model,
                 status: "active".into(),
+                failure_code: None,
                 note: Some("Dispatcher switch confirmed by snapshot".into()),
             }
         } else {
@@ -625,6 +726,71 @@ fn reconcile_dispatcher_binding(
     }
 
     Some(next)
+}
+
+fn switch_target_label(profile: Option<&str>, model: Option<&str>) -> String {
+    match (profile, model) {
+        (Some(profile), Some(model)) => format!("{profile} · {model}"),
+        (Some(profile), None) => profile.to_string(),
+        (None, Some(model)) => model.to_string(),
+        (None, None) => "unknown target".into(),
+    }
+}
+
+fn append_dispatcher_switch_transition_notice(
+    messages: &mut Vec<ChatMessage>,
+    transcript: &mut TranscriptData,
+    previous: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
+    next: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
+) {
+    let previous_state = previous.and_then(|binding| binding.switch_state.as_ref());
+    let next_state = next.and_then(|binding| binding.switch_state.as_ref());
+    if previous_state == next_state {
+        return;
+    }
+
+    let Some(next_state) = next_state else {
+        return;
+    };
+
+    let message = match next_state.status.as_str() {
+        "active" if previous_state.is_some_and(|state| state.status == "pending") => Some(format!(
+            "Dispatcher switch confirmed: {}",
+            switch_target_label(
+                next_state.requested_profile.as_deref(),
+                next_state.requested_model.as_deref()
+            )
+        )),
+        "failed" => Some(match next_state.failure_code.as_deref() {
+            Some(code) => format!("Dispatcher switch failed: {code}"),
+            None => "Dispatcher switch failed".into(),
+        }),
+        "superseded" => Some(format!(
+            "Dispatcher switch superseded: {}",
+            switch_target_label(
+                next_state.requested_profile.as_deref(),
+                next_state.requested_model.as_deref()
+            )
+        )),
+        _ => None,
+    };
+
+    let Some(message) = message else {
+        return;
+    };
+
+    messages.push(ChatMessage {
+        role: MessageRole::System,
+        text: message.clone(),
+    });
+    if let Some(turn) = transcript.turns.last_mut() {
+        turn.blocks.push(crate::fixtures::TurnBlock::System(
+            crate::fixtures::AttributedText {
+                text: message,
+                origin: Some(dispatcher_origin(&next.cloned())),
+            },
+        ));
+    }
 }
 
 fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {

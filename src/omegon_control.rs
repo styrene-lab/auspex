@@ -165,6 +165,7 @@ pub struct DispatcherSwitchStateSnapshot {
     pub requested_model: Option<String>,
     #[serde(default)]
     pub status: String,
+    pub failure_code: Option<String>,
     pub note: Option<String>,
 }
 

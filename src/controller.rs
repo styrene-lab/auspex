@@ -2,7 +2,7 @@ use crate::fixtures::{
     ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, MockHostSession,
     SessionData, ShellState, WorkData,
 };
-use crate::remote_session::RemoteHostSession;
+use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::session_model::HostSessionModel;
 
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
@@ -275,17 +275,17 @@ impl AppController {
         model: Option<&str>,
     ) -> Option<String> {
         match &mut self.session {
-            SessionSource::Remote(session) => {
-                session.request_dispatcher_switch(profile, model)?;
-                Some(
+            SessionSource::Remote(session) => match session.request_dispatcher_switch(profile, model)? {
+                DispatcherSwitchCommandOutcome::Issued => Some(
                     serde_json::json!({
                         "type": "switch_dispatcher",
                         "profile": profile,
                         "model": model,
                     })
                     .to_string(),
-                )
-            }
+                ),
+                DispatcherSwitchCommandOutcome::Noop => None,
+            },
             SessionSource::Mock(_) => None,
         }
     }
@@ -554,5 +554,79 @@ mod tests {
         let switch_state = dispatcher.switch_state.as_ref().unwrap();
         assert_eq!(switch_state.status, "active");
         assert_eq!(switch_state.note.as_deref(), Some("Dispatcher switch confirmed by snapshot"));
+        assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch confirmed"));
+    }
+
+    #[test]
+    fn dispatcher_switch_to_current_binding_is_noop() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        let command = controller.request_dispatcher_switch_command_json(
+            "primary-interactive",
+            Some("anthropic:claude-sonnet-4-6"),
+        );
+
+        assert!(command.is_none());
+        let switch_state = controller
+            .session_data()
+            .dispatcher_binding
+            .unwrap()
+            .switch_state
+            .unwrap();
+        assert_eq!(switch_state.status, "active");
+        assert_eq!(switch_state.note.as_deref(), Some("Dispatcher already active: primary-interactive"));
+    }
+
+    #[test]
+    fn repeated_dispatcher_switch_requests_supersede_prior_pending_request() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
+            .unwrap();
+        controller
+            .request_dispatcher_switch_command_json("supervisor-heavy", None)
+            .unwrap();
+
+        let switch_state = controller
+            .session_data()
+            .dispatcher_binding
+            .unwrap()
+            .switch_state
+            .unwrap();
+        assert_eq!(switch_state.status, "pending");
+        assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
+        assert_eq!(switch_state.requested_model, None);
+        assert!(controller
+            .messages()
+            .iter()
+            .any(|message| message.text.contains("Dispatcher switch superseded")));
+    }
+
+    #[test]
+    fn explicit_snapshot_failure_wins_for_dispatcher_switch() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
+            .unwrap();
+        controller
+            .apply_remote_event_json(
+                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":5,"done_tasks":2},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":12,"tool_calls":34,"compactions":1},"dispatcher":{"session_id":"session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO","expected_role":"primary-driver","expected_profile":"primary-interactive","expected_model":"anthropic:claude-sonnet-4-6","control_plane_schema":2,"token_ref":"secret://auspex/instances/omg_primary_01HVDEMO/token","observed_base_url":"http://127.0.0.1:7842","last_verified_at":"2026-04-04T12:05:00Z","available_options":[{"profile":"primary-interactive","label":"Primary Interactive","model":"anthropic:claude-sonnet-4-6"},{"profile":"supervisor-heavy","label":"Supervisor Heavy","model":"openai:gpt-4.1"}],"switch_state":{"requested_profile":"supervisor-heavy","requested_model":"openai:gpt-4.1","status":"failed","failure_code":"backend_rejected","note":"Backend rejected dispatcher switch"}},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
+            )
+            .unwrap();
+
+        let switch_state = controller
+            .session_data()
+            .dispatcher_binding
+            .unwrap()
+            .switch_state
+            .unwrap();
+        assert_eq!(switch_state.status, "failed");
+        assert_eq!(switch_state.failure_code.as_deref(), Some("backend_rejected"));
+        assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch failed"));
     }
 }

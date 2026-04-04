@@ -131,6 +131,7 @@ pub struct DispatcherSwitchStateData {
     pub requested_profile: Option<String>,
     pub requested_model: Option<String>,
     pub status: String,
+    pub failure_code: Option<String>,
     pub note: Option<String>,
 }
 
