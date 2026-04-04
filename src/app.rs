@@ -4,7 +4,7 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, TranscriptData};
-use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
+use crate::screens::GraphScreen;
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
 /// the stylesheet is always available in the bundled .app.
@@ -12,11 +12,10 @@ const MAIN_CSS: &str = include_str!("../assets/main.css");
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-enum Tab {
+enum Workspace {
     Chat,
-    Work,
+    Scribe,
     Graph,
-    Session,
 }
 
 #[component]
@@ -100,7 +99,7 @@ pub fn App() -> Element {
         });
     });
 
-    let mut tab = use_signal(|| Tab::Chat);
+    let mut workspace = use_signal(|| Workspace::Chat);
 
     let session = controller.read().session_data();
     let context_status = if let Some(tokens) = session.context_tokens {
@@ -116,50 +115,48 @@ pub fn App() -> Element {
     rsx! {
         document::Style { "{MAIN_CSS}" }
         div { class: "shell",
-            header { class: "header",
-                div { class: "header-copy",
-                    h1 { "Auspex" }
-                    p {
+
+            // ── Top bar ─────────────────────────────────────────────────
+            header { class: "topbar",
+                // Top-left corner box — shell identity
+                div { class: "topbar-identity",
+                    h1 { class: "topbar-title", "Auspex" }
+                    span { class: "topbar-subtitle",
                         if controller.read().is_remote() {
-                            "Connected to Omegon control plane"
+                            "Remote"
                         } else {
-                            "Offline mock mode"
+                            "Local"
                         }
                     }
-                }
-                div { class: "header-meta",
                     span { class: "version-chip", "v{APP_VERSION}" }
+                }
+
+                // Top-center — workspace tabs (always visible)
+                nav { class: "topbar-tabs",
+                    button {
+                        class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" },
+                        onclick: move |_| workspace.set(Workspace::Chat),
+                        "Chat"
+                    }
+                    button {
+                        class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" },
+                        onclick: move |_| workspace.set(Workspace::Scribe),
+                        "Scribe"
+                    }
+                    button {
+                        class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" },
+                        onclick: move |_| workspace.set(Workspace::Graph),
+                        "Graph"
+                    }
+                }
+
+                // Top-right — global state
+                div { class: "topbar-status",
                     div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
                 }
             }
 
-            section { class: "devbar",
-                label { "Source" }
-                select {
-                    value: controller.read().session_mode().key(),
-                    onchange: move |event| controller.write().switch_session_mode(event.value().as_str()),
-                    for mode in SessionMode::ALL {
-                        option { value: mode.key(), "{mode.label()}" }
-                    }
-                }
-
-                if !controller.read().is_remote() {
-                    label { "Scenario" }
-                    select {
-                        value: controller.read().scenario().key(),
-                        onchange: move |event| controller.write().select_scenario(event.value().as_str()),
-                        for scenario in DevScenario::ALL {
-                            option { value: scenario.key(), "{scenario.label()}" }
-                        }
-                    }
-                } else {
-                    span { class: "devbar-note", "Remote mode is snapshot-driven; scenario overrides are disabled." }
-                    if event_stream.read().is_some() {
-                        span { class: "devbar-note", "Live WS event stream attached." }
-                    }
-                }
-            }
-
+            // ── Surface notices (overlay the top of the main area) ─────
             if let Some(surface) = controller.read().surface_notice()
                 && surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote
             {
@@ -180,162 +177,190 @@ pub fn App() -> Element {
                         p { class: "state-screen-detail", "{detail}" }
                     }
                 }
-            } else {
-                // Reconnecting banner — shown when WS dropped but session data is still valid
-                if let Some(surface) = controller.read().surface_notice()
-                    && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
-                {
-                    section { class: surface.kind.section_class(),
-                        strong { "{surface.kind.title()}" }
-                        span { " {surface.body}" }
+            }
+
+            if let Some(surface) = controller.read().surface_notice()
+                && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
+            {
+                section { class: surface.kind.section_class(),
+                    strong { "{surface.kind.title()}" }
+                    span { " {surface.body}" }
+                }
+            }
+
+            if let Some(surface) = controller.read().surface_notice()
+                && matches!(
+                    surface.kind,
+                    crate::fixtures::AppSurfaceKind::StartupFailure
+                        | crate::fixtures::AppSurfaceKind::CompatibilityFailure
+                )
+            {
+                section { class: surface.kind.section_class(),
+                    strong { "{surface.kind.title()}" }
+                    p { "{surface.body}" }
+                    if let Some(detail) = surface.detail.as_deref() {
+                        p { class: "compat-detail", "{detail}" }
                     }
                 }
+            }
 
-                section { class: "summary-bar",
-                    div { class: "summary-card",
-                        h2 { "Connection" }
-                        p { "{controller.read().summary().connection}" }
-                    }
-                    div { class: "summary-card",
-                        h2 { "Context" }
-                        p { "{context_status}" }
-                    }
-                }
+            // ── Main area: left rail / center / right rail ─────────────
+            div { class: "main-area",
 
-                // Activity strip — event-driven; dot pulses green while a run is in progress
-                section { class: controller.read().summary().activity_kind.strip_class(),
-                    div {
-                        class: controller
-                            .read()
-                            .summary()
-                            .activity_kind
-                            .dot_class(controller.read().is_run_active())
+                // Left rail — project/session navigator
+                aside { class: "left-rail",
+                    section { class: "rail-section",
+                        h2 { class: "rail-heading", "Projects" }
+                        p { class: "rail-placeholder", "No projects loaded" }
                     }
-                    span { class: "activity-label", "{controller.read().summary().activity}" }
-                }
-
-                // Power-mode tab bar — only shown in remote mode
-                if controller.read().is_remote() {
-                    nav { class: "tab-bar",
-                        button {
-                            class: if *tab.read() == Tab::Chat { "tab tab-active" } else { "tab" },
-                            onclick: move |_| tab.set(Tab::Chat),
-                            "Chat"
-                        }
-                        button {
-                            class: if *tab.read() == Tab::Work { "tab tab-active" } else { "tab" },
-                            onclick: move |_| tab.set(Tab::Work),
-                            "Work"
-                        }
-                        button {
-                            class: if *tab.read() == Tab::Graph { "tab tab-active" } else { "tab" },
-                            onclick: move |_| tab.set(Tab::Graph),
-                            "Graph"
-                        }
-                        button {
-                            class: if *tab.read() == Tab::Session { "tab tab-active" } else { "tab" },
-                            onclick: move |_| tab.set(Tab::Session),
-                            "Session"
-                        }
+                    section { class: "rail-section",
+                        h2 { class: "rail-heading", "Sessions" }
+                        p { class: "rail-placeholder", "No active sessions" }
                     }
-                }
-
-                // Fatal startup overlay — blocks normal operation until the
-                // embedded backend or explicit remote attach succeeds.
-                if let Some(surface) = controller.read().surface_notice()
-                    && matches!(
-                        surface.kind,
-                        crate::fixtures::AppSurfaceKind::StartupFailure
-                            | crate::fixtures::AppSurfaceKind::CompatibilityFailure
-                    )
-                {
-                    section { class: surface.kind.section_class(),
-                        strong { "{surface.kind.title()}" }
-                        p { "{surface.body}" }
-                        if let Some(detail) = surface.detail.as_deref() {
-                            p { class: "compat-detail", "{detail}" }
-                        }
-                    }
-                } else if *tab.read() == Tab::Work {
-                    WorkScreen { data: controller.read().work_data() }
-                } else if *tab.read() == Tab::Graph {
-                    GraphScreen { data: controller.read().graph_data() }
-                } else if *tab.read() == Tab::Session {
-                    SessionScreen {
-                        data: controller.read().session_data(),
-                        on_dispatcher_switch: move |(profile, model): (String, Option<String>)| {
-                            let command = controller
-                                .write()
-                                .request_dispatcher_switch_command_json(&profile, model.as_deref());
-                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                stream.send_command(command);
+                    // Dev controls — temporary, will move to a proper settings surface
+                    section { class: "rail-section rail-devbar",
+                        h2 { class: "rail-heading", "Dev" }
+                        select {
+                            value: controller.read().session_mode().key(),
+                            onchange: move |event| controller.write().switch_session_mode(event.value().as_str()),
+                            for mode in SessionMode::ALL {
+                                option { value: mode.key(), "{mode.label()}" }
                             }
-                        },
-                    }
-                } else {
-                    main { class: "transcript",
-                        {render_transcript(controller.read().transcript(), controller.read().messages())}
-                        div { id: "transcript-end" }
-                    }
-
-                    form {
-                        class: "composer",
-                        onsubmit: move |event| {
-                            event.prevent_default();
-                            let command = controller.write().submit_prompt_command_json();
-                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                stream.send_command(command);
+                        }
+                        if !controller.read().is_remote() {
+                            select {
+                                value: controller.read().scenario().key(),
+                                onchange: move |event| controller.write().select_scenario(event.value().as_str()),
+                                for scenario in DevScenario::ALL {
+                                    option { value: scenario.key(), "{scenario.label()}" }
+                                }
                             }
-                        },
-                        textarea {
-                            class: "composer-input",
-                            rows: "3",
-                            value: controller.read().composer().draft().to_string(),
-                            disabled: !controller.read().can_submit(),
-                            placeholder: if controller.read().can_submit() {
-                                "Start with the smallest useful prompt…"
-                            } else {
-                                "Conversation input is unavailable in the current host state."
-                            },
-                            oninput: move |event| controller.write().update_draft(event.value()),
-                            onkeydown: move |event| {
-                                if event.key() == Key::Enter
-                                    && (event.modifiers().contains(Modifiers::CONTROL)
-                                        || event.modifiers().contains(Modifiers::META))
-                                {
-                                    let command = controller.write().submit_prompt_command_json();
-                                    if let (Some(command), Some(stream)) =
-                                        (command, event_stream.read().clone())
-                                    {
-                                        stream.send_command(command);
-                                    }
+                        }
+                    }
+                }
+
+                // Center workspace — active tab content
+                div { class: "center-workspace",
+                    if *workspace.read() == Workspace::Graph {
+                        GraphScreen { data: controller.read().graph_data() }
+                    } else if *workspace.read() == Workspace::Scribe {
+                        section { class: "workspace-placeholder",
+                            h2 { "Scribe" }
+                            p { "The Scribe extension workspace will appear here." }
+                        }
+                    } else {
+                        // Chat workspace — transcript + composer
+                        main { class: "transcript",
+                            {render_transcript(controller.read().transcript(), controller.read().messages())}
+                            div { id: "transcript-end" }
+                        }
+
+                        form {
+                            class: "composer",
+                            onsubmit: move |event| {
+                                event.prevent_default();
+                                let command = controller.write().submit_prompt_command_json();
+                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                    stream.send_command(command);
                                 }
                             },
-                        }
-                        div { class: "composer-actions",
-                            if controller.read().is_run_active() {
-                                button {
-                                    class: "composer-cancel",
-                                    r#type: "button",
-                                    onclick: move |_| {
-                                        if let Some(command) = controller.read().cancel_command_json()
-                                            && let Some(stream) = event_stream.read().clone()
+                            textarea {
+                                class: "composer-input",
+                                rows: "3",
+                                value: controller.read().composer().draft().to_string(),
+                                disabled: !controller.read().can_submit(),
+                                placeholder: if controller.read().can_submit() {
+                                    "Start with the smallest useful prompt…"
+                                } else {
+                                    "Conversation input is unavailable in the current host state."
+                                },
+                                oninput: move |event| controller.write().update_draft(event.value()),
+                                onkeydown: move |event| {
+                                    if event.key() == Key::Enter
+                                        && (event.modifiers().contains(Modifiers::CONTROL)
+                                            || event.modifiers().contains(Modifiers::META))
+                                    {
+                                        let command = controller.write().submit_prompt_command_json();
+                                        if let (Some(command), Some(stream)) =
+                                            (command, event_stream.read().clone())
                                         {
                                             stream.send_command(command);
                                         }
-                                    },
-                                    "Cancel"
-                                }
+                                    }
+                                },
                             }
-                            button {
-                                class: "composer-submit",
-                                r#type: "submit",
-                                disabled: !controller.read().can_submit(),
-                                "Send"
+                            div { class: "composer-actions",
+                                if controller.read().is_run_active() {
+                                    button {
+                                        class: "composer-cancel",
+                                        r#type: "button",
+                                        onclick: move |_| {
+                                            if let Some(command) = controller.read().cancel_command_json()
+                                                && let Some(stream) = event_stream.read().clone()
+                                            {
+                                                stream.send_command(command);
+                                            }
+                                        },
+                                        "Cancel"
+                                    }
+                                }
+                                button {
+                                    class: "composer-submit",
+                                    r#type: "submit",
+                                    disabled: !controller.read().can_submit(),
+                                    "Send"
+                                }
                             }
                         }
                     }
                 }
+
+                // Right rail — contextual inspector
+                aside { class: "right-rail",
+                    section { class: "rail-section",
+                        h2 { class: "rail-heading", "Design" }
+                        if let Some(focused) = controller.read().work_data().focused_title.as_deref() {
+                            div { class: "work-focused-card",
+                                span { class: "work-focused-title", "{focused}" }
+                                if let Some(status) = controller.read().work_data().focused_status.as_deref() {
+                                    span { class: "badge", "{status}" }
+                                }
+                            }
+                        } else {
+                            p { class: "rail-placeholder", "No focused work" }
+                        }
+                    }
+                    section { class: "rail-section",
+                        h2 { class: "rail-heading", "Activity" }
+                        section { class: controller.read().summary().activity_kind.strip_class(),
+                            div {
+                                class: controller
+                                    .read()
+                                    .summary()
+                                    .activity_kind
+                                    .dot_class(controller.read().is_run_active())
+                            }
+                            span { class: "activity-label", "{controller.read().summary().activity}" }
+                        }
+                    }
+                }
+            }
+
+            // ── Bottom bar ──────────────────────────────────────────────
+            footer { class: "bottombar",
+                // Bottom-left corner box — org/operator identity
+                div { class: "bottombar-org",
+                    span { class: "bottombar-label", "Operator" }
+                }
+
+                // Bottom-center — instrumentation
+                div { class: "bottombar-instruments",
+                    span { class: "instrument", "{controller.read().summary().connection}" }
+                    span { class: "instrument", "{context_status}" }
+                }
+
+                // Bottom-right corner box — reserved aperture
+                div { class: "bottombar-reserved" }
             }
         }
     }

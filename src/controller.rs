@@ -303,6 +303,7 @@ impl AppController {
         }
     }
 
+    #[allow(dead_code)]
     pub fn request_dispatcher_switch_command_json(
         &mut self,
         profile: &str,

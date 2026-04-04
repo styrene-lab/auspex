@@ -2,6 +2,9 @@
 ///
 /// These are composed from `WorkData` and `SessionData` view-models
 /// derived from the Omegon snapshot; no additional backend calls needed.
+///
+/// Some components here are not yet wired into the desktop shell frame
+/// but are tested and ready for right-rail / session inspector integration.
 use dioxus::prelude::*;
 
 use crate::fixtures::{
@@ -346,6 +349,7 @@ pub fn SessionScreen(
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
 
+#[allow(dead_code)]
 fn render_dispatcher_switch_state(
     dispatcher: &DispatcherBindingData,
     state: &DispatcherSwitchStateData,
@@ -399,11 +403,13 @@ fn status_badge_class(status: &str) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn dispatcher_switch_badge_class(status: &str) -> &'static str {
     status_badge_class(status)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 struct DispatcherSwitchView {
     badge_status: &'static str,
     badge_label: &'static str,
@@ -412,6 +418,7 @@ struct DispatcherSwitchView {
     binding_summary: String,
 }
 
+#[allow(dead_code)]
 fn dispatcher_option_disabled(
     dispatcher: &DispatcherBindingData,
     option: &DispatcherOptionData,
@@ -427,6 +434,7 @@ fn dispatcher_option_disabled(
     })
 }
 
+#[allow(dead_code)]
 fn dispatcher_option_button_class(
     dispatcher: &DispatcherBindingData,
     option: &DispatcherOptionData,
@@ -444,6 +452,7 @@ fn dispatcher_option_button_class(
     }
 }
 
+#[allow(dead_code)]
 fn dispatcher_option_status_text(
     dispatcher: &DispatcherBindingData,
     option: &DispatcherOptionData,
@@ -461,6 +470,7 @@ fn dispatcher_option_status_text(
     }
 }
 
+#[allow(dead_code)]
 fn dispatcher_switch_view(
     dispatcher: &DispatcherBindingData,
     state: &DispatcherSwitchStateData,
@@ -545,6 +555,7 @@ fn dispatcher_switch_view(
     }
 }
 
+#[allow(dead_code)]
 fn switch_target_label(profile: Option<&str>, model: Option<&str>) -> String {
     match (profile, model) {
         (Some(profile), Some(model)) => format!("{profile} · {model}"),
@@ -554,6 +565,7 @@ fn switch_target_label(profile: Option<&str>, model: Option<&str>) -> String {
     }
 }
 
+#[allow(dead_code)]
 fn format_context_usage(tokens: Option<u64>, window: Option<u64>) -> Option<String> {
     match (tokens, window) {
         (Some(tokens), Some(window)) => Some(format!("{tokens} / {window} tokens")),
@@ -563,6 +575,7 @@ fn format_context_usage(tokens: Option<u64>, window: Option<u64>) -> Option<Stri
     }
 }
 
+#[allow(dead_code)]
 fn kv_row(key: &str, value: &str) -> Element {
     rsx! {
         div { class: "kv-row",

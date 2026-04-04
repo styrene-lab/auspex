@@ -8,6 +8,7 @@ use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnaps
 use crate::session_model::HostSessionModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum DispatcherSwitchCommandOutcome {
     Issued { request_id: String },
     Noop,
