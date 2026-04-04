@@ -22,6 +22,7 @@ enum Workspace {
 pub fn App() -> Element {
     let bootstrap = try_consume_context::<BootstrapResult>();
     // Extract spawning binary before bootstrap is consumed by use_signal.
+    #[cfg(not(target_arch = "wasm32"))]
     let spawning_binary: Option<String> = bootstrap.as_ref().and_then(|b| {
         if let crate::bootstrap::BootstrapSource::SpawningOmegon { binary } = &b.source {
             Some(binary.clone())
@@ -55,13 +56,16 @@ pub fn App() -> Element {
                         }
                     }
                 }
+                #[cfg(not(target_arch = "wasm32"))]
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
+                #[cfg(target_arch = "wasm32")]
+                gloo_timers::future::TimeoutFuture::new(150).await;
             }
         }
     });
 
-    // Async Omegon spawn: handle SpawningOmegon bootstrap source without
-    // blocking the UI thread. Updates controller + event_stream on completion.
+    // Async Omegon spawn: desktop-only.
+    #[cfg(not(target_arch = "wasm32"))]
     use_future(move || {
         let binary = spawning_binary.clone();
         let mut controller = controller;

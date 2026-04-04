@@ -2,10 +2,6 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use reqwest::Url;
-use tungstenite::Message;
-
-pub const WS_URL_ENV: &str = "AUSPEX_OMEGON_WS_URL";
-pub const WS_TOKEN_ENV: &str = "AUSPEX_OMEGON_WS_TOKEN";
 
 #[derive(Clone, Debug, Default)]
 pub struct EventInbox {
@@ -81,7 +77,17 @@ impl EventStreamHandle {
     pub fn send_command(&self, command_json: String) {
         self.outbox.push(command_json);
     }
+
+    fn push_system_notice(&self, message: impl Into<String>) {
+        let payload = serde_json::json!({
+            "type": "system_notification",
+            "message": message.into(),
+        });
+        self.inbox.push(payload.to_string());
+    }
 }
+
+// ── URL helpers (shared across all platforms) ─────────────────────────────────
 
 pub fn derive_ws_url_from_state_url(state_url: &str) -> Result<String, String> {
     let mut url = Url::parse(state_url).map_err(|error| format!("invalid state URL: {error}"))?;
@@ -115,18 +121,20 @@ pub fn apply_ws_auth_token(url: &str, token: Option<&str>) -> Result<String, Str
     Ok(parsed.to_string())
 }
 
-pub fn derive_authenticated_ws_url(state_url: &str, token: Option<&str>) -> Result<String, String> {
+pub fn derive_authenticated_ws_url(
+    state_url: &str,
+    token: Option<&str>,
+) -> Result<String, String> {
     let ws_url = derive_ws_url_from_state_url(state_url)?;
     apply_ws_auth_token(&ws_url, token)
 }
 
-/// Spawn the async WebSocket event stream as a tokio task.
-///
-/// The task connects to the given URL, reads events into the handle's
-/// inbox, and sends queued commands from the handle's outbox. It
-/// automatically reconnects with exponential backoff on disconnection.
+// ── Desktop: tokio-tungstenite WebSocket ──────────────────────────────────────
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
     use futures_util::{SinkExt, StreamExt};
+    use tungstenite::Message;
 
     let handle = EventStreamHandle::websocket(url);
     let worker_handle = handle.clone();
@@ -167,24 +175,16 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                     let (mut sink, mut stream) = ws_stream.split();
 
                     loop {
-                        // Drain any queued outbound commands.
                         for cmd in worker_handle.outbox.drain() {
-                            if let Err(error) =
-                                sink.send(Message::Text(cmd.into())).await
-                            {
+                            if let Err(error) = sink.send(Message::Text(cmd.into())).await {
                                 worker_handle.push_system_notice(format!(
                                     "Failed to send command to Omegon: {error}"
                                 ));
                             }
                         }
 
-                        // Read with a short timeout so we can loop back to
-                        // check the outbox periodically.
-                        let read_result = tokio::time::timeout(
-                            Duration::from_millis(50),
-                            stream.next(),
-                        )
-                        .await;
+                        let read_result =
+                            tokio::time::timeout(Duration::from_millis(50), stream.next()).await;
 
                         match read_result {
                             Ok(Some(Ok(Message::Text(text)))) => {
@@ -201,7 +201,9 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                                 );
                                 break;
                             }
-                            Ok(Some(Ok(Message::Ping(_) | Message::Pong(_) | Message::Frame(_)))) => {}
+                            Ok(Some(Ok(
+                                Message::Ping(_) | Message::Pong(_) | Message::Frame(_),
+                            ))) => {}
                             Ok(Some(Err(error))) => {
                                 worker_handle.push_system_notice(format!(
                                     "Omegon event stream error: {error}. Will reconnect."
@@ -227,15 +229,61 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
     handle
 }
 
-impl EventStreamHandle {
-    fn push_system_notice(&self, message: impl Into<String>) {
-        let payload = serde_json::json!({
-            "type": "system_notification",
-            "message": message.into(),
-        });
-        self.inbox.push(payload.to_string());
-    }
+// ── Web: web-sys WebSocket ────────────────────────────────────────────────────
+
+#[cfg(target_arch = "wasm32")]
+pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
+    use wasm_bindgen::prelude::*;
+    use web_sys::{MessageEvent, WebSocket};
+
+    let handle = EventStreamHandle::websocket(url);
+    let worker_handle = handle.clone();
+
+    let ws = WebSocket::new(url).expect("failed to create WebSocket");
+    ws.set_binary_type(web_sys::BinaryType::Arraybuffer);
+
+    // onmessage — push text frames into the inbox.
+    let inbox = worker_handle.inbox.clone();
+    let onmessage = Closure::<dyn FnMut(MessageEvent)>::new(move |event: MessageEvent| {
+        if let Ok(text) = event.data().dyn_into::<js_sys::JsString>() {
+            inbox.push(String::from(text));
+        }
+    });
+    ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    onmessage.forget();
+
+    // onclose — push a system notice.
+    let notice_handle = worker_handle.clone();
+    let onclose = Closure::<dyn FnMut()>::new(move || {
+        notice_handle.push_system_notice("Omegon event stream closed by server.");
+    });
+    ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+    onclose.forget();
+
+    // onerror — push a system notice.
+    let notice_handle = worker_handle.clone();
+    let onerror = Closure::<dyn FnMut()>::new(move || {
+        notice_handle.push_system_notice("Omegon event stream error.");
+    });
+    ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    // Command sender — poll outbox on an interval and send via the WebSocket.
+    let outbox = worker_handle.outbox.clone();
+    let ws_clone = ws.clone();
+    wasm_bindgen_futures::spawn_local(async move {
+        loop {
+            gloo_timers::future::TimeoutFuture::new(50).await;
+            for cmd in outbox.drain() {
+                let _ = ws_clone.send_with_str(&cmd);
+            }
+        }
+    });
+
+    handle
 }
+
+// ── Tests ─────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
 mod tests {

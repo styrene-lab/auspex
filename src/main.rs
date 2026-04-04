@@ -9,6 +9,7 @@ mod runtime_types;
 mod screens;
 mod session_model;
 
+#[cfg(not(target_arch = "wasm32"))]
 fn main() {
     let bootstrap = bootstrap::bootstrap_controller_from_env();
     dioxus::LaunchBuilder::desktop()
@@ -20,5 +21,14 @@ fn main() {
             ),
         )
         .with_context(bootstrap)
+        .launch(app::App);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn main() {
+    // Web mode: Omegon is running in a container / remote host.
+    // The app bootstraps by connecting to the state endpoint served
+    // alongside this page, or from a URL provided via query string.
+    dioxus::LaunchBuilder::web()
         .launch(app::App);
 }

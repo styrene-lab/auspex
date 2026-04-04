@@ -1,25 +1,57 @@
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
+#[cfg(not(target_arch = "wasm32"))]
 use std::fs;
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 use std::time::Duration;
 
 use crate::controller::AppController;
 use crate::event_stream::{
-    EventStreamHandle, WS_TOKEN_ENV, WS_URL_ENV, apply_ws_auth_token, derive_authenticated_ws_url,
+    EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
     spawn_websocket_event_stream,
 };
 use crate::omegon_control::OmegonStartupInfo;
 
+#[cfg(not(target_arch = "wasm32"))]
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
+#[cfg(not(target_arch = "wasm32"))]
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
+#[cfg(not(target_arch = "wasm32"))]
 pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
-/// Explicit path to the Omegon binary. Overrides discovery.
+#[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 2;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 
+#[cfg(not(target_arch = "wasm32"))]
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
+#[cfg(not(target_arch = "wasm32"))]
 const SPAWN_POLL: Duration = Duration::from_millis(250);
+
+/// Connection hints passed to the shared async bootstrap path.
+/// On desktop, built from env vars. On web, built from page URL / JS config.
+#[derive(Clone, Debug, Default)]
+pub struct ConnectHints {
+    /// Explicit WebSocket URL override.
+    pub ws_url: Option<String>,
+    /// Explicit startup discovery URL override.
+    pub startup_url: Option<String>,
+    /// Auth token for the WebSocket connection.
+    pub ws_token: Option<String>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ConnectHints {
+    /// Build hints from environment variables (desktop path).
+    pub fn from_env() -> Self {
+        Self {
+            ws_url: non_empty_env("AUSPEX_OMEGON_WS_URL"),
+            startup_url: non_empty_env(STARTUP_URL_ENV),
+            ws_token: non_empty_env("AUSPEX_OMEGON_WS_TOKEN"),
+        }
+    }
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BootstrapSource {
@@ -73,6 +105,7 @@ impl BootstrapResult {
 
     /// Initial result returned when Omegon needs to be spawned.
     /// The app shows StartingOmegon state while the async spawn runs.
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn spawning_omegon(binary: PathBuf) -> Self {
         let label = binary.display().to_string();
         let mut controller = AppController::default();
@@ -87,6 +120,7 @@ impl BootstrapResult {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
     // 1. Explicit snapshot file wins for dev/test snapshots.
     if let Some(path) = snapshot_path_from_env() {
@@ -120,14 +154,16 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
 }
 
 /// Async bootstrap from an HTTP state endpoint.
-/// This replaces the old synchronous `bootstrap_from_http_state`.
-pub async fn bootstrap_from_http_state_async(url: &str) -> Result<BootstrapResult, String> {
+pub async fn bootstrap_from_http_state_async(
+    url: &str,
+    hints: &ConnectHints,
+) -> Result<BootstrapResult, String> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(10))
         .build()
         .map_err(|e| format!("could not build HTTP client: {e}"))?;
 
-    let startup = fetch_startup_info_async(&client, url).await.ok();
+    let startup = fetch_startup_info_async(&client, url, hints).await.ok();
     if let Some(startup) = startup.as_ref() {
         validate_startup_info(startup)?;
     }
@@ -151,19 +187,20 @@ pub async fn bootstrap_from_http_state_async(url: &str) -> Result<BootstrapResul
         .map_err(|error| format!("could not read response body: {error}"))?;
     let controller = AppController::from_remote_snapshot_json(&body)
         .map_err(|error| format!("invalid state payload: {error}"))?;
-    let ws_token = websocket_token_from_env();
     let ws_url = startup
         .as_ref()
         .map(|startup| startup.ws_url.clone())
         .filter(|ws_url| !ws_url.is_empty())
         .or_else(|| {
-            websocket_url_from_env()
-                .map(|url| apply_ws_auth_token(&url, ws_token.as_deref()))
+            hints
+                .ws_url
+                .as_deref()
+                .map(|url| apply_ws_auth_token(url, hints.ws_token.as_deref()))
                 .transpose()
                 .ok()
                 .flatten()
         })
-        .or_else(|| derive_authenticated_ws_url(state_url, ws_token.as_deref()).ok())
+        .or_else(|| derive_authenticated_ws_url(state_url, hints.ws_token.as_deref()).ok())
         .unwrap_or_else(|| {
             DEFAULT_STATE_URL
                 .replace("http://", "ws://")
@@ -199,9 +236,12 @@ pub async fn bootstrap_from_http_state_async(url: &str) -> Result<BootstrapResul
 async fn fetch_startup_info_async(
     client: &reqwest::Client,
     state_url: &str,
+    hints: &ConnectHints,
 ) -> Result<OmegonStartupInfo, String> {
-    let startup_url =
-        startup_url_from_env().unwrap_or_else(|| startup_url_from_state_url(state_url));
+    let startup_url = hints
+        .startup_url
+        .clone()
+        .unwrap_or_else(|| startup_url_from_state_url(state_url));
     let response = client
         .get(&startup_url)
         .send()
@@ -220,8 +260,8 @@ async fn fetch_startup_info_async(
 /// Complete the bootstrap for an explicit state URL.
 /// Called from the app's async spawn when STATE_URL_ENV is set.
 #[allow(dead_code)]
-pub async fn complete_http_bootstrap(url: &str) -> BootstrapResult {
-    bootstrap_from_http_state_async(url)
+pub async fn complete_http_bootstrap(url: &str, hints: &ConnectHints) -> BootstrapResult {
+    bootstrap_from_http_state_async(url, hints)
         .await
         .unwrap_or_else(|error| {
             if error.contains("control-plane schema") {
@@ -249,26 +289,35 @@ pub async fn omegon_is_running_async() -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn snapshot_path_from_env() -> Option<String> {
     non_empty_env(SNAPSHOT_FILE_ENV)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn state_url_from_env() -> Option<String> {
     non_empty_env(STATE_URL_ENV)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 pub fn startup_url_from_env() -> Option<String> {
     non_empty_env(STARTUP_URL_ENV)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 pub fn websocket_url_from_env() -> Option<String> {
-    non_empty_env(WS_URL_ENV)
+    non_empty_env("AUSPEX_OMEGON_WS_URL")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 pub fn websocket_token_from_env() -> Option<String> {
-    non_empty_env(WS_TOKEN_ENV)
+    non_empty_env("AUSPEX_OMEGON_WS_TOKEN")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read snapshot file: {error}"))?;
@@ -308,6 +357,7 @@ fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
 /// 3. `~/.cargo/bin/omegon` — default `cargo install` location
 /// 4. `/usr/local/bin/omegon` and `/opt/homebrew/bin/omegon` — common system paths
 /// 5. `which omegon` — PATH lookup
+#[cfg(not(target_arch = "wasm32"))]
 pub fn find_omegon_binary() -> Option<PathBuf> {
     if let Some(path) = non_empty_env(OMEGON_BIN_ENV) {
         let p = PathBuf::from(path);
@@ -352,6 +402,7 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
 ///
 /// This function blocks on process I/O and should be called from
 /// `tokio::task::spawn_blocking` or a dedicated thread.
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
     use tokio::io::AsyncBufReadExt;
 
@@ -449,7 +500,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         };
 
         if ready {
-            return bootstrap_from_http_state_async(&state_url)
+            return bootstrap_from_http_state_async(&state_url, &ConnectHints::from_env())
                 .await
                 .unwrap_or_else(|error| {
                     if error.contains("control-plane schema") {
@@ -469,6 +520,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     ))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn non_empty_env(key: &str) -> Option<String> {
     env::var(key)
         .ok()
