@@ -118,7 +118,12 @@ impl RemoteHostSession {
                     text: text.clone(),
                 });
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::Text(text));
+                    turn.blocks.push(crate::fixtures::TurnBlock::Text(
+                        crate::fixtures::AttributedText {
+                            text,
+                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                        },
+                    ));
                 }
                 self.pending_text.clear();
                 true
@@ -146,7 +151,12 @@ impl RemoteHostSession {
                     text: message.clone(),
                 });
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(
+                        crate::fixtures::AttributedText {
+                            text: message,
+                            origin_label: Some("System".into()),
+                        },
+                    ));
                 }
                 true
             }
@@ -253,10 +263,15 @@ impl RemoteHostSession {
                     ),
                 });
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(format!(
-                        "Dispatcher requested decomposition into {} child task(s)",
-                        children.len()
-                    )));
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(
+                        crate::fixtures::AttributedText {
+                            text: format!(
+                                "Dispatcher requested decomposition into {} child task(s)",
+                                children.len()
+                            ),
+                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                        },
+                    ));
                 }
                 true
             }
@@ -274,7 +289,12 @@ impl RemoteHostSession {
                     text: message.clone(),
                 });
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(
+                        crate::fixtures::AttributedText {
+                            text: message,
+                            origin_label: Some(format!("Child {label}")),
+                        },
+                    ));
                 }
                 true
             }
@@ -294,7 +314,12 @@ impl RemoteHostSession {
                     text: message.clone(),
                 });
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(
+                        crate::fixtures::AttributedText {
+                            text: message,
+                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                        },
+                    ));
                 }
                 true
             }
@@ -511,6 +536,16 @@ impl HostSessionModel for RemoteHostSession {
     }
 }
 
+fn dispatcher_origin_label(
+    dispatcher: &Option<crate::omegon_control::DispatcherBindingSnapshot>,
+) -> String {
+    dispatcher
+        .as_ref()
+        .and_then(|binding| binding.expected_model.clone())
+        .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
+        .unwrap_or_else(|| "Dispatcher".into())
+}
+
 fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
     let connection = match snapshot.harness.as_ref() {
         Some(harness) => {
@@ -706,7 +741,10 @@ mod tests {
         assert_eq!(session.transcript.turns[0].number, 1);
         assert_eq!(
             session.transcript.turns[0].blocks,
-            vec![crate::fixtures::TurnBlock::Text("hello world".into())]
+            vec![crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText {
+                text: "hello world".into(),
+                origin_label: Some("anthropic:claude-sonnet-4-6".into()),
+            })]
         );
     }
 
@@ -760,7 +798,10 @@ mod tests {
         );
         assert_eq!(
             session.transcript.turns[0].blocks[1],
-            crate::fixtures::TurnBlock::Text("done".into())
+            crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText {
+                text: "done".into(),
+                origin_label: Some("anthropic:claude-sonnet-4-6".into()),
+            })
         );
     }
 
@@ -852,7 +893,9 @@ mod tests {
         );
         assert!(matches!(
             session.transcript.turns[0].blocks.last(),
-            Some(crate::fixtures::TurnBlock::System(text)) if text.contains("merged child results")
+            Some(crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText { text, origin_label }))
+                if text.contains("merged child results")
+                    && origin_label.as_deref() == Some("anthropic:claude-sonnet-4-6")
         ));
     }
 }

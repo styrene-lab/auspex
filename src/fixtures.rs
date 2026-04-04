@@ -22,11 +22,18 @@ pub struct ToolCard {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AttributedText {
+    pub text: String,
+    pub origin_label: Option<String>,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum TurnBlock {
     Thinking(TurnBlockText),
-    Text(String),
+    Text(AttributedText),
     Tool(ToolCard),
-    System(String),
+    System(AttributedText),
     Aborted(String),
 }
 

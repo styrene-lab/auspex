@@ -371,7 +371,10 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::Text(text) => rsx! {
                                 section { class: "block block-text",
-                                    p { "{text}" }
+                                    if let Some(origin) = &text.origin_label {
+                                        h3 { class: "block-origin", "{origin}" }
+                                    }
+                                    p { "{text.text}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
@@ -388,7 +391,10 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::System(text) => rsx! {
                                 section { class: "block block-system",
-                                    p { "{text}" }
+                                    if let Some(origin) = &text.origin_label {
+                                        h3 { class: "block-origin", "{origin}" }
+                                    }
+                                    p { "{text.text}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Aborted(text) => rsx! {

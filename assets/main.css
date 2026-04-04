@@ -246,6 +246,14 @@ body {
   border: 1px dashed #484f58;
 }
 
+.block-origin {
+  margin: 0 0 0.3rem;
+  font-size: 0.75rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8b949e;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
