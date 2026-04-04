@@ -161,6 +161,7 @@ pub struct DispatcherOptionSnapshot {
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct DispatcherSwitchStateSnapshot {
+    pub request_id: Option<String>,
     pub requested_profile: Option<String>,
     pub requested_model: Option<String>,
     #[serde(default)]

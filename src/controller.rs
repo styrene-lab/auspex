@@ -276,9 +276,10 @@ impl AppController {
     ) -> Option<String> {
         match &mut self.session {
             SessionSource::Remote(session) => match session.request_dispatcher_switch(profile, model)? {
-                DispatcherSwitchCommandOutcome::Issued => Some(
+                DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
                     serde_json::json!({
                         "type": "switch_dispatcher",
+                        "request_id": request_id,
                         "profile": profile,
                         "model": model,
                     })
@@ -331,6 +332,7 @@ mod tests {
         assert_eq!(dispatcher.expected_profile, "primary-interactive");
         assert_eq!(dispatcher.available_options.len(), 2);
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().status, "idle");
+        assert_eq!(dispatcher.switch_state.as_ref().unwrap().request_id, None);
     }
 
     #[test]
@@ -518,12 +520,13 @@ mod tests {
 
         assert_eq!(
             command,
-            r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","type":"switch_dispatcher"}"#
+            r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","request_id":"dispatcher-switch-1","type":"switch_dispatcher"}"#
         );
 
         let session = controller.session_data();
         let switch_state = &session.dispatcher_binding.as_ref().unwrap().switch_state;
         let switch_state = switch_state.as_ref().unwrap();
+        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
         assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
         assert_eq!(switch_state.requested_model.as_deref(), Some("openai:gpt-4.1"));
         assert_eq!(switch_state.status, "pending");
@@ -553,8 +556,41 @@ mod tests {
         assert_eq!(dispatcher.expected_model.as_deref(), Some("openai:gpt-4.1"));
         let switch_state = dispatcher.switch_state.as_ref().unwrap();
         assert_eq!(switch_state.status, "active");
+        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
         assert_eq!(switch_state.note.as_deref(), Some("Dispatcher switch confirmed by snapshot"));
         assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch confirmed"));
+    }
+
+    #[test]
+    fn snapshot_active_state_for_different_request_id_does_not_confirm_local_pending_switch() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .request_dispatcher_switch_command_json(
+                "supervisor-heavy",
+                Some("openai:gpt-4.1"),
+            )
+            .unwrap();
+
+        controller
+            .apply_remote_event_json(
+                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":5,"done_tasks":2},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":12,"tool_calls":34,"compactions":1},"dispatcher":{"session_id":"session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO","expected_role":"primary-driver","expected_profile":"supervisor-heavy","expected_model":"openai:gpt-4.1","control_plane_schema":2,"token_ref":"secret://auspex/instances/omg_primary_01HVDEMO/token","observed_base_url":"http://127.0.0.1:7842","last_verified_at":"2026-04-04T12:05:00Z","available_options":[{"profile":"primary-interactive","label":"Primary Interactive","model":"anthropic:claude-sonnet-4-6"},{"profile":"supervisor-heavy","label":"Supervisor Heavy","model":"openai:gpt-4.1"}],"switch_state":{"request_id":"dispatcher-switch-999","requested_profile":"supervisor-heavy","requested_model":"openai:gpt-4.1","status":"active","failure_code":null,"note":"Different request became active"}},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
+            )
+            .unwrap();
+
+        let switch_state = controller
+            .session_data()
+            .dispatcher_binding
+            .unwrap()
+            .switch_state
+            .unwrap();
+        assert_eq!(switch_state.status, "active");
+        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-999"));
+        assert!(controller
+            .messages()
+            .iter()
+            .all(|message| !message.text.contains("Dispatcher switch confirmed")));
     }
 
     #[test]
@@ -597,6 +633,7 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "pending");
+        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-2"));
         assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
         assert_eq!(switch_state.requested_model, None);
         assert!(controller
@@ -615,7 +652,7 @@ mod tests {
             .unwrap();
         controller
             .apply_remote_event_json(
-                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":5,"done_tasks":2},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":12,"tool_calls":34,"compactions":1},"dispatcher":{"session_id":"session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO","expected_role":"primary-driver","expected_profile":"primary-interactive","expected_model":"anthropic:claude-sonnet-4-6","control_plane_schema":2,"token_ref":"secret://auspex/instances/omg_primary_01HVDEMO/token","observed_base_url":"http://127.0.0.1:7842","last_verified_at":"2026-04-04T12:05:00Z","available_options":[{"profile":"primary-interactive","label":"Primary Interactive","model":"anthropic:claude-sonnet-4-6"},{"profile":"supervisor-heavy","label":"Supervisor Heavy","model":"openai:gpt-4.1"}],"switch_state":{"requested_profile":"supervisor-heavy","requested_model":"openai:gpt-4.1","status":"failed","failure_code":"backend_rejected","note":"Backend rejected dispatcher switch"}},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
+                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":5,"done_tasks":2},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":12,"tool_calls":34,"compactions":1},"dispatcher":{"session_id":"session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO","expected_role":"primary-driver","expected_profile":"primary-interactive","expected_model":"anthropic:claude-sonnet-4-6","control_plane_schema":2,"token_ref":"secret://auspex/instances/omg_primary_01HVDEMO/token","observed_base_url":"http://127.0.0.1:7842","last_verified_at":"2026-04-04T12:05:00Z","available_options":[{"profile":"primary-interactive","label":"Primary Interactive","model":"anthropic:claude-sonnet-4-6"},{"profile":"supervisor-heavy","label":"Supervisor Heavy","model":"openai:gpt-4.1"}],"switch_state":{"request_id":"dispatcher-switch-1","requested_profile":"supervisor-heavy","requested_model":"openai:gpt-4.1","status":"failed","failure_code":"backend_rejected","note":"Backend rejected dispatcher switch"}},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
             )
             .unwrap();
 
@@ -626,6 +663,7 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "failed");
+        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
         assert_eq!(switch_state.failure_code.as_deref(), Some("backend_rejected"));
         assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch failed"));
     }

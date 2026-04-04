@@ -9,7 +9,7 @@ use crate::session_model::HostSessionModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum DispatcherSwitchCommandOutcome {
-    Issued,
+    Issued { request_id: String },
     Noop,
 }
 
@@ -23,6 +23,7 @@ pub struct RemoteHostSession {
     pending_role: Option<MessageRole>,
     pending_text: String,
     run_active: bool,
+    next_dispatcher_request_id: u64,
     // Raw snapshot sub-sections kept for Power mode screens.
     design: crate::omegon_control::DesignSnapshot,
     openspec: crate::omegon_control::OpenSpecSnapshot,
@@ -52,6 +53,7 @@ impl RemoteHostSession {
             pending_role: None,
             pending_text: String::new(),
             run_active: false,
+            next_dispatcher_request_id: 1,
             design: snapshot.design,
             openspec: snapshot.openspec,
             cleave: snapshot.cleave,
@@ -75,16 +77,30 @@ impl RemoteHostSession {
         model: Option<&str>,
     ) -> Option<DispatcherSwitchCommandOutcome> {
         let origin = dispatcher_origin(&self.dispatcher_binding);
+
+        self.dispatcher_binding.as_ref()?;
+
+        let already_active = {
+            let dispatcher = self.dispatcher_binding.as_ref()?;
+            dispatcher.expected_profile == profile
+                && match model {
+                    Some(model) => dispatcher.expected_model.as_deref() == Some(model),
+                    None => true,
+                }
+        };
+
+        let request_id = if already_active {
+            None
+        } else {
+            Some(self.allocate_dispatcher_request_id())
+        };
+
         let dispatcher = self.dispatcher_binding.as_mut()?;
 
-        let already_active = dispatcher.expected_profile == profile
-            && match model {
-                Some(model) => dispatcher.expected_model.as_deref() == Some(model),
-                None => true,
-            };
         if already_active {
             let note = format!("Dispatcher already active: {profile}");
             dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                request_id: None,
                 requested_profile: Some(profile.to_string()),
                 requested_model: model.map(str::to_string),
                 status: "active".into(),
@@ -129,7 +145,9 @@ impl RemoteHostSession {
             }
         }
 
+        let request_id = request_id.expect("request_id must exist for non-noop dispatcher switches");
         dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+            request_id: Some(request_id.clone()),
             requested_profile: Some(profile.to_string()),
             requested_model: model.map(str::to_string),
             status: "pending".into(),
@@ -153,7 +171,13 @@ impl RemoteHostSession {
                 },
             ));
         }
-        Some(DispatcherSwitchCommandOutcome::Issued)
+        Some(DispatcherSwitchCommandOutcome::Issued { request_id })
+    }
+
+    fn allocate_dispatcher_request_id(&mut self) -> String {
+        let request_id = format!("dispatcher-switch-{}", self.next_dispatcher_request_id);
+        self.next_dispatcher_request_id += 1;
+        request_id
     }
 
     pub fn apply_event(&mut self, event: OmegonEvent) -> bool {
@@ -598,6 +622,7 @@ impl HostSessionModel for RemoteHostSession {
                         .collect(),
                     switch_state: binding.switch_state.as_ref().map(|state| {
                         DispatcherSwitchStateData {
+                            request_id: state.request_id.clone(),
                             requested_profile: state.requested_profile.clone(),
                             requested_model: state.requested_model.clone(),
                             status: state.status.clone(),
@@ -697,10 +722,18 @@ fn reconcile_dispatcher_binding(
         .cloned();
     let mut next = next?;
 
-    if let Some(explicit_switch) = next.switch_state.as_ref()
-        && (explicit_switch.status == "failed" || explicit_switch.status == "superseded")
-    {
-        return Some(next);
+    if let Some(explicit_switch) = next.switch_state.as_ref() {
+        if explicit_switch.status == "failed" || explicit_switch.status == "superseded" {
+            return Some(next);
+        }
+
+        if let Some(previous_pending) = previous_pending.as_ref()
+            && explicit_switch.status == "active"
+            && explicit_switch.request_id.is_some()
+            && explicit_switch.request_id != previous_pending.request_id
+        {
+            return Some(next);
+        }
     }
 
     if next.switch_state.is_none() && let Some(previous_switch) = previous_pending {
@@ -714,6 +747,7 @@ fn reconcile_dispatcher_binding(
 
         next.switch_state = Some(if profile_matches && model_matches {
             crate::omegon_control::DispatcherSwitchStateSnapshot {
+                request_id: previous_switch.request_id,
                 requested_profile: previous_switch.requested_profile,
                 requested_model: previous_switch.requested_model,
                 status: "active".into(),
@@ -754,13 +788,19 @@ fn append_dispatcher_switch_transition_notice(
     };
 
     let message = match next_state.status.as_str() {
-        "active" if previous_state.is_some_and(|state| state.status == "pending") => Some(format!(
-            "Dispatcher switch confirmed: {}",
-            switch_target_label(
-                next_state.requested_profile.as_deref(),
-                next_state.requested_model.as_deref()
-            )
-        )),
+        "active"
+            if previous_state.is_some_and(|state| {
+                state.status == "pending" && state.request_id == next_state.request_id
+            }) =>
+        {
+            Some(format!(
+                "Dispatcher switch confirmed: {}",
+                switch_target_label(
+                    next_state.requested_profile.as_deref(),
+                    next_state.requested_model.as_deref()
+                )
+            ))
+        }
         "failed" => Some(match next_state.failure_code.as_deref() {
             Some(code) => format!("Dispatcher switch failed: {code}"),
             None => "Dispatcher switch failed".into(),

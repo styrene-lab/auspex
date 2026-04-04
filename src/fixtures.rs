@@ -128,6 +128,7 @@ pub struct DispatcherOptionData {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DispatcherSwitchStateData {
+    pub request_id: Option<String>,
     pub requested_profile: Option<String>,
     pub requested_model: Option<String>,
     pub status: String,
