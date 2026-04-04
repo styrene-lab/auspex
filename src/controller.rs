@@ -142,6 +142,11 @@ impl AppController {
 
     pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
         match self.shell_state() {
+            ShellState::StartingOmegon => Some(AppSurfaceNotice {
+                kind: AppSurfaceKind::Startup,
+                body: "Launching the Omegon engine. The conversation shell will activate automatically once ready.".into(),
+                detail: self.bootstrap_note.clone(),
+            }),
             ShellState::CompatibilityChecking => Some(AppSurfaceNotice {
                 kind: AppSurfaceKind::Reconnecting,
                 body: "The connection to the host is being restored. New input is temporarily paused. Cached session state is shown.".into(),
@@ -163,13 +168,13 @@ impl AppController {
                     .into(),
                 ),
             }),
-            ShellState::Ready | ShellState::Degraded | ShellState::StartingOmegon => {
-                self.bootstrap_note.clone().map(|body| AppSurfaceNotice {
+            ShellState::Ready | ShellState::Degraded => self.bootstrap_note.clone().map(|body| {
+                AppSurfaceNotice {
                     kind: AppSurfaceKind::BootstrapNote,
                     body,
                     detail: None,
-                })
-            }
+                }
+            }),
         }
     }
 
@@ -593,6 +598,18 @@ mod tests {
             .unwrap()
             .text
             .contains("Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1"));
+    }
+
+    #[test]
+    fn startup_surface_uses_typed_notice() {
+        let mut controller = AppController::default();
+        controller.set_scenario(DevScenario::Booting);
+        controller.set_bootstrap_note(Some("Starting Omegon at /tmp/omegon…".into()));
+
+        let surface = controller.surface_notice().expect("surface notice");
+        assert_eq!(surface.kind, AppSurfaceKind::Startup);
+        assert!(surface.body.contains("Launching the Omegon engine"));
+        assert_eq!(surface.detail.as_deref(), Some("Starting Omegon at /tmp/omegon…"));
     }
 
     #[test]

@@ -312,6 +312,7 @@ impl ActivityKind {
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppSurfaceKind {
     BootstrapNote,
+    Startup,
     Reconnecting,
     StartupFailure,
     CompatibilityFailure,
@@ -321,6 +322,7 @@ impl AppSurfaceKind {
     pub fn section_class(self) -> &'static str {
         match self {
             Self::BootstrapNote => "bootstrap-note",
+            Self::Startup => "state-screen state-screen-starting",
             Self::Reconnecting => "banner banner-reconnecting",
             Self::StartupFailure | Self::CompatibilityFailure => {
                 "status-panel status-panel-failure"
@@ -331,6 +333,7 @@ impl AppSurfaceKind {
     pub fn title(self) -> &'static str {
         match self {
             Self::BootstrapNote => "Bootstrap",
+            Self::Startup => "Starting Omegon",
             Self::Reconnecting => "Reconnecting…",
             Self::StartupFailure => "Embedded backend startup failed",
             Self::CompatibilityFailure => "Compatibility failure",

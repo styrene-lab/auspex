@@ -3,7 +3,7 @@ use dioxus::prelude::*;
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
-use crate::fixtures::{DevScenario, MessageRole, ShellState, TranscriptData};
+use crate::fixtures::{DevScenario, MessageRole, TranscriptData};
 use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
@@ -100,8 +100,6 @@ pub fn App() -> Element {
         });
     });
 
-    let shell_state = controller.read().shell_state();
-    let is_starting = matches!(shell_state, ShellState::StartingOmegon);
     let mut tab = use_signal(|| Tab::Chat);
 
     let session = controller.read().session_data();
@@ -171,14 +169,15 @@ pub fn App() -> Element {
                 }
             }
 
-            if is_starting {
-                // Startup screen — shown while async Omegon spawn is in progress
-                section { class: "state-screen state-screen-starting",
+            if let Some(surface) = controller.read().surface_notice()
+                && surface.kind == crate::fixtures::AppSurfaceKind::Startup
+            {
+                section { class: surface.kind.section_class(),
                     div { class: "state-screen-icon", "⏳" }
-                    h2 { "{controller.read().shell_state().label()}" }
-                    p { class: "state-screen-detail",
-                        "Launching the Omegon engine. \
-                         The conversation shell will activate automatically once ready."
+                    h2 { "{surface.kind.title()}" }
+                    p { class: "state-screen-detail", "{surface.body}" }
+                    if let Some(detail) = surface.detail.as_deref() {
+                        p { class: "state-screen-detail", "{detail}" }
                     }
                 }
             } else {
