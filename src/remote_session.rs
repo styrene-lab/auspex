@@ -117,6 +117,7 @@ impl RemoteHostSession {
                     crate::fixtures::AttributedText {
                         text: note,
                         origin: Some(origin),
+                        notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
                     },
                 ));
             }
@@ -140,6 +141,7 @@ impl RemoteHostSession {
                     crate::fixtures::AttributedText {
                         text: superseded_message,
                         origin: Some(origin.clone()),
+                        notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
                     },
                 ));
             }
@@ -168,6 +170,7 @@ impl RemoteHostSession {
                 crate::fixtures::AttributedText {
                     text: request_message,
                     origin: Some(origin),
+                    notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
                 },
             ));
         }
@@ -250,6 +253,7 @@ impl RemoteHostSession {
                         crate::fixtures::AttributedText {
                             text,
                             origin: Some(dispatcher_origin(&self.dispatcher_binding)),
+                            notice_kind: None,
                         },
                     ));
                 }
@@ -286,6 +290,7 @@ impl RemoteHostSession {
                                 kind: OriginKind::System,
                                 label: "System".into(),
                             }),
+                            notice_kind: Some(crate::fixtures::SystemNoticeKind::Generic),
                         },
                     ));
                 }
@@ -410,6 +415,7 @@ impl RemoteHostSession {
                                 children.len()
                             ),
                             origin: Some(dispatcher_origin(&self.dispatcher_binding)),
+                            notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveStart),
                         },
                     ));
                 }
@@ -436,6 +442,11 @@ impl RemoteHostSession {
                                 kind: OriginKind::Child,
                                 label: format!("Child {label}"),
                             }),
+                            notice_kind: Some(if success {
+                                crate::fixtures::SystemNoticeKind::ChildStatus
+                            } else {
+                                crate::fixtures::SystemNoticeKind::Failure
+                            }),
                         },
                     ));
                 }
@@ -461,6 +472,7 @@ impl RemoteHostSession {
                         crate::fixtures::AttributedText {
                             text: message,
                             origin: Some(dispatcher_origin(&self.dispatcher_binding)),
+                            notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveComplete),
                         },
                     ));
                 }
@@ -841,6 +853,10 @@ fn append_dispatcher_switch_transition_notice(
             crate::fixtures::AttributedText {
                 text: message,
                 origin: Some(dispatcher_origin(&next.cloned())),
+                notice_kind: Some(match next_state.status.as_str() {
+                    "failed" => crate::fixtures::SystemNoticeKind::Failure,
+                    _ => crate::fixtures::SystemNoticeKind::DispatcherSwitch,
+                }),
             },
         ));
     }
@@ -1047,6 +1063,7 @@ mod tests {
                     kind: crate::fixtures::OriginKind::Dispatcher,
                     label: "anthropic:claude-sonnet-4-6".into(),
                 }),
+                notice_kind: None,
             })]
         );
     }
@@ -1107,6 +1124,7 @@ mod tests {
                     kind: crate::fixtures::OriginKind::Dispatcher,
                     label: "anthropic:claude-sonnet-4-6".into(),
                 }),
+                notice_kind: None,
             })
         );
     }
@@ -1199,9 +1217,54 @@ mod tests {
         );
         assert!(matches!(
             session.transcript.turns[0].blocks.last(),
-            Some(crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText { text, origin }))
+            Some(crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText {
+                text,
+                origin,
+                notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveComplete)
+            }))
                 if text.contains("merged child results")
                     && matches!(origin, Some(crate::fixtures::BlockOrigin { kind: crate::fixtures::OriginKind::Dispatcher, label }) if label == "anthropic:claude-sonnet-4-6")
+        ));
+    }
+
+    #[test]
+    fn dispatcher_and_child_system_blocks_carry_explicit_notice_kinds() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"decomposition_started","children":["child-a","child-b"]}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-b","success":false}"#)
+            .unwrap();
+
+        let blocks = &session.transcript.turns[0].blocks;
+        assert!(matches!(
+            &blocks[0],
+            crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText {
+                notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveStart),
+                ..
+            })
+        ));
+        assert!(matches!(
+            &blocks[1],
+            crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText {
+                notice_kind: Some(crate::fixtures::SystemNoticeKind::ChildStatus),
+                ..
+            })
+        ));
+        assert!(matches!(
+            &blocks[2],
+            crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText {
+                notice_kind: Some(crate::fixtures::SystemNoticeKind::Failure),
+                ..
+            })
         ));
     }
 }

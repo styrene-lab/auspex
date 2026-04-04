@@ -37,10 +37,22 @@ pub struct ToolCard {
 }
 
 #[allow(dead_code)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum SystemNoticeKind {
+    Generic,
+    DispatcherSwitch,
+    CleaveStart,
+    CleaveComplete,
+    ChildStatus,
+    Failure,
+}
+
+#[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttributedText {
     pub text: String,
     pub origin: Option<BlockOrigin>,
+    pub notice_kind: Option<SystemNoticeKind>,
 }
 
 #[allow(dead_code)]

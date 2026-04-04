@@ -433,33 +433,40 @@ fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static s
 }
 
 fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
-    match text.origin.as_ref().map(|origin| &origin.kind) {
-        Some(crate::fixtures::OriginKind::Dispatcher) => {
-            dispatcher_system_block_class(text.text.as_str())
+    match text.notice_kind {
+        Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => {
+            "block block-system block-dispatcher-system"
         }
-        Some(crate::fixtures::OriginKind::Child) => child_system_block_class(text.text.as_str()),
-        Some(crate::fixtures::OriginKind::System) => "block block-system",
-        None => "block block-system",
-    }
-}
-
-fn dispatcher_system_block_class(text: &str) -> &'static str {
-    if text.contains("switch failed") {
-        "block block-system block-dispatcher-system block-control-failure"
-    } else if text.contains("requested decomposition") {
-        "block block-system block-dispatcher-system block-control-cleave"
-    } else if text.contains("completed decomposition") {
-        "block block-system block-dispatcher-system block-control-complete"
-    } else {
-        "block block-system block-dispatcher-system"
-    }
-}
-
-fn child_system_block_class(text: &str) -> &'static str {
-    if text.contains("failed") {
-        "block block-system block-child-origin block-control-failure"
-    } else {
-        "block block-system block-child-origin block-control-child"
+        Some(crate::fixtures::SystemNoticeKind::CleaveStart) => {
+            "block block-system block-dispatcher-system block-control-cleave"
+        }
+        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => {
+            "block block-system block-dispatcher-system block-control-complete"
+        }
+        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => {
+            "block block-system block-child-origin block-control-child"
+        }
+        Some(crate::fixtures::SystemNoticeKind::Failure) => {
+            match text.origin.as_ref().map(|origin| &origin.kind) {
+                Some(crate::fixtures::OriginKind::Child) => {
+                    "block block-system block-child-origin block-control-failure"
+                }
+                Some(crate::fixtures::OriginKind::Dispatcher) => {
+                    "block block-system block-dispatcher-system block-control-failure"
+                }
+                _ => "block block-system block-control-failure",
+            }
+        }
+        Some(crate::fixtures::SystemNoticeKind::Generic) | None => match text
+            .origin
+            .as_ref()
+            .map(|origin| &origin.kind)
+        {
+            Some(crate::fixtures::OriginKind::Dispatcher) => "block block-system block-dispatcher-system",
+            Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+            Some(crate::fixtures::OriginKind::System) => "block block-system",
+            None => "block block-system",
+        },
     }
 }
 
@@ -473,10 +480,7 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{
-        child_system_block_class, dispatcher_system_block_class, system_block_class,
-        text_block_class,
-    };
+    use super::{system_block_class, text_block_class};
     use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
@@ -492,13 +496,14 @@ mod tests {
     }
 
     #[test]
-    fn system_block_class_marks_dispatcher_notices_distinctly() {
+    fn system_block_class_marks_dispatcher_switch_notices_distinctly() {
         let text = AttributedText {
             text: "Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1".into(),
             origin: Some(BlockOrigin {
                 kind: OriginKind::Dispatcher,
                 label: "anthropic:claude-sonnet-4-6".into(),
             }),
+            notice_kind: Some(SystemNoticeKind::DispatcherSwitch),
         };
 
         assert_eq!(
@@ -508,36 +513,77 @@ mod tests {
     }
 
     #[test]
-    fn dispatcher_system_block_class_marks_decomposition_notices() {
+    fn system_block_class_marks_cleave_notices_from_notice_kind() {
+        let start = AttributedText {
+            text: "Dispatcher requested decomposition into 2 child task(s)".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::CleaveStart),
+        };
+        let complete = AttributedText {
+            text: "Dispatcher completed decomposition and merged child results".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::CleaveComplete),
+        };
+
         assert_eq!(
-            dispatcher_system_block_class("Dispatcher requested decomposition into 2 child task(s)"),
+            system_block_class(&start),
             "block block-system block-dispatcher-system block-control-cleave"
         );
         assert_eq!(
-            dispatcher_system_block_class("Dispatcher completed decomposition and merged child results"),
+            system_block_class(&complete),
             "block block-system block-dispatcher-system block-control-complete"
         );
     }
 
     #[test]
-    fn dispatcher_system_block_class_marks_switch_failures() {
+    fn system_block_class_marks_failures_from_notice_kind() {
+        let dispatcher_failure = AttributedText {
+            text: "Dispatcher switch failed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1 [backend_rejected]".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::Failure),
+        };
+        let child_failure = AttributedText {
+            text: "Cleave child child-b failed".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Child,
+                label: "Child child-b".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::Failure),
+        };
+
         assert_eq!(
-            dispatcher_system_block_class(
-                "Dispatcher switch failed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1 [backend_rejected]"
-            ),
+            system_block_class(&dispatcher_failure),
             "block block-system block-dispatcher-system block-control-failure"
+        );
+        assert_eq!(
+            system_block_class(&child_failure),
+            "block block-system block-child-origin block-control-failure"
         );
     }
 
     #[test]
-    fn child_system_block_class_distinguishes_success_and_failure() {
+    fn system_block_class_marks_child_status_from_notice_kind() {
+        let text = AttributedText {
+            text: "Cleave child child-a completed successfully".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Child,
+                label: "Child child-a".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::ChildStatus),
+        };
+
         assert_eq!(
-            child_system_block_class("Cleave child child-a completed successfully"),
+            system_block_class(&text),
             "block block-system block-child-origin block-control-child"
-        );
-        assert_eq!(
-            child_system_block_class("Cleave child child-b failed"),
-            "block block-system block-child-origin block-control-failure"
         );
     }
 
