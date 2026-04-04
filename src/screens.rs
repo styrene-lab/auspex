@@ -248,6 +248,23 @@ pub fn SessionScreen(data: SessionData) -> Element {
                 }
             }
 
+            // Active delegates
+            if !data.active_delegates.is_empty() {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Active delegates" }
+                    div { class: "kv-grid",
+                        for delegate in &data.active_delegates {
+                            div { class: "kv-row",
+                                span { class: "kv-key", "{delegate.agent_name}" }
+                                span { class: "kv-value",
+                                    "{delegate.status} · {delegate.task_id} · {delegate.elapsed_ms} ms"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // Session stats
             section { class: "screen-section",
                 h2 { class: "screen-section-title", "Session stats" }

@@ -60,6 +60,14 @@ pub struct ProviderInfo {
     pub model: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct DelegateSummaryData {
+    pub task_id: String,
+    pub agent_name: String,
+    pub status: String,
+    pub elapsed_ms: u64,
+}
+
 /// Snapshot of design-tree state for the Graph power-mode screen.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct GraphData {
@@ -113,6 +121,7 @@ pub struct SessionData {
     pub cleave_available: bool,
     pub memory_warning: Option<String>,
     pub active_delegate_count: usize,
+    pub active_delegates: Vec<DelegateSummaryData>,
     pub session_turns: u32,
     pub session_tool_calls: u32,
     pub session_compactions: u32,

@@ -1,7 +1,7 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, DispatcherBindingData, GraphData,
-    HostSessionSummary, MessageRole, ProviderInfo, SessionData, ShellState, TranscriptData,
-    WorkData, WorkNode,
+    ChatMessage, ComposerState, DelegateSummaryData, DevScenario, DispatcherBindingData,
+    GraphData, HostSessionSummary, MessageRole, ProviderInfo, SessionData, ShellState,
+    TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -245,20 +245,37 @@ impl RemoteHostSession {
             OmegonEvent::DecompositionStarted { children } => {
                 self.summary.activity =
                     format!("Cleave started with {} child task(s)", children.len());
-                true
-            }
-            OmegonEvent::DecompositionChildCompleted { label, success } => {
                 self.messages.push(ChatMessage {
                     role: MessageRole::System,
                     text: format!(
-                        "Cleave child {label} {}",
-                        if success {
-                            "completed successfully"
-                        } else {
-                            "failed"
-                        }
+                        "Dispatcher requested decomposition into {} child task(s)",
+                        children.len()
                     ),
                 });
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(format!(
+                        "Dispatcher requested decomposition into {} child task(s)",
+                        children.len()
+                    )));
+                }
+                true
+            }
+            OmegonEvent::DecompositionChildCompleted { label, success } => {
+                let message = format!(
+                    "Cleave child {label} {}",
+                    if success {
+                        "completed successfully"
+                    } else {
+                        "failed"
+                    }
+                );
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    text: message.clone(),
+                });
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                }
                 true
             }
             OmegonEvent::DecompositionCompleted { merged } => {
@@ -267,6 +284,18 @@ impl RemoteHostSession {
                 } else {
                     "Cleave completed without merge".into()
                 };
+                let message = if merged {
+                    "Dispatcher completed decomposition and merged child results".to_string()
+                } else {
+                    "Dispatcher completed decomposition without merge".to_string()
+                };
+                self.messages.push(ChatMessage {
+                    role: MessageRole::System,
+                    text: message.clone(),
+                });
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    turn.blocks.push(crate::fixtures::TurnBlock::System(message));
+                }
                 true
             }
         }
@@ -385,6 +414,19 @@ impl HostSessionModel for RemoteHostSession {
             cleave_available: h.map(|h| h.cleave_available).unwrap_or(true),
             memory_warning: h.and_then(|h| h.memory_warning.clone()),
             active_delegate_count: h.map(|h| h.active_delegates.len()).unwrap_or(0),
+            active_delegates: h
+                .map(|h| {
+                    h.active_delegates
+                        .iter()
+                        .map(|d| DelegateSummaryData {
+                            task_id: d.task_id.clone(),
+                            agent_name: d.agent_name.clone(),
+                            status: d.status.clone(),
+                            elapsed_ms: d.elapsed_ms,
+                        })
+                        .collect()
+                })
+                .unwrap_or_default(),
             session_turns: self.session_stats.turns,
             session_tool_calls: self.session_stats.tool_calls,
             session_compactions: self.session_stats.compactions,
@@ -756,6 +798,9 @@ mod tests {
         let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
 
         session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+        session
             .apply_event_json(r#"{"type":"tool_start","id":"1","name":"read","args":{}}"#)
             .unwrap();
         assert_eq!(session.summary().activity, "Running tool read");
@@ -764,6 +809,20 @@ mod tests {
             .apply_event_json(r#"{"type":"tool_end","id":"1","is_error":false,"result":"ok"}"#)
             .unwrap();
         assert_eq!(session.summary().activity, "Tool run completed");
+
+        session
+            .apply_event_json(
+                r#"{"type":"decomposition_started","children":["child-a","child-b"]}"#,
+            )
+            .unwrap();
+        assert!(
+            session
+                .messages()
+                .last()
+                .unwrap()
+                .text
+                .contains("Dispatcher requested decomposition into 2 child task(s)")
+        );
 
         session
             .apply_event_json(
@@ -778,5 +837,22 @@ mod tests {
                 .text
                 .contains("child-a completed successfully")
         );
+
+        session
+            .apply_event_json(r#"{"type":"decomposition_completed","merged":true}"#)
+            .unwrap();
+        assert_eq!(session.summary().activity, "Cleave completed and merged");
+        assert!(
+            session
+                .messages()
+                .last()
+                .unwrap()
+                .text
+                .contains("merged child results")
+        );
+        assert!(matches!(
+            session.transcript.turns[0].blocks.last(),
+            Some(crate::fixtures::TurnBlock::System(text)) if text.contains("merged child results")
+        ));
     }
 }
