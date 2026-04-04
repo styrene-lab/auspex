@@ -434,10 +434,32 @@ fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static s
 
 fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
     match text.origin.as_ref().map(|origin| &origin.kind) {
-        Some(crate::fixtures::OriginKind::Dispatcher) => "block block-system block-dispatcher-system",
-        Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+        Some(crate::fixtures::OriginKind::Dispatcher) => {
+            dispatcher_system_block_class(text.text.as_str())
+        }
+        Some(crate::fixtures::OriginKind::Child) => child_system_block_class(text.text.as_str()),
         Some(crate::fixtures::OriginKind::System) => "block block-system",
         None => "block block-system",
+    }
+}
+
+fn dispatcher_system_block_class(text: &str) -> &'static str {
+    if text.contains("switch failed") {
+        "block block-system block-dispatcher-system block-control-failure"
+    } else if text.contains("requested decomposition") {
+        "block block-system block-dispatcher-system block-control-cleave"
+    } else if text.contains("completed decomposition") {
+        "block block-system block-dispatcher-system block-control-complete"
+    } else {
+        "block block-system block-dispatcher-system"
+    }
+}
+
+fn child_system_block_class(text: &str) -> &'static str {
+    if text.contains("failed") {
+        "block block-system block-child-origin block-control-failure"
+    } else {
+        "block block-system block-child-origin block-control-child"
     }
 }
 
@@ -451,7 +473,10 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
 
 #[cfg(test)]
 mod tests {
-    use super::{system_block_class, text_block_class};
+    use super::{
+        child_system_block_class, dispatcher_system_block_class, system_block_class,
+        text_block_class,
+    };
     use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
@@ -479,6 +504,40 @@ mod tests {
         assert_eq!(
             system_block_class(&text),
             "block block-system block-dispatcher-system"
+        );
+    }
+
+    #[test]
+    fn dispatcher_system_block_class_marks_decomposition_notices() {
+        assert_eq!(
+            dispatcher_system_block_class("Dispatcher requested decomposition into 2 child task(s)"),
+            "block block-system block-dispatcher-system block-control-cleave"
+        );
+        assert_eq!(
+            dispatcher_system_block_class("Dispatcher completed decomposition and merged child results"),
+            "block block-system block-dispatcher-system block-control-complete"
+        );
+    }
+
+    #[test]
+    fn dispatcher_system_block_class_marks_switch_failures() {
+        assert_eq!(
+            dispatcher_system_block_class(
+                "Dispatcher switch failed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1 [backend_rejected]"
+            ),
+            "block block-system block-dispatcher-system block-control-failure"
+        );
+    }
+
+    #[test]
+    fn child_system_block_class_distinguishes_success_and_failure() {
+        assert_eq!(
+            child_system_block_class("Cleave child child-a completed successfully"),
+            "block block-system block-child-origin block-control-child"
+        );
+        assert_eq!(
+            child_system_block_class("Cleave child child-b failed"),
+            "block block-system block-child-origin block-control-failure"
         );
     }
 

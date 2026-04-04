@@ -280,6 +280,30 @@ body {
   color: #c9d1d9;
 }
 
+.block-control-cleave {
+  border-color: #8957e5;
+  background: #171327;
+}
+
+.block-control-complete {
+  border-color: #238636;
+  background: #0f2017;
+}
+
+.block-control-child {
+  border-color: #9e6a03;
+  background: #221a0a;
+}
+
+.block-control-failure {
+  border-color: #da3633;
+  background: #2d1117;
+}
+
+.block-control-failure p {
+  color: #ffb3ba;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
