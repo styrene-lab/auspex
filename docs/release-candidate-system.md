@@ -30,7 +30,6 @@ It intentionally defers:
 The RC line toward the first stable release should look like this:
 
 ```text
-0.0.1-rc.6   ← current repo state
 0.1.0-rc.1   ← first public RC toward stable
 0.1.0-rc.2   ← follow-up RC if needed
 0.1.0        ← first stable release
