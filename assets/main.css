@@ -25,6 +25,12 @@ body {
   overflow: hidden;
 }
 
+.top-chrome {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
 /* ── Top bar ─────────────────────────────────────────────── */
 
 .topbar {

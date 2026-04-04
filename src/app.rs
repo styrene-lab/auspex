@@ -117,90 +117,92 @@ pub fn App() -> Element {
         document::Style { "{MAIN_CSS}" }
         div { class: "shell",
 
-            // ── Top bar ─────────────────────────────────────────────────
-            header { class: "topbar",
-                // Top-left corner box — shell identity
-                div { class: "topbar-identity",
-                    h1 { class: "topbar-title", "Auspex" }
-                    span { class: "topbar-subtitle",
-                        if controller.read().is_remote() {
-                            "Remote"
-                        } else {
-                            "Local"
+            div { class: "top-chrome",
+                // ── Top bar ─────────────────────────────────────────────
+                header { class: "topbar",
+                    // Top-left corner box — shell identity
+                    div { class: "topbar-identity",
+                        h1 { class: "topbar-title", "Auspex" }
+                        span { class: "topbar-subtitle",
+                            if controller.read().is_remote() {
+                                "Remote"
+                            } else {
+                                "Local"
+                            }
+                        }
+                        span { class: "version-chip", "v{APP_VERSION}" }
+                    }
+
+                    // Top-center — workspace tabs (always visible)
+                    nav { class: "topbar-tabs",
+                        button {
+                            class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" },
+                            onclick: move |_| workspace.set(Workspace::Chat),
+                            "Chat"
+                        }
+                        button {
+                            class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" },
+                            onclick: move |_| workspace.set(Workspace::Scribe),
+                            "Scribe"
+                        }
+                        button {
+                            class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" },
+                            onclick: move |_| workspace.set(Workspace::Graph),
+                            "Graph"
                         }
                     }
-                    span { class: "version-chip", "v{APP_VERSION}" }
-                }
 
-                // Top-center — workspace tabs (always visible)
-                nav { class: "topbar-tabs",
-                    button {
-                        class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" },
-                        onclick: move |_| workspace.set(Workspace::Chat),
-                        "Chat"
-                    }
-                    button {
-                        class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" },
-                        onclick: move |_| workspace.set(Workspace::Scribe),
-                        "Scribe"
-                    }
-                    button {
-                        class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" },
-                        onclick: move |_| workspace.set(Workspace::Graph),
-                        "Graph"
+                    // Top-right — global state
+                    div { class: "topbar-status",
+                        div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
                     }
                 }
 
-                // Top-right — global state
-                div { class: "topbar-status",
-                    div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
-                }
-            }
-
-            // ── Surface notices (overlay the top of the main area) ─────
-            if let Some(surface) = controller.read().surface_notice()
-                && surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote
-            {
-                section { class: surface.kind.section_class(),
-                    strong { "{surface.kind.title()}" }
-                    p { "{surface.body}" }
-                }
-            }
-
-            if let Some(surface) = controller.read().surface_notice()
-                && surface.kind == crate::fixtures::AppSurfaceKind::Startup
-            {
-                section { class: surface.kind.section_class(),
-                    div { class: "state-screen-icon", "⏳" }
-                    h2 { "{surface.kind.title()}" }
-                    p { class: "state-screen-detail", "{surface.body}" }
-                    if let Some(detail) = surface.detail.as_deref() {
-                        p { class: "state-screen-detail", "{detail}" }
+                // ── Surface notices (part of top chrome, not a full grid row) ──
+                if let Some(surface) = controller.read().surface_notice()
+                    && surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote
+                {
+                    section { class: surface.kind.section_class(),
+                        strong { "{surface.kind.title()}" }
+                        p { "{surface.body}" }
                     }
                 }
-            }
 
-            if let Some(surface) = controller.read().surface_notice()
-                && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
-            {
-                section { class: surface.kind.section_class(),
-                    strong { "{surface.kind.title()}" }
-                    span { " {surface.body}" }
+                if let Some(surface) = controller.read().surface_notice()
+                    && surface.kind == crate::fixtures::AppSurfaceKind::Startup
+                {
+                    section { class: surface.kind.section_class(),
+                        div { class: "state-screen-icon", "⏳" }
+                        h2 { "{surface.kind.title()}" }
+                        p { class: "state-screen-detail", "{surface.body}" }
+                        if let Some(detail) = surface.detail.as_deref() {
+                            p { class: "state-screen-detail", "{detail}" }
+                        }
+                    }
                 }
-            }
 
-            if let Some(surface) = controller.read().surface_notice()
-                && matches!(
-                    surface.kind,
-                    crate::fixtures::AppSurfaceKind::StartupFailure
-                        | crate::fixtures::AppSurfaceKind::CompatibilityFailure
-                )
-            {
-                section { class: surface.kind.section_class(),
-                    strong { "{surface.kind.title()}" }
-                    p { "{surface.body}" }
-                    if let Some(detail) = surface.detail.as_deref() {
-                        p { class: "compat-detail", "{detail}" }
+                if let Some(surface) = controller.read().surface_notice()
+                    && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
+                {
+                    section { class: surface.kind.section_class(),
+                        strong { "{surface.kind.title()}" }
+                        span { " {surface.body}" }
+                    }
+                }
+
+                if let Some(surface) = controller.read().surface_notice()
+                    && matches!(
+                        surface.kind,
+                        crate::fixtures::AppSurfaceKind::StartupFailure
+                            | crate::fixtures::AppSurfaceKind::CompatibilityFailure
+                    )
+                {
+                    section { class: surface.kind.section_class(),
+                        strong { "{surface.kind.title()}" }
+                        p { "{surface.body}" }
+                        if let Some(detail) = surface.detail.as_deref() {
+                            p { class: "compat-detail", "{detail}" }
+                        }
                     }
                 }
             }
