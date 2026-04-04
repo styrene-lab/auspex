@@ -11,6 +11,7 @@ related:
   - auspex-runtime-backends
   - auspex-detached-service-lifecycle
   - auspex-worker-inheritance
+  - auspex-session-dispatcher
 ---
 
 # Auspex multi-agent runtime and Omegon instance orchestration
@@ -68,21 +69,21 @@ That implies an **instance registry** owned by Auspex.
 
 **Status:** accepted
 
-Auspex should own orchestration and supervision, while each Omegon remains an isolated worker process exposing the existing embedded control-plane contract.
+**Rationale:** Auspex should own orchestration and supervision, while each Omegon remains an isolated worker process exposing the existing embedded control-plane contract.
 
 ### Introduce an Auspex-owned instance registry for primary, child, and detached Omegon agents
 
 **Status:** accepted
 
-Multiple agents and background persistence require durable identity and re-attach metadata. A registry lets Auspex explain, reconnect to, and clean up workers instead of losing track of them.
+**Rationale:** Multiple agents and background persistence require durable identity and re-attach metadata. A registry lets Auspex explain, reconnect to, and clean up workers instead of losing track of them.
 
 ### Support three instance roles: primary-driver, supervised-child, and detached-service
 
 **Status:** accepted
 
-These roles cover the immediate product needs without over-generalizing.
+**Rationale:** These roles cover the immediate product needs without over-generalizing.
 
-- `primary-driver` powers the main UI
+- `primary-driver` is the operator-facing session dispatcher that powers the main UI
 - `supervised-child` handles delegated parallel work
 - `detached-service` supports long-running background work that survives window/session restarts
 
@@ -90,13 +91,13 @@ These roles cover the immediate product needs without over-generalizing.
 
 **Status:** accepted
 
-Making Auspex the agent runtime itself would couple UI and orchestration too tightly before the multi-instance supervision model is proven.
+**Rationale:** Making Auspex the agent runtime itself would couple UI and orchestration too tightly before the multi-instance supervision model is proven.
 
 ### Treat an Omegon instance as a logical worker, not merely a local process
 
 **Status:** accepted
 
-The registry and orchestration model must support multiple execution backends:
+**Rationale:** The registry and orchestration model must support multiple execution backends:
 
 - local subprocess
 - detached local service
@@ -109,7 +110,7 @@ That means worker identity, lifecycle, and policy must be backend-agnostic.
 
 **Status:** accepted
 
-Profiled worker classes are required.
+**Rationale:** Profiled worker classes are required.
 The supervisor path should prefer stronger models and higher thinking budgets.
 Child/subtask workers should default to cheaper models such as Haiku, GPT-spark, or equivalent low-cost/local options.
 Escalation to expensive models should be explicit rather than the default.
@@ -118,25 +119,31 @@ Escalation to expensive models should be explicit rather than the default.
 
 **Status:** accepted
 
-Auspex should be design-compatible with running as a deployable service in Kubernetes, with Omegon workers instantiated as pod/job/deployment-backed runtimes under the same logical worker model.
+**Rationale:** Auspex should be design-compatible with running as a deployable service in Kubernetes, with Omegon workers instantiated as pod/job/deployment-backed runtimes under the same logical worker model.
 
 ### Worker inheritance should be explicit, narrowed, and inspectable
 
 **Status:** accepted
 
-Child workers should inherit workspace identity and auth capability references, but not a blind clone of the parent's full mutable session state. Inheritance should flow through an explicit propagation object that can be inspected and explained.
+**Rationale:** Child workers should inherit workspace identity and auth capability references, but not a blind clone of the parent's full mutable session state. Inheritance should flow through an explicit propagation object that can be inspected and explained.
 
 ### Detached-service workers remain registry-owned and normally transition to daemon-owned supervision
 
 **Status:** accepted
 
-A detached worker may outlive the visible UI session, but it should remain owned by the registry and normally be adopted by an Auspex background supervisor rather than drifting into ambiguous ownership.
+**Rationale:** A detached worker may outlive the visible UI session, but it should remain owned by the registry and normally be adopted by an Auspex background supervisor rather than drifting into ambiguous ownership.
 
 ### Detached reattach is identity- and control-plane-verified
 
 **Status:** accepted
 
-Reattachment should require registry identity, control-plane probe success, schema/version compatibility, and usable auth reference resolution. Process/container/pod existence alone is insufficient.
+**Rationale:** Reattachment should require registry identity, control-plane probe success, schema/version compatibility, and usable auth reference resolution. Process/container/pod existence alone is insufficient.
+
+### Primary-driver is the session dispatcher the operator speaks to directly
+
+**Status:** accepted
+
+**Rationale:** The existing primary-driver role is underspecified as merely powering the main UI. In practice, the operator-facing worker needs a clearer semantic contract: it is the per-session dispatcher/orchestrator that decides whether to answer directly, invoke tools, decompose work, or delegate to child workers. This refines the role without changing the accepted architecture that Auspex remains the supervisor/gateway and Omegon workers remain isolated runtimes.
 
 ## First-pass runtime model
 
@@ -187,3 +194,6 @@ Owns the semantics of persistence, reattach, shutdown, abandonment, and cleanup 
 
 ### [[auspex-worker-inheritance]]
 Owns the propagation rules for workspace, auth, memory, profile, and task context from parent workers into child or detached workers.
+
+### [[auspex-session-dispatcher]]
+Owns the semantics of the operator-facing per-session dispatcher worker, including delegation authority, dispatcher identity, and the boundary between dispatcher decisions and Auspex-enforced orchestration.

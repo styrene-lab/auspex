@@ -37,6 +37,12 @@ The orchestration/supervision path should use more capable models by default.
 
 Delegated work should default to Haiku, GPT-spark, or equivalent low-cost/local options unless explicitly escalated.
 
+### Dispatcher selection is model-selectable but constrained by role-eligible profiles
+
+**Status:** proposed
+
+The operator-facing session dispatcher should be selectable like any other model-facing worker, but not every profile/model combination should be valid for the dispatcher role. Dispatcher selection should be filtered by profiles intended for orchestration-capable primary workers rather than allowing cheap child/background defaults to become the main dispatcher implicitly.
+
 ### Inheritance resolves before profile overrides are finalized
 
 **Status:** accepted

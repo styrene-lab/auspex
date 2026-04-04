@@ -103,6 +103,12 @@ Detached-service workers should inherit:
 
 But they should not implicitly inherit a live transient session context from the primary driver. Detached workers are intentionally more independent and must be re-attachable later.
 
+### Dispatcher-to-child inheritance remains task-scoped rather than full-session cloned
+
+**Status:** proposed
+
+The session dispatcher may be the operator-facing orchestrator, but it should still propagate child context through an explicit task-scoped projection rather than cloning the full mutable live session. Delegation context should remain explainable and bounded even when initiated by the dispatcher.
+
 ## First-pass inheritance matrix
 
 | Concern | primary → supervised-child | primary → detached-service |
