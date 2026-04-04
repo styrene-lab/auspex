@@ -558,7 +558,12 @@ mod tests {
         assert_eq!(switch_state.status, "active");
         assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
         assert_eq!(switch_state.note.as_deref(), Some("Dispatcher switch confirmed by snapshot"));
-        assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch confirmed"));
+        assert!(controller
+            .messages()
+            .last()
+            .unwrap()
+            .text
+            .contains("Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1"));
     }
 
     #[test]
@@ -587,10 +592,15 @@ mod tests {
             .unwrap();
         assert_eq!(switch_state.status, "active");
         assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-999"));
+        assert!(controller.messages().iter().any(|message| {
+            message
+                .text
+                .contains("Dispatcher reports a different active request (dispatcher-switch-999): supervisor-heavy · openai:gpt-4.1")
+        }));
         assert!(controller
             .messages()
             .iter()
-            .all(|message| !message.text.contains("Dispatcher switch confirmed")));
+            .all(|message| !message.text.contains("Dispatcher switch confirmed (dispatcher-switch-1)")));
     }
 
     #[test]
@@ -665,6 +675,11 @@ mod tests {
         assert_eq!(switch_state.status, "failed");
         assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
         assert_eq!(switch_state.failure_code.as_deref(), Some("backend_rejected"));
-        assert!(controller.messages().last().unwrap().text.contains("Dispatcher switch failed"));
+        assert!(controller
+            .messages()
+            .last()
+            .unwrap()
+            .text
+            .contains("Dispatcher switch failed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1 [backend_rejected]"));
     }
 }

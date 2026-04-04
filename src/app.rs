@@ -403,7 +403,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::System(text) => rsx! {
-                                section { class: text_block_class(text.origin.as_ref()),
+                                section { class: system_block_class(text),
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
@@ -432,6 +432,15 @@ fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static s
     }
 }
 
+fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
+    match text.origin.as_ref().map(|origin| &origin.kind) {
+        Some(crate::fixtures::OriginKind::Dispatcher) => "block block-system block-dispatcher-system",
+        Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+        Some(crate::fixtures::OriginKind::System) => "block block-system",
+        None => "block block-system",
+    }
+}
+
 fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
     match origin.kind {
         crate::fixtures::OriginKind::Dispatcher => "block-origin block-origin-dispatcher",
@@ -442,9 +451,36 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
 
 #[cfg(test)]
 mod tests {
+    use super::{system_block_class, text_block_class};
     use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
+
+    #[test]
+    fn text_block_class_keeps_dispatcher_text_as_normal_text() {
+        let origin = BlockOrigin {
+            kind: OriginKind::Dispatcher,
+            label: "anthropic:claude-sonnet-4-6".into(),
+        };
+
+        assert_eq!(text_block_class(Some(&origin)), "block block-text");
+    }
+
+    #[test]
+    fn system_block_class_marks_dispatcher_notices_distinctly() {
+        let text = AttributedText {
+            text: "Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1".into(),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }),
+        };
+
+        assert_eq!(
+            system_block_class(&text),
+            "block block-system block-dispatcher-system"
+        );
+    }
 
     #[test]
     fn blank_draft_does_not_submit() {

@@ -787,6 +787,16 @@ fn append_dispatcher_switch_transition_notice(
         return;
     };
 
+    let request_suffix = next_state
+        .request_id
+        .as_deref()
+        .map(|request_id| format!(" ({request_id})"))
+        .unwrap_or_default();
+    let target = switch_target_label(
+        next_state.requested_profile.as_deref(),
+        next_state.requested_model.as_deref(),
+    );
+
     let message = match next_state.status.as_str() {
         "active"
             if previous_state.is_some_and(|state| {
@@ -794,23 +804,26 @@ fn append_dispatcher_switch_transition_notice(
             }) =>
         {
             Some(format!(
-                "Dispatcher switch confirmed: {}",
-                switch_target_label(
-                    next_state.requested_profile.as_deref(),
-                    next_state.requested_model.as_deref()
-                )
+                "Dispatcher switch confirmed{request_suffix}: {target}"
+            ))
+        }
+        "active"
+            if previous_state.is_some_and(|state| {
+                state.status == "pending" && state.request_id != next_state.request_id
+            }) =>
+        {
+            Some(format!(
+                "Dispatcher reports a different active request{request_suffix}: {target}"
             ))
         }
         "failed" => Some(match next_state.failure_code.as_deref() {
-            Some(code) => format!("Dispatcher switch failed: {code}"),
-            None => "Dispatcher switch failed".into(),
+            Some(code) => format!(
+                "Dispatcher switch failed{request_suffix}: {target} [{code}]"
+            ),
+            None => format!("Dispatcher switch failed{request_suffix}: {target}"),
         }),
         "superseded" => Some(format!(
-            "Dispatcher switch superseded: {}",
-            switch_target_label(
-                next_state.requested_profile.as_deref(),
-                next_state.requested_model.as_deref()
-            )
+            "Dispatcher switch superseded{request_suffix}: {target}"
         )),
         _ => None,
     };

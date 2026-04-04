@@ -271,6 +271,15 @@ body {
   background: #1b1710;
 }
 
+.block-dispatcher-system {
+  border-color: #1f6feb;
+  background: #0f1a28;
+}
+
+.block-dispatcher-system p {
+  color: #c9d1d9;
+}
+
 .composer {
   display: flex;
   flex-direction: column;
