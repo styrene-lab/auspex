@@ -78,9 +78,27 @@ impl RemoteHostSession {
                 self.pending_text.clear();
                 true
             }
-            OmegonEvent::MessageChunk { text } | OmegonEvent::ThinkingChunk { text } => {
+            OmegonEvent::MessageChunk { text } => {
                 if self.pending_role.is_some() {
                     self.pending_text.push_str(&text);
+                    true
+                } else {
+                    false
+                }
+            }
+            OmegonEvent::ThinkingChunk { text } => {
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    match turn.blocks.last_mut() {
+                        Some(crate::fixtures::TurnBlock::Thinking(thinking)) => {
+                            thinking.text.push_str(&text);
+                        }
+                        _ => turn.blocks.push(crate::fixtures::TurnBlock::Thinking(
+                            crate::fixtures::TurnBlockText {
+                                text,
+                                collapsed: true,
+                            },
+                        )),
+                    }
                     true
                 } else {
                     false
@@ -145,6 +163,8 @@ impl RemoteHostSession {
                 self.pending_role = None;
                 self.pending_text.clear();
                 self.run_active = false;
+                self.transcript.turns.clear();
+                self.transcript.active_turn = None;
                 true
             }
             OmegonEvent::TurnStart { turn } => {
@@ -576,6 +596,9 @@ mod tests {
     fn websocket_message_events_append_transcript() {
         let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
 
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
         assert!(
             session
                 .apply_event_json(r#"{"type":"message_start","role":"assistant"}"#)
@@ -602,6 +625,12 @@ mod tests {
             MessageRole::Assistant
         );
         assert_eq!(session.messages().last().unwrap().text, "hello world");
+        assert_eq!(session.transcript.turns.len(), 1);
+        assert_eq!(session.transcript.turns[0].number, 1);
+        assert_eq!(
+            session.transcript.turns[0].blocks,
+            vec![crate::fixtures::TurnBlock::Text("hello world".into())]
+        );
     }
 
     #[test]
@@ -617,6 +646,74 @@ mod tests {
         assert_eq!(session.shell_state(), ShellState::Degraded);
         assert_eq!(session.scenario(), DevScenario::Degraded);
         assert_eq!(session.summary().activity, "Memory database unavailable");
+    }
+
+    #[test]
+    fn thinking_chunks_render_as_distinct_collapsed_blocks() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":7}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_start","role":"assistant"}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"thinking_chunk","text":"inspect "}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"thinking_chunk","text":"state"}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_chunk","text":"done"}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_end"}"#)
+            .unwrap();
+
+        assert_eq!(session.messages().last().unwrap().text, "done");
+        assert_eq!(session.transcript.turns.len(), 1);
+        assert_eq!(session.transcript.turns[0].blocks.len(), 2);
+        assert_eq!(
+            session.transcript.turns[0].blocks[0],
+            crate::fixtures::TurnBlock::Thinking(crate::fixtures::TurnBlockText {
+                text: "inspect state".into(),
+                collapsed: true,
+            })
+        );
+        assert_eq!(
+            session.transcript.turns[0].blocks[1],
+            crate::fixtures::TurnBlock::Text("done".into())
+        );
+    }
+
+    #[test]
+    fn session_reset_clears_structured_transcript() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_start","role":"assistant"}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_chunk","text":"hello"}"#)
+            .unwrap();
+        session
+            .apply_event_json(r#"{"type":"message_end"}"#)
+            .unwrap();
+        assert_eq!(session.transcript.turns.len(), 1);
+        assert_eq!(session.transcript.active_turn, Some(1));
+
+        session
+            .apply_event_json(r#"{"type":"session_reset"}"#)
+            .unwrap();
+
+        assert!(session.transcript.turns.is_empty());
+        assert_eq!(session.transcript.active_turn, None);
+        assert_eq!(session.messages().len(), 1);
+        assert!(session.messages()[0].text.contains("cleared the cached transcript"));
     }
 
     #[test]
