@@ -135,6 +135,21 @@
       "bound_change": null,
       "created_at": "2026-04-04T18:03:26Z",
       "updated_at": "2026-04-04T18:05:27Z"
+    },
+    {
+      "id": "auspex-desktop-shell-frame",
+      "title": "Auspex desktop shell frame and workspace chrome",
+      "state": "exploring",
+      "parent": null,
+      "tags": [],
+      "priority": null,
+      "issue_type": null,
+      "open_questions": [],
+      "decisions": [],
+      "overview": "",
+      "bound_change": null,
+      "created_at": "2026-04-04T18:35:50Z",
+      "updated_at": "2026-04-04T18:35:50Z"
     }
   ],
   "changes": [],
@@ -324,6 +339,24 @@
       "timestamp": "2026-04-04T18:05:27Z",
       "entity_type": "node",
       "entity_id": "auspex-release-framework",
+      "from_state": "seed",
+      "to_state": "exploring",
+      "reason": null,
+      "forced": false
+    },
+    {
+      "timestamp": "2026-04-04T18:35:50Z",
+      "entity_type": "node",
+      "entity_id": "auspex-desktop-shell-frame",
+      "from_state": "(new)",
+      "to_state": "seed",
+      "reason": null,
+      "forced": false
+    },
+    {
+      "timestamp": "2026-04-04T18:35:50Z",
+      "entity_type": "node",
+      "entity_id": "auspex-desktop-shell-frame",
       "from_state": "seed",
       "to_state": "exploring",
       "reason": null,
