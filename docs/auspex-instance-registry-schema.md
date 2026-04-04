@@ -30,6 +30,12 @@ The registry must distinguish what Auspex asked for from what currently exists. 
 
 Worker auth material should be stored via a secret reference where possible (`token_ref`) rather than inline in the registry record.
 
+### Dispatcher attachment requires logical identity plus authenticated control-plane binding
+
+**Status:** proposed
+
+A dispatcher or other reattachable worker should not be trusted by `instance_id` alone. The registry should support bindings that combine logical worker identity with control-plane verification material such as `token_ref`, expected schema/version, and last verified endpoint details.
+
 ## Canonical on-disk record shape
 
 Use one file per worker instance in a registry directory such as:
@@ -156,6 +162,7 @@ Use one file per worker instance in a registry directory such as:
 - `observed` is authoritative for UI/debugging
 - `status` in `identity` is a synthesized worker lifecycle label
 - `observed.control_plane.token_ref` should point to a secret backend, keychain, or Kubernetes Secret reference
+- session-level dispatcher attachment should resolve through both logical worker identity and authenticated control-plane verification
 
 ## Status vocabulary
 
