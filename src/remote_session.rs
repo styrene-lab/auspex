@@ -2,7 +2,7 @@ use crate::fixtures::{
     BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
-    TranscriptData, WorkData, WorkNode,
+    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -37,6 +37,49 @@ pub struct RemoteHostSession {
 }
 
 impl RemoteHostSession {
+    fn push_chat_message(&mut self, role: MessageRole, text: impl Into<String>) {
+        self.messages.push(ChatMessage {
+            role,
+            text: text.into(),
+        });
+    }
+
+    fn push_system_notice(
+        &mut self,
+        text: impl Into<String>,
+        origin: Option<BlockOrigin>,
+        notice_kind: SystemNoticeKind,
+    ) {
+        let text = text.into();
+        self.push_chat_message(MessageRole::System, text.clone());
+        if let Some(turn) = self.transcript.turns.last_mut() {
+            turn.blocks.push(crate::fixtures::TurnBlock::System(
+                crate::fixtures::AttributedText {
+                    text,
+                    origin,
+                    notice_kind: Some(notice_kind),
+                },
+            ));
+        }
+    }
+
+    fn push_dispatcher_notice(&mut self, text: impl Into<String>, notice_kind: SystemNoticeKind) {
+        let origin = dispatcher_origin(&self.dispatcher_binding);
+        self.push_system_notice(text, Some(origin), notice_kind);
+    }
+
+    fn push_text_block(&mut self, text: impl Into<String>, origin: Option<BlockOrigin>) {
+        if let Some(turn) = self.transcript.turns.last_mut() {
+            turn.blocks.push(crate::fixtures::TurnBlock::Text(
+                crate::fixtures::AttributedText {
+                    text: text.into(),
+                    origin,
+                    notice_kind: None,
+                },
+            ));
+        }
+    }
+
     pub fn from_snapshot(snapshot: OmegonStateSnapshot) -> Self {
         let (shell_state, scenario) = status_from_harness(snapshot.harness.as_ref());
         let summary = summary_from_snapshot(&snapshot);
@@ -95,85 +138,64 @@ impl RemoteHostSession {
             Some(self.allocate_dispatcher_request_id())
         };
 
-        let dispatcher = self.dispatcher_binding.as_mut()?;
+        let mut superseded_message = None;
+        {
+            let dispatcher = self.dispatcher_binding.as_mut()?;
 
-        if already_active {
-            let note = format!("Dispatcher already active: {profile}");
+            if already_active {
+                let note = format!("Dispatcher already active: {profile}");
+                dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                    request_id: None,
+                    requested_profile: Some(profile.to_string()),
+                    requested_model: model.map(str::to_string),
+                    status: "active".into(),
+                    failure_code: None,
+                    note: Some(note.clone()),
+                });
+                self.summary.activity = note.clone();
+                drop(dispatcher);
+                self.push_system_notice(note, Some(origin), SystemNoticeKind::DispatcherSwitch);
+                return Some(DispatcherSwitchCommandOutcome::Noop);
+            }
+
+            if let Some(previous_switch) = dispatcher.switch_state.as_ref()
+                && previous_switch.status == "pending"
+            {
+                let superseded_target = switch_target_label(
+                    previous_switch.requested_profile.as_deref(),
+                    previous_switch.requested_model.as_deref(),
+                );
+                superseded_message = Some(format!("Dispatcher switch superseded: {superseded_target}"));
+            }
+
+            let request_id = request_id
+                .as_ref()
+                .expect("request_id must exist for non-noop dispatcher switches");
             dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
-                request_id: None,
+                request_id: Some(request_id.clone()),
                 requested_profile: Some(profile.to_string()),
                 requested_model: model.map(str::to_string),
-                status: "active".into(),
+                status: "pending".into(),
                 failure_code: None,
-                note: Some(note.clone()),
+                note: Some("Awaiting backend dispatcher switch confirmation".into()),
             });
-            self.summary.activity = note.clone();
-            self.messages.push(ChatMessage {
-                role: MessageRole::System,
-                text: note.clone(),
-            });
-            if let Some(turn) = self.transcript.turns.last_mut() {
-                turn.blocks.push(crate::fixtures::TurnBlock::System(
-                    crate::fixtures::AttributedText {
-                        text: note,
-                        origin: Some(origin),
-                        notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
-                    },
-                ));
-            }
-            return Some(DispatcherSwitchCommandOutcome::Noop);
         }
 
-        if let Some(previous_switch) = dispatcher.switch_state.as_ref()
-            && previous_switch.status == "pending"
-        {
-            let superseded_target = switch_target_label(
-                previous_switch.requested_profile.as_deref(),
-                previous_switch.requested_model.as_deref(),
+        if let Some(superseded_message) = superseded_message {
+            self.push_system_notice(
+                superseded_message,
+                Some(origin.clone()),
+                SystemNoticeKind::DispatcherSwitch,
             );
-            let superseded_message = format!("Dispatcher switch superseded: {superseded_target}");
-            self.messages.push(ChatMessage {
-                role: MessageRole::System,
-                text: superseded_message.clone(),
-            });
-            if let Some(turn) = self.transcript.turns.last_mut() {
-                turn.blocks.push(crate::fixtures::TurnBlock::System(
-                    crate::fixtures::AttributedText {
-                        text: superseded_message,
-                        origin: Some(origin.clone()),
-                        notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
-                    },
-                ));
-            }
         }
 
         let request_id = request_id.expect("request_id must exist for non-noop dispatcher switches");
-        dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
-            request_id: Some(request_id.clone()),
-            requested_profile: Some(profile.to_string()),
-            requested_model: model.map(str::to_string),
-            status: "pending".into(),
-            failure_code: None,
-            note: Some("Awaiting backend dispatcher switch confirmation".into()),
-        });
         self.summary.activity = format!("Requesting dispatcher switch to {profile}");
         let request_message = format!(
             "Dispatcher switch requested: {}",
             switch_target_label(Some(profile), model)
         );
-        self.messages.push(ChatMessage {
-            role: MessageRole::System,
-            text: request_message.clone(),
-        });
-        if let Some(turn) = self.transcript.turns.last_mut() {
-            turn.blocks.push(crate::fixtures::TurnBlock::System(
-                crate::fixtures::AttributedText {
-                    text: request_message,
-                    origin: Some(origin),
-                    notice_kind: Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch),
-                },
-            ));
-        }
+        self.push_system_notice(request_message, Some(origin), SystemNoticeKind::DispatcherSwitch);
         Some(DispatcherSwitchCommandOutcome::Issued { request_id })
     }
 
@@ -244,19 +266,8 @@ impl RemoteHostSession {
                     return false;
                 };
                 let text = self.pending_text.trim().to_string();
-                self.messages.push(ChatMessage {
-                    role,
-                    text: text.clone(),
-                });
-                if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::Text(
-                        crate::fixtures::AttributedText {
-                            text,
-                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
-                            notice_kind: None,
-                        },
-                    ));
-                }
+                self.push_chat_message(role, text.clone());
+                self.push_text_block(text, Some(dispatcher_origin(&self.dispatcher_binding)));
                 self.pending_text.clear();
                 true
             }
@@ -265,10 +276,10 @@ impl RemoteHostSession {
                 if let Some(role) = self.pending_role.take()
                     && matches!(role, MessageRole::Assistant)
                 {
-                    self.messages.push(ChatMessage {
-                        role: MessageRole::System,
-                        text: format!("Assistant message aborted: {aborted}"),
-                    });
+                    self.push_chat_message(
+                        MessageRole::System,
+                        format!("Assistant message aborted: {aborted}"),
+                    );
                 }
                 if let Some(turn) = self.transcript.turns.last_mut() {
                     turn.blocks.push(crate::fixtures::TurnBlock::Aborted(aborted));
@@ -278,22 +289,14 @@ impl RemoteHostSession {
                 true
             }
             OmegonEvent::SystemNotification { message } => {
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    text: message.clone(),
-                });
-                if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(
-                        crate::fixtures::AttributedText {
-                            text: message,
-                            origin: Some(BlockOrigin {
-                                kind: OriginKind::System,
-                                label: "System".into(),
-                            }),
-                            notice_kind: Some(crate::fixtures::SystemNoticeKind::Generic),
-                        },
-                    ));
-                }
+                self.push_system_notice(
+                    message,
+                    Some(BlockOrigin {
+                        kind: OriginKind::System,
+                        label: "System".into(),
+                    }),
+                    SystemNoticeKind::Generic,
+                );
                 true
             }
             OmegonEvent::HarnessStatusChanged { status } => {
@@ -314,10 +317,10 @@ impl RemoteHostSession {
                     switch_state.note = Some("Session reset during dispatcher switch".into());
                 }
                 self.messages.clear();
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    text: "Omegon reported a session reset. Auspex cleared the cached transcript and is waiting for fresh host events.".into(),
-                });
+                self.push_chat_message(
+                    MessageRole::System,
+                    "Omegon reported a session reset. Auspex cleared the cached transcript and is waiting for fresh host events.",
+                );
                 self.pending_role = None;
                 self.pending_text.clear();
                 self.run_active = false;
@@ -400,25 +403,10 @@ impl RemoteHostSession {
             OmegonEvent::DecompositionStarted { children } => {
                 self.summary.activity =
                     format!("Cleave started with {} child task(s)", children.len());
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    text: format!(
-                        "Dispatcher requested decomposition into {} child task(s)",
-                        children.len()
-                    ),
-                });
-                if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(
-                        crate::fixtures::AttributedText {
-                            text: format!(
-                                "Dispatcher requested decomposition into {} child task(s)",
-                                children.len()
-                            ),
-                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
-                            notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveStart),
-                        },
-                    ));
-                }
+                self.push_dispatcher_notice(
+                    format!("Dispatcher requested decomposition into {} child task(s)", children.len()),
+                    SystemNoticeKind::CleaveStart,
+                );
                 true
             }
             OmegonEvent::DecompositionChildCompleted { label, success } => {
@@ -430,26 +418,18 @@ impl RemoteHostSession {
                         "failed"
                     }
                 );
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    text: message.clone(),
-                });
-                if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(
-                        crate::fixtures::AttributedText {
-                            text: message,
-                            origin: Some(BlockOrigin {
-                                kind: OriginKind::Child,
-                                label: format!("Child {label}"),
-                            }),
-                            notice_kind: Some(if success {
-                                crate::fixtures::SystemNoticeKind::ChildStatus
-                            } else {
-                                crate::fixtures::SystemNoticeKind::Failure
-                            }),
-                        },
-                    ));
-                }
+                self.push_system_notice(
+                    message,
+                    Some(BlockOrigin {
+                        kind: OriginKind::Child,
+                        label: format!("Child {label}"),
+                    }),
+                    if success {
+                        SystemNoticeKind::ChildStatus
+                    } else {
+                        SystemNoticeKind::Failure
+                    },
+                );
                 true
             }
             OmegonEvent::DecompositionCompleted { merged } => {
@@ -463,19 +443,7 @@ impl RemoteHostSession {
                 } else {
                     "Dispatcher completed decomposition without merge".to_string()
                 };
-                self.messages.push(ChatMessage {
-                    role: MessageRole::System,
-                    text: message.clone(),
-                });
-                if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::System(
-                        crate::fixtures::AttributedText {
-                            text: message,
-                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
-                            notice_kind: Some(crate::fixtures::SystemNoticeKind::CleaveComplete),
-                        },
-                    ));
-                }
+                self.push_dispatcher_notice(message, SystemNoticeKind::CleaveComplete);
                 true
             }
         }
@@ -844,19 +812,36 @@ fn append_dispatcher_switch_transition_notice(
         return;
     };
 
+    push_system_notice_to_buffers(
+        messages,
+        transcript,
+        message,
+        Some(dispatcher_origin(&next.cloned())),
+        match next_state.status.as_str() {
+            "failed" => SystemNoticeKind::Failure,
+            _ => SystemNoticeKind::DispatcherSwitch,
+        },
+    );
+}
+
+fn push_system_notice_to_buffers(
+    messages: &mut Vec<ChatMessage>,
+    transcript: &mut TranscriptData,
+    text: impl Into<String>,
+    origin: Option<BlockOrigin>,
+    notice_kind: SystemNoticeKind,
+) {
+    let text = text.into();
     messages.push(ChatMessage {
         role: MessageRole::System,
-        text: message.clone(),
+        text: text.clone(),
     });
     if let Some(turn) = transcript.turns.last_mut() {
         turn.blocks.push(crate::fixtures::TurnBlock::System(
             crate::fixtures::AttributedText {
-                text: message,
-                origin: Some(dispatcher_origin(&next.cloned())),
-                notice_kind: Some(match next_state.status.as_str() {
-                    "failed" => crate::fixtures::SystemNoticeKind::Failure,
-                    _ => crate::fixtures::SystemNoticeKind::DispatcherSwitch,
-                }),
+                text,
+                origin,
+                notice_kind: Some(notice_kind),
             },
         ));
     }
