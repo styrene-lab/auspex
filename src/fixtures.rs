@@ -272,10 +272,48 @@ impl DevScenario {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ActivityKind {
+    Idle,
+    Running,
+    Waiting,
+    Degraded,
+    Completed,
+    Failure,
+}
+
+impl ActivityKind {
+    pub fn strip_class(self) -> &'static str {
+        match self {
+            Self::Idle => "activity-strip activity-strip-idle",
+            Self::Running => "activity-strip activity-strip-running",
+            Self::Waiting => "activity-strip activity-strip-waiting",
+            Self::Degraded => "activity-strip activity-strip-degraded",
+            Self::Completed => "activity-strip activity-strip-completed",
+            Self::Failure => "activity-strip activity-strip-failure",
+        }
+    }
+
+    pub fn dot_class(self, run_active: bool) -> &'static str {
+        if run_active || matches!(self, Self::Running) {
+            "run-dot run-dot-active"
+        } else {
+            match self {
+                Self::Completed => "run-dot run-dot-completed",
+                Self::Waiting => "run-dot run-dot-waiting",
+                Self::Degraded => "run-dot run-dot-degraded",
+                Self::Failure => "run-dot run-dot-failure",
+                Self::Idle | Self::Running => "run-dot run-dot-idle",
+            }
+        }
+    }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostSessionSummary {
     pub connection: String,
     pub activity: String,
+    pub activity_kind: ActivityKind,
     pub work: String,
 }
 
@@ -321,6 +359,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Connected to local host session".into(),
                 activity: "Idle — waiting for your next prompt".into(),
+                activity_kind: ActivityKind::Idle,
                 work: "No focused work item yet".into(),
             },
             messages: vec![ChatMessage {
@@ -338,6 +377,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Starting bundled runtime".into(),
                 activity: "Launching Styrene and Omegon".into(),
+                activity_kind: ActivityKind::Waiting,
                 work: "Work state unavailable during startup".into(),
             },
             messages: vec![ChatMessage {
@@ -355,6 +395,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Connected locally, relay degraded".into(),
                 activity: "Continuing with degraded remote connectivity".into(),
+                activity_kind: ActivityKind::Degraded,
                 work: "1 cached work item in progress".into(),
             },
             messages: vec![
@@ -378,6 +419,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Embedded Omegon backend unavailable".into(),
                 activity: "Startup blocked by embedded backend failure".into(),
+                activity_kind: ActivityKind::Failure,
                 work: "No local session available".into(),
             },
             messages: vec![ChatMessage {
@@ -395,6 +437,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Host incompatible".into(),
                 activity: "Startup blocked by compatibility failure".into(),
+                activity_kind: ActivityKind::Failure,
                 work: "No session available".into(),
             },
             messages: vec![ChatMessage {
@@ -412,6 +455,7 @@ impl MockHostSession {
             summary: HostSessionSummary {
                 connection: "Reconnecting to desktop host".into(),
                 activity: "Restoring remote session link".into(),
+                activity_kind: ActivityKind::Waiting,
                 work: "Showing last known focused work".into(),
             },
             messages: vec![

@@ -1,5 +1,5 @@
 use crate::fixtures::{
-    BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
+    ActivityKind, BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
     SystemNoticeKind, TranscriptData, WorkData, WorkNode,
@@ -139,7 +139,7 @@ impl RemoteHostSession {
         };
 
         let mut superseded_message = None;
-        {
+        let noop_notice = {
             let dispatcher = self.dispatcher_binding.as_mut()?;
 
             if already_active {
@@ -153,32 +153,38 @@ impl RemoteHostSession {
                     note: Some(note.clone()),
                 });
                 self.summary.activity = note.clone();
-                drop(dispatcher);
-                self.push_system_notice(note, Some(origin), SystemNoticeKind::DispatcherSwitch);
-                return Some(DispatcherSwitchCommandOutcome::Noop);
-            }
+                self.summary.activity_kind = ActivityKind::Completed;
+                Some(note)
+            } else {
+                if let Some(previous_switch) = dispatcher.switch_state.as_ref()
+                    && previous_switch.status == "pending"
+                {
+                    let superseded_target = switch_target_label(
+                        previous_switch.requested_profile.as_deref(),
+                        previous_switch.requested_model.as_deref(),
+                    );
+                    superseded_message =
+                        Some(format!("Dispatcher switch superseded: {superseded_target}"));
+                }
 
-            if let Some(previous_switch) = dispatcher.switch_state.as_ref()
-                && previous_switch.status == "pending"
-            {
-                let superseded_target = switch_target_label(
-                    previous_switch.requested_profile.as_deref(),
-                    previous_switch.requested_model.as_deref(),
-                );
-                superseded_message = Some(format!("Dispatcher switch superseded: {superseded_target}"));
+                let request_id = request_id
+                    .as_ref()
+                    .expect("request_id must exist for non-noop dispatcher switches");
+                dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                    request_id: Some(request_id.clone()),
+                    requested_profile: Some(profile.to_string()),
+                    requested_model: model.map(str::to_string),
+                    status: "pending".into(),
+                    failure_code: None,
+                    note: Some("Awaiting backend dispatcher switch confirmation".into()),
+                });
+                None
             }
+        };
 
-            let request_id = request_id
-                .as_ref()
-                .expect("request_id must exist for non-noop dispatcher switches");
-            dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
-                request_id: Some(request_id.clone()),
-                requested_profile: Some(profile.to_string()),
-                requested_model: model.map(str::to_string),
-                status: "pending".into(),
-                failure_code: None,
-                note: Some("Awaiting backend dispatcher switch confirmation".into()),
-            });
+        if let Some(note) = noop_notice {
+            self.push_system_notice(note, Some(origin), SystemNoticeKind::DispatcherSwitch);
+            return Some(DispatcherSwitchCommandOutcome::Noop);
         }
 
         if let Some(superseded_message) = superseded_message {
@@ -191,6 +197,7 @@ impl RemoteHostSession {
 
         let request_id = request_id.expect("request_id must exist for non-noop dispatcher switches");
         self.summary.activity = format!("Requesting dispatcher switch to {profile}");
+        self.summary.activity_kind = ActivityKind::Waiting;
         let request_message = format!(
             "Dispatcher switch requested: {}",
             switch_target_label(Some(profile), model)
@@ -332,6 +339,7 @@ impl RemoteHostSession {
                 self.transcript.active_turn = Some(turn);
                 self.run_active = true;
                 self.summary.activity = format!("Turn {turn} in progress");
+                self.summary.activity_kind = ActivityKind::Running;
                 self.transcript.turns.push(crate::fixtures::Turn {
                     number: turn,
                     blocks: vec![],
@@ -342,10 +350,12 @@ impl RemoteHostSession {
                 self.transcript.active_turn = None;
                 self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
+                self.summary.activity_kind = ActivityKind::Completed;
                 true
             }
             OmegonEvent::ToolStart { id, name, args } => {
                 self.summary.activity = format!("Running tool {name}");
+                self.summary.activity_kind = ActivityKind::Running;
                 if let Some(turn) = self.transcript.turns.last_mut() {
                     turn.blocks.push(crate::fixtures::TurnBlock::Tool(crate::fixtures::ToolCard {
                         id,
@@ -377,6 +387,11 @@ impl RemoteHostSession {
                 } else {
                     "Tool run completed".into()
                 };
+                self.summary.activity_kind = if is_error {
+                    ActivityKind::Failure
+                } else {
+                    ActivityKind::Completed
+                };
                 if let Some(turn) = self.transcript.turns.last_mut()
                     && let Some(crate::fixtures::TurnBlock::Tool(tool)) = turn.blocks.last_mut()
                     && tool.id == id
@@ -394,15 +409,18 @@ impl RemoteHostSession {
             OmegonEvent::AgentEnd => {
                 self.run_active = false;
                 self.summary.activity = "Agent turn finished".into();
+                self.summary.activity_kind = ActivityKind::Completed;
                 true
             }
             OmegonEvent::PhaseChanged { phase } => {
                 self.summary.activity = format!("Lifecycle phase: {phase}");
+                self.summary.activity_kind = ActivityKind::Running;
                 true
             }
             OmegonEvent::DecompositionStarted { children } => {
                 self.summary.activity =
                     format!("Cleave started with {} child task(s)", children.len());
+                self.summary.activity_kind = ActivityKind::Running;
                 self.push_dispatcher_notice(
                     format!("Dispatcher requested decomposition into {} child task(s)", children.len()),
                     SystemNoticeKind::CleaveStart,
@@ -438,6 +456,7 @@ impl RemoteHostSession {
                 } else {
                     "Cleave completed without merge".into()
                 };
+                self.summary.activity_kind = ActivityKind::Completed;
                 let message = if merged {
                     "Dispatcher completed decomposition and merged child results".to_string()
                 } else {
@@ -899,6 +918,15 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
     HostSessionSummary {
         connection,
         activity,
+        activity_kind: if snapshot.cleave.active {
+            ActivityKind::Running
+        } else if snapshot.harness.as_ref().and_then(|h| h.memory_warning.as_ref()).is_some() {
+            ActivityKind::Degraded
+        } else if snapshot.design.focused.is_some() {
+            ActivityKind::Running
+        } else {
+            ActivityKind::Idle
+        },
         work,
     }
 }
@@ -926,8 +954,10 @@ fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStat
 
     if let Some(warning) = harness.memory_warning.as_ref() {
         summary.activity = warning.clone();
+        summary.activity_kind = ActivityKind::Degraded;
     } else if !harness.active_delegates.is_empty() {
         summary.activity = format!("{} delegate task(s) active", harness.active_delegates.len());
+        summary.activity_kind = ActivityKind::Running;
     }
 }
 
@@ -991,6 +1021,7 @@ mod tests {
         assert_eq!(session.scenario(), DevScenario::Ready);
         assert!(session.summary().connection.contains("main"));
         assert!(session.summary().activity.contains("Parallel work running"));
+        assert_eq!(session.summary().activity_kind, ActivityKind::Running);
         assert_eq!(
             session.summary().work,
             "Focused node: Remote session adapter"
@@ -1066,6 +1097,7 @@ mod tests {
         assert_eq!(session.shell_state(), ShellState::Degraded);
         assert_eq!(session.scenario(), DevScenario::Degraded);
         assert_eq!(session.summary().activity, "Memory database unavailable");
+        assert_eq!(session.summary().activity_kind, ActivityKind::Degraded);
     }
 
     #[test]
@@ -1154,11 +1186,13 @@ mod tests {
             .apply_event_json(r#"{"type":"tool_start","id":"1","name":"read","args":{}}"#)
             .unwrap();
         assert_eq!(session.summary().activity, "Running tool read");
+        assert_eq!(session.summary().activity_kind, ActivityKind::Running);
 
         session
             .apply_event_json(r#"{"type":"tool_end","id":"1","is_error":false,"result":"ok"}"#)
             .unwrap();
         assert_eq!(session.summary().activity, "Tool run completed");
+        assert_eq!(session.summary().activity_kind, ActivityKind::Completed);
 
         session
             .apply_event_json(
@@ -1192,6 +1226,7 @@ mod tests {
             .apply_event_json(r#"{"type":"decomposition_completed","merged":true}"#)
             .unwrap();
         assert_eq!(session.summary().activity, "Cleave completed and merged");
+        assert_eq!(session.summary().activity_kind, ActivityKind::Completed);
         assert!(
             session
                 .messages()

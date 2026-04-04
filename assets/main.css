@@ -168,6 +168,26 @@ body {
   border-radius: 12px;
 }
 
+.activity-strip-running {
+  border-color: #2f81f7;
+}
+
+.activity-strip-waiting {
+  border-color: #d29922;
+}
+
+.activity-strip-degraded {
+  border-color: #db6d28;
+}
+
+.activity-strip-completed {
+  border-color: #238636;
+}
+
+.activity-strip-failure {
+  border-color: #da3633;
+}
+
 .run-dot {
   width: 8px;
   height: 8px;
@@ -183,6 +203,22 @@ body {
 
 .run-dot-idle {
   background: #484f58;
+}
+
+.run-dot-completed {
+  background: #238636;
+}
+
+.run-dot-waiting {
+  background: #d29922;
+}
+
+.run-dot-degraded {
+  background: #db6d28;
+}
+
+.run-dot-failure {
+  background: #da3633;
 }
 
 @keyframes run-pulse {

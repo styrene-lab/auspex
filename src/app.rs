@@ -202,13 +202,13 @@ pub fn App() -> Element {
                 }
 
                 // Activity strip — event-driven; dot pulses green while a run is in progress
-                section { class: "activity-strip",
+                section { class: controller.read().summary().activity_kind.strip_class(),
                     div {
-                        class: if controller.read().is_run_active() {
-                            "run-dot run-dot-active"
-                        } else {
-                            "run-dot run-dot-idle"
-                        }
+                        class: controller
+                            .read()
+                            .summary()
+                            .activity_kind
+                            .dot_class(controller.read().is_run_active())
                     }
                     span { class: "activity-label", "{controller.read().summary().activity}" }
                 }
@@ -484,6 +484,23 @@ mod tests {
     use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
+
+    #[test]
+    fn activity_kind_classes_cover_non_transcript_statuses() {
+        assert_eq!(ActivityKind::Running.strip_class(), "activity-strip activity-strip-running");
+        assert_eq!(
+            ActivityKind::Failure.dot_class(false),
+            "run-dot run-dot-failure"
+        );
+        assert_eq!(
+            ActivityKind::Waiting.dot_class(false),
+            "run-dot run-dot-waiting"
+        );
+        assert_eq!(
+            ActivityKind::Completed.dot_class(false),
+            "run-dot run-dot-completed"
+        );
+    }
 
     #[test]
     fn text_block_class_keeps_dispatcher_text_as_normal_text() {
