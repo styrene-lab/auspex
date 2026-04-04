@@ -101,9 +101,7 @@ pub fn App() -> Element {
     });
 
     let shell_state = controller.read().shell_state();
-    let is_fatal = matches!(shell_state, ShellState::Failed);
     let is_starting = matches!(shell_state, ShellState::StartingOmegon);
-    let is_reconnecting = matches!(shell_state, ShellState::CompatibilityChecking);
     let mut tab = use_signal(|| Tab::Chat);
 
     let session = controller.read().session_data();
@@ -164,10 +162,12 @@ pub fn App() -> Element {
                 }
             }
 
-            if let Some(note) = controller.read().bootstrap_note() {
-                section { class: "bootstrap-note",
-                    strong { "Bootstrap" }
-                    p { "{note}" }
+            if let Some(surface) = controller.read().surface_notice()
+                && surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote
+            {
+                section { class: surface.kind.section_class(),
+                    strong { "{surface.kind.title()}" }
+                    p { "{surface.body}" }
                 }
             }
 
@@ -183,10 +183,12 @@ pub fn App() -> Element {
                 }
             } else {
                 // Reconnecting banner — shown when WS dropped but session data is still valid
-                if is_reconnecting {
-                    section { class: "banner banner-reconnecting",
-                        strong { "Reconnecting…" }
-                        span { " The connection to the host is being restored. New input is temporarily paused. Cached session state is shown." }
+                if let Some(surface) = controller.read().surface_notice()
+                    && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
+                {
+                    section { class: surface.kind.section_class(),
+                        strong { "{surface.kind.title()}" }
+                        span { " {surface.body}" }
                     }
                 }
 
@@ -241,23 +243,18 @@ pub fn App() -> Element {
 
                 // Fatal startup overlay — blocks normal operation until the
                 // embedded backend or explicit remote attach succeeds.
-                if is_fatal {
-                    section { class: "compat-failure",
-                        strong {
-                            if controller.read().scenario() == DevScenario::CompatibilityFailure {
-                                "Compatibility failure"
-                            } else {
-                                "Embedded backend startup failed"
-                            }
-                        }
-                        p { "{controller.read().summary().connection}" }
-                        p {
-                            class: "compat-detail",
-                            if controller.read().scenario() == DevScenario::CompatibilityFailure {
-                                "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart."
-                            } else {
-                                "Auspex requires its embedded Omegon backend for local operation. Fix backend startup and relaunch, or explicitly attach to a remote Omegon control plane."
-                            }
+                if let Some(surface) = controller.read().surface_notice()
+                    && matches!(
+                        surface.kind,
+                        crate::fixtures::AppSurfaceKind::StartupFailure
+                            | crate::fixtures::AppSurfaceKind::CompatibilityFailure
+                    )
+                {
+                    section { class: surface.kind.section_class(),
+                        strong { "{surface.kind.title()}" }
+                        p { "{surface.body}" }
+                        if let Some(detail) = surface.detail.as_deref() {
+                            p { class: "compat-detail", "{detail}" }
                         }
                     }
                 } else if *tab.read() == Tab::Work {

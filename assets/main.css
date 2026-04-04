@@ -420,6 +420,28 @@ body {
   color: #f0c040;
 }
 
+.status-panel {
+  border-radius: 14px;
+  padding: 1.25rem 1.4rem;
+}
+
+.status-panel-failure {
+  border: 1px solid #ff7b72;
+  background: #1c0e0e;
+  color: #ff7b72;
+}
+
+.status-panel strong {
+  display: block;
+  font-size: 1rem;
+  margin-bottom: 0.4rem;
+}
+
+.status-panel p {
+  margin: 0 0 0.35rem;
+  line-height: 1.5;
+}
+
 .compat-failure {
   border: 1px solid #ff7b72;
   border-radius: 14px;

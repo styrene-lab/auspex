@@ -1,6 +1,6 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DevScenario, GraphData, HostSessionSummary, MockHostSession,
-    SessionData, ShellState, WorkData,
+    AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
+    HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
 };
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::session_model::HostSessionModel;
@@ -140,8 +140,37 @@ impl AppController {
         self.session.mode()
     }
 
-    pub fn bootstrap_note(&self) -> Option<&str> {
-        self.bootstrap_note.as_deref()
+    pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
+        match self.shell_state() {
+            ShellState::CompatibilityChecking => Some(AppSurfaceNotice {
+                kind: AppSurfaceKind::Reconnecting,
+                body: "The connection to the host is being restored. New input is temporarily paused. Cached session state is shown.".into(),
+                detail: None,
+            }),
+            ShellState::Failed => Some(AppSurfaceNotice {
+                kind: if self.scenario() == DevScenario::CompatibilityFailure {
+                    AppSurfaceKind::CompatibilityFailure
+                } else {
+                    AppSurfaceKind::StartupFailure
+                },
+                body: self.summary().connection.clone(),
+                detail: Some(
+                    if self.scenario() == DevScenario::CompatibilityFailure {
+                        "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart."
+                    } else {
+                        "Auspex requires its embedded Omegon backend for local operation. Fix backend startup and relaunch, or explicitly attach to a remote Omegon control plane."
+                    }
+                    .into(),
+                ),
+            }),
+            ShellState::Ready | ShellState::Degraded | ShellState::StartingOmegon => {
+                self.bootstrap_note.clone().map(|body| AppSurfaceNotice {
+                    kind: AppSurfaceKind::BootstrapNote,
+                    body,
+                    detail: None,
+                })
+            }
+        }
     }
 
     pub fn set_bootstrap_note(&mut self, note: Option<String>) {
@@ -564,6 +593,44 @@ mod tests {
             .unwrap()
             .text
             .contains("Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1"));
+    }
+
+    #[test]
+    fn reconnecting_surface_uses_typed_notice() {
+        let mut controller = AppController::default();
+        controller.set_scenario(DevScenario::Reconnecting);
+
+        let surface = controller.surface_notice().expect("surface notice");
+        assert_eq!(surface.kind, AppSurfaceKind::Reconnecting);
+        assert!(surface.body.contains("connection to the host is being restored"));
+        assert_eq!(surface.detail, None);
+    }
+
+    #[test]
+    fn failed_surface_uses_typed_failure_notice() {
+        let mut controller = AppController::default();
+        controller.set_scenario(DevScenario::CompatibilityFailure);
+        controller.set_bootstrap_note(Some("stale bootstrap note".into()));
+
+        let surface = controller.surface_notice().expect("surface notice");
+        assert_eq!(surface.kind, AppSurfaceKind::CompatibilityFailure);
+        assert_eq!(surface.body, "Host incompatible");
+        assert!(surface
+            .detail
+            .as_deref()
+            .unwrap()
+            .contains("Update Omegon"));
+    }
+
+    #[test]
+    fn ready_state_uses_bootstrap_note_surface() {
+        let mut controller = AppController::default();
+        controller.set_bootstrap_note(Some("Attached via startup discovery".into()));
+
+        let surface = controller.surface_notice().expect("surface notice");
+        assert_eq!(surface.kind, AppSurfaceKind::BootstrapNote);
+        assert_eq!(surface.body, "Attached via startup discovery");
+        assert_eq!(surface.detail, None);
     }
 
     #[test]

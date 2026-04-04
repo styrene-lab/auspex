@@ -309,6 +309,42 @@ impl ActivityKind {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum AppSurfaceKind {
+    BootstrapNote,
+    Reconnecting,
+    StartupFailure,
+    CompatibilityFailure,
+}
+
+impl AppSurfaceKind {
+    pub fn section_class(self) -> &'static str {
+        match self {
+            Self::BootstrapNote => "bootstrap-note",
+            Self::Reconnecting => "banner banner-reconnecting",
+            Self::StartupFailure | Self::CompatibilityFailure => {
+                "status-panel status-panel-failure"
+            }
+        }
+    }
+
+    pub fn title(self) -> &'static str {
+        match self {
+            Self::BootstrapNote => "Bootstrap",
+            Self::Reconnecting => "Reconnecting…",
+            Self::StartupFailure => "Embedded backend startup failed",
+            Self::CompatibilityFailure => "Compatibility failure",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct AppSurfaceNotice {
+    pub kind: AppSurfaceKind,
+    pub body: String,
+    pub detail: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct HostSessionSummary {
     pub connection: String,
