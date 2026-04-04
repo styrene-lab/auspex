@@ -528,4 +528,31 @@ mod tests {
         assert_eq!(switch_state.requested_model.as_deref(), Some("openai:gpt-4.1"));
         assert_eq!(switch_state.status, "pending");
     }
+
+    #[test]
+    fn dispatcher_switch_becomes_active_when_snapshot_confirms_binding() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller
+            .request_dispatcher_switch_command_json(
+                "supervisor-heavy",
+                Some("openai:gpt-4.1"),
+            )
+            .unwrap();
+
+        controller
+            .apply_remote_event_json(
+                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":5,"done_tasks":2},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":12,"tool_calls":34,"compactions":1},"dispatcher":{"session_id":"session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO","expected_role":"primary-driver","expected_profile":"supervisor-heavy","expected_model":"openai:gpt-4.1","control_plane_schema":2,"token_ref":"secret://auspex/instances/omg_primary_01HVDEMO/token","observed_base_url":"http://127.0.0.1:7842","last_verified_at":"2026-04-04T12:05:00Z","available_options":[{"profile":"primary-interactive","label":"Primary Interactive","model":"anthropic:claude-sonnet-4-6"},{"profile":"supervisor-heavy","label":"Supervisor Heavy","model":"openai:gpt-4.1"}]},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
+            )
+            .unwrap();
+
+        let session = controller.session_data();
+        let dispatcher = session.dispatcher_binding.as_ref().unwrap();
+        assert_eq!(dispatcher.expected_profile, "supervisor-heavy");
+        assert_eq!(dispatcher.expected_model.as_deref(), Some("openai:gpt-4.1"));
+        let switch_state = dispatcher.switch_state.as_ref().unwrap();
+        assert_eq!(switch_state.status, "active");
+        assert_eq!(switch_state.note.as_deref(), Some("Dispatcher switch confirmed by snapshot"));
+    }
 }

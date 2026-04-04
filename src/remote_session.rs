@@ -90,7 +90,10 @@ impl RemoteHostSession {
                 self.openspec = data.openspec;
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
-                self.dispatcher_binding = data.dispatcher;
+                self.dispatcher_binding = reconcile_dispatcher_binding(
+                    self.dispatcher_binding.take(),
+                    data.dispatcher,
+                );
                 self.transcript.context_tokens = self.context_tokens;
                 true
             }
@@ -588,6 +591,40 @@ fn dispatcher_origin(
             .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
             .unwrap_or_else(|| "Dispatcher".into()),
     }
+}
+
+fn reconcile_dispatcher_binding(
+    previous: Option<crate::omegon_control::DispatcherBindingSnapshot>,
+    next: Option<crate::omegon_control::DispatcherBindingSnapshot>,
+) -> Option<crate::omegon_control::DispatcherBindingSnapshot> {
+    let mut next = next?;
+
+    if next.switch_state.is_none()
+        && let Some(previous) = previous
+        && let Some(previous_switch) = previous.switch_state
+        && previous_switch.status == "pending"
+    {
+        let requested_profile = previous_switch.requested_profile.as_deref();
+        let requested_model = previous_switch.requested_model.as_deref();
+        let profile_matches = requested_profile == Some(next.expected_profile.as_str());
+        let model_matches = match requested_model {
+            Some(requested_model) => next.expected_model.as_deref() == Some(requested_model),
+            None => true,
+        };
+
+        next.switch_state = Some(if profile_matches && model_matches {
+            crate::omegon_control::DispatcherSwitchStateSnapshot {
+                requested_profile: previous_switch.requested_profile,
+                requested_model: previous_switch.requested_model,
+                status: "active".into(),
+                note: Some("Dispatcher switch confirmed by snapshot".into()),
+            }
+        } else {
+            previous_switch
+        });
+    }
+
+    Some(next)
 }
 
 fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
