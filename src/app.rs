@@ -370,15 +370,18 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::Text(text) => rsx! {
-                                section { class: "block block-text",
-                                    if let Some(origin) = &text.origin_label {
-                                        h3 { class: "block-origin", "{origin}" }
+                                section { class: text_block_class(text.origin.as_ref()),
+                                    if let Some(origin) = &text.origin {
+                                        h3 { class: origin_class(origin), "{origin.label}" }
                                     }
                                     p { "{text.text}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
                                 section { class: if tool.is_error { "block block-tool block-error" } else { "block block-tool" },
+                                    if let Some(origin) = &tool.origin {
+                                        h3 { class: origin_class(origin), "{origin.label}" }
+                                    }
                                     h3 { "{tool.name}" }
                                     p { class: "tool-args", "{tool.args}" }
                                     if !tool.partial_output.is_empty() {
@@ -390,9 +393,9 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::System(text) => rsx! {
-                                section { class: "block block-system",
-                                    if let Some(origin) = &text.origin_label {
-                                        h3 { class: "block-origin", "{origin}" }
+                                section { class: text_block_class(text.origin.as_ref()),
+                                    if let Some(origin) = &text.origin {
+                                        h3 { class: origin_class(origin), "{origin.label}" }
                                     }
                                     p { "{text.text}" }
                                 }
@@ -407,6 +410,23 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                 }
             }
         }
+    }
+}
+
+fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static str {
+    match origin.map(|origin| &origin.kind) {
+        Some(crate::fixtures::OriginKind::Dispatcher) => "block block-text",
+        Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+        Some(crate::fixtures::OriginKind::System) => "block block-system",
+        None => "block block-text",
+    }
+}
+
+fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
+    match origin.kind {
+        crate::fixtures::OriginKind::Dispatcher => "block-origin block-origin-dispatcher",
+        crate::fixtures::OriginKind::Child => "block-origin block-origin-child",
+        crate::fixtures::OriginKind::System => "block-origin block-origin-system",
     }
 }
 

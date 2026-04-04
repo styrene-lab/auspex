@@ -1,7 +1,7 @@
 use crate::fixtures::{
-    ChatMessage, ComposerState, DelegateSummaryData, DevScenario, DispatcherBindingData,
-    GraphData, HostSessionSummary, MessageRole, ProviderInfo, SessionData, ShellState,
-    TranscriptData, WorkData, WorkNode,
+    BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
+    DispatcherBindingData, GraphData, HostSessionSummary, MessageRole, OriginKind,
+    ProviderInfo, SessionData, ShellState, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
 use crate::session_model::HostSessionModel;
@@ -121,7 +121,7 @@ impl RemoteHostSession {
                     turn.blocks.push(crate::fixtures::TurnBlock::Text(
                         crate::fixtures::AttributedText {
                             text,
-                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
                         },
                     ));
                 }
@@ -154,7 +154,10 @@ impl RemoteHostSession {
                     turn.blocks.push(crate::fixtures::TurnBlock::System(
                         crate::fixtures::AttributedText {
                             text: message,
-                            origin_label: Some("System".into()),
+                            origin: Some(BlockOrigin {
+                                kind: OriginKind::System,
+                                label: "System".into(),
+                            }),
                         },
                     ));
                 }
@@ -207,6 +210,7 @@ impl RemoteHostSession {
                         partial_output: String::new(),
                         result: None,
                         is_error: false,
+                        origin: Some(dispatcher_origin(&self.dispatcher_binding)),
                     }));
                 }
                 true
@@ -269,7 +273,7 @@ impl RemoteHostSession {
                                 "Dispatcher requested decomposition into {} child task(s)",
                                 children.len()
                             ),
-                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
                         },
                     ));
                 }
@@ -292,7 +296,10 @@ impl RemoteHostSession {
                     turn.blocks.push(crate::fixtures::TurnBlock::System(
                         crate::fixtures::AttributedText {
                             text: message,
-                            origin_label: Some(format!("Child {label}")),
+                            origin: Some(BlockOrigin {
+                                kind: OriginKind::Child,
+                                label: format!("Child {label}"),
+                            }),
                         },
                     ));
                 }
@@ -317,7 +324,7 @@ impl RemoteHostSession {
                     turn.blocks.push(crate::fixtures::TurnBlock::System(
                         crate::fixtures::AttributedText {
                             text: message,
-                            origin_label: Some(dispatcher_origin_label(&self.dispatcher_binding)),
+                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
                         },
                     ));
                 }
@@ -536,14 +543,17 @@ impl HostSessionModel for RemoteHostSession {
     }
 }
 
-fn dispatcher_origin_label(
+fn dispatcher_origin(
     dispatcher: &Option<crate::omegon_control::DispatcherBindingSnapshot>,
-) -> String {
-    dispatcher
-        .as_ref()
-        .and_then(|binding| binding.expected_model.clone())
-        .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
-        .unwrap_or_else(|| "Dispatcher".into())
+) -> BlockOrigin {
+    BlockOrigin {
+        kind: OriginKind::Dispatcher,
+        label: dispatcher
+            .as_ref()
+            .and_then(|binding| binding.expected_model.clone())
+            .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
+            .unwrap_or_else(|| "Dispatcher".into()),
+    }
 }
 
 fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
@@ -743,7 +753,10 @@ mod tests {
             session.transcript.turns[0].blocks,
             vec![crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText {
                 text: "hello world".into(),
-                origin_label: Some("anthropic:claude-sonnet-4-6".into()),
+                origin: Some(crate::fixtures::BlockOrigin {
+                    kind: crate::fixtures::OriginKind::Dispatcher,
+                    label: "anthropic:claude-sonnet-4-6".into(),
+                }),
             })]
         );
     }
@@ -800,7 +813,10 @@ mod tests {
             session.transcript.turns[0].blocks[1],
             crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText {
                 text: "done".into(),
-                origin_label: Some("anthropic:claude-sonnet-4-6".into()),
+                origin: Some(crate::fixtures::BlockOrigin {
+                    kind: crate::fixtures::OriginKind::Dispatcher,
+                    label: "anthropic:claude-sonnet-4-6".into(),
+                }),
             })
         );
     }
@@ -893,9 +909,9 @@ mod tests {
         );
         assert!(matches!(
             session.transcript.turns[0].blocks.last(),
-            Some(crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText { text, origin_label }))
+            Some(crate::fixtures::TurnBlock::System(crate::fixtures::AttributedText { text, origin }))
                 if text.contains("merged child results")
-                    && origin_label.as_deref() == Some("anthropic:claude-sonnet-4-6")
+                    && matches!(origin, Some(crate::fixtures::BlockOrigin { kind: crate::fixtures::OriginKind::Dispatcher, label }) if label == "anthropic:claude-sonnet-4-6")
         ));
     }
 }

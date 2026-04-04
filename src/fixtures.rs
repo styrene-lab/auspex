@@ -11,6 +11,21 @@ pub struct TurnBlockText {
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum OriginKind {
+    Dispatcher,
+    Child,
+    System,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct BlockOrigin {
+    pub kind: OriginKind,
+    pub label: String,
+}
+
+#[allow(dead_code)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ToolCard {
     pub id: String,
     pub name: String,
@@ -18,13 +33,14 @@ pub struct ToolCard {
     pub partial_output: String,
     pub result: Option<String>,
     pub is_error: bool,
+    pub origin: Option<BlockOrigin>,
 }
 
 #[allow(dead_code)]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttributedText {
     pub text: String,
-    pub origin_label: Option<String>,
+    pub origin: Option<BlockOrigin>,
 }
 
 #[allow(dead_code)]
