@@ -829,9 +829,70 @@ body > * {
   color: var(--text-subtle);
 }
 
+.tool-details,
+.system-details {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+}
+
+.tool-details[open],
+.system-details[open] {
+  gap: 0.45rem;
+}
+
+.tool-summary,
+.system-summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  cursor: pointer;
+  list-style: none;
+}
+
+.tool-summary::-webkit-details-marker,
+.system-summary::-webkit-details-marker {
+  display: none;
+}
+
+.tool-summary-label,
+.system-summary-label {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--text-subtle);
+}
+
+.tool-summary-meta,
+.system-summary-meta {
+  font-size: 0.74rem;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+.tool-summary::before,
+.system-summary::before {
+  content: "▸";
+  color: var(--text-muted);
+  margin-right: 0.2rem;
+}
+
+.tool-details[open] .tool-summary::before,
+.system-details[open] .system-summary::before {
+  content: "▾";
+}
+
+.tool-detail-body,
+.system-detail-body {
+  padding-top: 0.1rem;
+}
+
 .tool-args,
 .tool-partial,
-.tool-result {
+.tool-result,
+.system-text {
   font-family: ui-monospace, SFMono-Regular, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
   font-size: 0.82rem;
   line-height: 1.45;
@@ -855,6 +916,10 @@ body > * {
 
 .tool-result {
   color: #e6edf3;
+}
+
+.system-text {
+  color: inherit;
 }
 
 .block-error .tool-result,

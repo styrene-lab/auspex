@@ -275,7 +275,7 @@ pub fn ScribeScreen(
                 }
 
                 if let Some(state) = &dispatcher.switch_state {
-                    {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus.clone())}
+                    {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus)}
                 }
 
                 if !dispatcher.available_options.is_empty() {
@@ -348,7 +348,7 @@ pub fn ScribeScreen(
                                 r#type: "button",
                                 onclick: {
                                     let task_id = delegate.task_id.clone();
-                                    let handler = on_transcript_focus.clone();
+                                    let handler = on_transcript_focus;
                                     move |_| {
                                         if let Some(handler) = &handler {
                                             handler.call(format!("delegate:{task_id}"));
@@ -521,7 +521,7 @@ pub fn SessionScreen(
                     }
 
                     if let Some(state) = &dispatcher.switch_state {
-                        {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus.clone())}
+                        {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus)}
                     }
                 }
             }
@@ -537,7 +537,7 @@ pub fn SessionScreen(
                                 r#type: "button",
                                 onclick: {
                                     let task_id = delegate.task_id.clone();
-                                    let handler = on_transcript_focus.clone();
+                                    let handler = on_transcript_focus;
                                     move |_| {
                                         if let Some(handler) = &handler {
                                             handler.call(format!("delegate:{task_id}"));
@@ -706,7 +706,7 @@ fn render_dispatcher_switch_state(
     rsx! {
         section { class: "screen-subsection",
             h3 { class: "screen-section-title", "Switch state" }
-            if let Some(handler) = on_transcript_focus.clone() {
+            if let Some(handler) = on_transcript_focus {
                 button {
                     class: "transcript-focus-link",
                     r#type: "button",

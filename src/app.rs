@@ -468,6 +468,103 @@ fn block_origin_label(origin: Option<&crate::fixtures::BlockOrigin>) -> Option<&
     origin.map(|origin| origin.label.as_str())
 }
 
+const TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD: usize = 7;
+const TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD: usize = 360;
+const SYSTEM_NOTICE_DISCLOSURE_LINE_THRESHOLD: usize = 5;
+const SYSTEM_NOTICE_DISCLOSURE_CHAR_THRESHOLD: usize = 220;
+
+fn transcript_disclosure_meta(content: &str) -> String {
+    let line_count = content.lines().count().max(1);
+    format!("{line_count} line{} · {} chars", if line_count == 1 { "" } else { "s" }, content.chars().count())
+}
+
+fn should_expand_tool_args(content: &str) -> bool {
+    should_expand_transcript_content(
+        content,
+        TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD,
+        TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD,
+    )
+}
+
+fn should_expand_tool_output(content: &str) -> bool {
+    should_expand_transcript_content(
+        content,
+        TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD,
+        TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD,
+    )
+}
+
+fn should_expand_system_notice(content: &str) -> bool {
+    should_expand_transcript_content(
+        content,
+        SYSTEM_NOTICE_DISCLOSURE_LINE_THRESHOLD,
+        SYSTEM_NOTICE_DISCLOSURE_CHAR_THRESHOLD,
+    )
+}
+
+fn should_expand_transcript_content(content: &str, line_threshold: usize, char_threshold: usize) -> bool {
+    content.lines().count() > line_threshold || content.chars().count() > char_threshold
+}
+
+fn system_notice_summary_label(text: &crate::fixtures::AttributedText) -> &'static str {
+    match text.notice_kind {
+        Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => "Dispatcher switch notice",
+        Some(crate::fixtures::SystemNoticeKind::CleaveStart) => "Cleave start notice",
+        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => "Cleave completion notice",
+        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => "Child status notice",
+        Some(crate::fixtures::SystemNoticeKind::Failure) => "Failure notice",
+        Some(crate::fixtures::SystemNoticeKind::Generic) | None => "System notice",
+    }
+}
+
+struct TranscriptDisclosure<'a> {
+    section_class: &'static str,
+    details_class: &'static str,
+    summary_class: &'static str,
+    summary_label_class: &'static str,
+    summary_meta_class: Option<&'static str>,
+    body_class: &'static str,
+    content_class: &'static str,
+    label: &'static str,
+    content: &'a str,
+    meta: String,
+    open: bool,
+}
+
+fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element {
+    let TranscriptDisclosure {
+        section_class,
+        details_class,
+        summary_class,
+        summary_label_class,
+        summary_meta_class,
+        body_class,
+        content_class,
+        label,
+        content,
+        meta,
+        open,
+    } = disclosure;
+
+    rsx! {
+        div { class: section_class,
+            details {
+                class: details_class,
+                open,
+                summary { class: summary_class,
+                    span { class: summary_label_class, "{label}" }
+                    if let Some(summary_meta_class) = summary_meta_class {
+                        span { class: summary_meta_class, "{meta}" }
+                    }
+                }
+                div { class: body_class,
+                    p { class: content_class, "{content}" }
+                }
+            }
+        }
+    }
+}
+
 fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {
     if transcript.turns.is_empty() && messages.len() <= 2 {
         rsx! {
@@ -571,22 +668,49 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                         span { class: tool_status_class(tool), "{tool_status_label(tool)}" }
                                     }
                                     if !tool.args.is_empty() {
-                                        div { class: "tool-section",
-                                            span { class: "tool-section-label", "Args" }
-                                            p { class: "tool-args", "{tool.args}" }
-                                        }
+                                        {render_transcript_disclosure(TranscriptDisclosure {
+                                            section_class: "tool-section",
+                                            details_class: "tool-details",
+                                            summary_class: "tool-summary",
+                                            summary_label_class: "tool-summary-label",
+                                            summary_meta_class: Some("tool-summary-meta"),
+                                            body_class: "tool-detail-body",
+                                            content_class: "tool-args",
+                                            label: "Args",
+                                            content: &tool.args,
+                                            meta: transcript_disclosure_meta(&tool.args),
+                                            open: should_expand_tool_args(&tool.args),
+                                        })}
                                     }
                                     if !tool.partial_output.is_empty() {
-                                        div { class: "tool-section tool-section-stream",
-                                            span { class: "tool-section-label", "{tool_partial_label(tool)}" }
-                                            p { class: "tool-partial", "{tool.partial_output}" }
-                                        }
+                                        {render_transcript_disclosure(TranscriptDisclosure {
+                                            section_class: "tool-section tool-section-stream",
+                                            details_class: "tool-details",
+                                            summary_class: "tool-summary",
+                                            summary_label_class: "tool-summary-label",
+                                            summary_meta_class: Some("tool-summary-meta"),
+                                            body_class: "tool-detail-body",
+                                            content_class: "tool-partial",
+                                            label: tool_partial_label(tool),
+                                            content: &tool.partial_output,
+                                            meta: transcript_disclosure_meta(&tool.partial_output),
+                                            open: should_expand_tool_output(&tool.partial_output),
+                                        })}
                                     }
                                     if let Some(result) = &tool.result {
-                                        div { class: "tool-section tool-section-result",
-                                            span { class: "tool-section-label", "{tool_result_label(tool)}" }
-                                            p { class: "tool-result", "{result}" }
-                                        }
+                                        {render_transcript_disclosure(TranscriptDisclosure {
+                                            section_class: "tool-section tool-section-result",
+                                            details_class: "tool-details",
+                                            summary_class: "tool-summary",
+                                            summary_label_class: "tool-summary-label",
+                                            summary_meta_class: Some("tool-summary-meta"),
+                                            body_class: "tool-detail-body",
+                                            content_class: "tool-result",
+                                            label: tool_result_label(tool),
+                                            content: result,
+                                            meta: transcript_disclosure_meta(result),
+                                            open: should_expand_tool_output(result),
+                                        })}
                                     } else if !tool.is_error {
                                         p { class: "tool-awaiting", "Waiting for final tool result…" }
                                     }
@@ -601,7 +725,23 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
-                                    p { "{text.text}" }
+                                    if should_expand_system_notice(&text.text) {
+                                        {render_transcript_disclosure(TranscriptDisclosure {
+                                            section_class: "system-section",
+                                            details_class: "system-details",
+                                            summary_class: "system-summary",
+                                            summary_label_class: "system-summary-label",
+                                            summary_meta_class: Some("system-summary-meta"),
+                                            body_class: "system-detail-body",
+                                            content_class: "system-text",
+                                            label: system_notice_summary_label(text),
+                                            content: &text.text,
+                                            meta: transcript_disclosure_meta(&text.text),
+                                            open: true,
+                                        })}
+                                    } else {
+                                        p { class: "system-text", "{text.text}" }
+                                    }
                                 }
                             },
                             crate::fixtures::TurnBlock::Aborted(text) => rsx! {
@@ -975,16 +1115,19 @@ mod tests {
     use super::{
         app_surface_state, app_surface_tone, block_origin_label,
         build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
-        render_chat_status_banner, system_block_class, system_block_tone,
-        text_block_class, text_block_tone, tool_block_class, tool_block_tone,
-        tool_partial_label, tool_result_label, tool_status_label,
-        tool_visual_state, transcript_block_dom_id,
+        render_chat_status_banner, should_expand_system_notice,
+        should_expand_tool_args, should_expand_tool_output, system_block_class,
+        system_block_tone, system_notice_summary_label, text_block_class,
+        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
+        tool_result_label, tool_status_label, tool_visual_state,
+        transcript_block_dom_id, transcript_disclosure_meta,
     };
     use crate::controller::AppController;
     use crate::session_model::HostSessionModel;
     use crate::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
         MessageRole, MockHostSession, OriginKind, SystemNoticeKind, ToolCard,
+        TranscriptData,
     };
 
     #[test]
@@ -1199,6 +1342,47 @@ mod tests {
         assert_eq!(tool_partial_label(&complete), "Streamed output");
         assert_eq!(tool_result_label(&complete), "Final result");
         assert_eq!(tool_result_label(&errored), "Error result");
+    }
+
+    #[test]
+    fn transcript_disclosure_helpers_expand_only_verbose_content() {
+        let short = "echo hi";
+        let long_lines = (1..=8)
+            .map(|i| format!("line-{i}"))
+            .collect::<Vec<_>>()
+            .join("\n");
+        let long_chars = "x".repeat(361);
+
+        assert!(!should_expand_tool_args(short));
+        assert!(!should_expand_tool_output(short));
+        assert!(should_expand_tool_args(&long_lines));
+        assert!(should_expand_tool_output(&long_chars));
+        assert_eq!(transcript_disclosure_meta("alpha\nbeta"), "2 lines · 10 chars");
+    }
+
+    #[test]
+    fn system_notice_disclosure_and_labels_follow_notice_kind() {
+        let short_generic = AttributedText {
+            text: "Background refresh complete".into(),
+            origin: None,
+            notice_kind: Some(SystemNoticeKind::Generic),
+        };
+        let long_failure = AttributedText {
+            text: (1..=6)
+                .map(|i| format!("failure detail {i}"))
+                .collect::<Vec<_>>()
+                .join("\n"),
+            origin: Some(BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }),
+            notice_kind: Some(SystemNoticeKind::Failure),
+        };
+
+        assert!(!should_expand_system_notice(&short_generic.text));
+        assert!(should_expand_system_notice(&long_failure.text));
+        assert_eq!(system_notice_summary_label(&short_generic), "System notice");
+        assert_eq!(system_notice_summary_label(&long_failure), "Failure notice");
     }
 
     #[test]
