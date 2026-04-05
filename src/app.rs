@@ -269,8 +269,8 @@ pub fn App() -> Element {
                                     stream.send_command(command);
                                 }
                             })),
-                            on_transcript_focus: Some(EventHandler::new(move |query: String| {
-                                focus_transcript_query(&query);
+                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                focus_transcript_target(controller.read().transcript(), &target);
                             }))
                         }
                     } else {
@@ -357,8 +357,8 @@ pub fn App() -> Element {
                                 stream.send_command(command);
                             }
                         })),
-                        on_transcript_focus: Some(EventHandler::new(move |query: String| {
-                            focus_transcript_query(&query);
+                        on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                            focus_transcript_target(controller.read().transcript(), &target);
                         }))
                     }
                 }
@@ -384,28 +384,88 @@ pub fn App() -> Element {
     }
 }
 
-fn focus_transcript_query(query: &str) {
-    let query_json = serde_json::to_string(query).unwrap_or_else(|_| "\"\"".to_string());
-    spawn(async move {
-        let _ = document::eval(&format!(
-            r#"
-            (function() {{
-              var query = {query_json}.toLowerCase();
-              if (!query) return;
-              var nodes = Array.from(document.querySelectorAll('.transcript .block, .transcript .turn-card, .transcript .bubble'));
-              var match = nodes.find(function(node) {{
-                return (node.innerText || '').toLowerCase().includes(query);
-              }});
-              if (match) {{
-                match.scrollIntoView({{ behavior: 'instant', block: 'center' }});
-                match.classList.add('transcript-focus-hit');
-                setTimeout(function() {{ match.classList.remove('transcript-focus-hit'); }}, 1400);
-              }}
-            }})();
-            "#
-        ))
-        .await;
-    });
+fn focus_transcript_target(transcript: &TranscriptData, target: &str) {
+    if let Some(anchor) = find_transcript_anchor(transcript, target) {
+        let anchor_json = serde_json::to_string(&anchor).unwrap_or_else(|_| "\"\"".to_string());
+        spawn(async move {
+            let _ = document::eval(&format!(
+                r#"
+                (function() {{
+                  var anchor = {anchor_json};
+                  if (!anchor) return;
+                  var match = document.getElementById(anchor);
+                  if (match) {{
+                    match.scrollIntoView({{ behavior: 'instant', block: 'center' }});
+                    match.classList.add('transcript-focus-hit');
+                    setTimeout(function() {{ match.classList.remove('transcript-focus-hit'); }}, 1400);
+                  }}
+                }})();
+                "#
+            ))
+            .await;
+        });
+    }
+}
+
+fn find_transcript_anchor(transcript: &TranscriptData, target: &str) -> Option<String> {
+    for turn in &transcript.turns {
+        for (block_index, block) in turn.blocks.iter().enumerate() {
+            if transcript_block_matches_target(block, target) {
+                return Some(transcript_block_dom_id(turn.number, block_index));
+            }
+        }
+    }
+    None
+}
+
+fn transcript_block_dom_id(turn_number: u32, block_index: usize) -> String {
+    format!("turn-{turn_number}-block-{block_index}")
+}
+
+fn transcript_block_matches_target(block: &crate::fixtures::TurnBlock, target: &str) -> bool {
+    if let Some(task_id) = target.strip_prefix("delegate:") {
+        return match block {
+            crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
+                block_origin_label(text.origin.as_ref()).is_some_and(|label| label.contains(task_id))
+                    || text.text.contains(task_id)
+            }
+            _ => false,
+        };
+    }
+
+    if let Some(token) = target.strip_prefix("dispatcher-switch:") {
+        return match block {
+            crate::fixtures::TurnBlock::System(text) => {
+                text.notice_kind == Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch)
+                    && (token.is_empty() || text.text.contains(token))
+            }
+            _ => false,
+        };
+    }
+
+    transcript_block_search_text(block).contains(target)
+}
+
+fn transcript_block_search_text(block: &crate::fixtures::TurnBlock) -> String {
+    match block {
+        crate::fixtures::TurnBlock::Thinking(thinking) => thinking.text.clone(),
+        crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
+            format!("{} {}", block_origin_label(text.origin.as_ref()).unwrap_or_default(), text.text)
+        }
+        crate::fixtures::TurnBlock::Tool(tool) => format!(
+            "{} {} {} {} {}",
+            tool.id,
+            tool.name,
+            tool.args,
+            tool.partial_output,
+            tool.result.clone().unwrap_or_default()
+        ),
+        crate::fixtures::TurnBlock::Aborted(text) => text.clone(),
+    }
+}
+
+fn block_origin_label(origin: Option<&crate::fixtures::BlockOrigin>) -> Option<&str> {
+    origin.map(|origin| origin.label.as_str())
 }
 
 fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {
@@ -465,13 +525,15 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
             for turn in &transcript.turns {
                 article {
                     class: "turn-card",
+                    id: format!("turn-{}", turn.number),
                     "data-surface": "panel",
                     "data-elevation": "1",
                     h2 { class: "turn-title", "Turn {turn.number}" }
-                    for block in &turn.blocks {
+                    for (block_index, block) in turn.blocks.iter().enumerate() {
                         match block {
                             crate::fixtures::TurnBlock::Thinking(thinking) => rsx! {
                                 section {
+                                    id: transcript_block_dom_id(turn.number, block_index),
                                     class: if thinking.collapsed { "block block-thinking block-collapsed" } else { "block block-thinking" },
                                     "data-surface": "panel",
                                     "data-tone": "muted",
@@ -481,6 +543,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::Text(text) => rsx! {
                                 section {
+                                    id: transcript_block_dom_id(turn.number, block_index),
                                     class: text_block_class(text.origin.as_ref()),
                                     "data-surface": "panel",
                                     "data-tone": text_block_tone(text.origin.as_ref()),
@@ -492,6 +555,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
                                 section {
+                                    id: transcript_block_dom_id(turn.number, block_index),
                                     class: tool_block_class(tool),
                                     "data-surface": "panel",
                                     "data-kind": "tool",
@@ -530,6 +594,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::System(text) => rsx! {
                                 section {
+                                    id: transcript_block_dom_id(turn.number, block_index),
                                     class: system_block_class(text),
                                     "data-surface": "panel",
                                     "data-tone": system_block_tone(text),
@@ -541,6 +606,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                             },
                             crate::fixtures::TurnBlock::Aborted(text) => rsx! {
                                 section {
+                                    id: transcript_block_dom_id(turn.number, block_index),
                                     class: "block block-aborted",
                                     "data-surface": "panel",
                                     "data-tone": "danger",
@@ -907,11 +973,12 @@ fn render_left_rail_inventory(
 #[cfg(test)]
 mod tests {
     use super::{
-        app_surface_state, app_surface_tone, build_left_rail_inventory,
-        chat_status_tone, render_chat_status_banner, system_block_class,
-        system_block_tone, text_block_class, text_block_tone, tool_block_class,
-        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
-        tool_visual_state,
+        app_surface_state, app_surface_tone, block_origin_label,
+        build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
+        render_chat_status_banner, system_block_class, system_block_tone,
+        text_block_class, text_block_tone, tool_block_class, tool_block_tone,
+        tool_partial_label, tool_result_label, tool_status_label,
+        tool_visual_state, transcript_block_dom_id,
     };
     use crate::controller::AppController;
     use crate::session_model::HostSessionModel;
@@ -919,6 +986,46 @@ mod tests {
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
         MessageRole, MockHostSession, OriginKind, SystemNoticeKind, ToolCard,
     };
+
+    #[test]
+    fn transcript_anchor_lookup_matches_delegate_and_dispatcher_switch_targets() {
+        let transcript = TranscriptData {
+            turns: vec![crate::fixtures::Turn {
+                number: 7,
+                blocks: vec![
+                    crate::fixtures::TurnBlock::System(AttributedText {
+                        text: "Dispatcher switch confirmed (dispatcher-switch-9): supervisor-heavy · openai:gpt-4.1".into(),
+                        origin: Some(BlockOrigin {
+                            kind: OriginKind::Dispatcher,
+                            label: "anthropic:claude-sonnet-4-6".into(),
+                        }),
+                        notice_kind: Some(SystemNoticeKind::DispatcherSwitch),
+                    }),
+                    crate::fixtures::TurnBlock::System(AttributedText {
+                        text: "Cleave child child-b completed successfully".into(),
+                        origin: Some(BlockOrigin {
+                            kind: OriginKind::Child,
+                            label: "Child child-b".into(),
+                        }),
+                        notice_kind: Some(SystemNoticeKind::ChildStatus),
+                    }),
+                ],
+            }],
+            active_turn: None,
+            context_tokens: None,
+        };
+
+        assert_eq!(transcript_block_dom_id(7, 1), "turn-7-block-1");
+        assert_eq!(
+            find_transcript_anchor(&transcript, "delegate:child-b").as_deref(),
+            Some("turn-7-block-1")
+        );
+        assert_eq!(
+            find_transcript_anchor(&transcript, "dispatcher-switch:dispatcher-switch-9").as_deref(),
+            Some("turn-7-block-0")
+        );
+        assert_eq!(block_origin_label(None), None);
+    }
 
     #[test]
     fn text_block_class_keeps_dispatcher_text_as_normal_text() {

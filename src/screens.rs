@@ -351,7 +351,7 @@ pub fn ScribeScreen(
                                     let handler = on_transcript_focus.clone();
                                     move |_| {
                                         if let Some(handler) = &handler {
-                                            handler.call(task_id.clone());
+                                            handler.call(format!("delegate:{task_id}"));
                                         }
                                     }
                                 },
@@ -540,7 +540,7 @@ pub fn SessionScreen(
                                     let handler = on_transcript_focus.clone();
                                     move |_| {
                                         if let Some(handler) = &handler {
-                                            handler.call(task_id.clone());
+                                            handler.call(format!("delegate:{task_id}"));
                                         }
                                     }
                                 },
@@ -711,7 +711,13 @@ fn render_dispatcher_switch_state(
                     class: "transcript-focus-link",
                     r#type: "button",
                     onclick: {
-                        let target = view.headline.clone();
+                        let target = if let Some(request_id) = state.request_id.as_ref() {
+                            format!("dispatcher-switch:{request_id}")
+                        } else if let Some(profile) = state.requested_profile.as_ref() {
+                            format!("dispatcher-switch:{profile}")
+                        } else {
+                            "dispatcher-switch:".to_string()
+                        };
                         move |_| handler.call(target.clone())
                     },
                     "Focus related transcript events"
