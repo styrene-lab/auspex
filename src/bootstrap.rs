@@ -543,8 +543,9 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
             Ok(result) => return result,
             Err(error) => {
                 eprintln!(
-                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); spawning fresh embedded instance"
+                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); reaping conflicting embedded instances and spawning fresh one"
                 );
+                reap_conflicting_omegon_children();
             }
         }
     }
@@ -685,27 +686,51 @@ fn clear_owned_omegon_pid() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn pid_is_owned_omegon(pid: u32) -> bool {
+fn embedded_omegon_pids() -> Vec<u32> {
     let output = match std::process::Command::new("ps")
-        .args(["-p", &pid.to_string(), "-o", "command="])
+        .args(["ax", "-o", "pid=,command="])
         .output()
     {
         Ok(output) => output,
-        Err(_) => return false,
+        Err(_) => return Vec::new(),
     };
 
     if !output.status.success() {
-        return false;
+        return Vec::new();
     }
 
-    let command = String::from_utf8_lossy(&output.stdout);
-    command.contains("omegon embedded --control-port 7842")
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let (pid, command) = trimmed.split_once(' ')?;
+            if !command.contains("omegon embedded --control-port 7842") {
+                return None;
+            }
+            pid.parse::<u32>().ok()
+        })
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn pid_is_owned_omegon(pid: u32) -> bool {
+    embedded_omegon_pids().into_iter().any(|candidate| candidate == pid)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_owned_omegon_child() {
     let Some(pid) = read_owned_omegon_pid() else { return };
     if pid_is_owned_omegon(pid) {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+    clear_owned_omegon_pid();
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn reap_conflicting_omegon_children() {
+    for pid in embedded_omegon_pids() {
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
@@ -931,6 +956,11 @@ mod tests {
     #[test]
     fn pid_is_owned_omegon_rejects_impossible_pid() {
         assert!(!pid_is_owned_omegon(u32::MAX));
+    }
+
+    #[test]
+    fn embedded_omegon_pid_scan_ignores_unrelated_processes() {
+        assert!(embedded_omegon_pids().iter().all(|pid| *pid > 0));
     }
 
     #[test]
