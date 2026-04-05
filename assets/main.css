@@ -1073,7 +1073,7 @@ body > * {
   color: #8b949e;
 }
 
-@media (max-width: 760px), (max-width: 980px) and (max-aspect-ratio: 4/5) {
+@media (max-width: 760px) {
   .topbar {
     grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
     grid-template-areas:
@@ -1086,6 +1086,7 @@ body > * {
     grid-area: tabs;
     justify-content: flex-start;
   }
+
   .topbar-status {
     grid-area: status;
     justify-content: flex-end;
@@ -1097,82 +1098,9 @@ body > * {
       "center"
       "left"
       "right";
-    grid-template-rows: minmax(20rem, 1fr) auto auto;
+    grid-template-rows: minmax(18rem, 1fr) auto auto;
     overflow-y: auto;
     align-content: start;
-  }
-
-  .center-workspace {
-    min-height: 20rem;
-  }
-
-  .left-rail {
-    border-right: 0;
-    border-bottom: 1px solid #1b2129;
-    max-height: 14rem;
-  }
-
-  .center-workspace {
-    padding-inline: 0.75rem;
-  }
-
-  .right-rail {
-    border-left: 0;
-    border-top: 1px solid #1b2129;
-    max-height: 14rem;
-  }
-
-  .right-rail .kv-row {
-    grid-template-columns: minmax(96px, 120px) minmax(0, 1fr);
-  }
-
-  .bottombar {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "org"
-      "instruments"
-      "reserved";
-  }
-
-  .bottombar-org { grid-area: org; }
-  .bottombar-instruments {
-    grid-area: instruments;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-    gap: 0.4rem 0.75rem;
-  }
-  .bottombar-reserved { grid-area: reserved; }
-}
-
-@media (max-width: 760px) {
-  .shell {
-    grid-template-rows: auto minmax(0, 1fr) auto;
-  }
-
-  .topbar {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "identity"
-      "tabs"
-      "status";
-    row-gap: 0.35rem;
-  }
-
-  .topbar-status {
-    justify-content: space-between;
-  }
-
-  .topbar-meta {
-    max-width: none;
-  }
-
-  .main-area {
-    grid-template-columns: minmax(0, 1fr);
-    grid-template-areas:
-      "center"
-      "left"
-      "right";
-    grid-template-rows: minmax(18rem, 1fr) auto auto;
   }
 
   .left-rail {
@@ -1187,6 +1115,7 @@ body > * {
   }
 
   .right-rail {
+    border-left: 0;
     border-top: 1px solid #1b2129;
     max-height: 12rem;
   }
