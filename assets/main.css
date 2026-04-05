@@ -350,6 +350,109 @@ body > * {
   font-size: 0.78rem;
 }
 
+.audit-panel {
+  min-height: 0;
+}
+
+.audit-summary-card {
+  gap: 0.2rem;
+}
+
+.audit-filter-list {
+  gap: 0.45rem;
+}
+
+.audit-filter-field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+.audit-filter-label {
+  font-size: 0.7rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--text-subtle);
+  text-transform: uppercase;
+}
+
+.audit-filter-control {
+  width: 100%;
+  box-sizing: border-box;
+  border-radius: 6px;
+  border: 1px solid var(--border-default);
+  background: var(--surface-2);
+  color: var(--text-primary);
+  padding: 0.35rem 0.45rem;
+  font-size: 0.78rem;
+}
+
+.audit-filter-control::placeholder {
+  color: var(--text-placeholder);
+}
+
+.audit-entry-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  min-height: 0;
+  max-height: 26rem;
+  overflow-y: auto;
+}
+
+.audit-entry-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-text);
+}
+
+.audit-entry-card[data-kind="thinking"] {
+  background: var(--surface-thinking);
+  border-color: var(--border-info);
+}
+
+.audit-entry-card[data-kind="tool"] {
+  background: var(--surface-tool);
+  border-color: var(--border-tool);
+}
+
+.audit-entry-card[data-kind="system"] {
+  background: var(--surface-system);
+  border-color: var(--border-info-strong);
+}
+
+.audit-entry-card[data-kind="aborted"] {
+  background: var(--surface-aborted);
+  border-color: var(--border-danger);
+}
+
+.audit-entry-title {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.audit-entry-meta {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+
+.audit-entry-content {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: "SFMono-Regular", SFMono-Regular, ui-monospace, monospace;
+  font-size: 0.74rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
 .center-workspace {
   grid-area: center;
   display: flex;

@@ -1,6 +1,6 @@
 use dioxus::prelude::*;
 
-use crate::audit_timeline::AuditTimelineStore;
+use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
@@ -102,6 +102,10 @@ pub fn App() -> Element {
     });
 
     let mut workspace = use_signal(|| Workspace::Chat);
+    let mut audit_session_filter = use_signal(String::new);
+    let mut audit_turn_filter = use_signal(String::new);
+    let mut audit_kind_filter = use_signal(|| "all".to_string());
+    let mut audit_text_filter = use_signal(String::new);
 
     let session = controller.read().session_data();
     let bootstrap_surface = controller
@@ -233,6 +237,18 @@ pub fn App() -> Element {
                         &controller.read().session_data(),
                         controller.read().is_run_active(),
                         controller.read().audit_timeline(),
+                        AuditPanelControls {
+                            filters: AuditFilters {
+                                session_key: audit_session_filter.read().clone(),
+                                turn_query: audit_turn_filter.read().clone(),
+                                kind_key: audit_kind_filter.read().clone(),
+                                text_query: audit_text_filter.read().clone(),
+                            },
+                            on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
+                            on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
+                            on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
+                            on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
+                        },
                     )}
                     WorkScreen { data: controller.read().work_data() }
                     section { class: "rail-section",
@@ -1128,6 +1144,40 @@ struct LeftRailInventory {
     agent_rows: Vec<(String, String)>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct AuditFilters {
+    session_key: String,
+    turn_query: String,
+    kind_key: String,
+    text_query: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AuditPanelEntry {
+    heading: String,
+    meta: String,
+    content: String,
+    kind_key: &'static str,
+}
+
+#[derive(Clone, Debug)]
+struct AuditPanelControls {
+    filters: AuditFilters,
+    on_session_filter: EventHandler<String>,
+    on_turn_filter: EventHandler<String>,
+    on_kind_filter: EventHandler<String>,
+    on_text_filter: EventHandler<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AuditPanelModel {
+    total_count: usize,
+    filtered_count: usize,
+    latest_label: String,
+    session_options: Vec<String>,
+    entries: Vec<AuditPanelEntry>,
+}
+
 fn build_left_rail_inventory(
     summary: &crate::fixtures::HostSessionSummary,
     work: &crate::fixtures::WorkData,
@@ -1206,14 +1256,10 @@ fn render_left_rail_inventory(
     session: &crate::fixtures::SessionData,
     is_run_active: bool,
     audit_timeline: &AuditTimelineStore,
+    controls: AuditPanelControls,
 ) -> Element {
     let inventory = build_left_rail_inventory(summary, work, session, is_run_active);
-    let audit_count = audit_timeline.entries.len();
-    let latest_audit_label = audit_timeline
-        .entries
-        .last()
-        .map(|entry| entry.label.as_str())
-        .unwrap_or("No transcript blocks retained yet");
+    let audit_panel = build_audit_panel_model(audit_timeline, &controls.filters);
 
     rsx! {
         section { class: "rail-section",
@@ -1241,20 +1287,196 @@ fn render_left_rail_inventory(
                 }
             }
         }
-        section { class: "rail-section",
-            h2 { class: "rail-heading", "Audit" }
-            div { class: "rail-card",
-                div { class: "rail-card-title", "{audit_count} retained block(s)" }
-                p { class: "rail-card-detail", "Latest: {latest_audit_label}" }
+        section { class: "rail-section audit-panel",
+            h2 { class: "rail-heading", "Audit history" }
+            div { class: "rail-card audit-summary-card",
+                div { class: "rail-card-title", "{audit_panel.filtered_count} of {audit_panel.total_count} retained block(s)" }
+                p { class: "rail-card-detail", "Latest: {audit_panel.latest_label}" }
+            }
+            div { class: "rail-list audit-filter-list",
+                label { class: "audit-filter-field",
+                    span { class: "audit-filter-label", "Session" }
+                    select {
+                        class: "audit-filter-control",
+                        value: controls.filters.session_key.clone(),
+                        onchange: move |event| controls.on_session_filter.call(event.value()),
+                        option { value: "", "All sessions" }
+                        for session_key in &audit_panel.session_options {
+                            option { value: session_key.clone(), "{session_key}" }
+                        }
+                    }
+                }
+                label { class: "audit-filter-field",
+                    span { class: "audit-filter-label", "Turn" }
+                    input {
+                        class: "audit-filter-control",
+                        r#type: "search",
+                        inputmode: "numeric",
+                        placeholder: "All turns",
+                        value: controls.filters.turn_query.clone(),
+                        oninput: move |event| controls.on_turn_filter.call(event.value()),
+                    }
+                }
+                label { class: "audit-filter-field",
+                    span { class: "audit-filter-label", "Kind" }
+                    select {
+                        class: "audit-filter-control",
+                        value: controls.filters.kind_key.clone(),
+                        onchange: move |event| controls.on_kind_filter.call(event.value()),
+                        for (value, label) in audit_kind_options() {
+                            option { value: value, "{label}" }
+                        }
+                    }
+                }
+                label { class: "audit-filter-field",
+                    span { class: "audit-filter-label", "Search" }
+                    input {
+                        class: "audit-filter-control",
+                        r#type: "search",
+                        placeholder: "Label or retained text",
+                        value: controls.filters.text_query.clone(),
+                        oninput: move |event| controls.on_text_filter.call(event.value()),
+                    }
+                }
+            }
+            div { class: "audit-entry-list",
+                if audit_panel.entries.is_empty() {
+                    p { class: "rail-placeholder", "No retained transcript blocks match the current filters." }
+                } else {
+                    for entry in &audit_panel.entries {
+                        article {
+                            class: "audit-entry-card",
+                            "data-kind": entry.kind_key,
+                            h3 { class: "audit-entry-title", "{entry.heading}" }
+                            p { class: "audit-entry-meta", "{entry.meta}" }
+                            pre { class: "audit-entry-content", "{entry.content}" }
+                        }
+                    }
+                }
             }
         }
+    }
+}
+
+fn audit_kind_options() -> [(&'static str, &'static str); 6] {
+    [
+        ("all", "All kinds"),
+        ("thinking", "Thinking"),
+        ("text", "Message"),
+        ("tool", "Tool"),
+        ("system", "System"),
+        ("aborted", "Aborted"),
+    ]
+}
+
+fn build_audit_panel_model(
+    audit_timeline: &AuditTimelineStore,
+    filters: &AuditFilters,
+) -> AuditPanelModel {
+    let latest_label = audit_timeline
+        .entries
+        .last()
+        .map(|entry| entry.label.clone())
+        .unwrap_or_else(|| "No transcript blocks retained yet".into());
+    let mut session_options = audit_timeline
+        .entries
+        .iter()
+        .map(|entry| entry.session_key.clone())
+        .collect::<std::collections::BTreeSet<_>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    session_options.sort();
+
+    let entries = audit_timeline
+        .entries
+        .iter()
+        .filter(|entry| audit_entry_matches_filters(entry, filters))
+        .map(|entry| AuditPanelEntry {
+            heading: entry.label.clone(),
+            meta: format!(
+                "{} · turn {} · {}",
+                entry.session_key,
+                entry.turn_number,
+                audit_kind_label(entry.kind.clone())
+            ),
+            content: entry.content.clone(),
+            kind_key: audit_kind_key(entry.kind.clone()),
+        })
+        .collect::<Vec<_>>();
+
+    AuditPanelModel {
+        total_count: audit_timeline.entries.len(),
+        filtered_count: entries.len(),
+        latest_label,
+        session_options,
+        entries,
+    }
+}
+
+fn audit_entry_matches_filters(entry: &AuditEntry, filters: &AuditFilters) -> bool {
+    let session_filter = filters.session_key.trim();
+    if !session_filter.is_empty() && entry.session_key != session_filter {
+        return false;
+    }
+
+    let turn_filter = filters.turn_query.trim();
+    if !turn_filter.is_empty() {
+        let Ok(turn_number) = turn_filter.parse::<u32>() else {
+            return false;
+        };
+        if entry.turn_number != turn_number {
+            return false;
+        }
+    }
+
+    let kind_filter = filters.kind_key.trim();
+    if !kind_filter.is_empty() && kind_filter != "all" && audit_kind_key(entry.kind.clone()) != kind_filter {
+        return false;
+    }
+
+    let text_filter = filters.text_query.trim().to_ascii_lowercase();
+    if !text_filter.is_empty() {
+        let haystack = format!(
+            "{}\n{}\n{}\n{}",
+            entry.session_key,
+            entry.turn_number,
+            entry.label,
+            entry.content,
+        )
+        .to_ascii_lowercase();
+        if !haystack.contains(&text_filter) {
+            return false;
+        }
+    }
+
+    true
+}
+
+fn audit_kind_key(kind: AuditEntryKind) -> &'static str {
+    match kind {
+        AuditEntryKind::Thinking => "thinking",
+        AuditEntryKind::Text => "text",
+        AuditEntryKind::Tool => "tool",
+        AuditEntryKind::System => "system",
+        AuditEntryKind::Aborted => "aborted",
+    }
+}
+
+fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
+    match kind {
+        AuditEntryKind::Thinking => "Thinking",
+        AuditEntryKind::Text => "Message",
+        AuditEntryKind::Tool => "Tool",
+        AuditEntryKind::System => "System",
+        AuditEntryKind::Aborted => "Aborted",
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        app_surface_state, app_surface_tone, block_origin_label,
+        app_surface_state, app_surface_tone, audit_entry_matches_filters,
+        audit_kind_key, build_audit_panel_model, block_origin_label,
         build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
         looks_like_structured_payload, render_chat_status_banner,
         transcript_disclosure_open,
@@ -1263,8 +1485,9 @@ mod tests {
         system_notice_summary_label, text_block_class, text_block_tone,
         tool_block_class, tool_block_tone, tool_partial_label,
         tool_result_label, tool_status_label, tool_visual_state,
-        transcript_block_dom_id, transcript_disclosure_meta,
+        transcript_block_dom_id, transcript_disclosure_meta, AuditFilters,
     };
+    use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::AppController;
     use crate::session_model::HostSessionModel;
     use crate::fixtures::{
@@ -1520,7 +1743,78 @@ mod tests {
     #[test]
     fn left_rail_inventory_audit_summary_uses_latest_entry() {
         let controller = AppController::default();
-        assert_eq!(controller.audit_timeline().entries.len(), 0);
+        let panel = build_audit_panel_model(controller.audit_timeline(), &AuditFilters::default());
+
+        assert_eq!(panel.total_count, 0);
+        assert_eq!(panel.filtered_count, 0);
+        assert_eq!(panel.latest_label, "No transcript blocks retained yet");
+    }
+
+    #[test]
+    fn audit_panel_filters_by_session_turn_kind_and_text() {
+        let store = AuditTimelineStore::from_json(
+            r#"{
+              "schema_version": 1,
+              "entries": [
+                {
+                  "session_key": "remote:a",
+                  "turn_number": 4,
+                  "block_index": 0,
+                  "block_id": "remote:a:turn-4-block-0",
+                  "kind": "System",
+                  "label": "Dispatcher",
+                  "content": "Switch confirmed"
+                },
+                {
+                  "session_key": "remote:b",
+                  "turn_number": 9,
+                  "block_index": 1,
+                  "block_id": "remote:b:turn-9-block-1",
+                  "kind": "Tool",
+                  "label": "Tool · bash",
+                  "content": "cargo test"
+                }
+              ]
+            }"#,
+        )
+        .expect("audit timeline fixture should deserialize");
+
+        let filters = AuditFilters {
+            session_key: "remote:b".into(),
+            turn_query: "9".into(),
+            kind_key: "tool".into(),
+            text_query: "cargo".into(),
+        };
+        let panel = build_audit_panel_model(&store, &filters);
+
+        assert_eq!(panel.total_count, 2);
+        assert_eq!(panel.filtered_count, 1);
+        assert_eq!(panel.session_options, vec!["remote:a".to_string(), "remote:b".to_string()]);
+        assert_eq!(panel.entries[0].heading, "Tool · bash");
+        assert_eq!(panel.entries[0].kind_key, "tool");
+        assert_eq!(panel.entries[0].meta, "remote:b · turn 9 · Tool");
+    }
+
+    #[test]
+    fn audit_entry_filter_rejects_invalid_turn_query() {
+        let entry = AuditEntry {
+            session_key: "remote:a".into(),
+            turn_number: 3,
+            block_index: 0,
+            block_id: "remote:a:turn-3-block-0".into(),
+            kind: AuditEntryKind::Thinking,
+            label: "Thinking".into(),
+            content: "inspect".into(),
+        };
+
+        assert!(!audit_entry_matches_filters(
+            &entry,
+            &AuditFilters {
+                turn_query: "three".into(),
+                ..AuditFilters::default()
+            }
+        ));
+        assert_eq!(audit_kind_key(AuditEntryKind::Thinking), "thinking");
     }
 
     #[test]
