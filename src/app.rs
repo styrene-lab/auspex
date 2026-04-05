@@ -261,6 +261,11 @@ pub fn App() -> Element {
                     } else {
                         // Chat workspace — transcript + composer
                         div { class: "chat-workspace",
+                            {render_chat_status_banner(
+                                controller.read().summary(),
+                                controller.read().is_run_active(),
+                                controller.read().can_submit(),
+                            )}
                             main { class: "transcript",
                                 {render_transcript(controller.read().transcript(), controller.read().messages())}
                                 div { id: "transcript-end" }
@@ -362,7 +367,38 @@ pub fn App() -> Element {
 }
 
 fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {
-    if transcript.turns.is_empty() {
+    if transcript.turns.is_empty() && messages.len() <= 2 {
+        rsx! {
+            section { class: "chat-empty-state",
+                h2 { "Ready for first contact" }
+                p {
+                    "Auspex is attached. Start with a small directive, a status question, or a dispatcher/profile change if you need a different operator posture."
+                }
+                ul { class: "chat-empty-list",
+                    li { "Summarize the current host session and any active work." }
+                    li { "Inspect dispatcher status and tell me whether a switch is needed." }
+                    li { "Plan the next implementation step from the focused design state." }
+                }
+            }
+            for message in messages.iter() {
+                article {
+                    class: match message.role {
+                        MessageRole::User => "bubble bubble-user",
+                        MessageRole::Assistant => "bubble bubble-assistant",
+                        MessageRole::System => "bubble bubble-system",
+                    },
+                    h2 {
+                        match message.role {
+                            MessageRole::User => "You",
+                            MessageRole::Assistant => "Auspex",
+                            MessageRole::System => "System",
+                        }
+                    }
+                    p { "{message.text}" }
+                }
+            }
+        }
+    } else if transcript.turns.is_empty() {
         rsx! {
             for message in messages.iter() {
                 article {
@@ -435,6 +471,39 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                     }
                 }
             }
+        }
+    }
+}
+
+fn render_chat_status_banner(
+    summary: &crate::fixtures::HostSessionSummary,
+    is_run_active: bool,
+    can_submit: bool,
+) -> Element {
+    let (banner_class, label, detail) = if is_run_active {
+        (
+            "chat-status-banner chat-status-banner-running",
+            "Run active",
+            "Omegon is working. New input is paused until the current run completes or you cancel it.",
+        )
+    } else if !can_submit {
+        (
+            "chat-status-banner chat-status-banner-blocked",
+            "Input paused",
+            "Conversation input is unavailable in the current host state.",
+        )
+    } else {
+        (
+            "chat-status-banner",
+            "Ready",
+            summary.activity.as_str(),
+        )
+    };
+
+    rsx! {
+        section { class: banner_class,
+            strong { class: "chat-status-label", "{label}" }
+            span { class: "chat-status-detail", "{detail}" }
         }
     }
 }
@@ -738,6 +807,21 @@ mod tests {
         assert_eq!(controller.messages()[1].role, MessageRole::User);
         assert_eq!(controller.messages()[1].text, "hello world");
         assert_eq!(controller.messages()[2].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn chat_status_banner_reports_run_state() {
+        let summary = HostSessionSummary {
+            connection: "Attached".into(),
+            activity: "Waiting for input".into(),
+            activity_kind: ActivityKind::Idle,
+            work: "No focused work".into(),
+        };
+        let banner = render_chat_status_banner(&summary, true, false);
+        let debug = format!("{banner:?}");
+
+        assert!(debug.contains("Run active"));
+        assert!(debug.contains("current run completes"));
     }
 
     #[test]
