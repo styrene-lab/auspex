@@ -173,7 +173,11 @@ pub fn App() -> Element {
                 if let Some(surface) = controller.read().surface_notice()
                     && surface.kind == crate::fixtures::AppSurfaceKind::Startup
                 {
-                    section { class: surface.kind.section_class(),
+                    section {
+                        class: surface.kind.section_class(),
+                        "data-surface": app_surface_surface(surface.kind),
+                        "data-state": app_surface_state(surface.kind),
+                        "data-tone": app_surface_tone(surface.kind),
                         div { class: "state-screen-icon", "⏳" }
                         h2 { "{surface.kind.title()}" }
                         p { class: "state-screen-detail", "{surface.body}" }
@@ -186,7 +190,11 @@ pub fn App() -> Element {
                 if let Some(surface) = controller.read().surface_notice()
                     && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
                 {
-                    section { class: surface.kind.section_class(),
+                    section {
+                        class: surface.kind.section_class(),
+                        "data-surface": app_surface_surface(surface.kind),
+                        "data-state": app_surface_state(surface.kind),
+                        "data-tone": app_surface_tone(surface.kind),
                         strong { "{surface.kind.title()}" }
                         span { " {surface.body}" }
                     }
@@ -199,7 +207,11 @@ pub fn App() -> Element {
                             | crate::fixtures::AppSurfaceKind::CompatibilityFailure
                     )
                 {
-                    section { class: surface.kind.section_class(),
+                    section {
+                        class: surface.kind.section_class(),
+                        "data-surface": app_surface_surface(surface.kind),
+                        "data-state": app_surface_state(surface.kind),
+                        "data-tone": app_surface_tone(surface.kind),
                         strong { "{surface.kind.title()}" }
                         p { "{surface.body}" }
                         if let Some(detail) = surface.detail.as_deref() {
@@ -429,13 +441,19 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                     for block in &turn.blocks {
                         match block {
                             crate::fixtures::TurnBlock::Thinking(thinking) => rsx! {
-                                section { class: if thinking.collapsed { "block block-thinking block-collapsed" } else { "block block-thinking" },
+                                section {
+                                    class: if thinking.collapsed { "block block-thinking block-collapsed" } else { "block block-thinking" },
+                                    "data-surface": "panel",
+                                    "data-tone": "muted",
                                     h3 { "Thinking" }
                                     p { "{thinking.text}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Text(text) => rsx! {
-                                section { class: text_block_class(text.origin.as_ref()),
+                                section {
+                                    class: text_block_class(text.origin.as_ref()),
+                                    "data-surface": "panel",
+                                    "data-tone": text_block_tone(text.origin.as_ref()),
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
@@ -448,6 +466,7 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                     "data-surface": "panel",
                                     "data-kind": "tool",
                                     "data-state": tool_visual_state(tool),
+                                    "data-tone": tool_block_tone(tool),
                                     div { class: "tool-header",
                                         div { class: "tool-header-main",
                                             if let Some(origin) = &tool.origin {
@@ -480,7 +499,10 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::System(text) => rsx! {
-                                section { class: system_block_class(text),
+                                section {
+                                    class: system_block_class(text),
+                                    "data-surface": "panel",
+                                    "data-tone": system_block_tone(text),
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
@@ -488,7 +510,10 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::Aborted(text) => rsx! {
-                                section { class: "block block-aborted",
+                                section {
+                                    class: "block block-aborted",
+                                    "data-surface": "panel",
+                                    "data-tone": "danger",
                                     p { "{text}" }
                                 }
                             },
@@ -535,11 +560,51 @@ fn render_chat_status_banner(
             class: banner_class,
             "data-surface": "banner",
             "data-state": banner_state,
+            "data-tone": chat_status_tone(is_run_active, can_submit),
             "data-activity-kind": activity_kind,
             title: "Activity: {activity_kind}",
             strong { class: "chat-status-label", "{label}" }
             span { class: "chat-status-detail", "{detail}" }
         }
+    }
+}
+
+fn app_surface_surface(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+    match kind {
+        crate::fixtures::AppSurfaceKind::Startup => "panel",
+        crate::fixtures::AppSurfaceKind::Reconnecting => "banner",
+        crate::fixtures::AppSurfaceKind::StartupFailure
+        | crate::fixtures::AppSurfaceKind::CompatibilityFailure => "panel",
+        crate::fixtures::AppSurfaceKind::BootstrapNote => "panel",
+    }
+}
+
+fn app_surface_state(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+    match kind {
+        crate::fixtures::AppSurfaceKind::Startup => "starting",
+        crate::fixtures::AppSurfaceKind::Reconnecting => "reconnecting",
+        crate::fixtures::AppSurfaceKind::StartupFailure => "startup-failure",
+        crate::fixtures::AppSurfaceKind::CompatibilityFailure => "compatibility-failure",
+        crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
+    }
+}
+
+fn app_surface_tone(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+    match kind {
+        crate::fixtures::AppSurfaceKind::Startup | crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
+        crate::fixtures::AppSurfaceKind::Reconnecting => "warn",
+        crate::fixtures::AppSurfaceKind::StartupFailure
+        | crate::fixtures::AppSurfaceKind::CompatibilityFailure => "danger",
+    }
+}
+
+fn chat_status_tone(is_run_active: bool, can_submit: bool) -> &'static str {
+    if is_run_active {
+        "info"
+    } else if !can_submit {
+        "warn"
+    } else {
+        "success"
     }
 }
 
@@ -549,6 +614,14 @@ fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static s
         Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
         Some(crate::fixtures::OriginKind::System) => "block block-system",
         None => "block block-text",
+    }
+}
+
+fn text_block_tone(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static str {
+    match origin.map(|origin| &origin.kind) {
+        Some(crate::fixtures::OriginKind::Child) => "accent",
+        Some(crate::fixtures::OriginKind::System) => "muted",
+        Some(crate::fixtures::OriginKind::Dispatcher) | None => "default",
     }
 }
 
@@ -590,6 +663,19 @@ fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
     }
 }
 
+fn system_block_tone(text: &crate::fixtures::AttributedText) -> &'static str {
+    match text.notice_kind {
+        Some(crate::fixtures::SystemNoticeKind::Failure) => "danger",
+        Some(crate::fixtures::SystemNoticeKind::CleaveStart)
+        | Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => "info",
+        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => "success",
+        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => "accent",
+        Some(crate::fixtures::SystemNoticeKind::Generic) | None => {
+            text_block_tone(text.origin.as_ref())
+        }
+    }
+}
+
 fn tool_block_class(tool: &crate::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "block block-tool block-error"
@@ -597,6 +683,18 @@ fn tool_block_class(tool: &crate::fixtures::ToolCard) -> &'static str {
         "block block-tool block-tool-complete"
     } else {
         "block block-tool block-tool-running"
+    }
+}
+
+fn tool_block_tone(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "danger"
+    } else if tool.result.is_some() {
+        "success"
+    } else if tool.partial_output.is_empty() {
+        "muted"
+    } else {
+        "info"
     }
 }
 
@@ -779,9 +877,11 @@ fn render_left_rail_inventory(
 #[cfg(test)]
 mod tests {
     use super::{
-        build_left_rail_inventory, render_chat_status_banner, system_block_class,
-        text_block_class, tool_block_class, tool_partial_label, tool_result_label,
-        tool_status_label, tool_visual_state,
+        app_surface_state, app_surface_tone, build_left_rail_inventory,
+        chat_status_tone, render_chat_status_banner, system_block_class,
+        system_block_tone, text_block_class, text_block_tone, tool_block_class,
+        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
+        tool_visual_state,
     };
     use crate::controller::AppController;
     use crate::session_model::HostSessionModel;
@@ -798,6 +898,7 @@ mod tests {
         };
 
         assert_eq!(text_block_class(Some(&origin)), "block block-text");
+        assert_eq!(text_block_tone(Some(&origin)), "default");
     }
 
     #[test]
@@ -869,10 +970,12 @@ mod tests {
             system_block_class(&dispatcher_failure),
             "block block-system block-dispatcher-system block-control-failure"
         );
+        assert_eq!(system_block_tone(&dispatcher_failure), "danger");
         assert_eq!(
             system_block_class(&child_failure),
             "block block-system block-child-origin block-control-failure"
         );
+        assert_eq!(system_block_tone(&child_failure), "danger");
     }
 
     #[test]
@@ -925,6 +1028,10 @@ mod tests {
         assert_eq!(tool_visual_state(&streaming), "streaming");
         assert_eq!(tool_visual_state(&complete), "complete");
         assert_eq!(tool_visual_state(&errored), "error");
+        assert_eq!(tool_block_tone(&queued), "muted");
+        assert_eq!(tool_block_tone(&streaming), "info");
+        assert_eq!(tool_block_tone(&complete), "success");
+        assert_eq!(tool_block_tone(&errored), "danger");
     }
 
     #[test]
@@ -993,6 +1100,24 @@ mod tests {
 
         assert!(debug.contains("Run active"));
         assert!(debug.contains("current run completes"));
+        assert_eq!(chat_status_tone(true, false), "info");
+        assert_eq!(chat_status_tone(false, false), "warn");
+        assert_eq!(chat_status_tone(false, true), "success");
+    }
+
+    #[test]
+    fn app_surface_helpers_assign_semantic_state_and_tone() {
+        use crate::fixtures::AppSurfaceKind;
+
+        assert_eq!(app_surface_state(AppSurfaceKind::Startup), "starting");
+        assert_eq!(app_surface_tone(AppSurfaceKind::Startup), "info");
+        assert_eq!(app_surface_state(AppSurfaceKind::Reconnecting), "reconnecting");
+        assert_eq!(app_surface_tone(AppSurfaceKind::Reconnecting), "warn");
+        assert_eq!(
+            app_surface_state(AppSurfaceKind::CompatibilityFailure),
+            "compatibility-failure"
+        );
+        assert_eq!(app_surface_tone(AppSurfaceKind::CompatibilityFailure), "danger");
     }
 
     #[test]

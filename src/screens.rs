@@ -56,7 +56,11 @@ pub fn GraphScreen(data: GraphData) -> Element {
                     h2 { class: "screen-section-title", "Counts" }
                     div { class: "graph-counts",
                         for (status, count) in &data.counts {
-                            div { class: "graph-count-chip",
+                            div {
+                                class: "graph-count-chip",
+                                "data-surface": "panel",
+                                "data-state": status_badge_state(status),
+                                "data-tone": status_badge_tone(status),
                                 span { class: status_badge_class(status), "{status}" }
                                 span { class: "graph-count-num", "{count}" }
                             }
@@ -98,6 +102,9 @@ pub fn WorkScreen(data: WorkData) -> Element {
                 h2 { class: "screen-section-title", "Focused" }
                 if let Some(title) = &data.focused_title {
                     div { class: "work-focused-card",
+                        "data-surface": "panel",
+                        "data-state": data.focused_status.as_deref().map(status_badge_state).unwrap_or("idle"),
+                        "data-tone": data.focused_status.as_deref().map(status_badge_tone).unwrap_or("muted"),
                         div { class: "work-focused-header",
                             span { class: "work-focused-title", "{title}" }
                             if let Some(status) = &data.focused_status {
@@ -108,7 +115,9 @@ pub fn WorkScreen(data: WorkData) -> Element {
                             }
                         }
                         if data.open_question_count > 0 {
-                            p { class: "work-focused-meta",
+                            p {
+                                class: "work-focused-meta",
+                                "data-tone": "warn",
                                 "⚠ {data.open_question_count} open question(s)"
                             }
                         }
@@ -216,6 +225,7 @@ pub fn ScribeScreen(
                             class: "progress-card progress-card-emphasis",
                             "data-surface": "panel",
                             "data-elevation": "1",
+                            "data-tone": session_control_item_tone(item.label),
                             span { class: "progress-label", "{item.label}" }
                             span {
                                 class: if item.compact { "progress-value progress-value-small" } else { "progress-value" },
@@ -672,6 +682,9 @@ fn render_dispatcher_switch_state(
         section { class: "screen-subsection",
             h3 { class: "screen-section-title", "Switch state" }
             div { class: "dispatcher-switch-card",
+                "data-surface": "panel",
+                "data-state": dispatcher_switch_badge_state(view.badge_status),
+                "data-tone": dispatcher_switch_badge_tone(view.badge_status),
                 div { class: "dispatcher-switch-header",
                     span { class: dispatcher_switch_badge_class(view.badge_status), "{view.badge_label}" }
                     span { class: "dispatcher-switch-headline", "{view.headline}" }
@@ -703,6 +716,16 @@ fn render_dispatcher_switch_state(
     }
 }
 
+fn session_control_item_tone(label: &str) -> &'static str {
+    match label {
+        "Thinking" | "Capability tier" => "info",
+        "Providers" => "accent",
+        "Delegates" => "muted",
+        "Dispatcher" => "default",
+        _ => "default",
+    }
+}
+
 fn status_badge_class(status: &str) -> &'static str {
     match status {
         "implementing" | "active" => "badge badge-active",
@@ -714,9 +737,47 @@ fn status_badge_class(status: &str) -> &'static str {
     }
 }
 
+fn status_badge_state(status: &str) -> &'static str {
+    match status {
+        "implementing" => "implementing",
+        "active" => "active",
+        "decided" => "decided",
+        "done" => "done",
+        "resolved" => "resolved",
+        "ready" => "ready",
+        "actionable" => "actionable",
+        "pending" => "pending",
+        "blocked" => "blocked",
+        "failed" => "failed",
+        "superseded" => "superseded",
+        _ => "neutral",
+    }
+}
+
+fn status_badge_tone(status: &str) -> &'static str {
+    match status {
+        "implementing" | "active" => "info",
+        "decided" | "done" | "resolved" => "success",
+        "ready" | "actionable" | "pending" => "accent",
+        "blocked" | "failed" => "danger",
+        "superseded" => "muted",
+        _ => "muted",
+    }
+}
+
 #[allow(dead_code)]
 fn dispatcher_switch_badge_class(status: &str) -> &'static str {
     status_badge_class(status)
+}
+
+#[allow(dead_code)]
+fn dispatcher_switch_badge_state(status: &str) -> &'static str {
+    status_badge_state(status)
+}
+
+#[allow(dead_code)]
+fn dispatcher_switch_badge_tone(status: &str) -> &'static str {
+    status_badge_tone(status)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1010,6 +1071,8 @@ mod tests {
             "dispatcher-option-button dispatcher-option-button-pending"
         );
         assert_eq!(dispatcher_option_visual_state(&dispatcher, &option), "pending");
+        assert_eq!(status_badge_state("pending"), "pending");
+        assert_eq!(status_badge_tone("pending"), "accent");
         assert_eq!(
             dispatcher_option_status_text(&dispatcher, &option),
             Some("Pending request")
@@ -1068,6 +1131,19 @@ mod tests {
         assert!(titles.contains(&"Project memory offline"));
         assert!(titles.contains(&"Cleave unavailable"));
         assert!(titles.contains(&"Dispatcher binding missing"));
+        assert_eq!(alerts[0].tone, "warn");
+        assert_eq!(alerts[1].tone, "danger");
+        assert_eq!(alerts[3].tone, "muted");
+    }
+
+    #[test]
+    fn semantic_helper_mappings_cover_badges_controls_and_cards() {
+        assert_eq!(session_control_item_tone("Thinking"), "info");
+        assert_eq!(session_control_item_tone("Providers"), "accent");
+        assert_eq!(status_badge_state("failed"), "failed");
+        assert_eq!(status_badge_tone("failed"), "danger");
+        assert_eq!(dispatcher_switch_badge_state("active"), "active");
+        assert_eq!(dispatcher_switch_badge_tone("superseded"), "muted");
     }
 
     #[test]
