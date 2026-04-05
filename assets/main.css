@@ -114,12 +114,14 @@ body > * {
 .main-area {
   display: grid;
   grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(240px, 300px);
+  grid-template-areas: "left center right";
   overflow: hidden;
   min-height: 0;
   min-width: 0;
 }
 
 .left-rail {
+  grid-area: left;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -127,9 +129,11 @@ body > * {
   border-right: 1px solid #1b2129;
   background: #0a0e14;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .right-rail {
+  grid-area: right;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -137,6 +141,7 @@ body > * {
   border-left: 1px solid #1b2129;
   background: #0a0e14;
   overflow-y: auto;
+  min-height: 0;
 }
 
 .rail-section {
@@ -217,6 +222,7 @@ body > * {
 }
 
 .center-workspace {
+  grid-area: center;
   display: flex;
   flex-direction: column;
   padding: 0.65rem 0.85rem;
@@ -1087,13 +1093,23 @@ body > * {
 
   .main-area {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "center"
+      "left"
+      "right";
+    grid-template-rows: minmax(20rem, 1fr) auto auto;
+    overflow-y: auto;
+    align-content: start;
+  }
+
+  .center-workspace {
+    min-height: 20rem;
   }
 
   .left-rail {
     border-right: 0;
     border-bottom: 1px solid #1b2129;
-    max-height: 18rem;
+    max-height: 14rem;
   }
 
   .center-workspace {
@@ -1101,11 +1117,9 @@ body > * {
   }
 
   .right-rail {
-    grid-column: auto;
-    grid-row: auto;
     border-left: 0;
     border-top: 1px solid #1b2129;
-    max-height: 16rem;
+    max-height: 14rem;
   }
 
   .right-rail .kv-row {
@@ -1154,7 +1168,11 @@ body > * {
 
   .main-area {
     grid-template-columns: minmax(0, 1fr);
-    grid-template-rows: auto minmax(0, 1fr) auto;
+    grid-template-areas:
+      "center"
+      "left"
+      "right";
+    grid-template-rows: minmax(18rem, 1fr) auto auto;
   }
 
   .left-rail {
@@ -1165,11 +1183,10 @@ body > * {
 
   .center-workspace {
     padding-inline: 0.65rem;
+    min-height: 18rem;
   }
 
   .right-rail {
-    grid-column: auto;
-    grid-row: auto;
     border-top: 1px solid #1b2129;
     max-height: 12rem;
   }
