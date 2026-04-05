@@ -17,6 +17,7 @@ enum Workspace {
     Chat,
     Scribe,
     Graph,
+    Audit,
 }
 
 #[component]
@@ -159,6 +160,11 @@ pub fn App() -> Element {
                             onclick: move |_| workspace.set(Workspace::Graph),
                             "Graph"
                         }
+                        button {
+                            class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" },
+                            onclick: move |_| workspace.set(Workspace::Audit),
+                            "Audit"
+                        }
                     }
 
                     // Top-right — global state
@@ -237,22 +243,6 @@ pub fn App() -> Element {
                         &controller.read().session_data(),
                         controller.read().is_run_active(),
                         controller.read().audit_timeline(),
-                        controller.read().current_audit_session_key().as_str(),
-                        AuditPanelControls {
-                            filters: AuditFilters {
-                                session_key: audit_session_filter.read().clone(),
-                                turn_query: audit_turn_filter.read().clone(),
-                                kind_key: audit_kind_filter.read().clone(),
-                                text_query: audit_text_filter.read().clone(),
-                            },
-                            on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
-                            on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
-                            on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
-                            on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
-                            on_focus_entry: EventHandler::new(move |target: String| {
-                                focus_transcript_target(controller.read().transcript(), &target);
-                            }),
-                        },
                     )}
                     WorkScreen { data: controller.read().work_data() }
                     section { class: "rail-section",
@@ -299,6 +289,26 @@ pub fn App() -> Element {
                 div { class: "center-workspace",
                     if *workspace.read() == Workspace::Graph {
                         GraphScreen { data: controller.read().graph_data() }
+                    } else if *workspace.read() == Workspace::Audit {
+                        {render_audit_workspace(
+                            controller.read().audit_timeline(),
+                            controller.read().current_audit_session_key().as_str(),
+                            AuditPanelControls {
+                                filters: AuditFilters {
+                                    session_key: audit_session_filter.read().clone(),
+                                    turn_query: audit_turn_filter.read().clone(),
+                                    kind_key: audit_kind_filter.read().clone(),
+                                    text_query: audit_text_filter.read().clone(),
+                                },
+                                on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
+                                on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
+                                on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
+                                on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
+                                on_focus_entry: EventHandler::new(move |target: String| {
+                                    focus_transcript_target(controller.read().transcript(), &target);
+                                }),
+                            },
+                        )}
                     } else if *workspace.read() == Workspace::Scribe {
                         ScribeScreen {
                             summary: controller.read().summary().clone(),
@@ -1262,15 +1272,14 @@ fn render_left_rail_inventory(
     session: &crate::fixtures::SessionData,
     is_run_active: bool,
     audit_timeline: &AuditTimelineStore,
-    current_audit_session_key: &str,
-    controls: AuditPanelControls,
 ) -> Element {
     let inventory = build_left_rail_inventory(summary, work, session, is_run_active);
-    let audit_panel = build_audit_panel_model(
-        audit_timeline,
-        current_audit_session_key,
-        &controls.filters,
-    );
+    let audit_count = audit_timeline.entries.len();
+    let latest_audit_label = audit_timeline
+        .entries
+        .last()
+        .map(|entry| entry.label.as_str())
+        .unwrap_or("No transcript blocks retained yet");
 
     rsx! {
         section { class: "rail-section",
@@ -1298,83 +1307,116 @@ fn render_left_rail_inventory(
                 }
             }
         }
-        section { class: "rail-section audit-panel",
-            h2 { class: "rail-heading", "Audit history" }
+        section { class: "rail-section",
+            h2 { class: "rail-heading", "Audit" }
             div { class: "rail-card audit-summary-card",
-                div { class: "rail-card-title", "{audit_panel.filtered_count} of {audit_panel.total_count} retained block(s)" }
-                p { class: "rail-card-detail", "Latest: {audit_panel.latest_label}" }
+                div { class: "rail-card-title", "{audit_count} retained block(s)" }
+                p { class: "rail-card-detail", "Latest: {latest_audit_label}" }
             }
-            div { class: "rail-list audit-filter-list",
-                label { class: "audit-filter-field",
-                    span { class: "audit-filter-label", "Session" }
-                    select {
-                        class: "audit-filter-control",
-                        value: controls.filters.session_key.clone(),
-                        onchange: move |event| controls.on_session_filter.call(event.value()),
-                        option { value: "", "All sessions" }
-                        for session_key in &audit_panel.session_options {
-                            option { value: session_key.clone(), "{session_key}" }
-                        }
-                    }
-                }
-                label { class: "audit-filter-field",
-                    span { class: "audit-filter-label", "Turn" }
-                    input {
-                        class: "audit-filter-control",
-                        r#type: "search",
-                        inputmode: "numeric",
-                        placeholder: "All turns",
-                        value: controls.filters.turn_query.clone(),
-                        oninput: move |event| controls.on_turn_filter.call(event.value()),
-                    }
-                }
-                label { class: "audit-filter-field",
-                    span { class: "audit-filter-label", "Kind" }
-                    select {
-                        class: "audit-filter-control",
-                        value: controls.filters.kind_key.clone(),
-                        onchange: move |event| controls.on_kind_filter.call(event.value()),
-                        for (value, label) in audit_kind_options() {
-                            option { value: value, "{label}" }
-                        }
-                    }
-                }
-                label { class: "audit-filter-field",
-                    span { class: "audit-filter-label", "Search" }
-                    input {
-                        class: "audit-filter-control",
-                        r#type: "search",
-                        placeholder: "Label or retained text",
-                        value: controls.filters.text_query.clone(),
-                        oninput: move |event| controls.on_text_filter.call(event.value()),
-                    }
+        }
+    }
+}
+
+fn render_audit_workspace(
+    audit_timeline: &AuditTimelineStore,
+    current_audit_session_key: &str,
+    controls: AuditPanelControls,
+) -> Element {
+    let audit_panel = build_audit_panel_model(
+        audit_timeline,
+        current_audit_session_key,
+        &controls.filters,
+    );
+
+    rsx! {
+        div { class: "screen screen-audit",
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Audit history" }
+                p { class: "screen-empty",
+                    "Project-wide retained transcript blocks across sessions. Filter by session, turn, kind, or text; jump to live transcript blocks when they belong to the current session."
                 }
             }
-            div { class: "audit-entry-list",
-                if audit_panel.entries.is_empty() {
-                    p { class: "rail-placeholder", "No retained transcript blocks match the current filters." }
-                } else {
-                    for entry in &audit_panel.entries {
-                        article {
-                            class: "audit-entry-card",
-                            "data-kind": entry.kind_key,
-                            h3 { class: "audit-entry-title", "{entry.heading}" }
-                            p { class: "audit-entry-meta", "{entry.meta}" }
-                            if let Some(target) = &entry.focus_target {
-                                button {
-                                    class: "audit-entry-jump",
-                                    r#type: "button",
-                                    onclick: {
-                                        let target = target.clone();
-                                        let handler = controls.on_focus_entry;
-                                        move |_| handler.call(target.clone())
-                                    },
-                                    "Jump to transcript"
+            div { class: "audit-workspace-layout",
+                section { class: "screen-section audit-panel audit-panel-controls",
+                    div { class: "rail-card audit-summary-card",
+                        div { class: "rail-card-title", "{audit_panel.filtered_count} of {audit_panel.total_count} retained block(s)" }
+                        p { class: "rail-card-detail", "Latest: {audit_panel.latest_label}" }
+                    }
+                    div { class: "rail-list audit-filter-list",
+                        label { class: "audit-filter-field",
+                            span { class: "audit-filter-label", "Session" }
+                            select {
+                                class: "audit-filter-control",
+                                value: controls.filters.session_key.clone(),
+                                onchange: move |event| controls.on_session_filter.call(event.value()),
+                                option { value: "", "All sessions" }
+                                for session_key in &audit_panel.session_options {
+                                    option { value: session_key.clone(), "{session_key}" }
                                 }
-                            } else {
-                                p { class: "audit-entry-unavailable", "Transcript block not present in the current session." }
                             }
-                            pre { class: "audit-entry-content", "{entry.content}" }
+                        }
+                        label { class: "audit-filter-field",
+                            span { class: "audit-filter-label", "Turn" }
+                            input {
+                                class: "audit-filter-control",
+                                r#type: "search",
+                                inputmode: "numeric",
+                                placeholder: "All turns",
+                                value: controls.filters.turn_query.clone(),
+                                oninput: move |event| controls.on_turn_filter.call(event.value()),
+                            }
+                        }
+                        label { class: "audit-filter-field",
+                            span { class: "audit-filter-label", "Kind" }
+                            select {
+                                class: "audit-filter-control",
+                                value: controls.filters.kind_key.clone(),
+                                onchange: move |event| controls.on_kind_filter.call(event.value()),
+                                for (value, label) in audit_kind_options() {
+                                    option { value: value, "{label}" }
+                                }
+                            }
+                        }
+                        label { class: "audit-filter-field",
+                            span { class: "audit-filter-label", "Search" }
+                            input {
+                                class: "audit-filter-control",
+                                r#type: "search",
+                                placeholder: "Label or retained text",
+                                value: controls.filters.text_query.clone(),
+                                oninput: move |event| controls.on_text_filter.call(event.value()),
+                            }
+                        }
+                    }
+                }
+                section { class: "screen-section audit-panel audit-panel-results",
+                    div { class: "audit-entry-list audit-entry-list-workspace",
+                        if audit_panel.entries.is_empty() {
+                            p { class: "rail-placeholder", "No retained transcript blocks match the current filters." }
+                        } else {
+                            for entry in &audit_panel.entries {
+                                article {
+                                    class: "audit-entry-card",
+                                    "data-kind": entry.kind_key,
+                                    h3 { class: "audit-entry-title", "{entry.heading}" }
+                                    p { class: "audit-entry-meta", "{entry.meta}" }
+                                    if let Some(target) = &entry.focus_target {
+                                        button {
+                                            class: "audit-entry-jump",
+                                            r#type: "button",
+                                            onclick: {
+                                                let target = target.clone();
+                                                let handler = controls.on_focus_entry;
+                                                move |_| handler.call(target.clone())
+                                            },
+                                            "Jump to transcript"
+                                        }
+                                    } else {
+                                        p { class: "audit-entry-unavailable", "Transcript block not present in the current session." }
+                                    }
+                                    pre { class: "audit-entry-content", "{entry.content}" }
+                                }
+                            }
                         }
                     }
                 }

@@ -354,6 +354,19 @@ body > * {
   min-height: 0;
 }
 
+.audit-workspace-layout {
+  display: grid;
+  grid-template-columns: minmax(220px, 280px) minmax(0, 1fr);
+  gap: 0.75rem;
+  min-height: 0;
+  flex: 1;
+}
+
+.audit-panel-controls,
+.audit-panel-results {
+  min-height: 0;
+}
+
 .audit-summary-card {
   gap: 0.2rem;
 }
@@ -398,6 +411,11 @@ body > * {
   min-height: 0;
   max-height: 26rem;
   overflow-y: auto;
+}
+
+.audit-entry-list-workspace {
+  max-height: none;
+  flex: 1;
 }
 
 .audit-entry-card {
