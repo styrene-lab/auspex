@@ -25,6 +25,9 @@ pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 2;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 
 #[cfg(not(target_arch = "wasm32"))]
+const OWNED_OMEGON_PID_FILE: &str = "auspex-embedded-omegon.pid";
+
+#[cfg(not(target_arch = "wasm32"))]
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
 #[cfg(not(target_arch = "wasm32"))]
 const SPAWN_POLL: Duration = Duration::from_millis(250);
@@ -131,23 +134,27 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
         });
     }
 
-    // 2. Explicit state URL — defer to async bootstrap_from_http_state.
-    //    Return a SpawningOmegon-like deferred state that the app will
-    //    complete asynchronously.
-    if state_url_from_env().is_some() || find_omegon_binary().is_some() {
-        // The synchronous path can only handle snapshot files.
-        // For HTTP state and binary spawning, we return a deferred result
-        // and the app drives the async completion.
+    // 2. Explicit state URL — defer to async HTTP attach.
+    if state_url_from_env().is_some() {
+        let mut controller = AppController::default();
+        controller.set_scenario(crate::fixtures::DevScenario::Booting);
+        controller.set_bootstrap_note(Some("Attaching to Omegon control plane…".into()));
+        return BootstrapResult {
+            controller,
+            source: BootstrapSource::HttpState {
+                url: state_url_from_env().unwrap_or_else(|| DEFAULT_STATE_URL.into()),
+            },
+            note: None,
+            event_stream: None,
+        };
     }
 
     // 3. Default mode: Auspex owns an embedded local Omegon backend.
-    //    Spawning and HTTP attachment are both async operations now.
     if let Some(binary) = find_omegon_binary() {
         return BootstrapResult::spawning_omegon(binary);
     }
 
     // No explicit URL, no running instance, no binary found.
-    // Fall through to mock default.
     BootstrapResult::startup_failure(
         "Auspex could not locate its embedded Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
     )
@@ -406,6 +413,13 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
 pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
     use tokio::io::AsyncBufReadExt;
 
+    if omegon_is_running_async().await {
+        clear_owned_omegon_pid();
+        return complete_http_bootstrap(DEFAULT_STATE_URL, &ConnectHints::from_env()).await;
+    }
+
+    reap_owned_omegon_child();
+
     let label = binary.display().to_string();
 
     let mut child = match tokio::process::Command::new(binary)
@@ -423,6 +437,8 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         }
         Ok(child) => child,
     };
+
+    record_owned_omegon_pid(child.id());
 
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
@@ -518,6 +534,60 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     BootstrapResult::startup_failure(format!(
         "Embedded Omegon backend at {label} emitted startup info but HTTP endpoint at {state_url} did not become ready within 5s.",
     ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn owned_omegon_pid_path() -> PathBuf {
+    std::env::temp_dir().join(OWNED_OMEGON_PID_FILE)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn record_owned_omegon_pid(pid: Option<u32>) {
+    let Some(pid) = pid else { return };
+    let _ = fs::write(owned_omegon_pid_path(), pid.to_string());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn read_owned_omegon_pid() -> Option<u32> {
+    fs::read_to_string(owned_omegon_pid_path())
+        .ok()?
+        .trim()
+        .parse::<u32>()
+        .ok()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn clear_owned_omegon_pid() {
+    let _ = fs::remove_file(owned_omegon_pid_path());
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn pid_is_owned_omegon(pid: u32) -> bool {
+    let output = match std::process::Command::new("ps")
+        .args(["-p", &pid.to_string(), "-o", "command="])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return false,
+    };
+
+    if !output.status.success() {
+        return false;
+    }
+
+    let command = String::from_utf8_lossy(&output.stdout);
+    command.contains("omegon embedded --control-port 7842")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn reap_owned_omegon_child() {
+    let Some(pid) = read_owned_omegon_pid() else { return };
+    if pid_is_owned_omegon(pid) {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+    clear_owned_omegon_pid();
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -663,6 +733,20 @@ mod tests {
     fn find_omegon_binary_prefers_local_bin_over_cargo_bin() {
         // Structural: ensure priority order is documented.
         // Actual binary presence varies by host.
+    }
+
+    #[test]
+    fn owned_omegon_pid_round_trips() {
+        clear_owned_omegon_pid();
+        record_owned_omegon_pid(Some(4242));
+        assert_eq!(read_owned_omegon_pid(), Some(4242));
+        clear_owned_omegon_pid();
+        assert_eq!(read_owned_omegon_pid(), None);
+    }
+
+    #[test]
+    fn pid_is_owned_omegon_rejects_impossible_pid() {
+        assert!(!pid_is_owned_omegon(u32::MAX));
     }
 
     #[test]
