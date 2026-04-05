@@ -254,65 +254,67 @@ pub fn App() -> Element {
                         }
                     } else {
                         // Chat workspace — transcript + composer
-                        main { class: "transcript",
-                            {render_transcript(controller.read().transcript(), controller.read().messages())}
-                            div { id: "transcript-end" }
-                        }
+                        div { class: "chat-workspace",
+                            main { class: "transcript",
+                                {render_transcript(controller.read().transcript(), controller.read().messages())}
+                                div { id: "transcript-end" }
+                            }
 
-                        form {
-                            class: "composer",
-                            onsubmit: move |event| {
-                                event.prevent_default();
-                                let command = controller.write().submit_prompt_command_json();
-                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command);
-                                }
-                            },
-                            textarea {
-                                class: "composer-input",
-                                rows: "3",
-                                value: controller.read().composer().draft().to_string(),
-                                disabled: !controller.read().can_submit(),
-                                placeholder: if controller.read().can_submit() {
-                                    "Start with the smallest useful prompt…"
-                                } else {
-                                    "Conversation input is unavailable in the current host state."
-                                },
-                                oninput: move |event| controller.write().update_draft(event.value()),
-                                onkeydown: move |event| {
-                                    if event.key() == Key::Enter
-                                        && (event.modifiers().contains(Modifiers::CONTROL)
-                                            || event.modifiers().contains(Modifiers::META))
-                                    {
-                                        let command = controller.write().submit_prompt_command_json();
-                                        if let (Some(command), Some(stream)) =
-                                            (command, event_stream.read().clone())
-                                        {
-                                            stream.send_command(command);
-                                        }
+                            form {
+                                class: "composer",
+                                onsubmit: move |event| {
+                                    event.prevent_default();
+                                    let command = controller.write().submit_prompt_command_json();
+                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                        stream.send_command(command);
                                     }
                                 },
-                            }
-                            div { class: "composer-actions",
-                                if controller.read().is_run_active() {
-                                    button {
-                                        class: "composer-cancel",
-                                        r#type: "button",
-                                        onclick: move |_| {
-                                            if let Some(command) = controller.read().cancel_command_json()
-                                                && let Some(stream) = event_stream.read().clone()
+                                textarea {
+                                    class: "composer-input",
+                                    rows: "3",
+                                    value: controller.read().composer().draft().to_string(),
+                                    disabled: !controller.read().can_submit(),
+                                    placeholder: if controller.read().can_submit() {
+                                        "Start with the smallest useful prompt…"
+                                    } else {
+                                        "Conversation input is unavailable in the current host state."
+                                    },
+                                    oninput: move |event| controller.write().update_draft(event.value()),
+                                    onkeydown: move |event| {
+                                        if event.key() == Key::Enter
+                                            && (event.modifiers().contains(Modifiers::CONTROL)
+                                                || event.modifiers().contains(Modifiers::META))
+                                        {
+                                            let command = controller.write().submit_prompt_command_json();
+                                            if let (Some(command), Some(stream)) =
+                                                (command, event_stream.read().clone())
                                             {
                                                 stream.send_command(command);
                                             }
-                                        },
-                                        "Cancel"
-                                    }
+                                        }
+                                    },
                                 }
-                                button {
-                                    class: "composer-submit",
-                                    r#type: "submit",
-                                    disabled: !controller.read().can_submit(),
-                                    "Send"
+                                div { class: "composer-actions",
+                                    if controller.read().is_run_active() {
+                                        button {
+                                            class: "composer-cancel",
+                                            r#type: "button",
+                                            onclick: move |_| {
+                                                if let Some(command) = controller.read().cancel_command_json()
+                                                    && let Some(stream) = event_stream.read().clone()
+                                                {
+                                                    stream.send_command(command);
+                                                }
+                                            },
+                                            "Cancel"
+                                        }
+                                    }
+                                    button {
+                                        class: "composer-submit",
+                                        r#type: "submit",
+                                        disabled: !controller.read().can_submit(),
+                                        "Send"
+                                    }
                                 }
                             }
                         }

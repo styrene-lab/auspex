@@ -113,7 +113,7 @@ body > * {
 
 .main-area {
   display: grid;
-  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) minmax(160px, 190px);
+  grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(240px, 300px);
   overflow: hidden;
   min-height: 0;
   min-width: 0;
@@ -220,10 +220,20 @@ body > * {
   display: flex;
   flex-direction: column;
   padding: 0.65rem 0.85rem;
-  overflow-y: auto;
+  overflow: hidden;
   gap: 0.5rem;
   min-width: 0;
   min-height: 0;
+}
+
+.chat-workspace {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: 0.5rem;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .workspace-placeholder {
@@ -489,6 +499,8 @@ body > * {
   gap: 0.45rem;
   flex: 1;
   min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
 }
 
 .bubble {
@@ -592,6 +604,8 @@ body > * {
   flex-direction: column;
   gap: 0.45rem;
   padding-top: 0.15rem;
+  flex-shrink: 0;
+  min-width: 0;
 }
 
 .composer-input {
@@ -883,6 +897,14 @@ body > * {
   gap: 1rem;
   padding: 0.5rem 0.9rem;
   border-bottom: 1px solid #21262d;
+  min-width: 0;
+}
+
+.right-rail .kv-row {
+  display: grid;
+  grid-template-columns: minmax(72px, 96px) minmax(0, 1fr);
+  align-items: start;
+  gap: 0.35rem 0.75rem;
 }
 
 .kv-row:last-child { border-bottom: none; }
@@ -893,6 +915,10 @@ body > * {
   color: #8b949e;
   min-width: 120px;
   flex-shrink: 0;
+}
+
+.right-rail .kv-key {
+  min-width: 0;
 }
 
 .kv-value { font-size: 0.92rem; word-break: break-word; }
@@ -1041,7 +1067,7 @@ body > * {
   color: #8b949e;
 }
 
-@media (max-width: 1100px) {
+@media (max-width: 960px) {
   .topbar {
     grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
     grid-template-areas:
@@ -1060,7 +1086,7 @@ body > * {
   }
 
   .main-area {
-    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
     grid-template-rows: minmax(0, 1fr) auto;
   }
 
@@ -1069,11 +1095,11 @@ body > * {
     grid-row: 2;
     border-left: 0;
     border-top: 1px solid #1b2129;
-    max-height: 12rem;
+    max-height: 14rem;
   }
 
   .bottombar {
-    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
     grid-template-areas:
       "org reserved"
       "instruments instruments";
@@ -1088,7 +1114,7 @@ body > * {
   .bottombar-reserved { grid-area: reserved; }
 }
 
-@media (max-width: 800px) {
+@media (max-width: 760px) {
   .shell {
     grid-template-rows: auto minmax(0, 1fr) auto;
   }
@@ -1130,6 +1156,10 @@ body > * {
     grid-row: auto;
     border-top: 1px solid #1b2129;
     max-height: 10rem;
+  }
+
+  .right-rail .kv-row {
+    grid-template-columns: minmax(0, 1fr);
   }
 
   .bottombar {
