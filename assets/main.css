@@ -1067,7 +1067,7 @@ body > * {
   color: #8b949e;
 }
 
-@media (max-width: 960px) {
+@media (max-width: 1180px), (max-height: 820px) {
   .topbar {
     grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
     grid-template-areas:
@@ -1086,23 +1086,38 @@ body > * {
   }
 
   .main-area {
-    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
-    grid-template-rows: minmax(0, 1fr) auto;
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .left-rail {
+    border-right: 0;
+    border-bottom: 1px solid #1b2129;
+    max-height: 18rem;
+  }
+
+  .center-workspace {
+    padding-inline: 0.75rem;
   }
 
   .right-rail {
-    grid-column: 2;
-    grid-row: 2;
+    grid-column: auto;
+    grid-row: auto;
     border-left: 0;
     border-top: 1px solid #1b2129;
-    max-height: 14rem;
+    max-height: 16rem;
+  }
+
+  .right-rail .kv-row {
+    grid-template-columns: minmax(96px, 120px) minmax(0, 1fr);
   }
 
   .bottombar {
-    grid-template-columns: minmax(180px, 220px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
     grid-template-areas:
-      "org reserved"
-      "instruments instruments";
+      "org"
+      "instruments"
+      "reserved";
   }
 
   .bottombar-org { grid-area: org; }
@@ -1110,6 +1125,7 @@ body > * {
     grid-area: instruments;
     justify-content: flex-start;
     flex-wrap: wrap;
+    gap: 0.4rem 0.75rem;
   }
   .bottombar-reserved { grid-area: reserved; }
 }
@@ -1144,7 +1160,7 @@ body > * {
   .left-rail {
     border-right: 0;
     border-bottom: 1px solid #1b2129;
-    max-height: 10rem;
+    max-height: 12rem;
   }
 
   .center-workspace {
@@ -1155,7 +1171,7 @@ body > * {
     grid-column: auto;
     grid-row: auto;
     border-top: 1px solid #1b2129;
-    max-height: 10rem;
+    max-height: 12rem;
   }
 
   .right-rail .kv-row {
