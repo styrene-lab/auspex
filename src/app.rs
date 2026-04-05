@@ -4,7 +4,7 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, TranscriptData};
-use crate::screens::GraphScreen;
+use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
 /// the stylesheet is always available in the bundled .app.
@@ -214,13 +214,17 @@ pub fn App() -> Element {
 
                 // Left rail — project/session navigator
                 aside { class: "left-rail",
-                    section { class: "rail-section",
-                        h2 { class: "rail-heading", "Projects" }
-                        p { class: "rail-placeholder", "No projects loaded" }
-                    }
-                    section { class: "rail-section",
-                        h2 { class: "rail-heading", "Sessions" }
-                        p { class: "rail-placeholder", "No active sessions" }
+                    if *workspace.read() == Workspace::Chat {
+                        WorkScreen { data: controller.read().work_data() }
+                    } else {
+                        section { class: "rail-section",
+                            h2 { class: "rail-heading", "Projects" }
+                            p { class: "rail-placeholder", "No projects loaded" }
+                        }
+                        section { class: "rail-section",
+                            h2 { class: "rail-heading", "Sessions" }
+                            p { class: "rail-placeholder", "No active sessions" }
+                        }
                     }
                     // Dev controls — temporary, will move to a proper settings surface
                     section { class: "rail-section rail-devbar",
@@ -322,30 +326,42 @@ pub fn App() -> Element {
 
                 // Right rail — contextual inspector
                 aside { class: "right-rail",
-                    section { class: "rail-section",
-                        h2 { class: "rail-heading", "Design" }
-                        if let Some(focused) = controller.read().work_data().focused_title.as_deref() {
-                            div { class: "work-focused-card",
-                                span { class: "work-focused-title", "{focused}" }
-                                if let Some(status) = controller.read().work_data().focused_status.as_deref() {
-                                    span { class: "badge", "{status}" }
+                    if *workspace.read() == Workspace::Chat {
+                        SessionScreen {
+                            data: controller.read().session_data(),
+                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
+                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                    stream.send_command(command);
                                 }
-                            }
-                        } else {
-                            p { class: "rail-placeholder", "No focused work" }
+                            }))
                         }
-                    }
-                    section { class: "rail-section",
-                        h2 { class: "rail-heading", "Activity" }
-                        section { class: controller.read().summary().activity_kind.strip_class(),
-                            div {
-                                class: controller
-                                    .read()
-                                    .summary()
-                                    .activity_kind
-                                    .dot_class(controller.read().is_run_active())
+                    } else {
+                        section { class: "rail-section",
+                            h2 { class: "rail-heading", "Design" }
+                            if let Some(focused) = controller.read().work_data().focused_title.as_deref() {
+                                div { class: "work-focused-card",
+                                    span { class: "work-focused-title", "{focused}" }
+                                    if let Some(status) = controller.read().work_data().focused_status.as_deref() {
+                                        span { class: "badge", "{status}" }
+                                    }
+                                }
+                            } else {
+                                p { class: "rail-placeholder", "No focused work" }
                             }
-                            span { class: "activity-label", "{controller.read().summary().activity}" }
+                        }
+                        section { class: "rail-section",
+                            h2 { class: "rail-heading", "Activity" }
+                            section { class: controller.read().summary().activity_kind.strip_class(),
+                                div {
+                                    class: controller
+                                        .read()
+                                        .summary()
+                                        .activity_kind
+                                        .dot_class(controller.read().is_run_active())
+                                }
+                                span { class: "activity-label", "{controller.read().summary().activity}" }
+                            }
                         }
                     }
                 }
