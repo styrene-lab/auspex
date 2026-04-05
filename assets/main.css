@@ -139,6 +139,45 @@ body > div {
   gap: 0.35rem;
 }
 
+.rail-card,
+.rail-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.45rem 0.5rem;
+  background: #11161d;
+  border: 1px solid #28303a;
+  border-radius: 8px;
+}
+
+.rail-card-title,
+.rail-list-title {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: #dbe3ea;
+}
+
+.rail-card-detail,
+.rail-list-detail {
+  margin: 0;
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: #8b949e;
+}
+
+.rail-list-item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 1px solid #21262d;
+}
+
+.rail-list-item:last-child {
+  padding-bottom: 0;
+  border-bottom: none;
+}
+
 .rail-heading {
   font-size: 0.68rem;
   font-weight: 700;

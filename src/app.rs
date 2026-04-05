@@ -214,6 +214,12 @@ pub fn App() -> Element {
 
                 // Left rail — project/session navigator
                 aside { class: "left-rail",
+                    {render_left_rail_inventory(
+                        controller.read().summary(),
+                        &controller.read().work_data(),
+                        &controller.read().session_data(),
+                        controller.read().is_run_active(),
+                    )}
                     WorkScreen { data: controller.read().work_data() }
                     // Dev controls — temporary, will move to a proper settings surface
                     section { class: "rail-section rail-devbar",
@@ -526,9 +532,127 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LeftRailInventory {
+    workspace_label: String,
+    project_label: String,
+    session_label: String,
+    session_detail: String,
+    agent_rows: Vec<(String, String)>,
+}
+
+fn build_left_rail_inventory(
+    summary: &crate::fixtures::HostSessionSummary,
+    work: &crate::fixtures::WorkData,
+    session: &crate::fixtures::SessionData,
+    is_run_active: bool,
+) -> LeftRailInventory {
+    let workspace_label = session
+        .git_branch
+        .clone()
+        .unwrap_or_else(|| "detached".into());
+    let project_label = work
+        .focused_title
+        .clone()
+        .or_else(|| Some(summary.work.clone()))
+        .unwrap_or_else(|| "No focused work item".into());
+
+    let session_label = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.session_id.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "local-session".into());
+
+    let session_detail = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| {
+            binding
+                .expected_model
+                .clone()
+                .unwrap_or_else(|| binding.expected_profile.clone())
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| summary.connection.clone());
+
+    let mut agent_rows = Vec::new();
+    if let Some(binding) = session.dispatcher_binding.as_ref() {
+        let dispatcher_name = if let Some(model) = binding.expected_model.as_ref() {
+            format!("Dispatcher · {model}")
+        } else if !binding.dispatcher_instance_id.is_empty() {
+            format!("Dispatcher · {}", binding.dispatcher_instance_id)
+        } else {
+            format!("Dispatcher · {}", binding.expected_profile)
+        };
+        let dispatcher_status = if is_run_active {
+            "running".to_string()
+        } else {
+            binding.expected_role.clone()
+        };
+        agent_rows.push((dispatcher_name, dispatcher_status));
+    }
+
+    for delegate in &session.active_delegates {
+        agent_rows.push((
+            format!("Delegate · {}", delegate.agent_name),
+            format!("{} · {} ms", delegate.status, delegate.elapsed_ms),
+        ));
+    }
+
+    if agent_rows.is_empty() {
+        agent_rows.push(("Dispatcher · unavailable".into(), "idle".into()));
+    }
+
+    LeftRailInventory {
+        workspace_label,
+        project_label,
+        session_label,
+        session_detail,
+        agent_rows,
+    }
+}
+
+fn render_left_rail_inventory(
+    summary: &crate::fixtures::HostSessionSummary,
+    work: &crate::fixtures::WorkData,
+    session: &crate::fixtures::SessionData,
+    is_run_active: bool,
+) -> Element {
+    let inventory = build_left_rail_inventory(summary, work, session, is_run_active);
+
+    rsx! {
+        section { class: "rail-section",
+            h2 { class: "rail-heading", "Workspace" }
+            div { class: "rail-card",
+                div { class: "rail-card-title", "{inventory.workspace_label}" }
+                p { class: "rail-card-detail", "{inventory.project_label}" }
+            }
+        }
+        section { class: "rail-section",
+            h2 { class: "rail-heading", "Session" }
+            div { class: "rail-card",
+                div { class: "rail-card-title", "{inventory.session_label}" }
+                p { class: "rail-card-detail", "{inventory.session_detail}" }
+            }
+        }
+        section { class: "rail-section",
+            h2 { class: "rail-heading", "Agents" }
+            div { class: "rail-list",
+                for (name, detail) in &inventory.agent_rows {
+                    div { class: "rail-list-item",
+                        span { class: "rail-list-title", "{name}" }
+                        span { class: "rail-list-detail", "{detail}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{system_block_class, text_block_class};
+    use super::{build_left_rail_inventory, system_block_class, text_block_class};
     use crate::controller::AppController;
     use crate::fixtures::*;
     use crate::session_model::HostSessionModel;
@@ -673,6 +797,39 @@ mod tests {
         assert_eq!(controller.messages()[1].role, MessageRole::User);
         assert_eq!(controller.messages()[1].text, "hello world");
         assert_eq!(controller.messages()[2].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn left_rail_inventory_prefers_dispatcher_and_delegate_state() {
+        let controller = AppController::from_remote_snapshot_json(
+            super::crate::controller::DEMO_REMOTE_SNAPSHOT_JSON,
+        )
+        .unwrap();
+        let inventory = build_left_rail_inventory(
+            controller.summary(),
+            &controller.work_data(),
+            &controller.session_data(),
+            controller.is_run_active(),
+        );
+
+        assert_eq!(inventory.workspace_label, "main");
+        assert_eq!(inventory.session_label, "session_01HVDEMO");
+        assert!(inventory.agent_rows[0].0.contains("Dispatcher"));
+    }
+
+    #[test]
+    fn left_rail_inventory_falls_back_when_dispatcher_absent() {
+        let controller = AppController::default();
+        let inventory = build_left_rail_inventory(
+            controller.summary(),
+            &controller.work_data(),
+            &controller.session_data(),
+            controller.is_run_active(),
+        );
+
+        assert_eq!(inventory.workspace_label, "main");
+        assert_eq!(inventory.session_label, "local-session");
+        assert_eq!(inventory.agent_rows[0].0, "Dispatcher · unavailable");
     }
 
     #[test]
