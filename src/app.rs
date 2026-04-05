@@ -472,6 +472,7 @@ const TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD: usize = 7;
 const TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD: usize = 360;
 const SYSTEM_NOTICE_DISCLOSURE_LINE_THRESHOLD: usize = 5;
 const SYSTEM_NOTICE_DISCLOSURE_CHAR_THRESHOLD: usize = 220;
+const STRUCTURED_PAYLOAD_PREFIXES: [&str; 8] = ["{", "[", "(", "<", "---", "diff --", "@@", "{"];
 
 fn transcript_disclosure_meta(content: &str) -> String {
     let line_count = content.lines().count().max(1);
@@ -479,19 +480,11 @@ fn transcript_disclosure_meta(content: &str) -> String {
 }
 
 fn should_expand_tool_args(content: &str) -> bool {
-    should_expand_transcript_content(
-        content,
-        TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD,
-        TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD,
-    )
+    should_expand_tool_payload(content)
 }
 
 fn should_expand_tool_output(content: &str) -> bool {
-    should_expand_transcript_content(
-        content,
-        TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD,
-        TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD,
-    )
+    should_expand_tool_payload(content)
 }
 
 fn should_expand_system_notice(content: &str) -> bool {
@@ -500,6 +493,36 @@ fn should_expand_system_notice(content: &str) -> bool {
         SYSTEM_NOTICE_DISCLOSURE_LINE_THRESHOLD,
         SYSTEM_NOTICE_DISCLOSURE_CHAR_THRESHOLD,
     )
+}
+
+fn should_expand_tool_payload(content: &str) -> bool {
+    !looks_like_structured_payload(content)
+        && !should_expand_transcript_content(
+            content,
+            TRANSCRIPT_DISCLOSURE_LINE_THRESHOLD,
+            TRANSCRIPT_DISCLOSURE_CHAR_THRESHOLD,
+        )
+}
+
+fn looks_like_structured_payload(content: &str) -> bool {
+    let trimmed = content.trim_start();
+    if trimmed.is_empty() {
+        return false;
+    }
+
+    if STRUCTURED_PAYLOAD_PREFIXES
+        .iter()
+        .any(|prefix| trimmed.starts_with(prefix))
+    {
+        return true;
+    }
+
+    let first_line = trimmed.lines().next().unwrap_or_default();
+    first_line.contains(": ")
+        && (first_line.contains('{')
+            || first_line.contains('[')
+            || first_line.contains("=>")
+            || first_line.contains("::"))
 }
 
 fn should_expand_transcript_content(content: &str, line_threshold: usize, char_threshold: usize) -> bool {
@@ -1115,10 +1138,11 @@ mod tests {
     use super::{
         app_surface_state, app_surface_tone, block_origin_label,
         build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
-        render_chat_status_banner, should_expand_system_notice,
-        should_expand_tool_args, should_expand_tool_output, system_block_class,
-        system_block_tone, system_notice_summary_label, text_block_class,
-        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
+        looks_like_structured_payload, render_chat_status_banner,
+        should_expand_system_notice, should_expand_tool_args,
+        should_expand_tool_output, system_block_class, system_block_tone,
+        system_notice_summary_label, text_block_class, text_block_tone,
+        tool_block_class, tool_block_tone, tool_partial_label,
         tool_result_label, tool_status_label, tool_visual_state,
         transcript_block_dom_id, transcript_disclosure_meta,
     };
@@ -1345,18 +1369,25 @@ mod tests {
     }
 
     #[test]
-    fn transcript_disclosure_helpers_expand_only_verbose_content() {
+    fn transcript_disclosure_helpers_expand_only_verbose_or_human_readable_content() {
         let short = "echo hi";
+        let structured_json = r#"{"cmd":"cargo test","cwd":"/tmp/project"}"#;
+        let structured_yaml = "---\nname: release\nintent: cut rc";
         let long_lines = (1..=8)
             .map(|i| format!("line-{i}"))
             .collect::<Vec<_>>()
             .join("\n");
         let long_chars = "x".repeat(361);
 
-        assert!(!should_expand_tool_args(short));
-        assert!(!should_expand_tool_output(short));
-        assert!(should_expand_tool_args(&long_lines));
-        assert!(should_expand_tool_output(&long_chars));
+        assert!(should_expand_tool_args(short));
+        assert!(should_expand_tool_output(short));
+        assert!(!looks_like_structured_payload(short));
+        assert!(looks_like_structured_payload(structured_json));
+        assert!(looks_like_structured_payload(structured_yaml));
+        assert!(!should_expand_tool_args(structured_json));
+        assert!(!should_expand_tool_output(structured_yaml));
+        assert!(!should_expand_tool_args(&long_lines));
+        assert!(!should_expand_tool_output(&long_chars));
         assert_eq!(transcript_disclosure_meta("alpha\nbeta"), "2 lines · 10 chars");
     }
 
