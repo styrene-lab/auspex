@@ -785,6 +785,11 @@ fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData
         .as_ref()
         .filter(|control_plane| !control_plane.capabilities.is_empty())
         .map(|control_plane| control_plane.capabilities.join(", "));
+    let capability_badges = instance
+        .control_plane
+        .as_ref()
+        .map(|control_plane| control_plane.capabilities.as_slice())
+        .unwrap_or(&[]);
 
     rsx! {
         div { class: "instance-panel-grid",
@@ -839,8 +844,23 @@ fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData
                     if let Some(last_verified_at) = control_plane.last_verified_at.as_deref() {
                         {kv_row("Last verified", last_verified_at)}
                     }
+                    if !capability_badges.is_empty() {
+                        div { class: "kv-row kv-row-wrap",
+                            span { class: "kv-key", "Capabilities" }
+                            div { class: "capability-badge-list",
+                                for capability in capability_badges {
+                                    span {
+                                        class: capability_badge_class(capability),
+                                        "data-surface": "panel",
+                                        "data-tone": capability_badge_tone(capability),
+                                        "{capability_badge_label(capability)}"
+                                    }
+                                }
+                            }
+                        }
+                    }
                     if let Some(capability_summary) = capability_summary.as_deref() {
-                        {kv_row("Capabilities", capability_summary)}
+                        {kv_row("Capability set", capability_summary)}
                     }
                 }
             }
@@ -881,6 +901,38 @@ fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData
                 }
             }
         }
+    }
+}
+
+fn capability_badge_label(capability: &str) -> &str {
+    match capability {
+        "events.stream" => "Events",
+        "state.snapshot" => "Snapshot",
+        "prompt.submit" => "Prompt",
+        "turn.cancel" => "Cancel",
+        "graph.read" => "Graph",
+        "shutdown" => "Shutdown",
+        _ => capability,
+    }
+}
+
+fn capability_badge_class(capability: &str) -> &'static str {
+    match capability {
+        "events.stream" | "state.snapshot" | "prompt.submit" | "turn.cancel" => {
+            "badge badge-active capability-badge"
+        }
+        "graph.read" => "badge badge-ready capability-badge",
+        "shutdown" => "badge badge-blocked capability-badge",
+        _ => "badge badge-neutral capability-badge",
+    }
+}
+
+fn capability_badge_tone(capability: &str) -> &'static str {
+    match capability {
+        "events.stream" | "state.snapshot" | "prompt.submit" | "turn.cancel" => "info",
+        "graph.read" => "accent",
+        "shutdown" => "danger",
+        _ => "muted",
     }
 }
 
@@ -1331,7 +1383,12 @@ mod tests {
 
         let debug = format!("{element:?}");
         assert!(debug.contains("Capabilities"));
+        assert!(debug.contains("Snapshot"));
+        assert!(debug.contains("Events"));
         assert!(debug.contains("state.snapshot, events.stream"));
+        assert_eq!(capability_badge_label("turn.cancel"), "Cancel");
+        assert_eq!(capability_badge_class("shutdown"), "badge badge-blocked capability-badge");
+        assert_eq!(capability_badge_tone("graph.read"), "accent");
     }
 
     #[test]
