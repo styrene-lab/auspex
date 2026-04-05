@@ -218,9 +218,11 @@ pub async fn bootstrap_from_http_state_async(
         .map_err(|e| format!("could not build HTTP client: {e}"))?;
 
     let startup = fetch_startup_info_async(&client, url, hints).await.ok();
-    if let Some(startup) = startup.as_ref() {
-        validate_startup_info(startup)?;
-    }
+    let compatibility_warning = if let Some(startup) = startup.as_ref() {
+        validate_startup_info(startup)?
+    } else {
+        None
+    };
     let state_url = startup
         .as_ref()
         .map(|startup| startup.state_url.as_str())
@@ -269,16 +271,28 @@ pub async fn bootstrap_from_http_state_async(
     let note = startup
         .as_ref()
         .map(|startup| {
-            format!(
+            let mut note = format!(
                 "Attached via Omegon startup discovery at {} (auth: {} via {}). Streaming events from {}",
                 startup_url_from_state_url(url),
                 startup.auth_mode,
                 startup.auth_source,
                 ws_url
-            )
+            );
+            if let Some(warning) = compatibility_warning.as_deref() {
+                note.push_str(" Warning: ");
+                note.push_str(warning);
+            }
+            note
         })
         .unwrap_or_else(|| {
-            format!("Attached to Omegon state endpoint at {state_url}. Streaming events from {ws_url}")
+            let mut note = format!(
+                "Attached to Omegon state endpoint at {state_url}. Streaming events from {ws_url}"
+            );
+            if let Some(warning) = compatibility_warning.as_deref() {
+                note.push_str(" Warning: ");
+                note.push_str(warning);
+            }
+            note
         });
 
     Ok(BootstrapResult {
@@ -413,7 +427,7 @@ fn parse_version(version: &str) -> Result<Version, String> {
     Version::parse(version).map_err(|error| format!("invalid semver '{version}': {error}"))
 }
 
-fn validate_omegon_version(startup: &OmegonStartupInfo) -> Result<(), String> {
+fn validate_omegon_version(startup: &OmegonStartupInfo) -> Result<Option<String>, String> {
     let manifest = OmegonCompatibilityManifest::parse();
     let detected = detected_omegon_version(startup)
         .ok_or_else(|| "Auspex requires Omegon version identity, but the startup metadata did not report omegon_version.".to_string())?;
@@ -421,17 +435,24 @@ fn validate_omegon_version(startup: &OmegonStartupInfo) -> Result<(), String> {
     let minimum = parse_version(&manifest.minimum_version)?;
     let maximum = parse_version(&manifest.maximum_tested_version)?;
 
-    if detected < minimum || detected > maximum {
+    if detected < minimum {
         return Err(format!(
-            "Auspex supports Omegon {} through {}. Connected instance is {}.",
-            manifest.minimum_version, manifest.maximum_tested_version, detected
+            "Auspex requires Omegon {} or newer. Connected instance is {}.",
+            manifest.minimum_version, detected
         ));
     }
 
-    Ok(())
+    if detected > maximum {
+        return Ok(Some(format!(
+            "Omegon {} is newer than Auspex's maximum tested version {}. Continuing with compatibility warning.",
+            detected, manifest.maximum_tested_version
+        )));
+    }
+
+    Ok(None)
 }
 
-fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
+fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<Option<String>, String> {
     let manifest = OmegonCompatibilityManifest::parse();
     if startup.schema_version != manifest.control_plane_schema {
         return Err(format!(
@@ -440,9 +461,7 @@ fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
         ));
     }
 
-    validate_omegon_version(startup)?;
-
-    Ok(())
+    validate_omegon_version(startup)
 }
 
 /// Locate the Omegon binary.
@@ -784,7 +803,7 @@ mod tests {
     }
 
     #[test]
-    fn startup_version_mismatch_is_rejected() {
+    fn startup_older_version_is_rejected() {
         let mut info = remote_startup_info_fixture();
         info.instance_descriptor
             .as_mut()
@@ -792,7 +811,22 @@ mod tests {
             .expect("fixture control plane")
             .omegon_version = Some("0.15.10-rc.16".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("supports Omegon 0.15.10-rc.17 through 0.15.10-rc.17"));
+        assert!(err.contains("requires Omegon 0.15.10-rc.17 or newer"));
+    }
+
+    #[test]
+    fn startup_newer_version_is_allowed_with_warning() {
+        let mut info = remote_startup_info_fixture();
+        info.instance_descriptor
+            .as_mut()
+            .and_then(|descriptor| descriptor.control_plane.as_mut())
+            .expect("fixture control plane")
+            .omegon_version = Some("0.15.10-rc.18".into());
+        let warning = validate_startup_info(&info).unwrap();
+        assert!(warning
+            .as_deref()
+            .unwrap_or_default()
+            .contains("newer than Auspex's maximum tested version 0.15.10-rc.17"));
     }
 
     #[test]
