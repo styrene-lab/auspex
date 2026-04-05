@@ -1273,6 +1273,8 @@ mod tests {
         );
     }
 
+    #[test]
+    fn websocket_message_events_append_transcript() {
         let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
 
         session

@@ -1042,6 +1042,7 @@ mod tests {
             last_verified_at: None,
             available_options: vec![],
             switch_state: None,
+            instance_descriptor: None,
         }
     }
 
