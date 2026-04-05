@@ -143,7 +143,7 @@ pub fn App() -> Element {
                     }
 
                     // Top-center — workspace tabs (always visible)
-                    nav { class: "topbar-tabs",
+                    nav { class: "topbar-tabs topbar-tabs-depth",
                         button {
                             class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" },
                             onclick: move |_| workspace.set(Workspace::Chat),
