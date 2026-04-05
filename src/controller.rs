@@ -1,4 +1,4 @@
-use crate::audit_timeline::AuditTimelineStore;
+use crate::audit_timeline::{AuditTimelineQuery, AuditTimelineStore, AuditTimelineView};
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
     HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
@@ -218,6 +218,7 @@ impl AppController {
             _ => SessionSource::Mock(MockHostSession::default()),
         };
         self.bootstrap_note = None;
+        self.refresh_audit_timeline();
     }
 
     pub fn shell_state(&self) -> ShellState {
@@ -270,6 +271,22 @@ impl AppController {
 
     pub fn audit_timeline(&self) -> &AuditTimelineStore {
         &self.audit_timeline
+    }
+
+    #[allow(dead_code)]
+    pub fn query_audit_timeline(&self, query: &AuditTimelineQuery) -> AuditTimelineView<'_> {
+        let mut view = self.audit_timeline.query(query);
+        let current_session_key = self.session_audit_key();
+        if !view.sessions.iter().any(|session| session == &current_session_key) {
+            view.sessions.push(current_session_key);
+            view.sessions.sort();
+        }
+        view
+    }
+
+    #[allow(dead_code)]
+    pub fn current_audit_session_key(&self) -> String {
+        self.session_audit_key()
     }
 
     pub fn set_transcript_auto_expand(&mut self, enabled: bool) {
@@ -413,6 +430,7 @@ impl AppController {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::audit_timeline::AuditEntryKind;
     use crate::fixtures::MessageRole;
 
     const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;
@@ -564,6 +582,38 @@ mod tests {
         assert_eq!(controller.audit_timeline().entries.len(), 2);
         assert_eq!(controller.audit_timeline().entries[0].block_id, "mock:ready:turn-1-block-0");
         assert!(controller.audit_timeline().entries[1].content.contains("scaffold only proves"));
+    }
+
+    #[test]
+    fn audit_timeline_query_filters_current_session_entries() {
+        let mut controller = AppController::default();
+        controller.update_draft("hello audit");
+        assert!(controller.submit_prompt());
+
+        let filtered = controller.query_audit_timeline(&AuditTimelineQuery {
+            session_key: Some(controller.current_audit_session_key()),
+            turn_number: Some(1),
+            kind: Some(AuditEntryKind::Text),
+            text: "scaffold".into(),
+        });
+
+        assert_eq!(filtered.entries.len(), 1);
+        assert_eq!(filtered.entries[0].turn_number, 1);
+        assert_eq!(filtered.entries[0].kind, AuditEntryKind::Text);
+        assert_eq!(filtered.entries[0].session_key, "mock:ready");
+    }
+
+    #[test]
+    fn audit_timeline_query_updates_session_options_after_mode_switch() {
+        let mut controller = AppController::default();
+        controller.update_draft("hello audit");
+        assert!(controller.submit_prompt());
+        controller.switch_session_mode("live");
+
+        let filtered = controller.query_audit_timeline(&AuditTimelineQuery::default());
+
+        assert!(filtered.sessions.contains(&"mock:ready".to_string()));
+        assert!(filtered.sessions.contains(&"remote:session_01HVDEMO".to_string()));
     }
 
     #[test]
