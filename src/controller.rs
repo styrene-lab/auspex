@@ -184,11 +184,14 @@ impl AppController {
                 body: self.summary().connection.clone(),
                 detail: Some(
                     if self.scenario() == DevScenario::CompatibilityFailure {
-                        "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart."
+                        self.bootstrap_note.clone().unwrap_or_else(|| {
+                            "Auspex cannot operate with the detected host. Update Omegon to a compatible version and restart.".into()
+                        })
                     } else {
-                        "Auspex requires its embedded Omegon backend for local operation. Fix backend startup and relaunch, or explicitly attach to a remote Omegon control plane."
+                        self.bootstrap_note.clone().unwrap_or_else(|| {
+                            "Auspex requires its embedded Omegon backend for local operation. Fix backend startup and relaunch, or explicitly attach to a remote Omegon control plane.".into()
+                        })
                     }
-                    .into(),
                 ),
             }),
             ShellState::Ready | ShellState::Degraded => self.bootstrap_note.clone().map(|body| {
