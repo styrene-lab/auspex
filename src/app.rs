@@ -75,8 +75,7 @@ pub fn App() -> Element {
         async move {
             let Some(binary_str) = binary else { return };
             let binary_path = std::path::PathBuf::from(binary_str);
-            let result =
-                crate::bootstrap::spawn_and_attach_omegon(&binary_path).await;
+            let result = crate::bootstrap::spawn_and_attach_omegon(&binary_path).await;
             if let Some(stream) = result.event_stream {
                 event_stream.set(Some(stream));
             }
@@ -480,7 +479,8 @@ fn transcript_block_matches_target(block: &crate::fixtures::TurnBlock, target: &
     if let Some(task_id) = target.strip_prefix("delegate:") {
         return match block {
             crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
-                block_origin_label(text.origin.as_ref()).is_some_and(|label| label.contains(task_id))
+                block_origin_label(text.origin.as_ref())
+                    .is_some_and(|label| label.contains(task_id))
                     || text.text.contains(task_id)
             }
             _ => false,
@@ -504,7 +504,11 @@ fn transcript_block_search_text(block: &crate::fixtures::TurnBlock) -> String {
     match block {
         crate::fixtures::TurnBlock::Thinking(thinking) => thinking.text.clone(),
         crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
-            format!("{} {}", block_origin_label(text.origin.as_ref()).unwrap_or_default(), text.text)
+            format!(
+                "{} {}",
+                block_origin_label(text.origin.as_ref()).unwrap_or_default(),
+                text.text
+            )
         }
         crate::fixtures::TurnBlock::Tool(tool) => format!(
             "{} {} {} {} {}",
@@ -530,7 +534,11 @@ const STRUCTURED_PAYLOAD_PREFIXES: [&str; 8] = ["{", "[", "(", "<", "---", "diff
 
 fn transcript_disclosure_meta(content: &str) -> String {
     let line_count = content.lines().count().max(1);
-    format!("{line_count} line{} · {} chars", if line_count == 1 { "" } else { "s" }, content.chars().count())
+    format!(
+        "{line_count} line{} · {} chars",
+        if line_count == 1 { "" } else { "s" },
+        content.chars().count()
+    )
 }
 
 fn should_expand_tool_args(content: &str) -> bool {
@@ -579,7 +587,11 @@ fn looks_like_structured_payload(content: &str) -> bool {
             || first_line.contains("::"))
 }
 
-fn should_expand_transcript_content(content: &str, line_threshold: usize, char_threshold: usize) -> bool {
+fn should_expand_transcript_content(
+    content: &str,
+    line_threshold: usize,
+    char_threshold: usize,
+) -> bool {
     content.lines().count() > line_threshold || content.chars().count() > char_threshold
 }
 
@@ -709,7 +721,11 @@ fn transcript_disclosure_open(open_by_default: bool, auto_expand: bool) -> bool 
     auto_expand && open_by_default
 }
 
-fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage], auto_expand: bool) -> Element {
+fn render_transcript(
+    transcript: &TranscriptData,
+    messages: &[crate::fixtures::ChatMessage],
+    auto_expand: bool,
+) -> Element {
     if transcript.turns.is_empty() && messages.len() <= 2 {
         rsx! {
             section { class: "chat-empty-state",
@@ -984,7 +1000,8 @@ fn app_surface_state(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
 
 fn app_surface_tone(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
-        crate::fixtures::AppSurfaceKind::Startup | crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
+        crate::fixtures::AppSurfaceKind::Startup
+        | crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
         crate::fixtures::AppSurfaceKind::Reconnecting => "warn",
         crate::fixtures::AppSurfaceKind::StartupFailure
         | crate::fixtures::AppSurfaceKind::CompatibilityFailure => "danger",
@@ -1043,16 +1060,16 @@ fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
                 _ => "block block-system block-control-failure",
             }
         }
-        Some(crate::fixtures::SystemNoticeKind::Generic) | None => match text
-            .origin
-            .as_ref()
-            .map(|origin| &origin.kind)
-        {
-            Some(crate::fixtures::OriginKind::Dispatcher) => "block block-system block-dispatcher-system",
-            Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
-            Some(crate::fixtures::OriginKind::System) => "block block-system",
-            None => "block block-system",
-        },
+        Some(crate::fixtures::SystemNoticeKind::Generic) | None => {
+            match text.origin.as_ref().map(|origin| &origin.kind) {
+                Some(crate::fixtures::OriginKind::Dispatcher) => {
+                    "block block-system block-dispatcher-system"
+                }
+                Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+                Some(crate::fixtures::OriginKind::System) => "block block-system",
+                None => "block block-system",
+            }
+        }
     }
 }
 
@@ -1152,6 +1169,7 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct LeftRailInventory {
     workspace_label: String,
+    workspace_detail: String,
     project_label: String,
     session_label: String,
     session_detail: String,
@@ -1201,9 +1219,27 @@ fn build_left_rail_inventory(
     is_run_active: bool,
 ) -> LeftRailInventory {
     let workspace_label = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.dispatcher_instance_id.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| {
+            session
+                .git_branch
+                .clone()
+                .unwrap_or_else(|| "detached".into())
+        });
+    let workspace_detail = session
         .git_branch
         .clone()
-        .unwrap_or_else(|| "detached".into());
+        .map(|branch| {
+            if session.git_detached {
+                format!("workspace · detached from {branch}")
+            } else {
+                format!("workspace · branch {branch}")
+            }
+        })
+        .unwrap_or_else(|| "workspace identity unavailable".into());
     let project_label = work
         .focused_title
         .clone()
@@ -1221,10 +1257,15 @@ fn build_left_rail_inventory(
         .dispatcher_binding
         .as_ref()
         .map(|binding| {
-            binding
+            let target = binding
                 .expected_model
                 .clone()
-                .unwrap_or_else(|| binding.expected_profile.clone())
+                .unwrap_or_else(|| binding.expected_profile.clone());
+            if binding.expected_role.is_empty() {
+                target
+            } else {
+                format!("{} · {target}", binding.expected_role)
+            }
         })
         .filter(|value| !value.is_empty())
         .unwrap_or_else(|| summary.connection.clone());
@@ -1259,6 +1300,7 @@ fn build_left_rail_inventory(
 
     LeftRailInventory {
         workspace_label,
+        workspace_detail,
         project_label,
         session_label,
         session_detail,
@@ -1286,6 +1328,7 @@ fn render_left_rail_inventory(
             h2 { class: "rail-heading", "Workspace" }
             div { class: "rail-card",
                 div { class: "rail-card-title", "{inventory.workspace_label}" }
+                p { class: "rail-card-detail", "{inventory.workspace_detail}" }
                 p { class: "rail-card-detail", "{inventory.project_label}" }
             }
         }
@@ -1322,11 +1365,8 @@ fn render_audit_workspace(
     current_audit_session_key: &str,
     controls: AuditPanelControls,
 ) -> Element {
-    let audit_panel = build_audit_panel_model(
-        audit_timeline,
-        current_audit_session_key,
-        &controls.filters,
-    );
+    let audit_panel =
+        build_audit_panel_model(audit_timeline, current_audit_session_key, &controls.filters);
 
     rsx! {
         div { class: "screen screen-audit",
@@ -1500,7 +1540,10 @@ fn audit_entry_matches_filters(entry: &AuditEntry, filters: &AuditFilters) -> bo
     }
 
     let kind_filter = filters.kind_key.trim();
-    if !kind_filter.is_empty() && kind_filter != "all" && audit_kind_key(entry.kind.clone()) != kind_filter {
+    if !kind_filter.is_empty()
+        && kind_filter != "all"
+        && audit_kind_key(entry.kind.clone()) != kind_filter
+    {
         return false;
     }
 
@@ -1508,10 +1551,7 @@ fn audit_entry_matches_filters(entry: &AuditEntry, filters: &AuditFilters) -> bo
     if !text_filter.is_empty() {
         let haystack = format!(
             "{}\n{}\n{}\n{}",
-            entry.session_key,
-            entry.turn_number,
-            entry.label,
-            entry.content,
+            entry.session_key, entry.turn_number, entry.label, entry.content,
         )
         .to_ascii_lowercase();
         if !haystack.contains(&text_filter) {
@@ -1545,26 +1585,23 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        app_surface_state, app_surface_tone, audit_entry_matches_filters,
-        audit_kind_key, build_audit_panel_model, block_origin_label,
-        build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
-        looks_like_structured_payload, render_chat_status_banner,
-        transcript_disclosure_open,
-        should_expand_system_notice, should_expand_tool_args,
+        AuditFilters, app_surface_state, app_surface_tone, audit_entry_matches_filters,
+        audit_kind_key, block_origin_label, build_audit_panel_model, build_left_rail_inventory,
+        chat_status_tone, find_transcript_anchor, looks_like_structured_payload,
+        render_chat_status_banner, should_expand_system_notice, should_expand_tool_args,
         should_expand_tool_output, system_block_class, system_block_tone,
-        system_notice_summary_label, text_block_class, text_block_tone,
-        tool_block_class, tool_block_tone, tool_partial_label,
-        tool_result_label, tool_status_label, tool_visual_state,
-        transcript_block_dom_id, transcript_disclosure_meta, AuditFilters,
+        system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
+        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
+        tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
+        transcript_disclosure_open,
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::AppController;
-    use crate::session_model::HostSessionModel;
     use crate::fixtures::{
-        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
-        MessageRole, MockHostSession, OriginKind, SystemNoticeKind, ToolCard,
-        TranscriptData,
+        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
+        MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
     };
+    use crate::session_model::HostSessionModel;
 
     #[test]
     fn transcript_anchor_lookup_matches_delegate_and_dispatcher_switch_targets() {
@@ -1771,8 +1808,14 @@ mod tests {
             ..running.clone()
         };
 
-        assert_eq!(tool_block_class(&running), "block block-tool block-tool-running");
-        assert_eq!(tool_block_class(&complete), "block block-tool block-tool-complete");
+        assert_eq!(
+            tool_block_class(&running),
+            "block block-tool block-tool-running"
+        );
+        assert_eq!(
+            tool_block_class(&complete),
+            "block block-tool block-tool-complete"
+        );
         assert_eq!(tool_block_class(&errored), "block block-tool block-error");
         assert_eq!(tool_partial_label(&running), "Live output");
         assert_eq!(tool_partial_label(&complete), "Streamed output");
@@ -1800,7 +1843,10 @@ mod tests {
         assert!(!should_expand_tool_output(structured_yaml));
         assert!(!should_expand_tool_args(&long_lines));
         assert!(!should_expand_tool_output(&long_chars));
-        assert_eq!(transcript_disclosure_meta("alpha\nbeta"), "2 lines · 10 chars");
+        assert_eq!(
+            transcript_disclosure_meta("alpha\nbeta"),
+            "2 lines · 10 chars"
+        );
     }
 
     #[test]
@@ -1863,11 +1909,17 @@ mod tests {
 
         assert_eq!(panel.total_count, 2);
         assert_eq!(panel.filtered_count, 1);
-        assert_eq!(panel.session_options, vec!["remote:a".to_string(), "remote:b".to_string()]);
+        assert_eq!(
+            panel.session_options,
+            vec!["remote:a".to_string(), "remote:b".to_string()]
+        );
         assert_eq!(panel.entries[0].heading, "Tool · bash");
         assert_eq!(panel.entries[0].kind_key, "tool");
         assert_eq!(panel.entries[0].meta, "remote:b · turn 9 · Tool");
-        assert_eq!(panel.entries[0].focus_target.as_deref(), Some("turn-9-block-1"));
+        assert_eq!(
+            panel.entries[0].focus_target.as_deref(),
+            Some("turn-9-block-1")
+        );
     }
 
     #[test]
@@ -1988,13 +2040,19 @@ mod tests {
 
         assert_eq!(app_surface_state(AppSurfaceKind::Startup), "starting");
         assert_eq!(app_surface_tone(AppSurfaceKind::Startup), "info");
-        assert_eq!(app_surface_state(AppSurfaceKind::Reconnecting), "reconnecting");
+        assert_eq!(
+            app_surface_state(AppSurfaceKind::Reconnecting),
+            "reconnecting"
+        );
         assert_eq!(app_surface_tone(AppSurfaceKind::Reconnecting), "warn");
         assert_eq!(
             app_surface_state(AppSurfaceKind::CompatibilityFailure),
             "compatibility-failure"
         );
-        assert_eq!(app_surface_tone(AppSurfaceKind::CompatibilityFailure), "danger");
+        assert_eq!(
+            app_surface_tone(AppSurfaceKind::CompatibilityFailure),
+            "danger"
+        );
     }
 
     #[test]
@@ -2007,8 +2065,13 @@ mod tests {
             controller.is_run_active(),
         );
 
-        assert_eq!(inventory.workspace_label, "main");
+        assert_eq!(inventory.workspace_label, "omg_primary_01HVDEMO");
+        assert_eq!(inventory.workspace_detail, "workspace · branch main");
         assert_eq!(inventory.session_label, "session_01HVDEMO");
+        assert_eq!(
+            inventory.session_detail,
+            "primary-driver · anthropic:claude-sonnet-4-6"
+        );
         assert!(inventory.agent_rows[0].0.contains("Dispatcher"));
     }
 
@@ -2023,6 +2086,7 @@ mod tests {
         );
 
         assert_eq!(inventory.workspace_label, "main");
+        assert_eq!(inventory.workspace_detail, "workspace · branch main");
         assert_eq!(inventory.session_label, "local-session");
         assert_eq!(inventory.agent_rows[0].0, "Dispatcher · unavailable");
     }

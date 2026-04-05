@@ -215,6 +215,10 @@ pub fn ScribeScreen(
                     {kv_row("Connection", &summary.connection)}
                     {kv_row("Activity", &summary.activity)}
                     {kv_row("Work", &summary.work)}
+                    if let Some(dispatcher) = &data.dispatcher_binding {
+                        {kv_row("Session", &dispatcher.session_id)}
+                        {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
+                    }
                 }
             }
 
@@ -254,22 +258,22 @@ pub fn ScribeScreen(
                 section { class: "screen-section",
                     h2 { class: "screen-section-title", "Dispatcher binding" }
                     div { class: "kv-grid",
-                        {kv_row("Session", &dispatcher.session_id)}
-                        {kv_row("Profile", &dispatcher.expected_profile)}
+                        {kv_row("Canonical session", &dispatcher.session_id)}
+                        {kv_row("Canonical instance", &dispatcher.dispatcher_instance_id)}
+                        {kv_row("Workspace target", &dispatcher.expected_profile)}
                         if let Some(model) = dispatcher.expected_model.as_deref() {
-                            {kv_row("Model", model)}
+                            {kv_row("Runtime target", model)}
                         }
-                        {kv_row("Role", &dispatcher.expected_role)}
+                        {kv_row("Control-plane role", &dispatcher.expected_role)}
+                        {kv_row("Control-plane schema", &dispatcher.control_plane_schema.to_string())}
                         if let Some(base_url) = dispatcher.observed_base_url.as_deref() {
-                            {kv_row("Endpoint", base_url)}
+                            {kv_row("Observed endpoint", base_url)}
                         }
-                        {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
-                        {kv_row("Schema", &dispatcher.control_plane_schema.to_string())}
                         if let Some(verified_at) = dispatcher.last_verified_at.as_deref() {
-                            {kv_row("Verified", verified_at)}
+                            {kv_row("Last verified", verified_at)}
                         }
                         if let Some(token_ref) = dispatcher.token_ref.as_deref() {
-                            {kv_row("Token ref", token_ref)}
+                            {kv_row("Control-plane token", token_ref)}
                         }
                     }
                 }
@@ -457,16 +461,16 @@ pub fn SessionScreen(
                 section { class: "screen-section",
                     h2 { class: "screen-section-title", "Dispatcher" }
                     div { class: "kv-grid",
-                        {kv_row("Session", &dispatcher.session_id)}
-                        {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
-                        {kv_row("Role", &dispatcher.expected_role)}
-                        {kv_row("Profile", &dispatcher.expected_profile)}
+                        {kv_row("Canonical session", &dispatcher.session_id)}
+                        {kv_row("Canonical instance", &dispatcher.dispatcher_instance_id)}
+                        {kv_row("Control-plane role", &dispatcher.expected_role)}
+                        {kv_row("Workspace target", &dispatcher.expected_profile)}
                         if let Some(model) = &dispatcher.expected_model {
-                            {kv_row("Model", model)}
+                            {kv_row("Runtime target", model)}
                         }
-                        {kv_row("Schema", &dispatcher.control_plane_schema.to_string())}
+                        {kv_row("Control-plane schema", &dispatcher.control_plane_schema.to_string())}
                         if let Some(base_url) = &dispatcher.observed_base_url {
-                            {kv_row("Endpoint", base_url)}
+                            {kv_row("Observed endpoint", base_url)}
                         }
                         if let Some(last_verified_at) = &dispatcher.last_verified_at {
                             {kv_row("Last verified", last_verified_at)}
@@ -674,7 +678,10 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
 }
 
 fn format_authenticated_provider_summary(providers: &[crate::fixtures::ProviderInfo]) -> String {
-    let authenticated = providers.iter().filter(|provider| provider.authenticated).count();
+    let authenticated = providers
+        .iter()
+        .filter(|provider| provider.authenticated)
+        .count();
     if providers.is_empty() {
         "0 / 0 authenticated".into()
     } else {
@@ -915,7 +922,8 @@ fn dispatcher_switch_view(
         state.requested_profile.as_deref(),
         state.requested_model.as_deref(),
     );
-    let matches_binding = state.requested_profile.as_deref() == Some(dispatcher.expected_profile.as_str())
+    let matches_binding = state.requested_profile.as_deref()
+        == Some(dispatcher.expected_profile.as_str())
         && match state.requested_model.as_deref() {
             Some(model) => dispatcher.expected_model.as_deref() == Some(model),
             None => true,
@@ -1087,7 +1095,11 @@ mod tests {
         let view = dispatcher_switch_view(&dispatcher, &state);
         assert_eq!(view.badge_label, "active elsewhere");
         assert!(view.headline.contains("Another request is active"));
-        assert!(view.detail.unwrap().contains("bound dispatcher remains primary-interactive"));
+        assert!(
+            view.detail
+                .unwrap()
+                .contains("bound dispatcher remains primary-interactive")
+        );
     }
 
     #[test]
@@ -1112,7 +1124,10 @@ mod tests {
             dispatcher_option_button_class(&dispatcher, &option),
             "dispatcher-option-button dispatcher-option-button-pending"
         );
-        assert_eq!(dispatcher_option_visual_state(&dispatcher, &option), "pending");
+        assert_eq!(
+            dispatcher_option_visual_state(&dispatcher, &option),
+            "pending"
+        );
         assert_eq!(status_badge_state("pending"), "pending");
         assert_eq!(status_badge_tone("pending"), "accent");
         assert_eq!(
@@ -1144,7 +1159,10 @@ mod tests {
         };
 
         let summary = session_control_summary(&data);
-        let labels: Vec<_> = summary.iter().map(|item| (item.label, item.value.as_str())).collect();
+        let labels: Vec<_> = summary
+            .iter()
+            .map(|item| (item.label, item.value.as_str()))
+            .collect();
 
         assert!(labels.contains(&("Thinking", "high")));
         assert!(labels.contains(&("Capability tier", "gloriana")));
@@ -1154,6 +1172,23 @@ mod tests {
             "Dispatcher",
             "primary-interactive · anthropic:claude-sonnet-4-6"
         )));
+    }
+
+    #[test]
+    fn session_control_summary_prefers_runtime_target_over_legacy_instance_inference() {
+        let mut dispatcher = binding();
+        dispatcher.expected_model = Some("openai:gpt-4.1".into());
+        dispatcher.expected_profile = "supervisor-heavy".into();
+        dispatcher.dispatcher_instance_id = "omg_primary_01HVDEMO".into();
+        let data = SessionData {
+            dispatcher_binding: Some(dispatcher),
+            ..SessionData::default()
+        };
+
+        let summary = session_control_summary(&data);
+        assert!(summary.iter().any(|item| {
+            item.label == "Dispatcher" && item.value == "supervisor-heavy · openai:gpt-4.1"
+        }));
     }
 
     #[test]

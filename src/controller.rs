@@ -277,7 +277,11 @@ impl AppController {
     pub fn query_audit_timeline(&self, query: &AuditTimelineQuery) -> AuditTimelineView<'_> {
         let mut view = self.audit_timeline.query(query);
         let current_session_key = self.session_audit_key();
-        if !view.sessions.iter().any(|session| session == &current_session_key) {
+        if !view
+            .sessions
+            .iter()
+            .any(|session| session == &current_session_key)
+        {
             view.sessions.push(current_session_key);
             view.sessions.sort();
         }
@@ -397,18 +401,20 @@ impl AppController {
         model: Option<&str>,
     ) -> Option<String> {
         match &mut self.session {
-            SessionSource::Remote(session) => match session.request_dispatcher_switch(profile, model)? {
-                DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
-                    serde_json::json!({
-                        "type": "switch_dispatcher",
-                        "request_id": request_id,
-                        "profile": profile,
-                        "model": model,
-                    })
-                    .to_string(),
-                ),
-                DispatcherSwitchCommandOutcome::Noop => None,
-            },
+            SessionSource::Remote(session) => {
+                match session.request_dispatcher_switch(profile, model)? {
+                    DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
+                        serde_json::json!({
+                            "type": "switch_dispatcher",
+                            "request_id": request_id,
+                            "profile": profile,
+                            "model": model,
+                        })
+                        .to_string(),
+                    ),
+                    DispatcherSwitchCommandOutcome::Noop => None,
+                }
+            }
             SessionSource::Mock(_) => None,
         }
     }
@@ -459,6 +465,11 @@ mod tests {
         assert_eq!(dispatcher.dispatcher_instance_id, "omg_primary_01HVDEMO");
         assert_eq!(dispatcher.expected_role, "primary-driver");
         assert_eq!(dispatcher.expected_profile, "primary-interactive");
+        assert_eq!(
+            dispatcher.expected_model.as_deref(),
+            Some("anthropic:claude-sonnet-4-6")
+        );
+        assert_eq!(dispatcher.session_id, "session_01HVDEMO");
         assert_eq!(dispatcher.available_options.len(), 2);
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().status, "idle");
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().request_id, None);
@@ -580,8 +591,15 @@ mod tests {
         assert!(controller.submit_prompt());
 
         assert_eq!(controller.audit_timeline().entries.len(), 2);
-        assert_eq!(controller.audit_timeline().entries[0].block_id, "mock:ready:turn-1-block-0");
-        assert!(controller.audit_timeline().entries[1].content.contains("scaffold only proves"));
+        assert_eq!(
+            controller.audit_timeline().entries[0].block_id,
+            "mock:ready:turn-1-block-0"
+        );
+        assert!(
+            controller.audit_timeline().entries[1]
+                .content
+                .contains("scaffold only proves")
+        );
     }
 
     #[test]
@@ -613,7 +631,11 @@ mod tests {
         let filtered = controller.query_audit_timeline(&AuditTimelineQuery::default());
 
         assert!(filtered.sessions.contains(&"mock:ready".to_string()));
-        assert!(filtered.sessions.contains(&"remote:session_01HVDEMO".to_string()));
+        assert!(
+            filtered
+                .sessions
+                .contains(&"remote:session_01HVDEMO".to_string())
+        );
     }
 
     #[test]
@@ -696,10 +718,7 @@ mod tests {
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         let command = controller
-            .request_dispatcher_switch_command_json(
-                "supervisor-heavy",
-                Some("openai:gpt-4.1"),
-            )
+            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
             .unwrap();
 
         assert_eq!(
@@ -710,9 +729,18 @@ mod tests {
         let session = controller.session_data();
         let switch_state = &session.dispatcher_binding.as_ref().unwrap().switch_state;
         let switch_state = switch_state.as_ref().unwrap();
-        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
-        assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
-        assert_eq!(switch_state.requested_model.as_deref(), Some("openai:gpt-4.1"));
+        assert_eq!(
+            switch_state.request_id.as_deref(),
+            Some("dispatcher-switch-1")
+        );
+        assert_eq!(
+            switch_state.requested_profile.as_deref(),
+            Some("supervisor-heavy")
+        );
+        assert_eq!(
+            switch_state.requested_model.as_deref(),
+            Some("openai:gpt-4.1")
+        );
         assert_eq!(switch_state.status, "pending");
     }
 
@@ -722,10 +750,7 @@ mod tests {
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         controller
-            .request_dispatcher_switch_command_json(
-                "supervisor-heavy",
-                Some("openai:gpt-4.1"),
-            )
+            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
             .unwrap();
 
         controller
@@ -740,14 +765,17 @@ mod tests {
         assert_eq!(dispatcher.expected_model.as_deref(), Some("openai:gpt-4.1"));
         let switch_state = dispatcher.switch_state.as_ref().unwrap();
         assert_eq!(switch_state.status, "active");
-        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
-        assert_eq!(switch_state.note.as_deref(), Some("Dispatcher switch confirmed by snapshot"));
-        assert!(controller
-            .messages()
-            .last()
-            .unwrap()
-            .text
-            .contains("Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1"));
+        assert_eq!(
+            switch_state.request_id.as_deref(),
+            Some("dispatcher-switch-1")
+        );
+        assert_eq!(
+            switch_state.note.as_deref(),
+            Some("Dispatcher switch confirmed by snapshot")
+        );
+        assert!(controller.messages().last().unwrap().text.contains(
+            "Dispatcher switch confirmed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1"
+        ));
     }
 
     #[test]
@@ -759,7 +787,10 @@ mod tests {
         let surface = controller.surface_notice().expect("surface notice");
         assert_eq!(surface.kind, AppSurfaceKind::Startup);
         assert!(surface.body.contains("Launching the Omegon engine"));
-        assert_eq!(surface.detail.as_deref(), Some("Starting Omegon at /tmp/omegon…"));
+        assert_eq!(
+            surface.detail.as_deref(),
+            Some("Starting Omegon at /tmp/omegon…")
+        );
     }
 
     #[test]
@@ -769,7 +800,11 @@ mod tests {
 
         let surface = controller.surface_notice().expect("surface notice");
         assert_eq!(surface.kind, AppSurfaceKind::Reconnecting);
-        assert!(surface.body.contains("connection to the host is being restored"));
+        assert!(
+            surface
+                .body
+                .contains("connection to the host is being restored")
+        );
         assert_eq!(surface.detail, None);
     }
 
@@ -782,11 +817,7 @@ mod tests {
         let surface = controller.surface_notice().expect("surface notice");
         assert_eq!(surface.kind, AppSurfaceKind::CompatibilityFailure);
         assert_eq!(surface.body, "Host incompatible");
-        assert!(surface
-            .detail
-            .as_deref()
-            .unwrap()
-            .contains("Update Omegon"));
+        assert!(surface.detail.as_deref().unwrap().contains("Update Omegon"));
     }
 
     #[test]
@@ -806,10 +837,7 @@ mod tests {
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         controller
-            .request_dispatcher_switch_command_json(
-                "supervisor-heavy",
-                Some("openai:gpt-4.1"),
-            )
+            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
             .unwrap();
 
         controller
@@ -825,16 +853,20 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "active");
-        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-999"));
+        assert_eq!(
+            switch_state.request_id.as_deref(),
+            Some("dispatcher-switch-999")
+        );
         assert!(controller.messages().iter().any(|message| {
             message
                 .text
                 .contains("Dispatcher reports a different active request (dispatcher-switch-999): supervisor-heavy · openai:gpt-4.1")
         }));
-        assert!(controller
-            .messages()
-            .iter()
-            .all(|message| !message.text.contains("Dispatcher switch confirmed (dispatcher-switch-1)")));
+        assert!(controller.messages().iter().all(|message| {
+            !message
+                .text
+                .contains("Dispatcher switch confirmed (dispatcher-switch-1)")
+        }));
     }
 
     #[test]
@@ -855,7 +887,10 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "active");
-        assert_eq!(switch_state.note.as_deref(), Some("Dispatcher already active: primary-interactive"));
+        assert_eq!(
+            switch_state.note.as_deref(),
+            Some("Dispatcher already active: primary-interactive")
+        );
     }
 
     #[test]
@@ -877,13 +912,21 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "pending");
-        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-2"));
-        assert_eq!(switch_state.requested_profile.as_deref(), Some("supervisor-heavy"));
+        assert_eq!(
+            switch_state.request_id.as_deref(),
+            Some("dispatcher-switch-2")
+        );
+        assert_eq!(
+            switch_state.requested_profile.as_deref(),
+            Some("supervisor-heavy")
+        );
         assert_eq!(switch_state.requested_model, None);
-        assert!(controller
-            .messages()
-            .iter()
-            .any(|message| message.text.contains("Dispatcher switch superseded")));
+        assert!(
+            controller
+                .messages()
+                .iter()
+                .any(|message| message.text.contains("Dispatcher switch superseded"))
+        );
     }
 
     #[test]
@@ -907,8 +950,14 @@ mod tests {
             .switch_state
             .unwrap();
         assert_eq!(switch_state.status, "failed");
-        assert_eq!(switch_state.request_id.as_deref(), Some("dispatcher-switch-1"));
-        assert_eq!(switch_state.failure_code.as_deref(), Some("backend_rejected"));
+        assert_eq!(
+            switch_state.request_id.as_deref(),
+            Some("dispatcher-switch-1")
+        );
+        assert_eq!(
+            switch_state.failure_code.as_deref(),
+            Some("backend_rejected")
+        );
         assert!(controller
             .messages()
             .last()
