@@ -237,6 +237,7 @@ pub fn App() -> Element {
                         &controller.read().session_data(),
                         controller.read().is_run_active(),
                         controller.read().audit_timeline(),
+                        controller.read().current_audit_session_key().as_str(),
                         AuditPanelControls {
                             filters: AuditFilters {
                                 session_key: audit_session_filter.read().clone(),
@@ -248,6 +249,9 @@ pub fn App() -> Element {
                             on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
                             on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
                             on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
+                            on_focus_entry: EventHandler::new(move |target: String| {
+                                focus_transcript_target(controller.read().transcript(), &target);
+                            }),
                         },
                     )}
                     WorkScreen { data: controller.read().work_data() }
@@ -1158,6 +1162,7 @@ struct AuditPanelEntry {
     meta: String,
     content: String,
     kind_key: &'static str,
+    focus_target: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -1167,6 +1172,7 @@ struct AuditPanelControls {
     on_turn_filter: EventHandler<String>,
     on_kind_filter: EventHandler<String>,
     on_text_filter: EventHandler<String>,
+    on_focus_entry: EventHandler<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1256,10 +1262,15 @@ fn render_left_rail_inventory(
     session: &crate::fixtures::SessionData,
     is_run_active: bool,
     audit_timeline: &AuditTimelineStore,
+    current_audit_session_key: &str,
     controls: AuditPanelControls,
 ) -> Element {
     let inventory = build_left_rail_inventory(summary, work, session, is_run_active);
-    let audit_panel = build_audit_panel_model(audit_timeline, &controls.filters);
+    let audit_panel = build_audit_panel_model(
+        audit_timeline,
+        current_audit_session_key,
+        &controls.filters,
+    );
 
     rsx! {
         section { class: "rail-section",
@@ -1349,6 +1360,20 @@ fn render_left_rail_inventory(
                             "data-kind": entry.kind_key,
                             h3 { class: "audit-entry-title", "{entry.heading}" }
                             p { class: "audit-entry-meta", "{entry.meta}" }
+                            if let Some(target) = &entry.focus_target {
+                                button {
+                                    class: "audit-entry-jump",
+                                    r#type: "button",
+                                    onclick: {
+                                        let target = target.clone();
+                                        let handler = controls.on_focus_entry;
+                                        move |_| handler.call(target.clone())
+                                    },
+                                    "Jump to transcript"
+                                }
+                            } else {
+                                p { class: "audit-entry-unavailable", "Transcript block not present in the current session." }
+                            }
                             pre { class: "audit-entry-content", "{entry.content}" }
                         }
                     }
@@ -1371,6 +1396,7 @@ fn audit_kind_options() -> [(&'static str, &'static str); 6] {
 
 fn build_audit_panel_model(
     audit_timeline: &AuditTimelineStore,
+    current_audit_session_key: &str,
     filters: &AuditFilters,
 ) -> AuditPanelModel {
     let latest_label = audit_timeline
@@ -1401,6 +1427,8 @@ fn build_audit_panel_model(
             ),
             content: entry.content.clone(),
             kind_key: audit_kind_key(entry.kind.clone()),
+            focus_target: (entry.session_key == current_audit_session_key)
+                .then(|| transcript_block_dom_id(entry.turn_number, entry.block_index)),
         })
         .collect::<Vec<_>>();
 
@@ -1743,7 +1771,11 @@ mod tests {
     #[test]
     fn left_rail_inventory_audit_summary_uses_latest_entry() {
         let controller = AppController::default();
-        let panel = build_audit_panel_model(controller.audit_timeline(), &AuditFilters::default());
+        let panel = build_audit_panel_model(
+            controller.audit_timeline(),
+            &controller.current_audit_session_key(),
+            &AuditFilters::default(),
+        );
 
         assert_eq!(panel.total_count, 0);
         assert_eq!(panel.filtered_count, 0);
@@ -1785,7 +1817,7 @@ mod tests {
             kind_key: "tool".into(),
             text_query: "cargo".into(),
         };
-        let panel = build_audit_panel_model(&store, &filters);
+        let panel = build_audit_panel_model(&store, "remote:b", &filters);
 
         assert_eq!(panel.total_count, 2);
         assert_eq!(panel.filtered_count, 1);
@@ -1793,6 +1825,31 @@ mod tests {
         assert_eq!(panel.entries[0].heading, "Tool · bash");
         assert_eq!(panel.entries[0].kind_key, "tool");
         assert_eq!(panel.entries[0].meta, "remote:b · turn 9 · Tool");
+        assert_eq!(panel.entries[0].focus_target.as_deref(), Some("turn-9-block-1"));
+    }
+
+    #[test]
+    fn audit_panel_only_offers_focus_for_current_session_entries() {
+        let store = AuditTimelineStore::from_json(
+            r#"{
+              "schema_version": 1,
+              "entries": [
+                {
+                  "session_key": "remote:a",
+                  "turn_number": 4,
+                  "block_index": 0,
+                  "block_id": "remote:a:turn-4-block-0",
+                  "kind": "System",
+                  "label": "Dispatcher",
+                  "content": "Switch confirmed"
+                }
+              ]
+            }"#,
+        )
+        .expect("audit timeline fixture should deserialize");
+
+        let panel = build_audit_panel_model(&store, "remote:b", &AuditFilters::default());
+        assert_eq!(panel.entries[0].focus_target, None);
     }
 
     #[test]

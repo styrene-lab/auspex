@@ -443,6 +443,29 @@ body > * {
   color: var(--text-muted);
 }
 
+.audit-entry-jump {
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  padding: 0.22rem 0.55rem;
+  font: inherit;
+  font-size: 0.74rem;
+  cursor: pointer;
+}
+
+.audit-entry-jump:hover {
+  border-color: var(--border-info);
+  background: var(--surface-control-hover);
+}
+
+.audit-entry-unavailable {
+  margin: 0;
+  font-size: 0.72rem;
+  color: var(--text-dim);
+}
+
 .audit-entry-content {
   margin: 0;
   white-space: pre-wrap;
