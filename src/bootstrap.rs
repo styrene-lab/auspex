@@ -611,10 +611,6 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         ));
     };
 
-    if let Err(error) = validate_startup_info(&info) {
-        return BootstrapResult::compatibility_failure(error);
-    }
-
     let state_url = startup_state_url(&info).unwrap_or_else(|| DEFAULT_STATE_URL.to_string());
 
     // Poll briefly for the HTTP endpoint to accept connections.
