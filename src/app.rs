@@ -421,7 +421,10 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
     } else {
         rsx! {
             for turn in &transcript.turns {
-                article { class: "turn-card",
+                article {
+                    class: "turn-card",
+                    "data-surface": "panel",
+                    "data-elevation": "1",
                     h2 { class: "turn-title", "Turn {turn.number}" }
                     for block in &turn.blocks {
                         match block {
@@ -440,7 +443,11 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
-                                section { class: tool_block_class(tool),
+                                section {
+                                    class: tool_block_class(tool),
+                                    "data-surface": "panel",
+                                    "data-kind": "tool",
+                                    "data-state": tool_visual_state(tool),
                                     div { class: "tool-header",
                                         div { class: "tool-header-main",
                                             if let Some(origin) = &tool.origin {
@@ -498,21 +505,24 @@ fn render_chat_status_banner(
     is_run_active: bool,
     can_submit: bool,
 ) -> Element {
-    let (banner_class, label, detail) = if is_run_active {
+    let (banner_class, banner_state, label, detail) = if is_run_active {
         (
             "chat-status-banner chat-status-banner-running",
+            "running",
             "Run active",
             "Omegon is working. New input is paused until the current run completes or you cancel it.",
         )
     } else if !can_submit {
         (
             "chat-status-banner chat-status-banner-blocked",
+            "blocked",
             "Input paused",
             "Conversation input is unavailable in the current host state.",
         )
     } else {
         (
             "chat-status-banner",
+            "ready",
             "Ready",
             summary.activity.as_str(),
         )
@@ -523,6 +533,8 @@ fn render_chat_status_banner(
     rsx! {
         section {
             class: banner_class,
+            "data-surface": "banner",
+            "data-state": banner_state,
             "data-activity-kind": activity_kind,
             title: "Activity: {activity_kind}",
             strong { class: "chat-status-label", "{label}" }
@@ -595,6 +607,18 @@ fn tool_status_class(tool: &crate::fixtures::ToolCard) -> &'static str {
         "tool-status tool-status-complete"
     } else {
         "tool-status tool-status-running"
+    }
+}
+
+fn tool_visual_state(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "error"
+    } else if tool.result.is_some() {
+        "complete"
+    } else if tool.partial_output.is_empty() {
+        "queued"
+    } else {
+        "streaming"
     }
 }
 
@@ -757,7 +781,7 @@ mod tests {
     use super::{
         build_left_rail_inventory, render_chat_status_banner, system_block_class,
         text_block_class, tool_block_class, tool_partial_label, tool_result_label,
-        tool_status_label,
+        tool_status_label, tool_visual_state,
     };
     use crate::controller::AppController;
     use crate::session_model::HostSessionModel;
@@ -897,6 +921,10 @@ mod tests {
         assert_eq!(tool_status_label(&streaming), "Streaming");
         assert_eq!(tool_status_label(&complete), "Complete");
         assert_eq!(tool_status_label(&errored), "Error");
+        assert_eq!(tool_visual_state(&queued), "queued");
+        assert_eq!(tool_visual_state(&streaming), "streaming");
+        assert_eq!(tool_visual_state(&complete), "complete");
+        assert_eq!(tool_visual_state(&errored), "error");
     }
 
     #[test]

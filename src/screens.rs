@@ -212,7 +212,10 @@ pub fn ScribeScreen(
                 h2 { class: "screen-section-title", "Session controls" }
                 div { class: "progress-grid progress-grid-tight",
                     for item in &control_summary {
-                        div { class: "progress-card progress-card-emphasis",
+                        div {
+                            class: "progress-card progress-card-emphasis",
+                            "data-surface": "panel",
+                            "data-elevation": "1",
                             span { class: "progress-label", "{item.label}" }
                             span {
                                 class: if item.compact { "progress-value progress-value-small" } else { "progress-value" },
@@ -224,7 +227,10 @@ pub fn ScribeScreen(
                 if !session_alerts.is_empty() {
                     div { class: "session-alert-list",
                         for alert in &session_alerts {
-                            div { class: alert.class_name,
+                            div {
+                                class: alert.class_name,
+                                "data-surface": "panel",
+                                "data-tone": alert.tone,
                                 strong { class: "session-alert-title", "{alert.title}" }
                                 p { class: "session-alert-body", "{alert.body}" }
                             }
@@ -269,6 +275,8 @@ pub fn ScribeScreen(
                                 for option in &dispatcher.available_options {
                                     button {
                                         class: dispatcher_option_button_class(dispatcher, option),
+                                        "data-surface": "control",
+                                        "data-state": dispatcher_option_visual_state(dispatcher, option),
                                         r#type: "button",
                                         disabled: dispatcher_option_disabled(dispatcher, option),
                                         onclick: {
@@ -294,6 +302,8 @@ pub fn ScribeScreen(
                                 for option in &dispatcher.available_options {
                                     div {
                                         class: dispatcher_option_button_class(dispatcher, option),
+                                        "data-surface": "control",
+                                        "data-state": dispatcher_option_visual_state(dispatcher, option),
                                         strong { "{option.label}" }
                                         span { class: "dispatcher-option-meta",
                                             "{option.profile}"
@@ -544,6 +554,7 @@ struct SessionControlSummaryItem {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SessionAlert {
     class_name: &'static str,
+    tone: &'static str,
     title: &'static str,
     body: String,
 }
@@ -592,6 +603,7 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
     if let Some(warning) = &data.memory_warning {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-warn",
+            tone: "warn",
             title: "Memory attention needed",
             body: warning.clone(),
         });
@@ -600,6 +612,7 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
     if !data.memory_available {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-danger",
+            tone: "danger",
             title: "Project memory offline",
             body: "Long-lived memory tools are unavailable, so architectural context and prior decisions will not persist across sessions.".into(),
         });
@@ -608,6 +621,7 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
     if !data.cleave_available {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-danger",
+            tone: "danger",
             title: "Cleave unavailable",
             body: "Parallel task decomposition controls are offline; multi-step implementation work must stay on a single branch until the dispatcher recovers.".into(),
         });
@@ -616,6 +630,7 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
     if data.dispatcher_binding.is_none() {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-muted",
+            tone: "muted",
             title: "Dispatcher binding missing",
             body: "The snapshot does not include a dispatcher control-plane binding, so profile switches cannot be verified from this pane.".into(),
         });
@@ -745,6 +760,24 @@ fn dispatcher_option_button_class(
         "dispatcher-option-button dispatcher-option-button-pending"
     } else {
         "dispatcher-option-button"
+    }
+}
+
+#[allow(dead_code)]
+fn dispatcher_option_visual_state(
+    dispatcher: &DispatcherBindingData,
+    option: &DispatcherOptionData,
+) -> &'static str {
+    if dispatcher.expected_profile == option.profile && dispatcher.expected_model == option.model {
+        "active"
+    } else if dispatcher.switch_state.as_ref().is_some_and(|state| {
+        state.status == "pending"
+            && state.requested_profile.as_deref() == Some(option.profile.as_str())
+            && state.requested_model == option.model
+    }) {
+        "pending"
+    } else {
+        "idle"
     }
 }
 
@@ -976,6 +1009,7 @@ mod tests {
             dispatcher_option_button_class(&dispatcher, &option),
             "dispatcher-option-button dispatcher-option-button-pending"
         );
+        assert_eq!(dispatcher_option_visual_state(&dispatcher, &option), "pending");
         assert_eq!(
             dispatcher_option_status_text(&dispatcher, &option),
             Some("Pending request")
