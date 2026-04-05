@@ -233,6 +233,24 @@ pub fn App() -> Element {
                         controller.read().is_run_active(),
                     )}
                     WorkScreen { data: controller.read().work_data() }
+                    section { class: "rail-section",
+                        h2 { class: "rail-heading", "Transcript" }
+                        label { class: "rail-toggle",
+                            input {
+                                r#type: "checkbox",
+                                checked: controller.read().transcript_auto_expand(),
+                                onchange: move |event| {
+                                    controller
+                                        .write()
+                                        .set_transcript_auto_expand(event.value() == "true");
+                                },
+                            }
+                            div { class: "rail-toggle-copy",
+                                span { class: "rail-toggle-title", "Auto-expand transcript details" }
+                                span { class: "rail-toggle-detail", "When enabled, short human-readable details open by default." }
+                            }
+                        }
+                    }
                     // Dev controls — temporary, will move to a proper settings surface
                     section { class: "rail-section rail-devbar",
                         h2 { class: "rail-heading", "Dev" }
@@ -282,7 +300,11 @@ pub fn App() -> Element {
                                 controller.read().can_submit(),
                             )}
                             main { class: "transcript",
-                                {render_transcript(controller.read().transcript(), controller.read().messages())}
+                                {render_transcript(
+                                    controller.read().transcript(),
+                                    controller.read().messages(),
+                                    controller.read().transcript_auto_expand(),
+                                )}
                                 div { id: "transcript-end" }
                             }
 
@@ -552,6 +574,7 @@ struct TranscriptDisclosure<'a> {
     content: &'a str,
     meta: String,
     open: bool,
+    copy_label: &'static str,
 }
 
 fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element {
@@ -567,6 +590,7 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
         content,
         meta,
         open,
+        copy_label,
     } = disclosure;
 
     rsx! {
@@ -581,6 +605,17 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
                     }
                 }
                 div { class: body_class,
+                    div { class: "transcript-detail-actions",
+                        button {
+                            class: "transcript-copy-button",
+                            r#type: "button",
+                            onclick: {
+                                let content = content.to_string();
+                                move |_| copy_to_clipboard(&content)
+                            },
+                            "Copy {copy_label}"
+                        }
+                    }
                     p { class: content_class, "{content}" }
                 }
             }
@@ -588,7 +623,41 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
     }
 }
 
-fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {
+fn copy_to_clipboard(text: &str) {
+    let text_json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+    spawn(async move {
+        let _ = document::eval(&format!(
+            r#"
+            (async function() {{
+              var text = {text_json};
+              if (!text) return;
+              if (navigator.clipboard && navigator.clipboard.writeText) {{
+                try {{
+                  await navigator.clipboard.writeText(text);
+                  return;
+                }} catch (_) {{}}
+              }}
+              var area = document.createElement('textarea');
+              area.value = text;
+              area.setAttribute('readonly', 'readonly');
+              area.style.position = 'fixed';
+              area.style.opacity = '0';
+              document.body.appendChild(area);
+              area.select();
+              document.execCommand('copy');
+              document.body.removeChild(area);
+            }})();
+            "#
+        ))
+        .await;
+    });
+}
+
+fn transcript_disclosure_open(open_by_default: bool, auto_expand: bool) -> bool {
+    auto_expand && open_by_default
+}
+
+fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage], auto_expand: bool) -> Element {
     if transcript.turns.is_empty() && messages.len() <= 2 {
         rsx! {
             section { class: "chat-empty-state",
@@ -702,7 +771,11 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                             label: "Args",
                                             content: &tool.args,
                                             meta: transcript_disclosure_meta(&tool.args),
-                                            open: should_expand_tool_args(&tool.args),
+                                            open: transcript_disclosure_open(
+                                                should_expand_tool_args(&tool.args),
+                                                auto_expand,
+                                            ),
+                                            copy_label: "args",
                                         })}
                                     }
                                     if !tool.partial_output.is_empty() {
@@ -717,7 +790,11 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                             label: tool_partial_label(tool),
                                             content: &tool.partial_output,
                                             meta: transcript_disclosure_meta(&tool.partial_output),
-                                            open: should_expand_tool_output(&tool.partial_output),
+                                            open: transcript_disclosure_open(
+                                                should_expand_tool_output(&tool.partial_output),
+                                                auto_expand,
+                                            ),
+                                            copy_label: "output",
                                         })}
                                     }
                                     if let Some(result) = &tool.result {
@@ -732,7 +809,11 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                             label: tool_result_label(tool),
                                             content: result,
                                             meta: transcript_disclosure_meta(result),
-                                            open: should_expand_tool_output(result),
+                                            open: transcript_disclosure_open(
+                                                should_expand_tool_output(result),
+                                                auto_expand,
+                                            ),
+                                            copy_label: "result",
                                         })}
                                     } else if !tool.is_error {
                                         p { class: "tool-awaiting", "Waiting for final tool result…" }
@@ -760,7 +841,8 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                             label: system_notice_summary_label(text),
                                             content: &text.text,
                                             meta: transcript_disclosure_meta(&text.text),
-                                            open: true,
+                                            open: transcript_disclosure_open(true, auto_expand),
+                                            copy_label: "notice",
                                         })}
                                     } else {
                                         p { class: "system-text", "{text.text}" }
@@ -1389,6 +1471,13 @@ mod tests {
         assert!(!should_expand_tool_args(&long_lines));
         assert!(!should_expand_tool_output(&long_chars));
         assert_eq!(transcript_disclosure_meta("alpha\nbeta"), "2 lines · 10 chars");
+    }
+
+    #[test]
+    fn transcript_disclosure_open_respects_operator_setting() {
+        assert!(transcript_disclosure_open(true, true));
+        assert!(!transcript_disclosure_open(true, false));
+        assert!(!transcript_disclosure_open(false, true));
     }
 
     #[test]

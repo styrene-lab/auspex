@@ -115,10 +115,20 @@ impl SessionSource {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
-#[derive(Default)]
 pub struct AppController {
     session: SessionSource,
     bootstrap_note: Option<String>,
+    transcript_auto_expand: bool,
+}
+
+impl Default for AppController {
+    fn default() -> Self {
+        Self {
+            session: SessionSource::default(),
+            bootstrap_note: None,
+            transcript_auto_expand: true,
+        }
+    }
 }
 
 impl AppController {
@@ -127,6 +137,7 @@ impl AppController {
         Ok(Self {
             session: SessionSource::Remote(Box::new(session)),
             bootstrap_note: None,
+            transcript_auto_expand: true,
         })
     }
 
@@ -239,6 +250,14 @@ impl AppController {
 
     pub fn transcript(&self) -> &crate::fixtures::TranscriptData {
         self.session.model().transcript()
+    }
+
+    pub fn transcript_auto_expand(&self) -> bool {
+        self.transcript_auto_expand
+    }
+
+    pub fn set_transcript_auto_expand(&mut self, enabled: bool) {
+        self.transcript_auto_expand = enabled;
     }
 
     #[allow(dead_code)]
@@ -465,6 +484,18 @@ mod tests {
             controller.summary().connection,
             "Connected to local host session"
         );
+    }
+
+    #[test]
+    fn transcript_auto_expand_defaults_on_and_is_mutable() {
+        let mut controller = AppController::default();
+        assert!(controller.transcript_auto_expand());
+
+        controller.set_transcript_auto_expand(false);
+        assert!(!controller.transcript_auto_expand());
+
+        controller.set_transcript_auto_expand(true);
+        assert!(controller.transcript_auto_expand());
     }
 
     #[test]

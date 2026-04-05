@@ -301,6 +301,39 @@ body > * {
   line-height: 1.35;
 }
 
+.rail-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.55rem;
+  padding: 0.45rem 0.5rem;
+  background: var(--surface-1);
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+}
+
+.rail-toggle input {
+  margin-top: 0.15rem;
+}
+
+.rail-toggle-copy {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.rail-toggle-title {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.rail-toggle-detail {
+  font-size: 0.76rem;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+
 .rail-devbar {
   margin-top: auto;
   padding-top: 0.45rem;
@@ -887,6 +920,28 @@ body > * {
 .tool-detail-body,
 .system-detail-body {
   padding-top: 0.1rem;
+}
+
+.transcript-detail-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 0.35rem;
+}
+
+.transcript-copy-button {
+  border: 1px solid var(--border-default);
+  border-radius: 7px;
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  padding: 0.22rem 0.55rem;
+  font: inherit;
+  font-size: 0.76rem;
+  cursor: pointer;
+}
+
+.transcript-copy-button:hover {
+  border-color: var(--border-info);
+  background: var(--surface-control-hover);
 }
 
 .tool-args,
