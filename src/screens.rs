@@ -8,8 +8,8 @@
 use dioxus::prelude::*;
 
 use crate::fixtures::{
-    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData, SessionData,
-    WorkData,
+    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
+    HostSessionSummary, SessionData, WorkData,
 };
 
 // ── Graph screen ──────────────────────────────────────────────────────────────
@@ -172,6 +172,99 @@ pub fn WorkScreen(data: WorkData) -> Element {
                     }
                     if data.openspec_total == 0 && data.cleave_total == 0 {
                         p { class: "screen-empty", "No tracked progress." }
+                    }
+                }
+            }
+        }
+    }
+}
+
+// ── Scribe screen ─────────────────────────────────────────────────────────────
+
+#[component]
+pub fn ScribeScreen(summary: HostSessionSummary, data: SessionData) -> Element {
+    rsx! {
+        div { class: "screen screen-scribe",
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Scribe" }
+                p { class: "screen-empty",
+                    "The first-party Rust-native extension surface is not implemented yet, but this workspace now exposes the live operator contract around the current host session."
+                }
+            }
+
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Current host" }
+                div { class: "kv-grid",
+                    {kv_row("Connection", &summary.connection)}
+                    {kv_row("Activity", &summary.activity)}
+                    {kv_row("Work", &summary.work)}
+                }
+            }
+
+            if let Some(dispatcher) = &data.dispatcher_binding {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Dispatcher binding" }
+                    div { class: "kv-grid",
+                        {kv_row("Session", &dispatcher.session_id)}
+                        {kv_row("Profile", &dispatcher.expected_profile)}
+                        if let Some(model) = dispatcher.expected_model.as_deref() {
+                            {kv_row("Model", model)}
+                        }
+                        {kv_row("Role", &dispatcher.expected_role)}
+                        if let Some(base_url) = dispatcher.observed_base_url.as_deref() {
+                            {kv_row("Endpoint", base_url)}
+                        }
+                    }
+                }
+
+                if let Some(state) = &dispatcher.switch_state {
+                    {render_dispatcher_switch_state(dispatcher, state)}
+                }
+
+                if !dispatcher.available_options.is_empty() {
+                    section { class: "screen-section",
+                        h2 { class: "screen-section-title", "Available bindings" }
+                        div { class: "dispatcher-option-list",
+                            for option in &dispatcher.available_options {
+                                div {
+                                    class: dispatcher_option_button_class(dispatcher, option),
+                                    strong { "{option.label}" }
+                                    span { class: "dispatcher-option-meta",
+                                        "{option.profile}"
+                                        if let Some(model) = &option.model {
+                                            " · {model}"
+                                        }
+                                    }
+                                    if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
+                                        span { class: "dispatcher-option-status", "{status}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Session health" }
+                div { class: "progress-grid",
+                    div { class: "progress-card",
+                        span { class: "progress-label", "Turns" }
+                        span { class: "progress-value", "{data.session_turns}" }
+                    }
+                    div { class: "progress-card",
+                        span { class: "progress-label", "Tool calls" }
+                        span { class: "progress-value", "{data.session_tool_calls}" }
+                    }
+                    div { class: "progress-card",
+                        span { class: "progress-label", "Compactions" }
+                        span { class: "progress-value", "{data.session_compactions}" }
+                    }
+                    if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
+                        div { class: "progress-card",
+                            span { class: "progress-label", "Context" }
+                            span { class: "progress-value progress-value-small", "{context_usage}" }
+                        }
                     }
                 }
             }

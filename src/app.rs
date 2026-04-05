@@ -4,7 +4,7 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{DevScenario, MessageRole, TranscriptData};
-use crate::screens::{GraphScreen, SessionScreen, WorkScreen};
+use crate::screens::{GraphScreen, ScribeScreen, SessionScreen, WorkScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
 /// the stylesheet is always available in the bundled .app.
@@ -248,55 +248,9 @@ pub fn App() -> Element {
                     if *workspace.read() == Workspace::Graph {
                         GraphScreen { data: controller.read().graph_data() }
                     } else if *workspace.read() == Workspace::Scribe {
-                        section { class: "screen screen-scribe",
-                            section { class: "screen-section",
-                                h2 { class: "screen-section-title", "Scribe" }
-                                p { class: "screen-empty",
-                                    "The first-party Rust-native extension surface is not implemented yet, but the host/session scaffold is live."
-                                }
-                            }
-
-                            section { class: "screen-section",
-                                h2 { class: "screen-section-title", "Current host" }
-                                div { class: "kv-grid",
-                                    div { class: "kv-row",
-                                        span { class: "kv-key", "Connection" }
-                                        span { class: "kv-value", "{controller.read().summary().connection}" }
-                                    }
-                                    div { class: "kv-row",
-                                        span { class: "kv-key", "Activity" }
-                                        span { class: "kv-value", "{controller.read().summary().activity}" }
-                                    }
-                                    div { class: "kv-row",
-                                        span { class: "kv-key", "Work" }
-                                        span { class: "kv-value", "{controller.read().summary().work}" }
-                                    }
-                                }
-                            }
-
-                            if let Some(dispatcher) = controller.read().session_data().dispatcher_binding.as_ref() {
-                                section { class: "screen-section",
-                                    h2 { class: "screen-section-title", "Dispatcher binding" }
-                                    div { class: "kv-grid",
-                                        div { class: "kv-row",
-                                            span { class: "kv-key", "Profile" }
-                                            span { class: "kv-value", "{dispatcher.expected_profile}" }
-                                        }
-                                        if let Some(model) = dispatcher.expected_model.as_deref() {
-                                            div { class: "kv-row",
-                                                span { class: "kv-key", "Model" }
-                                                span { class: "kv-value", "{model}" }
-                                            }
-                                        }
-                                        if let Some(base_url) = dispatcher.observed_base_url.as_deref() {
-                                            div { class: "kv-row",
-                                                span { class: "kv-key", "Endpoint" }
-                                                span { class: "kv-value", "{base_url}" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        ScribeScreen {
+                            summary: controller.read().summary().clone(),
+                            data: controller.read().session_data(),
                         }
                     } else {
                         // Chat workspace — transcript + composer
