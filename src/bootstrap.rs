@@ -4,6 +4,7 @@ use std::env;
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+use semver::Version;
 use std::time::Duration;
 
 use crate::audit_timeline::{default_audit_timeline_path, load_or_default};
@@ -22,8 +23,8 @@ pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
 pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 #[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
-pub const EXPECTED_CONTROL_PLANE_SCHEMA: u32 = 2;
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
+const CARGO_MANIFEST: &str = include_str!("../Cargo.toml");
 
 #[cfg(not(target_arch = "wasm32"))]
 const OWNED_OMEGON_PID_FILE: &str = "auspex-embedded-omegon.pid";
@@ -54,6 +55,39 @@ impl ConnectHints {
             startup_url: non_empty_env(STARTUP_URL_ENV),
             ws_token: non_empty_env("AUSPEX_OMEGON_WS_TOKEN"),
         }
+    }
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+struct CargoPackageMetadata {
+    #[serde(default)]
+    omegon: OmegonCompatibilityManifest,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+struct CargoPackageSection {
+    #[serde(default)]
+    metadata: CargoPackageMetadata,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize)]
+struct CargoManifest {
+    #[serde(default)]
+    package: CargoPackageSection,
+}
+
+#[derive(Clone, Debug, Default, serde::Deserialize, PartialEq, Eq)]
+struct OmegonCompatibilityManifest {
+    minimum_version: String,
+    maximum_tested_version: String,
+    control_plane_schema: u32,
+}
+
+impl OmegonCompatibilityManifest {
+    fn parse() -> Self {
+        toml::from_str::<CargoManifest>(CARGO_MANIFEST)
+            .map(|manifest| manifest.package.metadata.omegon)
+            .unwrap_or_default()
     }
 }
 
@@ -366,13 +400,47 @@ fn startup_url_from_state_url(state_url: &str) -> String {
     state_url.replace("/api/state", "/api/startup")
 }
 
-fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
-    if startup.schema_version != EXPECTED_CONTROL_PLANE_SCHEMA {
+fn detected_omegon_version(startup: &OmegonStartupInfo) -> Option<&str> {
+    startup
+        .instance_descriptor
+        .as_ref()
+        .and_then(|descriptor| descriptor.control_plane.as_ref())
+        .and_then(|control_plane| control_plane.omegon_version.as_deref())
+        .filter(|version| !version.is_empty())
+}
+
+fn parse_version(version: &str) -> Result<Version, String> {
+    Version::parse(version).map_err(|error| format!("invalid semver '{version}': {error}"))
+}
+
+fn validate_omegon_version(startup: &OmegonStartupInfo) -> Result<(), String> {
+    let manifest = OmegonCompatibilityManifest::parse();
+    let detected = detected_omegon_version(startup)
+        .ok_or_else(|| "Auspex requires Omegon version identity, but the startup metadata did not report omegon_version.".to_string())?;
+    let detected = parse_version(detected)?;
+    let minimum = parse_version(&manifest.minimum_version)?;
+    let maximum = parse_version(&manifest.maximum_tested_version)?;
+
+    if detected < minimum || detected > maximum {
         return Err(format!(
-            "Auspex requires control-plane schema {}, but Omegon reported schema {}.",
-            EXPECTED_CONTROL_PLANE_SCHEMA, startup.schema_version
+            "Auspex supports Omegon {} through {}. Connected instance is {}.",
+            manifest.minimum_version, manifest.maximum_tested_version, detected
         ));
     }
+
+    Ok(())
+}
+
+fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<(), String> {
+    let manifest = OmegonCompatibilityManifest::parse();
+    if startup.schema_version != manifest.control_plane_schema {
+        return Err(format!(
+            "Auspex requires control-plane schema {}, but Omegon reported schema {}.",
+            manifest.control_plane_schema, startup.schema_version
+        ));
+    }
+
+    validate_omegon_version(startup)?;
 
     Ok(())
 }
@@ -673,6 +741,14 @@ mod tests {
             ws_url: "ws://127.0.0.1:7842/ws".into(),
             auth_mode: "none".into(),
             auth_source: "default".into(),
+            instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
+                control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
+                    omegon_version: Some("0.15.10-rc.17".into()),
+                    schema_version: EXPECTED_CONTROL_PLANE_SCHEMA,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            }),
             ..Default::default()
         }
     }
@@ -705,6 +781,26 @@ mod tests {
     fn startup_schema_match_is_accepted() {
         let info = remote_startup_info_fixture();
         assert!(validate_startup_info(&info).is_ok());
+    }
+
+    #[test]
+    fn startup_version_mismatch_is_rejected() {
+        let mut info = remote_startup_info_fixture();
+        info.instance_descriptor
+            .as_mut()
+            .and_then(|descriptor| descriptor.control_plane.as_mut())
+            .expect("fixture control plane")
+            .omegon_version = Some("0.15.10-rc.16".into());
+        let err = validate_startup_info(&info).unwrap_err();
+        assert!(err.contains("supports Omegon 0.15.10-rc.17 through 0.15.10-rc.17"));
+    }
+
+    #[test]
+    fn startup_missing_version_identity_is_rejected() {
+        let mut info = remote_startup_info_fixture();
+        info.instance_descriptor = None;
+        let err = validate_startup_info(&info).unwrap_err();
+        assert!(err.contains("requires Omegon version identity"));
     }
 
     #[test]
