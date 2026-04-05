@@ -440,17 +440,35 @@ fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::C
                                 }
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
-                                section { class: if tool.is_error { "block block-tool block-error" } else { "block block-tool" },
-                                    if let Some(origin) = &tool.origin {
-                                        h3 { class: origin_class(origin), "{origin.label}" }
+                                section { class: tool_block_class(tool),
+                                    div { class: "tool-header",
+                                        div { class: "tool-header-main",
+                                            if let Some(origin) = &tool.origin {
+                                                h3 { class: origin_class(origin), "{origin.label}" }
+                                            }
+                                            h3 { class: "tool-name", "{tool.name}" }
+                                        }
+                                        span { class: tool_status_class(tool), "{tool_status_label(tool)}" }
                                     }
-                                    h3 { "{tool.name}" }
-                                    p { class: "tool-args", "{tool.args}" }
+                                    if !tool.args.is_empty() {
+                                        div { class: "tool-section",
+                                            span { class: "tool-section-label", "Args" }
+                                            p { class: "tool-args", "{tool.args}" }
+                                        }
+                                    }
                                     if !tool.partial_output.is_empty() {
-                                        p { class: "tool-partial", "{tool.partial_output}" }
+                                        div { class: "tool-section tool-section-stream",
+                                            span { class: "tool-section-label", "{tool_partial_label(tool)}" }
+                                            p { class: "tool-partial", "{tool.partial_output}" }
+                                        }
                                     }
                                     if let Some(result) = &tool.result {
-                                        p { class: "tool-result", "{result}" }
+                                        div { class: "tool-section tool-section-result",
+                                            span { class: "tool-section-label", "{tool_result_label(tool)}" }
+                                            p { class: "tool-result", "{result}" }
+                                        }
+                                    } else if !tool.is_error {
+                                        p { class: "tool-awaiting", "Waiting for final tool result…" }
                                     }
                                 }
                             },
@@ -500,8 +518,13 @@ fn render_chat_status_banner(
         )
     };
 
+    let activity_kind = summary.activity_kind.label();
+
     rsx! {
-        section { class: banner_class,
+        section {
+            class: banner_class,
+            "data-activity-kind": activity_kind,
+            title: "Activity: {activity_kind}",
             strong { class: "chat-status-label", "{label}" }
             span { class: "chat-status-detail", "{detail}" }
         }
@@ -552,6 +575,54 @@ fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
             Some(crate::fixtures::OriginKind::System) => "block block-system",
             None => "block block-system",
         },
+    }
+}
+
+fn tool_block_class(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "block block-tool block-error"
+    } else if tool.result.is_some() {
+        "block block-tool block-tool-complete"
+    } else {
+        "block block-tool block-tool-running"
+    }
+}
+
+fn tool_status_class(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "tool-status tool-status-error"
+    } else if tool.result.is_some() {
+        "tool-status tool-status-complete"
+    } else {
+        "tool-status tool-status-running"
+    }
+}
+
+fn tool_status_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "Error"
+    } else if tool.result.is_some() {
+        "Complete"
+    } else if tool.partial_output.is_empty() {
+        "Queued"
+    } else {
+        "Streaming"
+    }
+}
+
+fn tool_partial_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.result.is_some() {
+        "Streamed output"
+    } else {
+        "Live output"
+    }
+}
+
+fn tool_result_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+    if tool.is_error {
+        "Error result"
+    } else {
+        "Final result"
     }
 }
 
@@ -683,7 +754,18 @@ fn render_left_rail_inventory(
 
 #[cfg(test)]
 mod tests {
-    use super::{build_left_rail_inventory, system_block_class, text_block_class};
+    use super::{
+        build_left_rail_inventory, render_chat_status_banner, system_block_class,
+        text_block_class, tool_block_class, tool_partial_label, tool_result_label,
+        tool_status_label,
+    };
+    use crate::controller::AppController;
+    use crate::session_model::HostSessionModel;
+    use crate::fixtures::{
+        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
+        MessageRole, MockHostSession, OriginKind, SystemNoticeKind, ToolCard,
+    };
+
     #[test]
     fn text_block_class_keeps_dispatcher_text_as_normal_text() {
         let origin = BlockOrigin {
@@ -787,6 +869,67 @@ mod tests {
     }
 
     #[test]
+    fn tool_status_label_distinguishes_queued_streaming_complete_and_error() {
+        let queued = ToolCard {
+            id: "tool-1".into(),
+            name: "bash".into(),
+            args: String::new(),
+            partial_output: String::new(),
+            result: None,
+            is_error: false,
+            origin: None,
+        };
+        let streaming = ToolCard {
+            partial_output: "compiling…".into(),
+            ..queued.clone()
+        };
+        let complete = ToolCard {
+            result: Some("done".into()),
+            ..streaming.clone()
+        };
+        let errored = ToolCard {
+            is_error: true,
+            result: Some("boom".into()),
+            ..queued.clone()
+        };
+
+        assert_eq!(tool_status_label(&queued), "Queued");
+        assert_eq!(tool_status_label(&streaming), "Streaming");
+        assert_eq!(tool_status_label(&complete), "Complete");
+        assert_eq!(tool_status_label(&errored), "Error");
+    }
+
+    #[test]
+    fn tool_labels_and_classes_reflect_partial_and_final_output_state() {
+        let running = ToolCard {
+            id: "tool-1".into(),
+            name: "bash".into(),
+            args: "echo hi".into(),
+            partial_output: "hi".into(),
+            result: None,
+            is_error: false,
+            origin: None,
+        };
+        let complete = ToolCard {
+            result: Some("status 0".into()),
+            ..running.clone()
+        };
+        let errored = ToolCard {
+            is_error: true,
+            result: Some("status 1".into()),
+            ..running.clone()
+        };
+
+        assert_eq!(tool_block_class(&running), "block block-tool block-tool-running");
+        assert_eq!(tool_block_class(&complete), "block block-tool block-tool-complete");
+        assert_eq!(tool_block_class(&errored), "block block-tool block-error");
+        assert_eq!(tool_partial_label(&running), "Live output");
+        assert_eq!(tool_partial_label(&complete), "Streamed output");
+        assert_eq!(tool_result_label(&complete), "Final result");
+        assert_eq!(tool_result_label(&errored), "Error result");
+    }
+
+    #[test]
     fn blank_draft_does_not_submit() {
         let mut session = MockHostSession::default();
         session.composer_mut().set_draft("   ");
@@ -826,10 +969,7 @@ mod tests {
 
     #[test]
     fn left_rail_inventory_prefers_dispatcher_and_delegate_state() {
-        let controller = AppController::from_remote_snapshot_json(
-            super::crate::controller::DEMO_REMOTE_SNAPSHOT_JSON,
-        )
-        .unwrap();
+        let controller = AppController::remote_demo();
         let inventory = build_left_rail_inventory(
             controller.summary(),
             &controller.work_data(),
