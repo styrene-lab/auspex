@@ -103,6 +103,10 @@ pub fn App() -> Element {
     let mut workspace = use_signal(|| Workspace::Chat);
 
     let session = controller.read().session_data();
+    let bootstrap_surface = controller
+        .read()
+        .surface_notice()
+        .filter(|surface| surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote);
     let context_status = if let Some(tokens) = session.context_tokens {
         if let Some(window) = session.context_window {
             format!("{tokens} / {window} tokens")
@@ -154,20 +158,18 @@ pub fn App() -> Element {
 
                     // Top-right — global state
                     div { class: "topbar-status",
+                        if let Some(surface) = bootstrap_surface.as_ref() {
+                            span {
+                                class: "topbar-meta",
+                                title: "{surface.body}",
+                                "{surface.body}"
+                            }
+                        }
                         div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
                     }
                 }
 
-                // ── Surface notices (part of top chrome, not a full grid row) ──
-                if let Some(surface) = controller.read().surface_notice()
-                    && surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote
-                {
-                    section { class: surface.kind.section_class(),
-                        strong { "{surface.kind.title()}" }
-                        p { "{surface.body}" }
-                    }
-                }
-
+                // ── Surface notices that still deserve dedicated space ──
                 if let Some(surface) = controller.read().surface_notice()
                     && surface.kind == crate::fixtures::AppSurfaceKind::Startup
                 {

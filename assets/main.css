@@ -73,6 +73,16 @@ body {
   justify-content: flex-end;
   align-items: center;
   gap: 0.6rem;
+  min-width: 0;
+}
+
+.topbar-meta {
+  font-size: 0.72rem;
+  color: #7d8793;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 28rem;
 }
 
 /* ── Main area ───────────────────────────────────────────── */
@@ -270,13 +280,7 @@ body {
 }
 
 .bootstrap-note {
-  background: #11161d;
-  border-top: 1px solid #1b2129;
-  border-bottom: 1px solid #1b2129;
-  border-left: 0;
-  border-right: 0;
-  border-radius: 0;
-  padding: 0.3rem 0.75rem;
+  display: none;
 }
 
 .bootstrap-note strong {
@@ -970,6 +974,23 @@ body {
 }
 
 @media (max-width: 720px) {
+  .topbar {
+    grid-template-columns: 1fr;
+    row-gap: 0.35rem;
+  }
+
+  .topbar-tabs {
+    justify-content: flex-start;
+  }
+
+  .topbar-status {
+    justify-content: space-between;
+  }
+
+  .topbar-meta {
+    max-width: none;
+  }
+
   .header {
     align-items: flex-start;
     flex-direction: column;
