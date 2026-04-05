@@ -283,28 +283,14 @@ pub enum ActivityKind {
 }
 
 impl ActivityKind {
-    pub fn strip_class(self) -> &'static str {
+    pub fn label(self) -> &'static str {
         match self {
-            Self::Idle => "activity-strip activity-strip-idle",
-            Self::Running => "activity-strip activity-strip-running",
-            Self::Waiting => "activity-strip activity-strip-waiting",
-            Self::Degraded => "activity-strip activity-strip-degraded",
-            Self::Completed => "activity-strip activity-strip-completed",
-            Self::Failure => "activity-strip activity-strip-failure",
-        }
-    }
-
-    pub fn dot_class(self, run_active: bool) -> &'static str {
-        if run_active || matches!(self, Self::Running) {
-            "run-dot run-dot-active"
-        } else {
-            match self {
-                Self::Completed => "run-dot run-dot-completed",
-                Self::Waiting => "run-dot run-dot-waiting",
-                Self::Degraded => "run-dot run-dot-degraded",
-                Self::Failure => "run-dot run-dot-failure",
-                Self::Idle | Self::Running => "run-dot run-dot-idle",
-            }
+            Self::Idle => "idle",
+            Self::Running => "running",
+            Self::Waiting => "waiting",
+            Self::Degraded => "degraded",
+            Self::Completed => "completed",
+            Self::Failure => "failure",
         }
     }
 }

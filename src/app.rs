@@ -251,6 +251,12 @@ pub fn App() -> Element {
                         ScribeScreen {
                             summary: controller.read().summary().clone(),
                             data: controller.read().session_data(),
+                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
+                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                    stream.send_command(command);
+                                }
+                            }))
                         }
                     } else {
                         // Chat workspace — transcript + composer
@@ -609,27 +615,6 @@ fn render_left_rail_inventory(
 #[cfg(test)]
 mod tests {
     use super::{build_left_rail_inventory, system_block_class, text_block_class};
-    use crate::controller::AppController;
-    use crate::fixtures::*;
-    use crate::session_model::HostSessionModel;
-
-    #[test]
-    fn activity_kind_classes_cover_non_transcript_statuses() {
-        assert_eq!(ActivityKind::Running.strip_class(), "activity-strip activity-strip-running");
-        assert_eq!(
-            ActivityKind::Failure.dot_class(false),
-            "run-dot run-dot-failure"
-        );
-        assert_eq!(
-            ActivityKind::Waiting.dot_class(false),
-            "run-dot run-dot-waiting"
-        );
-        assert_eq!(
-            ActivityKind::Completed.dot_class(false),
-            "run-dot run-dot-completed"
-        );
-    }
-
     #[test]
     fn text_block_class_keeps_dispatcher_text_as_normal_text() {
         let origin = BlockOrigin {

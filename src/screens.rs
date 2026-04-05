@@ -182,7 +182,11 @@ pub fn WorkScreen(data: WorkData) -> Element {
 // ── Scribe screen ─────────────────────────────────────────────────────────────
 
 #[component]
-pub fn ScribeScreen(summary: HostSessionSummary, data: SessionData) -> Element {
+pub fn ScribeScreen(
+    summary: HostSessionSummary,
+    data: SessionData,
+    on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+) -> Element {
     rsx! {
         div { class: "screen screen-scribe",
             section { class: "screen-section",
@@ -224,19 +228,46 @@ pub fn ScribeScreen(summary: HostSessionSummary, data: SessionData) -> Element {
                 if !dispatcher.available_options.is_empty() {
                     section { class: "screen-section",
                         h2 { class: "screen-section-title", "Available bindings" }
-                        div { class: "dispatcher-option-list",
-                            for option in &dispatcher.available_options {
-                                div {
-                                    class: dispatcher_option_button_class(dispatcher, option),
-                                    strong { "{option.label}" }
-                                    span { class: "dispatcher-option-meta",
-                                        "{option.profile}"
-                                        if let Some(model) = &option.model {
-                                            " · {model}"
+                        if let Some(handler) = on_dispatcher_switch {
+                            div { class: "dispatcher-option-list",
+                                for option in &dispatcher.available_options {
+                                    button {
+                                        class: dispatcher_option_button_class(dispatcher, option),
+                                        r#type: "button",
+                                        disabled: dispatcher_option_disabled(dispatcher, option),
+                                        onclick: {
+                                            let profile = option.profile.clone();
+                                            let model = option.model.clone();
+                                            move |_| handler.call((profile.clone(), model.clone()))
+                                        },
+                                        strong { "{option.label}" }
+                                        span { class: "dispatcher-option-meta",
+                                            "{option.profile}"
+                                            if let Some(model) = &option.model {
+                                                " · {model}"
+                                            }
+                                        }
+                                        if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
+                                            span { class: "dispatcher-option-status", "{status}" }
                                         }
                                     }
-                                    if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
-                                        span { class: "dispatcher-option-status", "{status}" }
+                                }
+                            }
+                        } else {
+                            div { class: "dispatcher-option-list",
+                                for option in &dispatcher.available_options {
+                                    div {
+                                        class: dispatcher_option_button_class(dispatcher, option),
+                                        strong { "{option.label}" }
+                                        span { class: "dispatcher-option-meta",
+                                            "{option.profile}"
+                                            if let Some(model) = &option.model {
+                                                " · {model}"
+                                            }
+                                        }
+                                        if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
+                                            span { class: "dispatcher-option-status", "{status}" }
+                                        }
                                     }
                                 }
                             }
