@@ -1,4 +1,5 @@
 mod app;
+mod audit_timeline;
 mod bootstrap;
 mod controller;
 mod event_stream;

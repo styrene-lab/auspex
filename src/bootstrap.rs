@@ -6,6 +6,7 @@ use std::fs;
 use std::path::PathBuf;
 use std::time::Duration;
 
+use crate::audit_timeline::{default_audit_timeline_path, load_or_default};
 use crate::controller::AppController;
 use crate::event_stream::{
     EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
@@ -84,6 +85,10 @@ pub struct BootstrapResult {
 impl BootstrapResult {
     fn startup_failure(note: String) -> Self {
         let mut controller = AppController::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_audit_timeline_path() {
+            controller = controller.with_audit_timeline(load_or_default(&path));
+        }
         controller.set_scenario(crate::fixtures::DevScenario::StartupFailure);
         controller.set_bootstrap_note(Some(note.clone()));
         Self {
@@ -96,6 +101,10 @@ impl BootstrapResult {
 
     fn compatibility_failure(note: String) -> Self {
         let mut controller = AppController::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_audit_timeline_path() {
+            controller = controller.with_audit_timeline(load_or_default(&path));
+        }
         controller.set_scenario(crate::fixtures::DevScenario::CompatibilityFailure);
         controller.set_bootstrap_note(Some(note.clone()));
         Self {
@@ -112,6 +121,10 @@ impl BootstrapResult {
     pub fn spawning_omegon(binary: PathBuf) -> Self {
         let label = binary.display().to_string();
         let mut controller = AppController::default();
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_audit_timeline_path() {
+            controller = controller.with_audit_timeline(load_or_default(&path));
+        }
         controller.set_scenario(crate::fixtures::DevScenario::Booting);
         controller.set_bootstrap_note(Some(format!("Starting Omegon at {label}\u{2026}")));
         Self {
@@ -192,8 +205,12 @@ pub async fn bootstrap_from_http_state_async(
         .text()
         .await
         .map_err(|error| format!("could not read response body: {error}"))?;
-    let controller = AppController::from_remote_snapshot_json(&body)
+    let mut controller = AppController::from_remote_snapshot_json(&body)
         .map_err(|error| format!("invalid state payload: {error}"))?;
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(path) = default_audit_timeline_path() {
+        controller = controller.with_audit_timeline(load_or_default(&path));
+    }
     let ws_url = startup
         .as_ref()
         .map(|startup| startup.ws_url.clone())
@@ -328,8 +345,12 @@ pub fn websocket_token_from_env() -> Option<String> {
 pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read snapshot file: {error}"))?;
-    let controller = AppController::from_remote_snapshot_json(&contents)
+    let mut controller = AppController::from_remote_snapshot_json(&contents)
         .map_err(|error| format!("invalid snapshot JSON: {error}"))?;
+    #[cfg(not(target_arch = "wasm32"))]
+    if let Some(audit_path) = default_audit_timeline_path() {
+        controller = controller.with_audit_timeline(load_or_default(&audit_path));
+    }
 
     Ok(BootstrapResult {
         controller,

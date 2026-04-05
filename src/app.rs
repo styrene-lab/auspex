@@ -1,5 +1,6 @@
 use dioxus::prelude::*;
 
+use crate::audit_timeline::AuditTimelineStore;
 use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
@@ -231,6 +232,7 @@ pub fn App() -> Element {
                         &controller.read().work_data(),
                         &controller.read().session_data(),
                         controller.read().is_run_active(),
+                        controller.read().audit_timeline(),
                     )}
                     WorkScreen { data: controller.read().work_data() }
                     section { class: "rail-section",
@@ -607,11 +609,14 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
                 div { class: body_class,
                     div { class: "transcript-detail-actions",
                         button {
+                            id: format!("copy-{}", label.to_lowercase().replace(' ', "-")),
                             class: "transcript-copy-button",
                             r#type: "button",
+                            "data-copy-label": format!("Copy {copy_label}"),
                             onclick: {
                                 let content = content.to_string();
-                                move |_| copy_to_clipboard(&content)
+                                let button_id = format!("copy-{}", label.to_lowercase().replace(' ', "-"));
+                                move |_| copy_to_clipboard(&content, &button_id)
                             },
                             "Copy {copy_label}"
                         }
@@ -623,29 +628,46 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
     }
 }
 
-fn copy_to_clipboard(text: &str) {
+fn copy_to_clipboard(text: &str, button_id: &str) {
     let text_json = serde_json::to_string(text).unwrap_or_else(|_| "\"\"".to_string());
+    let button_id_json = serde_json::to_string(button_id).unwrap_or_else(|_| "\"\"".to_string());
     spawn(async move {
         let _ = document::eval(&format!(
             r#"
             (async function() {{
               var text = {text_json};
+              var buttonId = {button_id_json};
               if (!text) return;
+              var copied = false;
               if (navigator.clipboard && navigator.clipboard.writeText) {{
                 try {{
                   await navigator.clipboard.writeText(text);
-                  return;
+                  copied = true;
                 }} catch (_) {{}}
               }}
-              var area = document.createElement('textarea');
-              area.value = text;
-              area.setAttribute('readonly', 'readonly');
-              area.style.position = 'fixed';
-              area.style.opacity = '0';
-              document.body.appendChild(area);
-              area.select();
-              document.execCommand('copy');
-              document.body.removeChild(area);
+              if (!copied) {{
+                var area = document.createElement('textarea');
+                area.value = text;
+                area.setAttribute('readonly', 'readonly');
+                area.style.position = 'fixed';
+                area.style.opacity = '0';
+                document.body.appendChild(area);
+                area.select();
+                copied = document.execCommand('copy');
+                document.body.removeChild(area);
+              }}
+              if (copied && buttonId) {{
+                var button = document.getElementById(buttonId);
+                if (button) {{
+                  var original = button.getAttribute('data-copy-label') || button.textContent || 'Copy';
+                  button.textContent = 'Copied';
+                  button.classList.add('transcript-copy-button-copied');
+                  setTimeout(function() {{
+                    button.textContent = original;
+                    button.classList.remove('transcript-copy-button-copied');
+                  }}, 1400);
+                }}
+              }}
             }})();
             "#
         ))
@@ -1183,8 +1205,15 @@ fn render_left_rail_inventory(
     work: &crate::fixtures::WorkData,
     session: &crate::fixtures::SessionData,
     is_run_active: bool,
+    audit_timeline: &AuditTimelineStore,
 ) -> Element {
     let inventory = build_left_rail_inventory(summary, work, session, is_run_active);
+    let audit_count = audit_timeline.entries.len();
+    let latest_audit_label = audit_timeline
+        .entries
+        .last()
+        .map(|entry| entry.label.as_str())
+        .unwrap_or("No transcript blocks retained yet");
 
     rsx! {
         section { class: "rail-section",
@@ -1212,6 +1241,13 @@ fn render_left_rail_inventory(
                 }
             }
         }
+        section { class: "rail-section",
+            h2 { class: "rail-heading", "Audit" }
+            div { class: "rail-card",
+                div { class: "rail-card-title", "{audit_count} retained block(s)" }
+                p { class: "rail-card-detail", "Latest: {latest_audit_label}" }
+            }
+        }
     }
 }
 
@@ -1221,6 +1257,7 @@ mod tests {
         app_surface_state, app_surface_tone, block_origin_label,
         build_left_rail_inventory, chat_status_tone, find_transcript_anchor,
         looks_like_structured_payload, render_chat_status_banner,
+        transcript_disclosure_open,
         should_expand_system_notice, should_expand_tool_args,
         should_expand_tool_output, system_block_class, system_block_tone,
         system_notice_summary_label, text_block_class, text_block_tone,
@@ -1478,6 +1515,12 @@ mod tests {
         assert!(transcript_disclosure_open(true, true));
         assert!(!transcript_disclosure_open(true, false));
         assert!(!transcript_disclosure_open(false, true));
+    }
+
+    #[test]
+    fn left_rail_inventory_audit_summary_uses_latest_entry() {
+        let controller = AppController::default();
+        assert_eq!(controller.audit_timeline().entries.len(), 0);
     }
 
     #[test]

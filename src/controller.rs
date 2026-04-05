@@ -1,3 +1,4 @@
+use crate::audit_timeline::AuditTimelineStore;
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
     HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
@@ -119,6 +120,7 @@ pub struct AppController {
     session: SessionSource,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
+    audit_timeline: AuditTimelineStore,
 }
 
 impl Default for AppController {
@@ -127,6 +129,7 @@ impl Default for AppController {
             session: SessionSource::default(),
             bootstrap_note: None,
             transcript_auto_expand: true,
+            audit_timeline: AuditTimelineStore::default(),
         }
     }
 }
@@ -134,17 +137,26 @@ impl Default for AppController {
 impl AppController {
     pub fn from_remote_snapshot_json(json: &str) -> Result<Self, serde_json::Error> {
         let session = RemoteHostSession::from_snapshot_json(json)?;
-        Ok(Self {
+        let mut controller = Self {
             session: SessionSource::Remote(Box::new(session)),
             bootstrap_note: None,
             transcript_auto_expand: true,
-        })
+            audit_timeline: AuditTimelineStore::default(),
+        };
+        controller.refresh_audit_timeline();
+        Ok(controller)
     }
 
     #[allow(dead_code)]
     pub fn remote_demo() -> Self {
         Self::from_remote_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
             .expect("embedded remote demo snapshot must stay valid")
+    }
+
+    pub fn with_audit_timeline(mut self, audit_timeline: AuditTimelineStore) -> Self {
+        self.audit_timeline = audit_timeline;
+        self.refresh_audit_timeline();
+        self
     }
 
     pub fn session_mode(&self) -> SessionMode {
@@ -256,6 +268,10 @@ impl AppController {
         self.transcript_auto_expand
     }
 
+    pub fn audit_timeline(&self) -> &AuditTimelineStore {
+        &self.audit_timeline
+    }
+
     pub fn set_transcript_auto_expand(&mut self, enabled: bool) {
         self.transcript_auto_expand = enabled;
     }
@@ -267,6 +283,7 @@ impl AppController {
 
     pub fn set_scenario(&mut self, scenario: DevScenario) {
         self.session.model_mut().set_scenario(scenario);
+        self.refresh_audit_timeline();
     }
 
     pub fn select_scenario(&mut self, raw: &str) {
@@ -285,9 +302,36 @@ impl AppController {
         self.session.model_mut().composer_mut().set_draft(value);
     }
 
+    fn session_audit_key(&self) -> String {
+        match &self.session {
+            SessionSource::Remote(session) => session
+                .session_data()
+                .dispatcher_binding
+                .as_ref()
+                .map(|binding| format!("remote:{}", binding.session_id))
+                .unwrap_or_else(|| "remote:detached".into()),
+            SessionSource::Mock(_) => format!("mock:{}", self.scenario().key()),
+        }
+    }
+
+    fn refresh_audit_timeline(&mut self) {
+        let session_key = self.session_audit_key();
+        let transcript = self.transcript().clone();
+        self.audit_timeline
+            .append_transcript_snapshot(&session_key, &transcript);
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = crate::audit_timeline::default_audit_timeline_path() {
+            let _ = crate::audit_timeline::persist(&path, &self.audit_timeline);
+        }
+    }
+
     #[allow(dead_code)]
     pub fn submit_prompt(&mut self) -> bool {
-        self.session.model_mut().submit()
+        let submitted = self.session.model_mut().submit();
+        if submitted {
+            self.refresh_audit_timeline();
+        }
+        submitted
     }
 
     pub fn submit_prompt_command_json(&mut self) -> Option<String> {
@@ -300,6 +344,7 @@ impl AppController {
                 if !session.submit() {
                     return None;
                 }
+                self.refresh_audit_timeline();
                 Some(
                     serde_json::json!({
                         "type": "user_prompt",
@@ -308,7 +353,13 @@ impl AppController {
                     .to_string(),
                 )
             }
-            SessionSource::Mock(session) => session.submit().then(String::new),
+            SessionSource::Mock(session) => {
+                let submitted = session.submit();
+                if submitted {
+                    self.refresh_audit_timeline();
+                }
+                submitted.then(String::new)
+            }
         }
         .filter(|command| !command.is_empty())
     }
@@ -347,7 +398,13 @@ impl AppController {
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
         match &mut self.session {
-            SessionSource::Remote(session) => session.apply_event_json(json),
+            SessionSource::Remote(session) => {
+                let applied = session.apply_event_json(json)?;
+                if applied {
+                    self.refresh_audit_timeline();
+                }
+                Ok(applied)
+            }
             SessionSource::Mock(_) => Ok(false),
         }
     }
@@ -496,6 +553,17 @@ mod tests {
 
         controller.set_transcript_auto_expand(true);
         assert!(controller.transcript_auto_expand());
+    }
+
+    #[test]
+    fn controller_retains_transcript_blocks_in_audit_timeline() {
+        let mut controller = AppController::default();
+        controller.update_draft("hello audit");
+        assert!(controller.submit_prompt());
+
+        assert_eq!(controller.audit_timeline().entries.len(), 2);
+        assert_eq!(controller.audit_timeline().entries[0].block_id, "mock:ready:turn-1-block-0");
+        assert!(controller.audit_timeline().entries[1].content.contains("scaffold only proves"));
     }
 
     #[test]

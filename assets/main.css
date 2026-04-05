@@ -937,11 +937,18 @@ body > * {
   font: inherit;
   font-size: 0.76rem;
   cursor: pointer;
+  transition: background 0.15s, border-color 0.15s, color 0.15s;
 }
 
 .transcript-copy-button:hover {
   border-color: var(--border-info);
   background: var(--surface-control-hover);
+}
+
+.transcript-copy-button-copied {
+  border-color: var(--border-success);
+  background: #17311f;
+  color: var(--accent-success);
 }
 
 .tool-args,

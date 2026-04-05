@@ -368,6 +368,7 @@ pub struct MockHostSession {
     summary: HostSessionSummary,
     messages: Vec<ChatMessage>,
     composer: ComposerState,
+    transcript: TranscriptData,
 }
 
 impl Default for MockHostSession {
@@ -392,6 +393,7 @@ impl MockHostSession {
                 text: "Auspex scaffold ready. Type a prompt to grow the shell from here.".into(),
             }],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -410,6 +412,7 @@ impl MockHostSession {
                 text: "Auspex is starting Styrene and Omegon. The conversation shell will become interactive when the host session is ready.".into(),
             }],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -434,6 +437,7 @@ impl MockHostSession {
                 },
             ],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -452,6 +456,7 @@ impl MockHostSession {
                 text: "Auspex could not start its embedded Omegon backend. Local operation is blocked until the backend startup contract succeeds.".into(),
             }],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -470,6 +475,7 @@ impl MockHostSession {
                 text: "Compatibility failure: Auspex expects Omegon control-plane schema 2, but the detected host did not satisfy the declared contract.".into(),
             }],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -494,6 +500,7 @@ impl MockHostSession {
                 },
             ],
             composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
         }
     }
 
@@ -527,12 +534,7 @@ impl HostSessionModel for MockHostSession {
     }
 
     fn transcript(&self) -> &TranscriptData {
-        static EMPTY: TranscriptData = TranscriptData {
-            turns: Vec::new(),
-            active_turn: None,
-            context_tokens: None,
-        };
-        &EMPTY
+        &self.transcript
     }
 
     fn composer(&self) -> &ComposerState {
@@ -628,11 +630,31 @@ impl HostSessionModel for MockHostSession {
             role: MessageRole::User,
             text: trimmed.to_string(),
         });
+        let assistant =
+            "No engine is attached yet. This scaffold only proves the basic conversation shell."
+                .to_string();
         self.messages.push(ChatMessage {
             role: MessageRole::Assistant,
-            text:
-                "No engine is attached yet. This scaffold only proves the basic conversation shell."
-                    .into(),
+            text: assistant.clone(),
+        });
+        let turn_number = self.transcript.turns.len() as u32 + 1;
+        self.transcript.turns.push(Turn {
+            number: turn_number,
+            blocks: vec![
+                TurnBlock::Text(AttributedText {
+                    text: trimmed.to_string(),
+                    origin: None,
+                    notice_kind: None,
+                }),
+                TurnBlock::Text(AttributedText {
+                    text: assistant,
+                    origin: Some(BlockOrigin {
+                        kind: OriginKind::System,
+                        label: "Auspex".into(),
+                    }),
+                    notice_kind: None,
+                }),
+            ],
         });
         self.summary.activity = "Waiting for attached engine integration".into();
         self.composer.clear();
