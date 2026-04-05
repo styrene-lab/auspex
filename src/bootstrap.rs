@@ -736,7 +736,7 @@ mod tests {
 
     fn remote_startup_info_fixture() -> OmegonStartupInfo {
         OmegonStartupInfo {
-            schema_version: EXPECTED_CONTROL_PLANE_SCHEMA,
+            schema_version: 2,
             state_url: "http://127.0.0.1:7842/api/state".into(),
             ws_url: "ws://127.0.0.1:7842/ws".into(),
             auth_mode: "none".into(),
@@ -744,7 +744,7 @@ mod tests {
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
                     omegon_version: Some("0.15.10-rc.17".into()),
-                    schema_version: EXPECTED_CONTROL_PLANE_SCHEMA,
+                    schema_version: 2,
                     ..Default::default()
                 }),
                 ..Default::default()
