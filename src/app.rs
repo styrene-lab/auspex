@@ -268,6 +268,9 @@ pub fn App() -> Element {
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
                                     stream.send_command(command);
                                 }
+                            })),
+                            on_transcript_focus: Some(EventHandler::new(move |query: String| {
+                                focus_transcript_query(&query);
                             }))
                         }
                     } else {
@@ -353,6 +356,9 @@ pub fn App() -> Element {
                             if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
                                 stream.send_command(command);
                             }
+                        })),
+                        on_transcript_focus: Some(EventHandler::new(move |query: String| {
+                            focus_transcript_query(&query);
                         }))
                     }
                 }
@@ -376,6 +382,30 @@ pub fn App() -> Element {
             }
         }
     }
+}
+
+fn focus_transcript_query(query: &str) {
+    let query_json = serde_json::to_string(query).unwrap_or_else(|_| "\"\"".to_string());
+    spawn(async move {
+        let _ = document::eval(&format!(
+            r#"
+            (function() {{
+              var query = {query_json}.toLowerCase();
+              if (!query) return;
+              var nodes = Array.from(document.querySelectorAll('.transcript .block, .transcript .turn-card, .transcript .bubble'));
+              var match = nodes.find(function(node) {{
+                return (node.innerText || '').toLowerCase().includes(query);
+              }});
+              if (match) {{
+                match.scrollIntoView({{ behavior: 'instant', block: 'center' }});
+                match.classList.add('transcript-focus-hit');
+                setTimeout(function() {{ match.classList.remove('transcript-focus-hit'); }}, 1400);
+              }}
+            }})();
+            "#
+        ))
+        .await;
+    });
 }
 
 fn render_transcript(transcript: &TranscriptData, messages: &[crate::fixtures::ChatMessage]) -> Element {

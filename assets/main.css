@@ -1267,6 +1267,47 @@ body > * {
   overflow: hidden;
 }
 
+.kv-row-button,
+.delegate-row-button,
+.transcript-focus-link {
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.kv-row-button {
+  border: 0;
+  width: 100%;
+  background: transparent;
+}
+
+.delegate-row-button {
+  border: 0;
+  width: 100%;
+}
+
+.transcript-focus-link {
+  align-self: flex-start;
+  border: 1px solid var(--border-default);
+  border-radius: var(--radius-sm);
+  background: var(--surface-1);
+  color: var(--text-secondary);
+  padding: 0.35rem 0.6rem;
+  margin-bottom: 0.55rem;
+}
+
+.transcript-focus-link:hover,
+.kv-row-button:hover,
+.delegate-row-button:hover {
+  border-color: var(--border-info);
+  background: var(--surface-control-hover);
+}
+
+.transcript-focus-hit {
+  outline: 2px solid var(--accent-info);
+  outline-offset: 2px;
+}
+
 .delegate-row {
   display: flex;
   align-items: center;

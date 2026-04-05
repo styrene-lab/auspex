@@ -195,6 +195,7 @@ pub fn ScribeScreen(
     summary: HostSessionSummary,
     data: SessionData,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+    on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
     let control_summary = session_control_summary(&data);
     let session_alerts = session_alerts(&data);
@@ -274,7 +275,7 @@ pub fn ScribeScreen(
                 }
 
                 if let Some(state) = &dispatcher.switch_state {
-                    {render_dispatcher_switch_state(dispatcher, state)}
+                    {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus.clone())}
                 }
 
                 if !dispatcher.available_options.is_empty() {
@@ -342,7 +343,18 @@ pub fn ScribeScreen(
                     h2 { class: "screen-section-title", "Active delegates" }
                     div { class: "delegate-list",
                         for delegate in &data.active_delegates {
-                            div { class: "delegate-row",
+                            button {
+                                class: "delegate-row delegate-row-button",
+                                r#type: "button",
+                                onclick: {
+                                    let task_id = delegate.task_id.clone();
+                                    let handler = on_transcript_focus.clone();
+                                    move |_| {
+                                        if let Some(handler) = &handler {
+                                            handler.call(task_id.clone());
+                                        }
+                                    }
+                                },
                                 div { class: "delegate-main",
                                     strong { class: "delegate-title", "{delegate.task_id}" }
                                     span { class: "delegate-agent", "{delegate.agent_name}" }
@@ -390,6 +402,7 @@ pub fn ScribeScreen(
 pub fn SessionScreen(
     data: SessionData,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+    on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
     rsx! {
         div { class: "screen screen-session",
@@ -508,7 +521,7 @@ pub fn SessionScreen(
                     }
 
                     if let Some(state) = &dispatcher.switch_state {
-                        {render_dispatcher_switch_state(dispatcher, state)}
+                        {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus.clone())}
                     }
                 }
             }
@@ -519,7 +532,18 @@ pub fn SessionScreen(
                     h2 { class: "screen-section-title", "Active delegates" }
                     div { class: "kv-grid",
                         for delegate in &data.active_delegates {
-                            div { class: "kv-row",
+                            button {
+                                class: "kv-row kv-row-button",
+                                r#type: "button",
+                                onclick: {
+                                    let task_id = delegate.task_id.clone();
+                                    let handler = on_transcript_focus.clone();
+                                    move |_| {
+                                        if let Some(handler) = &handler {
+                                            handler.call(task_id.clone());
+                                        }
+                                    }
+                                },
                                 span { class: "kv-key", "{delegate.agent_name}" }
                                 span { class: "kv-value",
                                     "{delegate.status} · {delegate.task_id} · {delegate.elapsed_ms} ms"
@@ -674,6 +698,7 @@ fn format_elapsed_ms(elapsed_ms: u64) -> String {
 fn render_dispatcher_switch_state(
     dispatcher: &DispatcherBindingData,
     state: &DispatcherSwitchStateData,
+    on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
     let view = dispatcher_switch_view(dispatcher, state);
     let detail = view.detail.clone();
@@ -681,6 +706,17 @@ fn render_dispatcher_switch_state(
     rsx! {
         section { class: "screen-subsection",
             h3 { class: "screen-section-title", "Switch state" }
+            if let Some(handler) = on_transcript_focus.clone() {
+                button {
+                    class: "transcript-focus-link",
+                    r#type: "button",
+                    onclick: {
+                        let target = view.headline.clone();
+                        move |_| handler.call(target.clone())
+                    },
+                    "Focus related transcript events"
+                }
+            }
             div { class: "dispatcher-switch-card",
                 "data-surface": "panel",
                 "data-state": dispatcher_switch_badge_state(view.badge_status),
