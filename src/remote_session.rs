@@ -1,10 +1,14 @@
 use crate::fixtures::{
     ActivityKind, BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
-    HostSessionSummary, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
+    HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
+    InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData,
+    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
     SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
-use crate::omegon_control::{HarnessStatusSnapshot, OmegonEvent, OmegonStateSnapshot};
+use crate::omegon_control::{
+    HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
+};
 use crate::session_model::HostSessionModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -31,6 +35,7 @@ pub struct RemoteHostSession {
     cleave: crate::omegon_control::CleaveSnapshot,
     session_stats: crate::omegon_control::SessionSnapshot,
     harness_snapshot: Option<HarnessStatusSnapshot>,
+    instance_descriptor: Option<OmegonInstanceDescriptor>,
     context_tokens: Option<u64>,
     context_window: Option<u64>,
     dispatcher_binding: Option<crate::omegon_control::DispatcherBindingSnapshot>,
@@ -103,6 +108,7 @@ impl RemoteHostSession {
             cleave: snapshot.cleave,
             session_stats: snapshot.session,
             harness_snapshot: snapshot.harness.clone(),
+            instance_descriptor: snapshot.instance_descriptor,
             context_tokens: None,
             context_window: None,
             dispatcher_binding: snapshot.dispatcher,
@@ -600,17 +606,65 @@ impl HostSessionModel for RemoteHostSession {
             session_compactions: self.session_stats.compactions,
             context_tokens: self.context_tokens,
             context_window: self.context_window,
+            instance_descriptor: self.instance_descriptor.as_ref().map(project_instance_descriptor),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
                 DispatcherBindingData {
-                    session_id: binding.session_id.clone(),
-                    dispatcher_instance_id: binding.dispatcher_instance_id.clone(),
-                    expected_role: binding.expected_role.clone(),
-                    expected_profile: binding.expected_profile.clone(),
-                    expected_model: binding.expected_model.clone(),
-                    control_plane_schema: binding.control_plane_schema,
-                    token_ref: binding.token_ref.clone(),
-                    observed_base_url: binding.observed_base_url.clone(),
-                    last_verified_at: binding.last_verified_at.clone(),
+                    session_id: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.session.as_ref())
+                        .and_then(|session| session.session_id.clone())
+                        .unwrap_or_else(|| binding.session_id.clone()),
+                    dispatcher_instance_id: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .map(|descriptor| descriptor.identity.instance_id.clone())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| binding.dispatcher_instance_id.clone()),
+                    expected_role: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .map(|descriptor| descriptor.identity.role.clone())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| binding.expected_role.clone()),
+                    expected_profile: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .map(|descriptor| descriptor.identity.profile.clone())
+                        .filter(|value| !value.is_empty())
+                        .unwrap_or_else(|| binding.expected_profile.clone()),
+                    expected_model: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.policy.as_ref())
+                        .and_then(|policy| policy.model.clone())
+                        .or_else(|| binding.expected_model.clone()),
+                    control_plane_schema: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.control_plane.as_ref())
+                        .map(|control_plane| control_plane.schema_version)
+                        .filter(|value| *value > 0)
+                        .unwrap_or(binding.control_plane_schema),
+                    token_ref: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.control_plane.as_ref())
+                        .and_then(|control_plane| control_plane.token_ref.clone())
+                        .or_else(|| binding.token_ref.clone()),
+                    observed_base_url: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.control_plane.as_ref())
+                        .and_then(|control_plane| control_plane.base_url.clone())
+                        .or_else(|| binding.observed_base_url.clone()),
+                    last_verified_at: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .and_then(|descriptor| descriptor.control_plane.as_ref())
+                        .and_then(|control_plane| control_plane.last_verified_at.clone())
+                        .or_else(|| binding.last_verified_at.clone()),
+                    instance_descriptor: binding.instance_descriptor.as_ref().map(project_instance_descriptor),
                     available_options: binding
                         .available_options
                         .iter()
@@ -698,6 +752,58 @@ impl HostSessionModel for RemoteHostSession {
     }
 }
 
+fn project_instance_descriptor(
+    descriptor: &OmegonInstanceDescriptor,
+) -> InstanceDescriptorData {
+    InstanceDescriptorData {
+        identity: InstanceIdentityData {
+            instance_id: descriptor.identity.instance_id.clone(),
+            role: descriptor.identity.role.clone(),
+            profile: descriptor.identity.profile.clone(),
+            status: descriptor.identity.status.clone(),
+        },
+        workspace: descriptor.workspace.as_ref().map(|workspace| InstanceWorkspaceData {
+            cwd: workspace.cwd.clone(),
+            workspace_id: workspace.workspace_id.clone(),
+            branch: workspace.branch.clone(),
+        }),
+        control_plane: descriptor
+            .control_plane
+            .as_ref()
+            .map(|control_plane| InstanceControlPlaneData {
+                schema_version: control_plane.schema_version,
+                omegon_version: control_plane.omegon_version.clone(),
+                base_url: control_plane.base_url.clone(),
+                startup_url: control_plane.startup_url.clone(),
+                state_url: control_plane.state_url.clone(),
+                health_url: control_plane.health_url.clone(),
+                ready_url: control_plane.ready_url.clone(),
+                ws_url: control_plane.ws_url.clone(),
+                auth_mode: control_plane.auth_mode.clone(),
+                token_ref: control_plane.token_ref.clone(),
+                last_ready_at: control_plane.last_ready_at.clone(),
+                last_verified_at: control_plane.last_verified_at.clone(),
+            }),
+        runtime: descriptor.runtime.as_ref().map(|runtime| InstanceRuntimeData {
+            backend: runtime.backend.clone(),
+            host: runtime.host.clone(),
+            pid: runtime.pid,
+            placement_id: runtime.placement_id.clone(),
+            namespace: runtime.namespace.clone(),
+            pod_name: runtime.pod_name.clone(),
+            container_name: runtime.container_name.clone(),
+        }),
+        session: descriptor.session.as_ref().map(|session| InstanceSessionDescriptorData {
+            session_id: session.session_id.clone(),
+        }),
+        policy: descriptor.policy.as_ref().map(|policy| InstancePolicyData {
+            model: policy.model.clone(),
+            thinking_level: policy.thinking_level.clone(),
+            capability_tier: policy.capability_tier.clone(),
+        }),
+    }
+}
+
 fn dispatcher_origin(
     dispatcher: &Option<crate::omegon_control::DispatcherBindingSnapshot>,
 ) -> BlockOrigin {
@@ -705,7 +811,17 @@ fn dispatcher_origin(
         kind: OriginKind::Dispatcher,
         label: dispatcher
             .as_ref()
-            .and_then(|binding| binding.expected_model.clone())
+            .and_then(|binding| binding.instance_descriptor.as_ref())
+            .and_then(|descriptor| descriptor.policy.as_ref())
+            .and_then(|policy| policy.model.clone())
+            .or_else(|| {
+                dispatcher
+                    .as_ref()
+                    .and_then(|binding| binding.instance_descriptor.as_ref())
+                    .map(|descriptor| descriptor.identity.instance_id.clone())
+                    .filter(|value| !value.is_empty())
+            })
+            .or_else(|| dispatcher.as_ref().and_then(|binding| binding.expected_model.clone()))
             .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
             .unwrap_or_else(|| "Dispatcher".into()),
     }
@@ -868,22 +984,47 @@ fn push_system_notice_to_buffers(
 }
 
 fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
-    let connection = match snapshot.harness.as_ref() {
-        Some(harness) => {
-            let branch = harness.git_branch.as_deref().unwrap_or("detached");
-            let provider = harness
-                .providers
-                .iter()
-                .find_map(|provider| {
-                    provider
-                        .model
-                        .as_ref()
-                        .map(|model| format!("{} {model}", provider.name))
+    let connection = if let Some(descriptor) = snapshot.instance_descriptor.as_ref() {
+        let branch = descriptor
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.branch.as_deref())
+            .or_else(|| snapshot.harness.as_ref().and_then(|harness| harness.git_branch.as_deref()))
+            .unwrap_or("detached");
+        let identity = if descriptor.identity.instance_id.is_empty() {
+            "instance unknown".to_string()
+        } else {
+            descriptor.identity.instance_id.clone()
+        };
+        let model = descriptor
+            .policy
+            .as_ref()
+            .and_then(|policy| policy.model.as_deref())
+            .or_else(|| {
+                snapshot.harness.as_ref().and_then(|harness| {
+                    harness.providers.iter().find_map(|provider| provider.model.as_deref())
                 })
-                .unwrap_or_else(|| "provider unknown".into());
-            format!("Attached to Omegon host on branch {branch} ({provider})")
+            })
+            .unwrap_or("provider unknown");
+        format!("Attached to Omegon instance {identity} on branch {branch} ({model})")
+    } else {
+        match snapshot.harness.as_ref() {
+            Some(harness) => {
+                let branch = harness.git_branch.as_deref().unwrap_or("detached");
+                let provider = harness
+                    .providers
+                    .iter()
+                    .find_map(|provider| {
+                        provider
+                            .model
+                            .as_ref()
+                            .map(|model| format!("{} {model}", provider.name))
+                    })
+                    .unwrap_or_else(|| "provider unknown".into());
+                format!("Attached to Omegon host on branch {branch} ({provider})")
+            }
+            None => "Attached to Omegon host session".into(),
         }
-        None => "Attached to Omegon host session".into(),
     };
 
     let activity = if snapshot.cleave.active {
@@ -902,6 +1043,18 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
 
     let work = if let Some(focused) = snapshot.design.focused.as_ref() {
         format!("Focused node: {}", focused.title)
+    } else if let Some(descriptor) = snapshot.instance_descriptor.as_ref() {
+        let workspace = descriptor
+            .workspace
+            .as_ref()
+            .and_then(|workspace| workspace.workspace_id.as_deref())
+            .unwrap_or("workspace unknown");
+        let role = if descriptor.identity.role.is_empty() {
+            "role unknown"
+        } else {
+            descriptor.identity.role.as_str()
+        };
+        format!("{role} attached to {workspace}")
     } else if !snapshot.design.implementing.is_empty() {
         format!(
             "{} implementation item(s) active",
@@ -990,19 +1143,74 @@ mod tests {
         "openspec": {"total_tasks": 5, "done_tasks": 2},
         "cleave": {"active": true, "total_children": 3, "completed": 1, "failed": 0},
         "session": {"turns": 12, "tool_calls": 34, "compactions": 1},
+        "instance_descriptor": {
+            "identity": {
+                "instance_id": "omg_primary_01HVTEST",
+                "role": "primary-driver",
+                "profile": "primary-interactive",
+                "status": "busy"
+            },
+            "workspace": {
+                "cwd": "/repo/main",
+                "workspace_id": "repo:main",
+                "branch": "main"
+            },
+            "control_plane": {
+                "schema_version": 2,
+                "base_url": "http://127.0.0.1:7842",
+                "state_url": "http://127.0.0.1:7842/api/state",
+                "ws_url": "ws://127.0.0.1:7842/ws?token=test",
+                "auth_mode": "ephemeral-bearer",
+                "token_ref": "secret://auspex/instances/omg_primary_01HVTEST/token",
+                "last_verified_at": "2026-04-04T12:00:00Z"
+            },
+            "runtime": {
+                "backend": "local-process",
+                "host": "desktop:local",
+                "pid": 8123
+            },
+            "session": {
+                "session_id": "session_01HVTEST"
+            },
+            "policy": {
+                "model": "anthropic:claude-sonnet-4-6",
+                "thinking_level": "medium",
+                "capability_tier": "victory"
+            }
+        },
         "dispatcher": {
             "session_id": "session_01HVTEST",
-            "dispatcher_instance_id": "omg_primary_01HVTEST",
-            "expected_role": "primary-driver",
-            "expected_profile": "primary-interactive",
-            "expected_model": "anthropic:claude-sonnet-4-6",
-            "control_plane_schema": 2,
-            "token_ref": "secret://auspex/instances/omg_primary_01HVTEST/token",
-            "observed_base_url": "http://127.0.0.1:7842",
-            "last_verified_at": "2026-04-04T12:00:00Z"
+            "dispatcher_instance_id": "legacy_dispatcher_id",
+            "expected_role": "legacy-role",
+            "expected_profile": "legacy-profile",
+            "expected_model": "legacy:model",
+            "control_plane_schema": 1,
+            "token_ref": "secret://auspex/instances/legacy_dispatcher_id/token",
+            "observed_base_url": "http://127.0.0.1:9999",
+            "last_verified_at": "2026-04-04T12:00:00Z",
+            "instance_descriptor": {
+                "identity": {
+                    "instance_id": "omg_dispatcher_01HVTEST",
+                    "role": "primary-driver",
+                    "profile": "primary-interactive",
+                    "status": "ready"
+                },
+                "control_plane": {
+                    "schema_version": 2,
+                    "base_url": "http://127.0.0.1:7842",
+                    "token_ref": "secret://auspex/instances/omg_dispatcher_01HVTEST/token",
+                    "last_verified_at": "2026-04-04T12:01:00Z"
+                },
+                "session": {
+                    "session_id": "session_01HVTEST"
+                },
+                "policy": {
+                    "model": "anthropic:claude-sonnet-4-6"
+                }
+            }
         },
         "harness": {
-            "git_branch": "main",
+            "git_branch": "wrong-legacy-branch",
             "git_detached": false,
             "thinking_level": "medium",
             "capability_tier": "victory",
@@ -1020,7 +1228,9 @@ mod tests {
 
         assert_eq!(session.shell_state(), ShellState::Ready);
         assert_eq!(session.scenario(), DevScenario::Ready);
-        assert!(session.summary().connection.contains("main"));
+        assert!(session.summary().connection.contains("omg_primary_01HVTEST"));
+        assert!(session.summary().connection.contains("branch main"));
+        assert!(!session.summary().connection.contains("wrong-legacy-branch"));
         assert!(session.summary().activity.contains("Parallel work running"));
         assert_eq!(session.summary().activity_kind, ActivityKind::Running);
         assert_eq!(
@@ -1030,15 +1240,39 @@ mod tests {
         assert_eq!(session.messages().len(), 1);
 
         let session_data = session.session_data();
+        let instance = session_data.instance_descriptor.as_ref().unwrap();
+        assert_eq!(instance.identity.instance_id, "omg_primary_01HVTEST");
+        assert_eq!(instance.workspace.as_ref().unwrap().workspace_id.as_deref(), Some("repo:main"));
+        assert_eq!(instance.control_plane.as_ref().unwrap().schema_version, 2);
+        assert_eq!(instance.runtime.as_ref().unwrap().pid, Some(8123));
+        assert_eq!(instance.policy.as_ref().unwrap().model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
+
         let dispatcher = session_data.dispatcher_binding.as_ref().unwrap();
         assert_eq!(dispatcher.session_id, "session_01HVTEST");
-        assert_eq!(dispatcher.dispatcher_instance_id, "omg_primary_01HVTEST");
+        assert_eq!(dispatcher.dispatcher_instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(dispatcher.expected_role, "primary-driver");
+        assert_eq!(dispatcher.expected_profile, "primary-interactive");
         assert_eq!(dispatcher.expected_model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
         assert_eq!(dispatcher.control_plane_schema, 2);
+        assert_eq!(dispatcher.observed_base_url.as_deref(), Some("http://127.0.0.1:7842"));
+        assert_eq!(dispatcher.last_verified_at.as_deref(), Some("2026-04-04T12:01:00Z"));
+        assert_eq!(dispatcher.token_ref.as_deref(), Some("secret://auspex/instances/omg_dispatcher_01HVTEST/token"));
+        assert_eq!(dispatcher.instance_descriptor.as_ref().unwrap().identity.instance_id, "omg_dispatcher_01HVTEST");
     }
 
     #[test]
-    fn websocket_message_events_append_transcript() {
+    fn dispatcher_origin_prefers_canonical_instance_descriptor_identity() {
+        let session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        assert_eq!(
+            dispatcher_origin(&session.dispatcher_binding),
+            BlockOrigin {
+                kind: OriginKind::Dispatcher,
+                label: "anthropic:claude-sonnet-4-6".into(),
+            }
+        );
+    }
+
         let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
 
         session

@@ -1,6 +1,81 @@
 use serde::Deserialize;
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonInstanceDescriptor {
+    #[serde(default)]
+    pub identity: OmegonInstanceIdentity,
+    #[serde(default)]
+    pub workspace: Option<OmegonWorkspaceDescriptor>,
+    #[serde(default)]
+    pub control_plane: Option<OmegonControlPlaneDescriptor>,
+    #[serde(default)]
+    pub runtime: Option<OmegonRuntimeDescriptor>,
+    #[serde(default)]
+    pub session: Option<OmegonSessionDescriptor>,
+    #[serde(default)]
+    pub policy: Option<OmegonPolicyDescriptor>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonInstanceIdentity {
+    #[serde(default)]
+    pub instance_id: String,
+    #[serde(default)]
+    pub role: String,
+    #[serde(default)]
+    pub profile: String,
+    #[serde(default)]
+    pub status: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonWorkspaceDescriptor {
+    pub cwd: Option<String>,
+    pub workspace_id: Option<String>,
+    pub branch: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonControlPlaneDescriptor {
+    #[serde(default)]
+    pub schema_version: u32,
+    pub omegon_version: Option<String>,
+    pub base_url: Option<String>,
+    pub startup_url: Option<String>,
+    pub state_url: Option<String>,
+    pub health_url: Option<String>,
+    pub ready_url: Option<String>,
+    pub ws_url: Option<String>,
+    pub auth_mode: Option<String>,
+    pub token_ref: Option<String>,
+    pub last_ready_at: Option<String>,
+    pub last_verified_at: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonRuntimeDescriptor {
+    pub backend: Option<String>,
+    pub host: Option<String>,
+    pub pid: Option<u32>,
+    pub placement_id: Option<String>,
+    pub namespace: Option<String>,
+    pub pod_name: Option<String>,
+    pub container_name: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonSessionDescriptor {
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonPolicyDescriptor {
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+    pub capability_tier: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct OmegonStartupInfo {
     #[serde(default)]
     pub schema_version: u32,
@@ -26,6 +101,8 @@ pub struct OmegonStartupInfo {
     pub auth_source: String,
     #[serde(default)]
     pub control_plane_state: String,
+    #[serde(default)]
+    pub instance_descriptor: Option<OmegonInstanceDescriptor>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -42,6 +119,8 @@ pub struct OmegonStateSnapshot {
     pub harness: Option<HarnessStatusSnapshot>,
     #[serde(default)]
     pub dispatcher: Option<DispatcherBindingSnapshot>,
+    #[serde(default)]
+    pub instance_descriptor: Option<OmegonInstanceDescriptor>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -144,6 +223,8 @@ pub struct DispatcherBindingSnapshot {
     pub token_ref: Option<String>,
     pub observed_base_url: Option<String>,
     pub last_verified_at: Option<String>,
+    #[serde(default)]
+    pub instance_descriptor: Option<OmegonInstanceDescriptor>,
     #[serde(default)]
     pub available_options: Vec<DispatcherOptionSnapshot>,
     #[serde(default)]
@@ -322,6 +403,62 @@ mod tests {
     }
 
     #[test]
+    fn deserialize_startup_payload_with_instance_descriptor() {
+        let json = r#"{
+            "schema_version": 2,
+            "http_base": "http://127.0.0.1:7842",
+            "state_url": "http://127.0.0.1:7842/api/state",
+            "ws_url": "ws://127.0.0.1:7842/ws?token=test",
+            "auth_mode": "ephemeral-bearer",
+            "auth_source": "generated",
+            "instance_descriptor": {
+                "identity": {
+                    "instance_id": "omg_primary_01HVK6",
+                    "role": "primary-driver",
+                    "profile": "supervisor-heavy",
+                    "status": "ready"
+                },
+                "workspace": {
+                    "cwd": "/repo",
+                    "workspace_id": "repo:8f2f4c1",
+                    "branch": "main"
+                },
+                "control_plane": {
+                    "schema_version": 2,
+                    "omegon_version": "0.16.0",
+                    "base_url": "http://127.0.0.1:7842",
+                    "state_url": "http://127.0.0.1:7842/api/state",
+                    "ws_url": "ws://127.0.0.1:7842/ws?token=test",
+                    "auth_mode": "ephemeral-bearer"
+                },
+                "runtime": {
+                    "backend": "local-process",
+                    "host": "desktop:local",
+                    "pid": 7842
+                },
+                "session": {
+                    "session_id": "session_01HVK6"
+                },
+                "policy": {
+                    "model": "openai:gpt-4.1",
+                    "thinking_level": "medium",
+                    "capability_tier": "victory"
+                }
+            }
+        }"#;
+
+        let info: OmegonStartupInfo = serde_json::from_str(json).unwrap();
+        let descriptor = info.instance_descriptor.as_ref().unwrap();
+        assert_eq!(descriptor.identity.instance_id, "omg_primary_01HVK6");
+        assert_eq!(descriptor.identity.role, "primary-driver");
+        assert_eq!(descriptor.workspace.as_ref().unwrap().workspace_id.as_deref(), Some("repo:8f2f4c1"));
+        assert_eq!(descriptor.control_plane.as_ref().unwrap().schema_version, 2);
+        assert_eq!(descriptor.runtime.as_ref().unwrap().pid, Some(7842));
+        assert_eq!(descriptor.session.as_ref().unwrap().session_id.as_deref(), Some("session_01HVK6"));
+        assert_eq!(descriptor.policy.as_ref().unwrap().model.as_deref(), Some("openai:gpt-4.1"));
+    }
+
+    #[test]
     fn deserialize_real_state_payload() {
         let snapshot: OmegonStateSnapshot = serde_json::from_str(REAL_STATE_JSON).unwrap();
 
@@ -332,6 +469,90 @@ mod tests {
         assert!(snapshot.design.focused.is_none());
         assert!(snapshot.design.all_nodes.is_empty());
         assert!(snapshot.harness.is_none());
+    }
+
+    #[test]
+    fn deserialize_state_payload_with_instance_descriptors() {
+        let json = r#"{
+            "design": {"focused": null, "implementing": [], "actionable": [], "all_nodes": [], "counts": {}},
+            "openspec": {"total_tasks": 0, "done_tasks": 0},
+            "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+            "session": {"turns": 3, "tool_calls": 9, "compactions": 1},
+            "instance_descriptor": {
+                "identity": {
+                    "instance_id": "omg_primary_01HVSTATE",
+                    "role": "primary-driver",
+                    "profile": "primary-interactive",
+                    "status": "busy"
+                },
+                "workspace": {
+                    "cwd": "/repo/state",
+                    "workspace_id": "repo:state",
+                    "branch": "feature/instance"
+                },
+                "control_plane": {
+                    "schema_version": 2,
+                    "omegon_version": "0.16.0",
+                    "base_url": "http://127.0.0.1:7843",
+                    "state_url": "http://127.0.0.1:7843/api/state",
+                    "ready_url": "http://127.0.0.1:7843/api/readyz",
+                    "ws_url": "ws://127.0.0.1:7843/ws?token=test",
+                    "auth_mode": "ephemeral-bearer",
+                    "token_ref": "secret://auspex/instances/omg_primary_01HVSTATE/token",
+                    "last_ready_at": "2026-04-05T10:00:00Z"
+                },
+                "runtime": {
+                    "backend": "local-process",
+                    "host": "desktop:local",
+                    "placement_id": "pid/8123",
+                    "pid": 8123
+                },
+                "session": {
+                    "session_id": "session_01HVSTATE"
+                },
+                "policy": {
+                    "model": "anthropic:claude-sonnet-4-6",
+                    "thinking_level": "high",
+                    "capability_tier": "gloriana"
+                }
+            },
+            "dispatcher": {
+                "session_id": "session_01HVSTATE",
+                "dispatcher_instance_id": "legacy-will-be-ignored",
+                "expected_role": "legacy-role",
+                "expected_profile": "legacy-profile",
+                "expected_model": "legacy-model",
+                "control_plane_schema": 1,
+                "instance_descriptor": {
+                    "identity": {
+                        "instance_id": "omg_dispatcher_01HVSTATE",
+                        "role": "primary-driver",
+                        "profile": "dispatcher-profile",
+                        "status": "ready"
+                    },
+                    "control_plane": {
+                        "schema_version": 2,
+                        "base_url": "http://127.0.0.1:7844",
+                        "token_ref": "secret://auspex/instances/omg_dispatcher_01HVSTATE/token",
+                        "last_verified_at": "2026-04-05T10:01:00Z"
+                    },
+                    "session": {
+                        "session_id": "session_01HVDISPATCH"
+                    },
+                    "policy": {
+                        "model": "openai:gpt-4.1"
+                    }
+                }
+            }
+        }"#;
+
+        let snapshot: OmegonStateSnapshot = serde_json::from_str(json).unwrap();
+        let descriptor = snapshot.instance_descriptor.as_ref().unwrap();
+        assert_eq!(descriptor.identity.instance_id, "omg_primary_01HVSTATE");
+        assert_eq!(descriptor.workspace.as_ref().unwrap().branch.as_deref(), Some("feature/instance"));
+        assert_eq!(descriptor.control_plane.as_ref().unwrap().token_ref.as_deref(), Some("secret://auspex/instances/omg_primary_01HVSTATE/token"));
+        assert_eq!(snapshot.dispatcher.as_ref().unwrap().instance_descriptor.as_ref().unwrap().identity.instance_id, "omg_dispatcher_01HVSTATE");
+        assert_eq!(snapshot.dispatcher.as_ref().unwrap().instance_descriptor.as_ref().unwrap().control_plane.as_ref().unwrap().schema_version, 2);
     }
 
     #[test]

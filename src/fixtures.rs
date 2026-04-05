@@ -149,6 +149,70 @@ pub struct DispatcherSwitchStateData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceIdentityData {
+    pub instance_id: String,
+    pub role: String,
+    pub profile: String,
+    pub status: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceWorkspaceData {
+    pub cwd: Option<String>,
+    pub workspace_id: Option<String>,
+    pub branch: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceControlPlaneData {
+    pub schema_version: u32,
+    pub omegon_version: Option<String>,
+    pub base_url: Option<String>,
+    pub startup_url: Option<String>,
+    pub state_url: Option<String>,
+    pub health_url: Option<String>,
+    pub ready_url: Option<String>,
+    pub ws_url: Option<String>,
+    pub auth_mode: Option<String>,
+    pub token_ref: Option<String>,
+    pub last_ready_at: Option<String>,
+    pub last_verified_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceRuntimeData {
+    pub backend: Option<String>,
+    pub host: Option<String>,
+    pub pid: Option<u32>,
+    pub placement_id: Option<String>,
+    pub namespace: Option<String>,
+    pub pod_name: Option<String>,
+    pub container_name: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceSessionDescriptorData {
+    pub session_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstancePolicyData {
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+    pub capability_tier: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct InstanceDescriptorData {
+    pub identity: InstanceIdentityData,
+    pub workspace: Option<InstanceWorkspaceData>,
+    pub control_plane: Option<InstanceControlPlaneData>,
+    pub runtime: Option<InstanceRuntimeData>,
+    pub session: Option<InstanceSessionDescriptorData>,
+    pub policy: Option<InstancePolicyData>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct DispatcherBindingData {
     pub session_id: String,
     pub dispatcher_instance_id: String,
@@ -159,6 +223,7 @@ pub struct DispatcherBindingData {
     pub token_ref: Option<String>,
     pub observed_base_url: Option<String>,
     pub last_verified_at: Option<String>,
+    pub instance_descriptor: Option<InstanceDescriptorData>,
     pub available_options: Vec<DispatcherOptionData>,
     pub switch_state: Option<DispatcherSwitchStateData>,
 }
@@ -181,6 +246,7 @@ pub struct SessionData {
     pub session_compactions: u32,
     pub context_tokens: Option<u64>,
     pub context_window: Option<u64>,
+    pub instance_descriptor: Option<InstanceDescriptorData>,
     pub dispatcher_binding: Option<DispatcherBindingData>,
 }
 
