@@ -8,21 +8,25 @@
 html, body {
   margin: 0;
   min-height: 100%;
+  height: 100%;
   background: #0b0f14;
 }
 
 body {
   display: flex;
+  min-width: 0;
 }
 
 .shell {
   display: grid;
-  grid-template-rows: auto 1fr auto;
-  grid-template-columns: 1fr;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  grid-template-columns: minmax(0, 1fr);
   width: 100%;
   height: 100vh;
+  height: 100dvh;
   box-sizing: border-box;
   overflow: hidden;
+  min-width: 0;
 }
 
 .top-chrome {
@@ -35,7 +39,7 @@ body {
 
 .topbar {
   display: grid;
-  grid-template-columns: 220px 1fr 220px;
+  grid-template-columns: minmax(0, 220px) minmax(0, 1fr) minmax(0, 320px);
   align-items: center;
   padding: 0.35rem 0.75rem;
   background: #0c1016;
@@ -66,6 +70,7 @@ body {
   display: flex;
   justify-content: center;
   gap: 0.25rem;
+  min-width: 0;
 }
 
 .topbar-status {
@@ -89,9 +94,10 @@ body {
 
 .main-area {
   display: grid;
-  grid-template-columns: 180px 1fr 190px;
+  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) minmax(160px, 190px);
   overflow: hidden;
   min-height: 0;
+  min-width: 0;
 }
 
 .left-rail {
@@ -186,19 +192,21 @@ body {
 
 .bottombar {
   display: grid;
-  grid-template-columns: 180px 1fr 190px;
+  grid-template-columns: minmax(150px, 180px) minmax(0, 1fr) minmax(160px, 190px);
   align-items: center;
   padding: 0.25rem 0.65rem;
   background: #0c1016;
   border-top: 1px solid #1b2129;
   font-size: 0.76rem;
   color: #7d8793;
+  gap: 0.75rem;
 }
 
 .bottombar-org {
   display: flex;
   align-items: center;
   gap: 0.4rem;
+  min-width: 0;
 }
 
 .bottombar-label {
@@ -212,6 +220,7 @@ body {
   display: flex;
   justify-content: center;
   gap: 1rem;
+  min-width: 0;
 }
 
 .instrument {
@@ -973,14 +982,65 @@ body {
   color: #8b949e;
 }
 
-@media (max-width: 720px) {
+@media (max-width: 1100px) {
   .topbar {
-    grid-template-columns: 1fr;
-    row-gap: 0.35rem;
+    grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
+    grid-template-areas:
+      "identity status"
+      "tabs tabs";
   }
 
+  .topbar-identity { grid-area: identity; }
   .topbar-tabs {
+    grid-area: tabs;
     justify-content: flex-start;
+  }
+  .topbar-status {
+    grid-area: status;
+    justify-content: flex-end;
+  }
+
+  .main-area {
+    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+    grid-template-rows: minmax(0, 1fr) auto;
+  }
+
+  .right-rail {
+    grid-column: 2;
+    grid-row: 2;
+    border-left: 0;
+    border-top: 1px solid #1b2129;
+    max-height: 12rem;
+  }
+
+  .bottombar {
+    grid-template-columns: minmax(140px, 180px) minmax(0, 1fr);
+    grid-template-areas:
+      "org reserved"
+      "instruments instruments";
+  }
+
+  .bottombar-org { grid-area: org; }
+  .bottombar-instruments {
+    grid-area: instruments;
+    justify-content: flex-start;
+    flex-wrap: wrap;
+  }
+  .bottombar-reserved { grid-area: reserved; }
+}
+
+@media (max-width: 800px) {
+  .shell {
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .topbar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "identity"
+      "tabs"
+      "status";
+    row-gap: 0.35rem;
   }
 
   .topbar-status {
@@ -991,6 +1051,42 @@ body {
     max-width: none;
   }
 
+  .main-area {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto minmax(0, 1fr) auto;
+  }
+
+  .left-rail {
+    border-right: 0;
+    border-bottom: 1px solid #1b2129;
+    max-height: 10rem;
+  }
+
+  .center-workspace {
+    padding-inline: 0.65rem;
+  }
+
+  .right-rail {
+    grid-column: auto;
+    grid-row: auto;
+    border-top: 1px solid #1b2129;
+    max-height: 10rem;
+  }
+
+  .bottombar {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-areas:
+      "org"
+      "instruments"
+      "reserved";
+  }
+
+  .bottombar-instruments {
+    gap: 0.4rem 0.75rem;
+  }
+}
+
+@media (max-width: 720px) {
   .header {
     align-items: flex-start;
     flex-direction: column;
