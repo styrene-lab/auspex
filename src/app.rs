@@ -214,18 +214,7 @@ pub fn App() -> Element {
 
                 // Left rail — project/session navigator
                 aside { class: "left-rail",
-                    if *workspace.read() == Workspace::Chat {
-                        WorkScreen { data: controller.read().work_data() }
-                    } else {
-                        section { class: "rail-section",
-                            h2 { class: "rail-heading", "Projects" }
-                            p { class: "rail-placeholder", "No projects loaded" }
-                        }
-                        section { class: "rail-section",
-                            h2 { class: "rail-heading", "Sessions" }
-                            p { class: "rail-placeholder", "No active sessions" }
-                        }
-                    }
+                    WorkScreen { data: controller.read().work_data() }
                     // Dev controls — temporary, will move to a proper settings surface
                     section { class: "rail-section rail-devbar",
                         h2 { class: "rail-heading", "Dev" }
@@ -253,9 +242,55 @@ pub fn App() -> Element {
                     if *workspace.read() == Workspace::Graph {
                         GraphScreen { data: controller.read().graph_data() }
                     } else if *workspace.read() == Workspace::Scribe {
-                        section { class: "workspace-placeholder",
-                            h2 { "Scribe" }
-                            p { "The Scribe extension workspace will appear here." }
+                        section { class: "screen screen-scribe",
+                            section { class: "screen-section",
+                                h2 { class: "screen-section-title", "Scribe" }
+                                p { class: "screen-empty",
+                                    "The first-party Rust-native extension surface is not implemented yet, but the host/session scaffold is live."
+                                }
+                            }
+
+                            section { class: "screen-section",
+                                h2 { class: "screen-section-title", "Current host" }
+                                div { class: "kv-grid",
+                                    div { class: "kv-row",
+                                        span { class: "kv-key", "Connection" }
+                                        span { class: "kv-value", "{controller.read().summary().connection}" }
+                                    }
+                                    div { class: "kv-row",
+                                        span { class: "kv-key", "Activity" }
+                                        span { class: "kv-value", "{controller.read().summary().activity}" }
+                                    }
+                                    div { class: "kv-row",
+                                        span { class: "kv-key", "Work" }
+                                        span { class: "kv-value", "{controller.read().summary().work}" }
+                                    }
+                                }
+                            }
+
+                            if let Some(dispatcher) = controller.read().session_data().dispatcher_binding.as_ref() {
+                                section { class: "screen-section",
+                                    h2 { class: "screen-section-title", "Dispatcher binding" }
+                                    div { class: "kv-grid",
+                                        div { class: "kv-row",
+                                            span { class: "kv-key", "Profile" }
+                                            span { class: "kv-value", "{dispatcher.expected_profile}" }
+                                        }
+                                        if let Some(model) = dispatcher.expected_model.as_deref() {
+                                            div { class: "kv-row",
+                                                span { class: "kv-key", "Model" }
+                                                span { class: "kv-value", "{model}" }
+                                            }
+                                        }
+                                        if let Some(base_url) = dispatcher.observed_base_url.as_deref() {
+                                            div { class: "kv-row",
+                                                span { class: "kv-key", "Endpoint" }
+                                                span { class: "kv-value", "{base_url}" }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
                         }
                     } else {
                         // Chat workspace — transcript + composer
@@ -326,43 +361,14 @@ pub fn App() -> Element {
 
                 // Right rail — contextual inspector
                 aside { class: "right-rail",
-                    if *workspace.read() == Workspace::Chat {
-                        SessionScreen {
-                            data: controller.read().session_data(),
-                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
-                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command);
-                                }
-                            }))
-                        }
-                    } else {
-                        section { class: "rail-section",
-                            h2 { class: "rail-heading", "Design" }
-                            if let Some(focused) = controller.read().work_data().focused_title.as_deref() {
-                                div { class: "work-focused-card",
-                                    span { class: "work-focused-title", "{focused}" }
-                                    if let Some(status) = controller.read().work_data().focused_status.as_deref() {
-                                        span { class: "badge", "{status}" }
-                                    }
-                                }
-                            } else {
-                                p { class: "rail-placeholder", "No focused work" }
+                    SessionScreen {
+                        data: controller.read().session_data(),
+                        on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                            let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
+                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                stream.send_command(command);
                             }
-                        }
-                        section { class: "rail-section",
-                            h2 { class: "rail-heading", "Activity" }
-                            section { class: controller.read().summary().activity_kind.strip_class(),
-                                div {
-                                    class: controller
-                                        .read()
-                                        .summary()
-                                        .activity_kind
-                                        .dot_class(controller.read().is_run_active())
-                                }
-                                span { class: "activity-label", "{controller.read().summary().activity}" }
-                            }
-                        }
+                        }))
                     }
                 }
             }
