@@ -177,6 +177,7 @@ pub struct InstanceControlPlaneData {
     pub token_ref: Option<String>,
     pub last_ready_at: Option<String>,
     pub last_verified_at: Option<String>,
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

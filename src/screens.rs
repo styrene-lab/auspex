@@ -254,6 +254,13 @@ pub fn ScribeScreen(
                 }
             }
 
+            if let Some(instance) = &data.instance_descriptor {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Instance" }
+                    {render_instance_descriptor(instance)}
+                }
+            }
+
             if let Some(dispatcher) = &data.dispatcher_binding {
                 section { class: "screen-section",
                     h2 { class: "screen-section-title", "Dispatcher binding" }
@@ -454,6 +461,13 @@ pub fn SessionScreen(
                             }
                         }
                     }
+                }
+            }
+
+            if let Some(instance) = &data.instance_descriptor {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Instance" }
+                    {render_instance_descriptor(instance)}
                 }
             }
 
@@ -765,6 +779,111 @@ fn render_dispatcher_switch_state(
     }
 }
 
+fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData) -> Element {
+    let capability_summary = instance
+        .control_plane
+        .as_ref()
+        .filter(|control_plane| !control_plane.capabilities.is_empty())
+        .map(|control_plane| control_plane.capabilities.join(", "));
+
+    rsx! {
+        div { class: "instance-panel-grid",
+            div { class: "kv-grid",
+                {kv_row("Instance id", &instance.identity.instance_id)}
+                {kv_row("Role", &instance.identity.role)}
+                {kv_row("Profile", &instance.identity.profile)}
+                if !instance.identity.status.is_empty() {
+                    {kv_row("Status", &instance.identity.status)}
+                }
+                if let Some(session) = &instance.session
+                    && let Some(session_id) = session.session_id.as_deref()
+                {
+                    {kv_row("Session id", session_id)}
+                }
+                if let Some(workspace) = &instance.workspace {
+                    if let Some(workspace_id) = workspace.workspace_id.as_deref() {
+                        {kv_row("Workspace id", workspace_id)}
+                    }
+                    if let Some(branch) = workspace.branch.as_deref() {
+                        {kv_row("Branch", branch)}
+                    }
+                    if let Some(cwd) = workspace.cwd.as_deref() {
+                        {kv_row("Cwd", cwd)}
+                    }
+                }
+            }
+            if let Some(control_plane) = &instance.control_plane {
+                div { class: "kv-grid",
+                    {kv_row("Schema", &control_plane.schema_version.to_string())}
+                    if let Some(version) = control_plane.omegon_version.as_deref() {
+                        {kv_row("Omegon", version)}
+                    }
+                    if let Some(base_url) = control_plane.base_url.as_deref() {
+                        {kv_row("Base URL", base_url)}
+                    }
+                    if let Some(startup_url) = control_plane.startup_url.as_deref() {
+                        {kv_row("Startup URL", startup_url)}
+                    }
+                    if let Some(state_url) = control_plane.state_url.as_deref() {
+                        {kv_row("State URL", state_url)}
+                    }
+                    if let Some(ws_url) = control_plane.ws_url.as_deref() {
+                        {kv_row("WS URL", ws_url)}
+                    }
+                    if let Some(auth_mode) = control_plane.auth_mode.as_deref() {
+                        {kv_row("Auth mode", auth_mode)}
+                    }
+                    if let Some(token_ref) = control_plane.token_ref.as_deref() {
+                        {kv_row("Token ref", token_ref)}
+                    }
+                    if let Some(last_verified_at) = control_plane.last_verified_at.as_deref() {
+                        {kv_row("Last verified", last_verified_at)}
+                    }
+                    if let Some(capability_summary) = capability_summary.as_deref() {
+                        {kv_row("Capabilities", capability_summary)}
+                    }
+                }
+            }
+            if let Some(runtime) = &instance.runtime {
+                div { class: "kv-grid",
+                    if let Some(backend) = runtime.backend.as_deref() {
+                        {kv_row("Backend", backend)}
+                    }
+                    if let Some(host) = runtime.host.as_deref() {
+                        {kv_row("Host", host)}
+                    }
+                    if let Some(pid) = runtime.pid {
+                        {kv_row("PID", &pid.to_string())}
+                    }
+                    if let Some(placement_id) = runtime.placement_id.as_deref() {
+                        {kv_row("Placement", placement_id)}
+                    }
+                    if let Some(namespace) = runtime.namespace.as_deref() {
+                        {kv_row("Namespace", namespace)}
+                    }
+                    if let Some(pod_name) = runtime.pod_name.as_deref() {
+                        {kv_row("Pod", pod_name)}
+                    }
+                    if let Some(container_name) = runtime.container_name.as_deref() {
+                        {kv_row("Container", container_name)}
+                    }
+                    if let Some(policy) = &instance.policy {
+                        if let Some(model) = policy.model.as_deref() {
+                            {kv_row("Policy model", model)}
+                        }
+                        if let Some(thinking_level) = policy.thinking_level.as_deref() {
+                            {kv_row("Thinking", thinking_level)}
+                        }
+                        if let Some(capability_tier) = policy.capability_tier.as_deref() {
+                            {kv_row("Tier", capability_tier)}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn session_control_item_tone(label: &str) -> &'static str {
     match label {
         "Thinking" | "Capability tier" => "info",
@@ -1028,6 +1147,7 @@ fn kv_row(key: &str, value: &str) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::InstanceControlPlaneData;
 
     fn binding() -> DispatcherBindingData {
         DispatcherBindingData {
@@ -1190,6 +1310,28 @@ mod tests {
         assert!(summary.iter().any(|item| {
             item.label == "Dispatcher" && item.value == "supervisor-heavy · openai:gpt-4.1"
         }));
+    }
+
+    #[test]
+    fn instance_descriptor_render_includes_capabilities() {
+        let element = render_instance_descriptor(&crate::fixtures::InstanceDescriptorData {
+            identity: crate::fixtures::InstanceIdentityData {
+                instance_id: "omg_primary_01HVDEMO".into(),
+                role: "primary-driver".into(),
+                profile: "primary-interactive".into(),
+                status: "ready".into(),
+            },
+            control_plane: Some(InstanceControlPlaneData {
+                schema_version: 2,
+                capabilities: vec!["state.snapshot".into(), "events.stream".into()],
+                ..InstanceControlPlaneData::default()
+            }),
+            ..crate::fixtures::InstanceDescriptorData::default()
+        });
+
+        let debug = format!("{element:?}");
+        assert!(debug.contains("Capabilities"));
+        assert!(debug.contains("state.snapshot, events.stream"));
     }
 
     #[test]

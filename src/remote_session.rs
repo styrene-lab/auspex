@@ -783,6 +783,7 @@ fn project_instance_descriptor(
                 token_ref: control_plane.token_ref.clone(),
                 last_ready_at: control_plane.last_ready_at.clone(),
                 last_verified_at: control_plane.last_verified_at.clone(),
+                capabilities: control_plane.capabilities.clone(),
             }),
         runtime: descriptor.runtime.as_ref().map(|runtime| InstanceRuntimeData {
             backend: runtime.backend.clone(),

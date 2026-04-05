@@ -50,6 +50,8 @@ pub struct OmegonControlPlaneDescriptor {
     pub token_ref: Option<String>,
     pub last_ready_at: Option<String>,
     pub last_verified_at: Option<String>,
+    #[serde(default)]
+    pub capabilities: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
