@@ -187,6 +187,9 @@ pub fn ScribeScreen(
     data: SessionData,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
 ) -> Element {
+    let control_summary = session_control_summary(&data);
+    let session_alerts = session_alerts(&data);
+
     rsx! {
         div { class: "screen screen-scribe",
             section { class: "screen-section",
@@ -205,6 +208,31 @@ pub fn ScribeScreen(
                 }
             }
 
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Session controls" }
+                div { class: "progress-grid progress-grid-tight",
+                    for item in &control_summary {
+                        div { class: "progress-card progress-card-emphasis",
+                            span { class: "progress-label", "{item.label}" }
+                            span {
+                                class: if item.compact { "progress-value progress-value-small" } else { "progress-value" },
+                                "{item.value}"
+                            }
+                        }
+                    }
+                }
+                if !session_alerts.is_empty() {
+                    div { class: "session-alert-list",
+                        for alert in &session_alerts {
+                            div { class: alert.class_name,
+                                strong { class: "session-alert-title", "{alert.title}" }
+                                p { class: "session-alert-body", "{alert.body}" }
+                            }
+                        }
+                    }
+                }
+            }
+
             if let Some(dispatcher) = &data.dispatcher_binding {
                 section { class: "screen-section",
                     h2 { class: "screen-section-title", "Dispatcher binding" }
@@ -217,6 +245,14 @@ pub fn ScribeScreen(
                         {kv_row("Role", &dispatcher.expected_role)}
                         if let Some(base_url) = dispatcher.observed_base_url.as_deref() {
                             {kv_row("Endpoint", base_url)}
+                        }
+                        {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
+                        {kv_row("Schema", &dispatcher.control_plane_schema.to_string())}
+                        if let Some(verified_at) = dispatcher.last_verified_at.as_deref() {
+                            {kv_row("Verified", verified_at)}
+                        }
+                        if let Some(token_ref) = dispatcher.token_ref.as_deref() {
+                            {kv_row("Token ref", token_ref)}
                         }
                     }
                 }
@@ -269,6 +305,31 @@ pub fn ScribeScreen(
                                             span { class: "dispatcher-option-status", "{status}" }
                                         }
                                     }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Dispatcher binding" }
+                    p { class: "screen-empty", "No dispatcher control-plane binding is present in the current snapshot." }
+                }
+            }
+
+            if !data.active_delegates.is_empty() {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Active delegates" }
+                    div { class: "delegate-list",
+                        for delegate in &data.active_delegates {
+                            div { class: "delegate-row",
+                                div { class: "delegate-main",
+                                    strong { class: "delegate-title", "{delegate.task_id}" }
+                                    span { class: "delegate-agent", "{delegate.agent_name}" }
+                                }
+                                div { class: "delegate-meta",
+                                    span { class: status_badge_class(&delegate.status), "{delegate.status}" }
+                                    span { class: "delegate-elapsed", "{format_elapsed_ms(delegate.elapsed_ms)}" }
                                 }
                             }
                         }
@@ -472,6 +533,117 @@ pub fn SessionScreen(
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SessionControlSummaryItem {
+    label: &'static str,
+    value: String,
+    compact: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SessionAlert {
+    class_name: &'static str,
+    title: &'static str,
+    body: String,
+}
+
+fn session_control_summary(data: &SessionData) -> Vec<SessionControlSummaryItem> {
+    let mut items = vec![
+        SessionControlSummaryItem {
+            label: "Thinking",
+            value: data.thinking_level.clone(),
+            compact: false,
+        },
+        SessionControlSummaryItem {
+            label: "Capability tier",
+            value: data.capability_tier.clone(),
+            compact: false,
+        },
+        SessionControlSummaryItem {
+            label: "Providers",
+            value: format_authenticated_provider_summary(&data.providers),
+            compact: true,
+        },
+        SessionControlSummaryItem {
+            label: "Delegates",
+            value: format!("{} active", data.active_delegate_count),
+            compact: false,
+        },
+    ];
+
+    if let Some(dispatcher) = &data.dispatcher_binding {
+        items.push(SessionControlSummaryItem {
+            label: "Dispatcher",
+            value: switch_target_label(
+                Some(dispatcher.expected_profile.as_str()),
+                dispatcher.expected_model.as_deref(),
+            ),
+            compact: true,
+        });
+    }
+
+    items
+}
+
+fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
+    let mut alerts = Vec::new();
+
+    if let Some(warning) = &data.memory_warning {
+        alerts.push(SessionAlert {
+            class_name: "session-alert session-alert-warn",
+            title: "Memory attention needed",
+            body: warning.clone(),
+        });
+    }
+
+    if !data.memory_available {
+        alerts.push(SessionAlert {
+            class_name: "session-alert session-alert-danger",
+            title: "Project memory offline",
+            body: "Long-lived memory tools are unavailable, so architectural context and prior decisions will not persist across sessions.".into(),
+        });
+    }
+
+    if !data.cleave_available {
+        alerts.push(SessionAlert {
+            class_name: "session-alert session-alert-danger",
+            title: "Cleave unavailable",
+            body: "Parallel task decomposition controls are offline; multi-step implementation work must stay on a single branch until the dispatcher recovers.".into(),
+        });
+    }
+
+    if data.dispatcher_binding.is_none() {
+        alerts.push(SessionAlert {
+            class_name: "session-alert session-alert-muted",
+            title: "Dispatcher binding missing",
+            body: "The snapshot does not include a dispatcher control-plane binding, so profile switches cannot be verified from this pane.".into(),
+        });
+    }
+
+    alerts
+}
+
+fn format_authenticated_provider_summary(providers: &[crate::fixtures::ProviderInfo]) -> String {
+    let authenticated = providers.iter().filter(|provider| provider.authenticated).count();
+    if providers.is_empty() {
+        "0 / 0 authenticated".into()
+    } else {
+        format!("{authenticated} / {} authenticated", providers.len())
+    }
+}
+
+fn format_elapsed_ms(elapsed_ms: u64) -> String {
+    let total_seconds = elapsed_ms / 1_000;
+    let minutes = total_seconds / 60;
+    let seconds = total_seconds % 60;
+
+    if minutes == 0 {
+        format!("{seconds}s")
+    } else {
+        format!("{minutes}m {seconds:02}s")
+    }
+}
 
 #[allow(dead_code)]
 fn render_dispatcher_switch_state(
@@ -808,5 +980,66 @@ mod tests {
             dispatcher_option_status_text(&dispatcher, &option),
             Some("Pending request")
         );
+    }
+
+    #[test]
+    fn session_control_summary_reports_provider_and_dispatcher_state() {
+        let data = SessionData {
+            thinking_level: "high".into(),
+            capability_tier: "gloriana".into(),
+            providers: vec![
+                crate::fixtures::ProviderInfo {
+                    name: "github".into(),
+                    authenticated: true,
+                    model: None,
+                },
+                crate::fixtures::ProviderInfo {
+                    name: "openai".into(),
+                    authenticated: false,
+                    model: Some("gpt-4.1".into()),
+                },
+            ],
+            active_delegate_count: 2,
+            dispatcher_binding: Some(binding()),
+            ..SessionData::default()
+        };
+
+        let summary = session_control_summary(&data);
+        let labels: Vec<_> = summary.iter().map(|item| (item.label, item.value.as_str())).collect();
+
+        assert!(labels.contains(&("Thinking", "high")));
+        assert!(labels.contains(&("Capability tier", "gloriana")));
+        assert!(labels.contains(&("Providers", "1 / 2 authenticated")));
+        assert!(labels.contains(&("Delegates", "2 active")));
+        assert!(labels.contains(&(
+            "Dispatcher",
+            "primary-interactive · anthropic:claude-sonnet-4-6"
+        )));
+    }
+
+    #[test]
+    fn session_alerts_include_missing_control_planes_and_memory_warning() {
+        let data = SessionData {
+            memory_available: false,
+            cleave_available: false,
+            memory_warning: Some("Context budget nearly exhausted".into()),
+            dispatcher_binding: None,
+            ..SessionData::default()
+        };
+
+        let alerts = session_alerts(&data);
+        let titles: Vec<_> = alerts.iter().map(|alert| alert.title).collect();
+
+        assert!(titles.contains(&"Memory attention needed"));
+        assert!(titles.contains(&"Project memory offline"));
+        assert!(titles.contains(&"Cleave unavailable"));
+        assert!(titles.contains(&"Dispatcher binding missing"));
+    }
+
+    #[test]
+    fn format_elapsed_ms_uses_operator_friendly_units() {
+        assert_eq!(format_elapsed_ms(999), "0s");
+        assert_eq!(format_elapsed_ms(12_000), "12s");
+        assert_eq!(format_elapsed_ms(125_000), "2m 05s");
     }
 }
