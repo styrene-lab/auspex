@@ -1073,7 +1073,7 @@ body > * {
   color: #8b949e;
 }
 
-@media (max-width: 1180px), (max-height: 820px) {
+@media (max-width: 1180px), (max-width: 1400px) and (max-aspect-ratio: 11/10) {
   .topbar {
     grid-template-columns: minmax(0, 220px) minmax(0, 1fr);
     grid-template-areas:
