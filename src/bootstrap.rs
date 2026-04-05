@@ -539,7 +539,14 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
 
     if omegon_is_running_async().await {
         clear_owned_omegon_pid();
-        return complete_http_bootstrap(DEFAULT_STATE_URL, &ConnectHints::from_env()).await;
+        match bootstrap_from_http_state_async(DEFAULT_STATE_URL, &ConnectHints::from_env()).await {
+            Ok(result) => return result,
+            Err(error) => {
+                eprintln!(
+                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); spawning fresh embedded instance"
+                );
+            }
+        }
     }
 
     reap_owned_omegon_child();
