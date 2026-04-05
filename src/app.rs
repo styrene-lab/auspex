@@ -243,45 +243,6 @@ pub fn App() -> Element {
                         controller.read().is_run_active(),
                         controller.read().audit_timeline(),
                     )}
-                    WorkScreen { data: controller.read().work_data() }
-                    section { class: "rail-section",
-                        h2 { class: "rail-heading", "Transcript" }
-                        label { class: "rail-toggle",
-                            input {
-                                r#type: "checkbox",
-                                checked: controller.read().transcript_auto_expand(),
-                                onchange: move |event| {
-                                    controller
-                                        .write()
-                                        .set_transcript_auto_expand(event.value() == "true");
-                                },
-                            }
-                            div { class: "rail-toggle-copy",
-                                span { class: "rail-toggle-title", "Auto-expand transcript details" }
-                                span { class: "rail-toggle-detail", "When enabled, short human-readable details open by default." }
-                            }
-                        }
-                    }
-                    // Dev controls — temporary, will move to a proper settings surface
-                    section { class: "rail-section rail-devbar",
-                        h2 { class: "rail-heading", "Dev" }
-                        select {
-                            value: controller.read().session_mode().key(),
-                            onchange: move |event| controller.write().switch_session_mode(event.value().as_str()),
-                            for mode in SessionMode::ALL {
-                                option { value: mode.key(), "{mode.label()}" }
-                            }
-                        }
-                        if !controller.read().is_remote() {
-                            select {
-                                value: controller.read().scenario().key(),
-                                onchange: move |event| controller.write().select_scenario(event.value().as_str()),
-                                for scenario in DevScenario::ALL {
-                                    option { value: scenario.key(), "{scenario.label()}" }
-                                }
-                            }
-                        }
-                    }
                 }
 
                 // Center workspace — active tab content
@@ -312,6 +273,18 @@ pub fn App() -> Element {
                         ScribeScreen {
                             summary: controller.read().summary().clone(),
                             data: controller.read().session_data(),
+                            session_mode: controller.read().session_mode(),
+                            scenario_key: controller.read().scenario().key().to_string(),
+                            transcript_auto_expand: controller.read().transcript_auto_expand(),
+                            on_set_session_mode: Some(EventHandler::new(move |mode: String| {
+                                controller.write().switch_session_mode(mode.as_str());
+                            })),
+                            on_set_scenario: Some(EventHandler::new(move |scenario: String| {
+                                controller.write().select_scenario(scenario.as_str());
+                            })),
+                            on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| {
+                                controller.write().set_transcript_auto_expand(enabled);
+                            })),
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                 let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {

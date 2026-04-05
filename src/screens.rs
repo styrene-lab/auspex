@@ -7,6 +7,7 @@
 /// but are tested and ready for right-rail / session inspector integration.
 use dioxus::prelude::*;
 
+use crate::controller::SessionMode;
 use crate::fixtures::{
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, SessionData, WorkData,
@@ -194,6 +195,12 @@ pub fn WorkScreen(data: WorkData) -> Element {
 pub fn ScribeScreen(
     summary: HostSessionSummary,
     data: SessionData,
+    session_mode: SessionMode,
+    scenario_key: String,
+    transcript_auto_expand: bool,
+    on_set_session_mode: Option<EventHandler<String>>,
+    on_set_scenario: Option<EventHandler<String>>,
+    on_set_transcript_auto_expand: Option<EventHandler<bool>>,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
     on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
@@ -218,6 +225,51 @@ pub fn ScribeScreen(
                     if let Some(dispatcher) = &data.dispatcher_binding {
                         {kv_row("Session", &dispatcher.session_id)}
                         {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
+                    }
+                }
+            }
+
+            section { class: "screen-section",
+                h2 { class: "screen-section-title", "Operator settings" }
+                if let Some(handler) = on_set_transcript_auto_expand {
+                    label { class: "rail-toggle screen-toggle",
+                        input {
+                            r#type: "checkbox",
+                            checked: transcript_auto_expand,
+                            onchange: move |event| handler.call(event.value() == "true"),
+                        }
+                        div { class: "rail-toggle-copy",
+                            span { class: "rail-toggle-title", "Auto-expand transcript details" }
+                            span { class: "rail-toggle-detail", "Short human-readable details open by default; structured payloads stay collapsed." }
+                        }
+                    }
+                }
+                if let Some(handler) = on_set_session_mode {
+                    div { class: "kv-row screen-setting-row",
+                        span { class: "kv-key", "Session mode" }
+                        select {
+                            class: "screen-select",
+                            value: session_mode.key(),
+                            onchange: move |event| handler.call(event.value()),
+                            for mode in SessionMode::ALL {
+                                option { value: mode.key(), "{mode.label()}" }
+                            }
+                        }
+                    }
+                }
+                if session_mode == SessionMode::Mock {
+                    if let Some(handler) = on_set_scenario {
+                        div { class: "kv-row screen-setting-row",
+                            span { class: "kv-key", "Mock scenario" }
+                            select {
+                                class: "screen-select",
+                                value: scenario_key,
+                                onchange: move |event| handler.call(event.value()),
+                                for scenario in crate::fixtures::DevScenario::ALL {
+                                    option { value: scenario.key(), "{scenario.label()}" }
+                                }
+                            }
+                        }
                     }
                 }
             }

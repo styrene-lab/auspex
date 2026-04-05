@@ -517,6 +517,22 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
 ///
 /// This function blocks on process I/O and should be called from
 /// `tokio::task::spawn_blocking` or a dedicated thread.
+fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
+    if !startup.state_url.is_empty() {
+        return Some(startup.state_url.clone());
+    }
+
+    if !startup.startup_url.is_empty() {
+        return Some(startup.startup_url.replace("/api/startup", "/api/state"));
+    }
+
+    if !startup.http_base.is_empty() {
+        return Some(format!("{}/api/state", startup.http_base.trim_end_matches('/')));
+    }
+
+    None
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
     use tokio::io::AsyncBufReadExt;
@@ -599,11 +615,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         return BootstrapResult::compatibility_failure(error);
     }
 
-    let state_url = if info.state_url.is_empty() {
-        DEFAULT_STATE_URL.to_string()
-    } else {
-        info.state_url.clone()
-    };
+    let state_url = startup_state_url(&info).unwrap_or_else(|| DEFAULT_STATE_URL.to_string());
 
     // Poll briefly for the HTTP endpoint to accept connections.
     let client = reqwest::Client::builder()
@@ -850,6 +862,24 @@ mod tests {
         assert_eq!(
             startup_url_from_state_url("http://127.0.0.1:7842/api/state"),
             "http://127.0.0.1:7842/api/startup"
+        );
+    }
+
+    #[test]
+    fn startup_state_url_falls_back_from_startup_url_and_http_base() {
+        let mut info = remote_startup_info_fixture();
+        info.state_url.clear();
+        info.startup_url = "http://127.0.0.1:7850/api/startup".into();
+        assert_eq!(
+            startup_state_url(&info).as_deref(),
+            Some("http://127.0.0.1:7850/api/state")
+        );
+
+        info.startup_url.clear();
+        info.http_base = "http://127.0.0.1:7850".into();
+        assert_eq!(
+            startup_state_url(&info).as_deref(),
+            Some("http://127.0.0.1:7850/api/state")
         );
     }
 
