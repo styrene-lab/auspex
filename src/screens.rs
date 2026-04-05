@@ -679,6 +679,46 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
         });
     }
 
+    if let Some(instance) = data.instance_descriptor.as_ref()
+        && let Some(control_plane) = instance.control_plane.as_ref()
+    {
+        let capabilities = control_plane.capabilities.as_slice();
+        if !capabilities.is_empty() {
+            if !capabilities.iter().any(|capability| capability == "events.stream") {
+                alerts.push(SessionAlert {
+                    class_name: "session-alert session-alert-warn",
+                    tone: "warn",
+                    title: "Live stream unavailable",
+                    body: "The attached control plane does not advertise events.stream, so transcript and status updates may lag until the next state snapshot.".into(),
+                });
+            }
+            if !capabilities.iter().any(|capability| capability == "state.snapshot") {
+                alerts.push(SessionAlert {
+                    class_name: "session-alert session-alert-danger",
+                    tone: "danger",
+                    title: "Snapshot API unavailable",
+                    body: "The attached control plane does not advertise state.snapshot, so Auspex cannot rely on canonical state refresh for session, work, and instance metadata.".into(),
+                });
+            }
+            if !capabilities.iter().any(|capability| capability == "prompt.submit") {
+                alerts.push(SessionAlert {
+                    class_name: "session-alert session-alert-warn",
+                    tone: "warn",
+                    title: "Prompt submit unavailable",
+                    body: "The attached control plane does not advertise prompt.submit, so interactive prompt submission may be rejected or unavailable.".into(),
+                });
+            }
+            if !capabilities.iter().any(|capability| capability == "turn.cancel") {
+                alerts.push(SessionAlert {
+                    class_name: "session-alert session-alert-muted",
+                    tone: "muted",
+                    title: "Turn cancel unavailable",
+                    body: "The attached control plane does not advertise turn.cancel, so run cancellation controls may be ineffective for active turns.".into(),
+                });
+            }
+        }
+    }
+
     if data.dispatcher_binding.is_none() {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-muted",
@@ -1411,6 +1451,29 @@ mod tests {
         assert_eq!(alerts[0].tone, "warn");
         assert_eq!(alerts[1].tone, "danger");
         assert_eq!(alerts[3].tone, "muted");
+    }
+
+    #[test]
+    fn session_alerts_warn_when_required_capabilities_are_missing() {
+        let data = SessionData {
+            instance_descriptor: Some(crate::fixtures::InstanceDescriptorData {
+                control_plane: Some(InstanceControlPlaneData {
+                    schema_version: 2,
+                    capabilities: vec!["graph.read".into()],
+                    ..InstanceControlPlaneData::default()
+                }),
+                ..crate::fixtures::InstanceDescriptorData::default()
+            }),
+            dispatcher_binding: Some(binding()),
+            ..SessionData::default()
+        };
+
+        let alerts = session_alerts(&data);
+        let titles: Vec<_> = alerts.iter().map(|alert| alert.title).collect();
+        assert!(titles.contains(&"Live stream unavailable"));
+        assert!(titles.contains(&"Snapshot API unavailable"));
+        assert!(titles.contains(&"Prompt submit unavailable"));
+        assert!(titles.contains(&"Turn cancel unavailable"));
     }
 
     #[test]
