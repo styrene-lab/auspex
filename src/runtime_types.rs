@@ -11,9 +11,8 @@ pub struct CommandTarget {
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CanonicalSlashCommand {
-    pub command_name: String,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub arguments: Vec<String>,
+    pub name: String,
+    pub args: String,
     pub raw_input: String,
 }
 
@@ -47,9 +46,16 @@ impl TargetedCommand {
     }
 
     pub fn canonical_slash(target: CommandTarget, slash: CanonicalSlashCommand) -> Self {
+        let command_json = serde_json::json!({
+            "type": "slash_command",
+            "name": slash.name,
+            "args": slash.args,
+        })
+        .to_string();
+
         Self {
             target,
-            command_json: String::new(),
+            command_json,
             canonical_slash: Some(slash),
         }
     }
@@ -631,15 +637,19 @@ mod tests {
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
             CanonicalSlashCommand {
-                command_name: "auth.login".into(),
-                arguments: vec!["anthropic".into()],
-                raw_input: "/auth login anthropic".into(),
+                name: "login".into(),
+                args: "anthropic".into(),
+                raw_input: "/login anthropic".into(),
             },
         );
 
         assert_eq!(
+            command.command_json,
+            r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
+        );
+        assert_eq!(
             command.transport_json().unwrap(),
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"canonical_slash","slash":{"command_name":"auth.login","arguments":["anthropic"],"raw_input":"/auth login anthropic"}}}"#
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"canonical_slash","slash":{"name":"login","args":"anthropic","raw_input":"/login anthropic"}}}"#
         );
     }
 

@@ -514,6 +514,10 @@ impl AppController {
         self.session.model_mut().composer_mut().set_draft(value);
     }
 
+    pub fn current_command_target(&self) -> CommandTarget {
+        self.command_target()
+    }
+
     fn command_target(&self) -> CommandTarget {
         let selected_route_id = self.selected_command_route_id();
         self.available_command_routes()

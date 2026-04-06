@@ -758,21 +758,71 @@ pub fn App() -> Element {
                                                     {
                                                         let result = match action_kind {
                                                             SettingsAuthAction::Refresh => controller.write().refresh_settings_auth_status(),
-                                                            SettingsAuthAction::Login => controller.write().run_settings_auth_action(
-                                                                crate::bootstrap::DesktopAuthAction::Login,
-                                                                provider.as_deref(),
-                                                            ),
-                                                            SettingsAuthAction::Logout => controller.write().run_settings_auth_action(
-                                                                crate::bootstrap::DesktopAuthAction::Logout,
-                                                                provider.as_deref(),
-                                                            ),
-                                                            SettingsAuthAction::Unlock => controller.write().run_settings_auth_action(
-                                                                crate::bootstrap::DesktopAuthAction::Unlock,
-                                                                None,
-                                                            ),
+                                                            SettingsAuthAction::Login => {
+                                                                if let Some(stream) = event_stream.read().clone() {
+                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                        name: "login".into(),
+                                                                        args: provider.clone().unwrap_or_else(|| "anthropic".into()),
+                                                                        raw_input: format!("/login {}", provider.clone().unwrap_or_else(|| "anthropic".into())),
+                                                                    };
+                                                                    let target = controller.read().current_command_target();
+                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                    let send = stream.send_command(command.command_json.clone());
+                                                                    let _ = send;
+                                                                    Ok(())
+                                                                } else {
+                                                                    controller.write().run_settings_auth_action(
+                                                                        crate::bootstrap::DesktopAuthAction::Login,
+                                                                        provider.as_deref(),
+                                                                    )
+                                                                }
+                                                            }
+                                                            SettingsAuthAction::Logout => {
+                                                                if let Some(stream) = event_stream.read().clone() {
+                                                                    let provider_name = provider.clone().unwrap_or_else(|| "anthropic".into());
+                                                                    let args = if provider_name.is_empty() { String::new() } else { provider_name.clone() };
+                                                                    let raw_input = if args.is_empty() {
+                                                                        "/logout".to_string()
+                                                                    } else {
+                                                                        format!("/logout {args}")
+                                                                    };
+                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                        name: "logout".into(),
+                                                                        args,
+                                                                        raw_input,
+                                                                    };
+                                                                    let target = controller.read().current_command_target();
+                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                    stream.send_command(command.command_json);
+                                                                    Ok(())
+                                                                } else {
+                                                                    controller.write().run_settings_auth_action(
+                                                                        crate::bootstrap::DesktopAuthAction::Logout,
+                                                                        provider.as_deref(),
+                                                                    )
+                                                                }
+                                                            }
+                                                            SettingsAuthAction::Unlock => {
+                                                                if let Some(stream) = event_stream.read().clone() {
+                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                        name: "auth".into(),
+                                                                        args: "unlock".into(),
+                                                                        raw_input: "/auth unlock".into(),
+                                                                    };
+                                                                    let target = controller.read().current_command_target();
+                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                    stream.send_command(command.command_json);
+                                                                    Ok(())
+                                                                } else {
+                                                                    controller.write().run_settings_auth_action(
+                                                                        crate::bootstrap::DesktopAuthAction::Unlock,
+                                                                        None,
+                                                                    )
+                                                                }
+                                                            }
                                                         };
                                                         let message = match result {
-                                                            Ok(()) => format!("{} completed for {}", action_kind.label(), target_label),
+                                                            Ok(()) => format!("{} dispatched for {}", action_kind.label(), target_label),
                                                             Err(error) => format!("{} failed: {}", action_kind.label(), error),
                                                         };
                                                         settings_status_message.set(Some(message));
@@ -2923,6 +2973,23 @@ mod tests {
         assert_eq!(SettingsAuthAction::Login.command_slug(), "auth.login");
         assert_eq!(SettingsAuthAction::Logout.command_slug(), "auth.logout");
         assert_eq!(SettingsAuthAction::Unlock.command_slug(), "auth.unlock");
+
+        let slash = crate::runtime_types::CanonicalSlashCommand {
+            name: "login".into(),
+            args: "anthropic".into(),
+            raw_input: "/login anthropic".into(),
+        };
+        let targeted = crate::runtime_types::TargetedCommand::canonical_slash(
+            crate::runtime_types::CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            slash,
+        );
+        assert_eq!(
+            targeted.command_json,
+            r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
+        );
     }
 
     #[test]
