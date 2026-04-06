@@ -3,6 +3,79 @@
 use serde::{Deserialize, Serialize};
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CommandTarget {
+    pub session_key: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub dispatcher_instance_id: Option<String>,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct CanonicalSlashCommand {
+    pub command_name: String,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<String>,
+    pub raw_input: String,
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum OperatorCommand {
+    LegacyJson { command_json: String },
+    CanonicalSlash { slash: CanonicalSlashCommand },
+}
+
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
+pub struct TargetedCommandEnvelope {
+    pub target: CommandTarget,
+    pub command: OperatorCommand,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetedCommand {
+    pub target: CommandTarget,
+    pub command_json: String,
+    pub canonical_slash: Option<CanonicalSlashCommand>,
+}
+
+impl TargetedCommand {
+    pub fn legacy_json(target: CommandTarget, command_json: impl Into<String>) -> Self {
+        Self {
+            target,
+            command_json: command_json.into(),
+            canonical_slash: None,
+        }
+    }
+
+    pub fn canonical_slash(target: CommandTarget, slash: CanonicalSlashCommand) -> Self {
+        Self {
+            target,
+            command_json: String::new(),
+            canonical_slash: Some(slash),
+        }
+    }
+
+    pub fn transport_envelope(&self) -> TargetedCommandEnvelope {
+        let command = match &self.canonical_slash {
+            Some(slash) => OperatorCommand::CanonicalSlash {
+                slash: slash.clone(),
+            },
+            None => OperatorCommand::LegacyJson {
+                command_json: self.command_json.clone(),
+            },
+        };
+
+        TargetedCommandEnvelope {
+            target: self.target.clone(),
+            command,
+        }
+    }
+
+    pub fn transport_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string(&self.transport_envelope())
+    }
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct InstanceRecord {
     pub schema_version: u32,
     pub identity: WorkerIdentity,
@@ -531,6 +604,42 @@ mod tests {
                 .auth
                 .provider_refs,
             vec!["anthropic", "openai"]
+        );
+    }
+
+    #[test]
+    fn targeted_command_serializes_legacy_json_envelope() {
+        let command = TargetedCommand::legacy_json(
+            CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            r#"{"type":"cancel"}"#,
+        );
+
+        assert_eq!(
+            command.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"cancel\"}"}}"#
+        );
+    }
+
+    #[test]
+    fn targeted_command_serializes_canonical_slash_envelope() {
+        let command = TargetedCommand::canonical_slash(
+            CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            CanonicalSlashCommand {
+                command_name: "auth.login".into(),
+                arguments: vec!["anthropic".into()],
+                raw_input: "/auth login anthropic".into(),
+            },
+        );
+
+        assert_eq!(
+            command.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"canonical_slash","slash":{"command_name":"auth.login","arguments":["anthropic"],"raw_input":"/auth login anthropic"}}}"#
         );
     }
 

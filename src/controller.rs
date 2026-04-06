@@ -4,19 +4,8 @@ use crate::fixtures::{
     HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
 };
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
+use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct CommandTarget {
-    pub session_key: String,
-    pub dispatcher_instance_id: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct TargetedCommand {
-    pub target: CommandTarget,
-    pub command_json: String,
-}
 
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
@@ -400,24 +389,21 @@ impl AppController {
                     return None;
                 }
                 self.refresh_audit_timeline();
-                Some(TargetedCommand {
+                Some(TargetedCommand::legacy_json(
                     target,
-                    command_json: serde_json::json!({
+                    serde_json::json!({
                         "type": "user_prompt",
                         "text": trimmed,
                     })
                     .to_string(),
-                })
+                ))
             }
             SessionSource::Mock(session) => {
                 let submitted = session.submit();
                 if submitted {
                     self.refresh_audit_timeline();
                 }
-                submitted.then(|| TargetedCommand {
-                    target,
-                    command_json: String::new(),
-                })
+                submitted.then(|| TargetedCommand::legacy_json(target, String::new()))
             }
         }
         .filter(|command| !command.command_json.is_empty())
@@ -425,10 +411,12 @@ impl AppController {
 
     pub fn cancel_command(&self) -> Option<TargetedCommand> {
         match &self.session {
-            SessionSource::Remote(session) if session.is_run_active() => Some(TargetedCommand {
-                target: self.command_target(),
-                command_json: serde_json::json!({ "type": "cancel" }).to_string(),
-            }),
+            SessionSource::Remote(session) if session.is_run_active() => Some(
+                TargetedCommand::legacy_json(
+                    self.command_target(),
+                    serde_json::json!({ "type": "cancel" }).to_string(),
+                ),
+            ),
             _ => None,
         }
     }
@@ -443,18 +431,18 @@ impl AppController {
         match &mut self.session {
             SessionSource::Remote(session) => {
                 match session.request_dispatcher_switch(profile, model)? {
-                    DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
-                        TargetedCommand {
+                    DispatcherSwitchCommandOutcome::Issued { request_id } => {
+                        Some(TargetedCommand::legacy_json(
                             target,
-                            command_json: serde_json::json!({
+                            serde_json::json!({
                                 "type": "switch_dispatcher",
                                 "request_id": request_id,
                                 "profile": profile,
                                 "model": model,
                             })
                             .to_string(),
-                        },
-                    ),
+                        ))
+                    }
                     DispatcherSwitchCommandOutcome::Noop => None,
                 }
             }
@@ -578,6 +566,10 @@ mod tests {
             Some("omg_primary_01HVDEMO")
         );
         assert_eq!(controller.messages()[1].role, MessageRole::User);
+        assert_eq!(
+            command.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"text\":\"ship it\",\"type\":\"user_prompt\"}"}}"#
+        );
     }
 
     #[test]
@@ -759,6 +751,10 @@ mod tests {
         assert_eq!(
             cancel.target.dispatcher_instance_id.as_deref(),
             Some("omg_primary_01HVDEMO")
+        );
+        assert_eq!(
+            cancel.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"cancel\"}"}}"#
         );
     }
 
