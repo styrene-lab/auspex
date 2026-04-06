@@ -52,6 +52,15 @@ impl AuditTimelineStore {
         appended
     }
 
+    pub fn append_entry(&mut self, entry: AuditEntry) -> bool {
+        if self.seen_ids.insert(entry.block_id.clone()) {
+            self.entries.push(entry);
+            true
+        } else {
+            false
+        }
+    }
+
     #[allow(dead_code)]
     pub fn query(&self, query: &AuditTimelineQuery) -> AuditTimelineView<'_> {
         let sessions = self
@@ -214,6 +223,23 @@ impl AuditEntry {
             content,
         }
     }
+
+    pub fn telemetry(
+        session_key: &str,
+        telemetry_key: &str,
+        label: impl Into<String>,
+        content: impl Into<String>,
+    ) -> Self {
+        Self {
+            session_key: session_key.to_string(),
+            turn_number: 0,
+            block_index: 0,
+            block_id: format!("{session_key}:telemetry:{telemetry_key}"),
+            kind: AuditEntryKind::Telemetry,
+            label: label.into(),
+            content: content.into(),
+        }
+    }
 }
 
 #[derive(
@@ -224,6 +250,7 @@ pub enum AuditEntryKind {
     Text,
     Tool,
     System,
+    Telemetry,
     Aborted,
 }
 

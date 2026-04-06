@@ -154,6 +154,7 @@ pub struct AppController {
     instance_registry: InstanceRegistryStore,
     attached_instance_engine: AttachedInstanceStateEngine,
     telemetry_snapshot: SessionTelemetryData,
+    last_audited_telemetry_snapshot: SessionTelemetryData,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
 }
@@ -168,6 +169,7 @@ impl Default for AppController {
             instance_registry: InstanceRegistryStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             telemetry_snapshot: SessionTelemetryData::default(),
+            last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![crate::fixtures::ProviderInfo {
@@ -203,6 +205,7 @@ impl AppController {
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             instance_registry,
             telemetry_snapshot: SessionTelemetryData::default(),
+            last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -568,10 +571,51 @@ impl AppController {
         let transcript = self.transcript().clone();
         self.audit_timeline
             .append_transcript_snapshot(&session_key, &transcript);
+        self.append_telemetry_audit_entries(&session_key);
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = crate::audit_timeline::default_audit_timeline_path() {
             let _ = crate::audit_timeline::persist(&path, &self.audit_timeline);
         }
+    }
+
+    fn append_telemetry_audit_entries(&mut self, session_key: &str) {
+        if self.telemetry_snapshot == self.last_audited_telemetry_snapshot {
+            return;
+        }
+
+        let telemetry = &self.telemetry_snapshot;
+        let entries = [
+            crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                "provider-summary",
+                "Telemetry · Provider summary",
+                telemetry.provider_summary.clone(),
+            ),
+            crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                "lifecycle-summary",
+                "Telemetry · Lifecycle summary",
+                telemetry.lifecycle_summary.clone(),
+            ),
+            crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                "route-summary",
+                "Telemetry · Route summary",
+                telemetry.route_summary.clone(),
+            ),
+            crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                "latest-turn-summary",
+                "Telemetry · Latest turn summary",
+                telemetry.latest_turn_summary.clone(),
+            ),
+        ];
+
+        for entry in entries {
+            let _ = self.audit_timeline.append_entry(entry);
+        }
+
+        self.last_audited_telemetry_snapshot = telemetry.clone();
     }
 
     fn rebuild_attached_instances(&mut self) {

@@ -2537,13 +2537,14 @@ fn render_audit_workspace(
     }
 }
 
-fn audit_kind_options() -> [(&'static str, &'static str); 6] {
+fn audit_kind_options() -> [(&'static str, &'static str); 7] {
     [
         ("all", "All kinds"),
         ("thinking", "Thinking"),
         ("text", "Message"),
         ("tool", "Tool"),
         ("system", "System"),
+        ("telemetry", "Telemetry"),
         ("aborted", "Aborted"),
     ]
 }
@@ -2640,6 +2641,7 @@ fn audit_kind_key(kind: AuditEntryKind) -> &'static str {
         AuditEntryKind::Text => "text",
         AuditEntryKind::Tool => "tool",
         AuditEntryKind::System => "system",
+        AuditEntryKind::Telemetry => "telemetry",
         AuditEntryKind::Aborted => "aborted",
     }
 }
@@ -2650,6 +2652,7 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
         AuditEntryKind::Text => "Message",
         AuditEntryKind::Tool => "Tool",
         AuditEntryKind::System => "System",
+        AuditEntryKind::Telemetry => "Telemetry",
         AuditEntryKind::Aborted => "Aborted",
     }
 }
