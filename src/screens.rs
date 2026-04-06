@@ -513,6 +513,53 @@ pub fn SessionScreen(
                             }
                         }
                     }
+                    if let Some(provider_telemetry) = &data.telemetry.latest_provider_telemetry {
+                        div { class: "kv-grid",
+                            {kv_row("Telemetry provider", &provider_telemetry.provider)}
+                            {kv_row("Telemetry source", &provider_telemetry.source)}
+                            if let Some(requests_remaining) = provider_telemetry.requests_remaining {
+                                {kv_row("Requests remaining", &requests_remaining.to_string())}
+                            }
+                            if let Some(tokens_remaining) = provider_telemetry.tokens_remaining {
+                                {kv_row("Tokens remaining", &tokens_remaining.to_string())}
+                            }
+                            if let Some(retry_after_secs) = provider_telemetry.retry_after_secs {
+                                {kv_row("Retry after", &format!("{retry_after_secs}s"))}
+                            }
+                            if let Some(util_5h) = provider_telemetry.unified_5h_utilization_pct.as_deref() {
+                                {kv_row("5h utilization", &format!("{util_5h}%"))}
+                            }
+                            if let Some(util_7d) = provider_telemetry.unified_7d_utilization_pct.as_deref() {
+                                {kv_row("7d utilization", &format!("{util_7d}%"))}
+                            }
+                            if let Some(codex_primary_pct) = provider_telemetry.codex_primary_pct {
+                                {kv_row("Codex primary", &format!("{codex_primary_pct}%"))}
+                            }
+                        }
+                    }
+                }
+            }
+
+            if let Some(control_plane) = &data.telemetry.control_plane {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Control-plane telemetry" }
+                    div { class: "kv-grid",
+                        if let Some(base_url) = control_plane.base_url.as_deref() {
+                            {kv_row("Base URL", base_url)}
+                        }
+                        if let Some(startup_url) = control_plane.startup_url.as_deref() {
+                            {kv_row("Startup URL", startup_url)}
+                        }
+                        if let Some(health_url) = control_plane.health_url.as_deref() {
+                            {kv_row("Health URL", health_url)}
+                        }
+                        if let Some(ready_url) = control_plane.ready_url.as_deref() {
+                            {kv_row("Ready URL", ready_url)}
+                        }
+                        if let Some(auth_mode) = control_plane.auth_mode.as_deref() {
+                            {kv_row("Auth mode", auth_mode)}
+                        }
+                    }
                 }
             }
 
@@ -1446,6 +1493,28 @@ mod tests {
                 lifecycle_summary: "2 active delegate(s)".into(),
                 route_summary: "dispatcher omg_primary_01HVDEMO · anthropic:claude-sonnet-4-6".into(),
                 latest_turn_summary: "turns 12 · tool calls 34".into(),
+                latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {
+                    provider: "anthropic".into(),
+                    source: "headers".into(),
+                    requests_remaining: Some(42),
+                    tokens_remaining: Some(4096),
+                    retry_after_secs: Some(3),
+                    request_id: Some("req_123".into()),
+                    unified_5h_utilization_pct: Some("22.5".into()),
+                    unified_7d_utilization_pct: Some("18.0".into()),
+                    codex_primary_pct: None,
+                }),
+                latest_estimated_tokens: Some(1200),
+                latest_actual_input_tokens: Some(1000),
+                latest_actual_output_tokens: Some(200),
+                latest_cache_read_tokens: Some(50),
+                control_plane: Some(crate::fixtures::ControlPlaneTelemetryData {
+                    startup_url: Some("http://127.0.0.1:7842/api/startup".into()),
+                    health_url: Some("http://127.0.0.1:7842/api/healthz".into()),
+                    ready_url: Some("http://127.0.0.1:7842/api/readyz".into()),
+                    auth_mode: Some("ephemeral-bearer".into()),
+                    base_url: Some("http://127.0.0.1:7842".into()),
+                }),
             },
             active_delegate_count: 2,
             dispatcher_binding: Some(binding()),

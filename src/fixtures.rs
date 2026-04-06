@@ -231,11 +231,39 @@ pub struct DispatcherBindingData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ProviderTelemetryData {
+    pub provider: String,
+    pub source: String,
+    pub requests_remaining: Option<u64>,
+    pub tokens_remaining: Option<u64>,
+    pub retry_after_secs: Option<u64>,
+    pub request_id: Option<String>,
+    pub unified_5h_utilization_pct: Option<String>,
+    pub unified_7d_utilization_pct: Option<String>,
+    pub codex_primary_pct: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ControlPlaneTelemetryData {
+    pub startup_url: Option<String>,
+    pub health_url: Option<String>,
+    pub ready_url: Option<String>,
+    pub auth_mode: Option<String>,
+    pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SessionTelemetryData {
     pub provider_summary: String,
     pub lifecycle_summary: String,
     pub route_summary: String,
     pub latest_turn_summary: String,
+    pub latest_provider_telemetry: Option<ProviderTelemetryData>,
+    pub latest_estimated_tokens: Option<u64>,
+    pub latest_actual_input_tokens: Option<u64>,
+    pub latest_actual_output_tokens: Option<u64>,
+    pub latest_cache_read_tokens: Option<u64>,
+    pub control_plane: Option<ControlPlaneTelemetryData>,
 }
 
 /// Snapshot of harness and session state for the Session power-mode screen.
@@ -662,6 +690,12 @@ impl HostSessionModel for MockHostSession {
                 lifecycle_summary: "no active delegates".into(),
                 route_summary: "local shell".into(),
                 latest_turn_summary: "turns 4 · tool calls 12".into(),
+                latest_provider_telemetry: None,
+                latest_estimated_tokens: None,
+                latest_actual_input_tokens: None,
+                latest_actual_output_tokens: None,
+                latest_cache_read_tokens: None,
+                control_plane: None,
             },
             ..Default::default()
         }

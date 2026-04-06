@@ -1,13 +1,15 @@
 use crate::fixtures::{
-    ActivityKind, BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
-    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
-    HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
-    InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData,
-    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData,
-    SessionTelemetryData, ShellState, SystemNoticeKind, TranscriptData, WorkData, WorkNode,
+    ActivityKind, BlockOrigin, ChatMessage, ComposerState, ControlPlaneTelemetryData,
+    DelegateSummaryData, DevScenario, DispatcherBindingData, DispatcherOptionData,
+    DispatcherSwitchStateData, GraphData, HostSessionSummary, InstanceControlPlaneData,
+    InstanceDescriptorData, InstanceIdentityData, InstancePolicyData, InstanceRuntimeData,
+    InstanceSessionDescriptorData, InstanceWorkspaceData, MessageRole, OriginKind,
+    ProviderInfo, SessionData, SessionTelemetryData, ShellState, SystemNoticeKind,
+    TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
+    ProviderTelemetrySnapshot,
 };
 use crate::session_model::HostSessionModel;
 
@@ -29,6 +31,11 @@ pub struct RemoteHostSession {
     pending_text: String,
     run_active: bool,
     next_dispatcher_request_id: u64,
+    latest_provider_telemetry: Option<ProviderTelemetrySnapshot>,
+    latest_estimated_tokens: Option<u64>,
+    latest_actual_input_tokens: Option<u64>,
+    latest_actual_output_tokens: Option<u64>,
+    latest_cache_read_tokens: Option<u64>,
     // Raw snapshot sub-sections kept for Power mode screens.
     design: crate::omegon_control::DesignSnapshot,
     openspec: crate::omegon_control::OpenSpecSnapshot,
@@ -103,6 +110,11 @@ impl RemoteHostSession {
             pending_text: String::new(),
             run_active: false,
             next_dispatcher_request_id: 1,
+            latest_provider_telemetry: None,
+            latest_estimated_tokens: None,
+            latest_actual_input_tokens: None,
+            latest_actual_output_tokens: None,
+            latest_cache_read_tokens: None,
             design: snapshot.design,
             openspec: snapshot.openspec,
             cleave: snapshot.cleave,
@@ -353,11 +365,23 @@ impl RemoteHostSession {
                 });
                 true
             }
-            OmegonEvent::TurnEnd { turn } => {
+            OmegonEvent::TurnEnd {
+                turn,
+                estimated_tokens,
+                actual_input_tokens,
+                actual_output_tokens,
+                cache_read_tokens,
+                provider_telemetry,
+            } => {
                 self.transcript.active_turn = None;
                 self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
                 self.summary.activity_kind = ActivityKind::Completed;
+                self.latest_estimated_tokens = estimated_tokens;
+                self.latest_actual_input_tokens = actual_input_tokens;
+                self.latest_actual_output_tokens = actual_output_tokens;
+                self.latest_cache_read_tokens = cache_read_tokens;
+                self.latest_provider_telemetry = provider_telemetry;
                 true
             }
             OmegonEvent::ToolStart { id, name, args } => {
@@ -615,6 +639,11 @@ impl HostSessionModel for RemoteHostSession {
                 self.session_stats.tool_calls,
                 self.dispatcher_binding.as_ref(),
                 self.instance_descriptor.as_ref(),
+                self.latest_provider_telemetry.clone(),
+                self.latest_estimated_tokens,
+                self.latest_actual_input_tokens,
+                self.latest_actual_output_tokens,
+                self.latest_cache_read_tokens,
             ),
             instance_descriptor: self.instance_descriptor.as_ref().map(project_instance_descriptor),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
@@ -1102,6 +1131,11 @@ fn build_session_telemetry(
     tool_calls: u32,
     dispatcher: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
     instance_descriptor: Option<&OmegonInstanceDescriptor>,
+    latest_provider_telemetry: Option<ProviderTelemetrySnapshot>,
+    latest_estimated_tokens: Option<u64>,
+    latest_actual_input_tokens: Option<u64>,
+    latest_actual_output_tokens: Option<u64>,
+    latest_cache_read_tokens: Option<u64>,
 ) -> SessionTelemetryData {
     let authenticated = harness
         .map(|h| h.providers.iter().filter(|provider| provider.authenticated).count())
@@ -1156,6 +1190,54 @@ fn build_session_telemetry(
         lifecycle_summary,
         route_summary,
         latest_turn_summary,
+        latest_provider_telemetry: latest_provider_telemetry.map(project_provider_telemetry),
+        latest_estimated_tokens,
+        latest_actual_input_tokens,
+        latest_actual_output_tokens,
+        latest_cache_read_tokens,
+        control_plane: instance_descriptor.and_then(|instance| {
+            instance.control_plane.as_ref().map(|control_plane| SessionTelemetryDataControlPlaneAdapter::from_control_plane(control_plane))
+        }).or_else(|| dispatcher.and_then(|binding| {
+            Some(ControlPlaneTelemetryData {
+                startup_url: None,
+                health_url: None,
+                ready_url: None,
+                auth_mode: None,
+                base_url: binding.observed_base_url.clone(),
+            })
+        })),
+    }
+}
+
+fn project_provider_telemetry(snapshot: ProviderTelemetrySnapshot) -> crate::fixtures::ProviderTelemetryData {
+    crate::fixtures::ProviderTelemetryData {
+        provider: snapshot.provider,
+        source: snapshot.source,
+        requests_remaining: snapshot.requests_remaining,
+        tokens_remaining: snapshot.tokens_remaining,
+        retry_after_secs: snapshot.retry_after_secs,
+        request_id: snapshot.request_id,
+        unified_5h_utilization_pct: snapshot
+            .unified_5h_utilization_pct
+            .map(|value| format!("{value:.1}")),
+        unified_7d_utilization_pct: snapshot
+            .unified_7d_utilization_pct
+            .map(|value| format!("{value:.1}")),
+        codex_primary_pct: snapshot.codex_primary_pct,
+    }
+}
+
+struct SessionTelemetryDataControlPlaneAdapter;
+
+impl SessionTelemetryDataControlPlaneAdapter {
+    fn from_control_plane(control_plane: &crate::omegon_control::OmegonControlPlaneDescriptor) -> ControlPlaneTelemetryData {
+        ControlPlaneTelemetryData {
+            startup_url: control_plane.startup_url.clone(),
+            health_url: control_plane.health_url.clone(),
+            ready_url: control_plane.ready_url.clone(),
+            auth_mode: control_plane.auth_mode.clone(),
+            base_url: control_plane.base_url.clone(),
+        }
     }
 }
 

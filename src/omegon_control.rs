@@ -271,6 +271,26 @@ pub struct DelegateSummarySnapshot {
     pub elapsed_ms: u64,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq)]
+pub struct ProviderTelemetrySnapshot {
+    pub provider: String,
+    pub source: String,
+    pub unified_5h_utilization_pct: Option<f32>,
+    pub unified_7d_utilization_pct: Option<f32>,
+    pub requests_remaining: Option<u64>,
+    pub tokens_remaining: Option<u64>,
+    pub retry_after_secs: Option<u64>,
+    pub request_id: Option<String>,
+    pub codex_active_limit: Option<String>,
+    pub codex_primary_pct: Option<u64>,
+    pub codex_primary_reset_secs: Option<u64>,
+    pub codex_secondary_reset_secs: Option<u64>,
+    pub codex_credits_unlimited: Option<bool>,
+    pub codex_limit_name: Option<String>,
+}
+
+impl Eq for ProviderTelemetrySnapshot {}
+
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum OmegonEvent {
@@ -300,6 +320,16 @@ pub enum OmegonEvent {
     },
     TurnEnd {
         turn: u32,
+        #[serde(default)]
+        estimated_tokens: Option<u64>,
+        #[serde(default)]
+        actual_input_tokens: Option<u64>,
+        #[serde(default)]
+        actual_output_tokens: Option<u64>,
+        #[serde(default)]
+        cache_read_tokens: Option<u64>,
+        #[serde(default)]
+        provider_telemetry: Option<ProviderTelemetrySnapshot>,
     },
     ToolStart {
         id: String,
