@@ -12,9 +12,9 @@
   --surface-panel-gradient: linear-gradient(180deg, var(--surface-1) 0%, #0f141b 100%);
   --surface-control-hover: #0f1622;
   --surface-control-active: #0f1f16;
-  --surface-control-pending: #221a0f;
-  --surface-warn: #21170d;
-  --surface-warn-soft: #211a0c;
+  --surface-control-pending: #2a1d0f;
+  --surface-warn: #2b1a0b;
+  --surface-warn-soft: #24170a;
   --surface-danger: var(--surface-danger);
   --surface-danger-soft: var(--surface-danger-soft);
   --surface-info: var(--surface-info);
@@ -55,7 +55,7 @@
   --border-success: var(--border-success);
   --border-success-strong: #1f6f43;
   --border-warn: var(--border-warn);
-  --border-warn-strong: #5b4424;
+  --border-warn-strong: #7a531f;
   --border-danger: var(--border-danger);
   --border-danger-strong: #6e2d35;
   --border-child: var(--border-child);
@@ -1294,7 +1294,7 @@ body > * {
 
 .dispatch-context-chip[data-tone="warn"] {
   border-color: var(--border-warn);
-  background: rgba(38, 29, 16, 0.95);
+  background: rgba(55, 33, 12, 0.95);
 }
 
 .dispatch-context-chip[data-tone="success"] {
@@ -1348,9 +1348,9 @@ body > * {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.75rem 0.8rem;
-  border: 1px solid rgba(121, 88, 43, 0.42);
+  border: 1px solid rgba(199, 123, 36, 0.46);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(37, 28, 16, 0.96), rgba(24, 18, 11, 0.98));
+  background: linear-gradient(180deg, rgba(45, 28, 10, 0.96), rgba(28, 18, 8, 0.98));
 }
 
 .composer-blocked-title {
@@ -1358,7 +1358,7 @@ body > * {
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #f2c879;
+  color: #ffbf69;
 }
 
 .composer-blocked-detail {
@@ -1370,9 +1370,9 @@ body > * {
 
 .composer-blocked-action {
   align-self: flex-start;
-  border: 1px solid rgba(121, 88, 43, 0.52);
+  border: 1px solid rgba(199, 123, 36, 0.52);
   border-radius: 9px;
-  background: linear-gradient(180deg, rgba(52, 39, 22, 0.98), rgba(33, 25, 15, 0.98));
+  background: linear-gradient(180deg, rgba(73, 44, 16, 0.98), rgba(48, 30, 12, 0.98));
   color: var(--text-primary);
   padding: 0.34rem 0.7rem;
   font: inherit;
@@ -1382,7 +1382,7 @@ body > * {
 }
 
 .composer-blocked-action:hover {
-  background: linear-gradient(180deg, rgba(60, 45, 25, 0.98), rgba(39, 29, 17, 0.98));
+  background: linear-gradient(180deg, rgba(84, 51, 19, 0.98), rgba(57, 35, 14, 0.98));
 }
 
 .composer-ready-notice {
