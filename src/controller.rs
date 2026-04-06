@@ -258,18 +258,21 @@ impl AppController {
         self.attached_instance_engine.attached_instances()
     }
 
+    #[allow(dead_code)]
     pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
         self.attached_instance_engine.attach_instance(instance);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.persist_instance_registry();
     }
 
+    #[allow(dead_code)]
     pub fn detach_instance_record(&mut self, instance_id: &str) {
         self.attached_instance_engine.detach_instance(instance_id);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.persist_instance_registry();
     }
 
+    #[allow(dead_code)]
     pub fn purge_stale_instance_records(&mut self, active_instance_ids: &[String]) {
         self.attached_instance_engine.purge_stale_instances(active_instance_ids);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
