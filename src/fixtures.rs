@@ -92,6 +92,7 @@ pub struct WorkNode {
 pub struct ProviderInfo {
     pub name: String,
     pub authenticated: bool,
+    pub auth_method: Option<String>,
     pub model: Option<String>,
 }
 
@@ -640,6 +641,7 @@ impl HostSessionModel for MockHostSession {
             providers: vec![ProviderInfo {
                 name: "Anthropic".into(),
                 authenticated: true,
+                auth_method: Some("oauth".into()),
                 model: Some("claude-sonnet".into()),
             }],
             memory_available: true,

@@ -7,6 +7,14 @@ use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SettingsAuthState {
+    pub providers: Vec<crate::fixtures::ProviderInfo>,
+    pub last_error: Option<String>,
+    pub last_action: Option<String>,
+}
+
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
         "focused": {
@@ -122,6 +130,8 @@ pub struct AppController {
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
     audit_timeline: AuditTimelineStore,
+    #[cfg(not(target_arch = "wasm32"))]
+    settings_auth_state: SettingsAuthState,
 }
 
 impl Default for AppController {
@@ -131,6 +141,17 @@ impl Default for AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            settings_auth_state: SettingsAuthState {
+                providers: vec![crate::fixtures::ProviderInfo {
+                    name: "Anthropic/Claude".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("claude-sonnet".into()),
+                }],
+                last_error: None,
+                last_action: None,
+            },
         }
     }
 }
@@ -143,6 +164,12 @@ impl AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            settings_auth_state: SettingsAuthState {
+                providers: vec![],
+                last_error: None,
+                last_action: None,
+            },
         };
         controller.refresh_audit_timeline();
         Ok(controller)
@@ -258,7 +285,12 @@ impl AppController {
     }
 
     pub fn session_data(&self) -> SessionData {
-        self.session.model().session_data()
+        let mut data = self.session.model().session_data();
+        #[cfg(not(target_arch = "wasm32"))]
+        if !self.settings_auth_state.providers.is_empty() {
+            data.providers = self.settings_auth_state.providers.clone();
+        }
+        data
     }
 
     pub fn graph_data(&self) -> GraphData {
@@ -299,6 +331,65 @@ impl AppController {
 
     pub fn set_transcript_auto_expand(&mut self, enabled: bool) {
         self.transcript_auto_expand = enabled;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn settings_auth_state(&self) -> &SettingsAuthState {
+        &self.settings_auth_state
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn refresh_settings_auth_status(&mut self) -> Result<(), String> {
+        match crate::bootstrap::load_desktop_auth_snapshot() {
+            Ok(snapshot) => {
+                self.settings_auth_state.providers = snapshot
+                    .providers
+                    .into_iter()
+                    .map(|provider| crate::fixtures::ProviderInfo {
+                        name: provider.name,
+                        authenticated: provider.authenticated,
+                        auth_method: provider.auth_method,
+                        model: None,
+                    })
+                    .collect();
+                self.settings_auth_state.last_error = None;
+                self.settings_auth_state.last_action = Some("auth.refresh".into());
+                Ok(())
+            }
+            Err(error) => {
+                self.settings_auth_state.last_error = Some(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn run_settings_auth_action(
+        &mut self,
+        action: crate::bootstrap::DesktopAuthAction,
+        provider: Option<&str>,
+    ) -> Result<(), String> {
+        match crate::bootstrap::run_desktop_auth_action(action, provider) {
+            Ok(snapshot) => {
+                self.settings_auth_state.providers = snapshot
+                    .providers
+                    .into_iter()
+                    .map(|provider| crate::fixtures::ProviderInfo {
+                        name: provider.name,
+                        authenticated: provider.authenticated,
+                        auth_method: provider.auth_method,
+                        model: None,
+                    })
+                    .collect();
+                self.settings_auth_state.last_error = None;
+                self.settings_auth_state.last_action = Some(format!("auth.{}", action.subcommand()));
+                Ok(())
+            }
+            Err(error) => {
+                self.settings_auth_state.last_error = Some(error.clone());
+                Err(error)
+            }
+        }
     }
 
     #[allow(dead_code)]
@@ -514,6 +605,23 @@ mod tests {
         assert_eq!(dispatcher.available_options.len(), 2);
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().status, "idle");
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().request_id, None);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn session_data_prefers_settings_auth_state_when_present() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        controller.settings_auth_state.providers = vec![crate::fixtures::ProviderInfo {
+            name: "OpenAI API".into(),
+            authenticated: false,
+            auth_method: Some("api-key".into()),
+            model: None,
+        }];
+
+        let session = controller.session_data();
+        assert_eq!(session.providers.len(), 1);
+        assert_eq!(session.providers[0].name, "OpenAI API");
+        assert_eq!(session.providers[0].auth_method.as_deref(), Some("api-key"));
     }
 
     #[test]

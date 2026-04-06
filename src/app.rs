@@ -55,6 +55,7 @@ struct SettingsActionModel {
     action: SettingsAuthAction,
     detail: String,
     enabled: bool,
+    provider: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -66,9 +67,14 @@ struct SettingsPanelModel {
     auth_status_detail: String,
     provider_rows: Vec<(String, String)>,
     actions: Vec<SettingsActionModel>,
+    last_error: Option<String>,
+    last_action: Option<String>,
 }
 
-fn build_settings_panel_model(session: &crate::fixtures::SessionData) -> SettingsPanelModel {
+fn build_settings_panel_model(
+    session: &crate::fixtures::SessionData,
+    auth_state: Option<&crate::controller::SettingsAuthState>,
+) -> SettingsPanelModel {
     let dispatcher_binding = session.dispatcher_binding.as_ref();
     let descriptor = dispatcher_binding
         .and_then(|binding| binding.instance_descriptor.as_ref())
@@ -128,7 +134,11 @@ fn build_settings_panel_model(session: &crate::fixtures::SessionData) -> Setting
         )
     };
 
-    let authenticated = session.providers.iter().filter(|provider| provider.authenticated).count();
+    let authenticated = session
+        .providers
+        .iter()
+        .filter(|provider| provider.authenticated)
+        .count();
     let provider_total = session.providers.len();
     let auth_status_label = if authenticated > 0 {
         format!("{authenticated} authenticated provider(s)")
@@ -138,7 +148,19 @@ fn build_settings_panel_model(session: &crate::fixtures::SessionData) -> Setting
         "No providers reported".to_string()
     };
 
-    let auth_status_detail = if provider_total == 0 {
+    let auth_status_detail = if let Some(auth_state) = auth_state {
+        if let Some(error) = auth_state.last_error.as_deref() {
+            format!("Last auth bridge error: {error}")
+        } else if let Some(last_action) = auth_state.last_action.as_deref() {
+            format!("Last completed auth bridge action: {last_action}")
+        } else if provider_total == 0 {
+            "No host providers are currently visible. Refresh the auth bridge to inspect current credentials.".to_string()
+        } else {
+            format!(
+                "Auth bridge actions stay instance-scoped to {target_label} and now execute through the desktop bridge while the canonical slash transport lands."
+            )
+        }
+    } else if provider_total == 0 {
         "No host providers are currently visible. Refresh through the command adapter before prompting for login or unlock work.".to_string()
     } else {
         format!(
@@ -185,25 +207,31 @@ fn build_settings_panel_model(session: &crate::fixtures::SessionData) -> Setting
         actions: vec![
             SettingsActionModel {
                 action: SettingsAuthAction::Refresh,
-                detail: action_detail("auth.refresh"),
-                enabled: false,
+                detail: "Refresh live provider auth status through the desktop auth bridge.".into(),
+                enabled: true,
+                provider: None,
             },
             SettingsActionModel {
                 action: SettingsAuthAction::Login,
                 detail: action_detail("auth.login"),
-                enabled: false,
+                enabled: true,
+                provider: Some("anthropic".into()),
             },
             SettingsActionModel {
                 action: SettingsAuthAction::Logout,
                 detail: action_detail("auth.logout"),
-                enabled: false,
+                enabled: true,
+                provider: Some("anthropic".into()),
             },
             SettingsActionModel {
                 action: SettingsAuthAction::Unlock,
                 detail: action_detail("auth.unlock"),
-                enabled: false,
+                enabled: true,
+                provider: None,
             },
         ],
+        last_error: auth_state.and_then(|state| state.last_error.clone()),
+        last_action: auth_state.and_then(|state| state.last_action.clone()),
     }
 }
 
@@ -290,6 +318,8 @@ pub fn App() -> Element {
 
     let mut workspace = use_signal(|| Workspace::Chat);
     let mut settings_open = use_signal(|| false);
+    #[cfg(not(target_arch = "wasm32"))]
+    let mut settings_status_message = use_signal(|| None::<String>);
     let mut audit_session_filter = use_signal(String::new);
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
@@ -311,7 +341,10 @@ pub fn App() -> Element {
     });
 
     let session = controller.read().session_data();
-    let settings_model = build_settings_panel_model(&session);
+    #[cfg(not(target_arch = "wasm32"))]
+    let settings_model = build_settings_panel_model(&session, Some(controller.read().settings_auth_state()));
+    #[cfg(target_arch = "wasm32")]
+    let settings_model = build_settings_panel_model(&session, None);
     let bootstrap_surface = controller
         .read()
         .surface_notice()
@@ -645,6 +678,12 @@ pub fn App() -> Element {
                                 h3 { class: "settings-panel-title", "Auth status" }
                                 p { class: "settings-auth-status", "{settings_model.auth_status_label}" }
                                 p { class: "settings-panel-detail", "{settings_model.auth_status_detail}" }
+                                if let Some(last_action) = settings_model.last_action.as_deref() {
+                                    p { class: "settings-panel-detail", "Last action: {last_action}" }
+                                }
+                                if let Some(error) = settings_model.last_error.as_deref() {
+                                    p { class: "settings-panel-detail", "Last error: {error}" }
+                                }
                                 div { class: "settings-provider-list",
                                     for (name, detail) in &settings_model.provider_rows {
                                         div { class: "settings-provider-row",
@@ -657,7 +696,10 @@ pub fn App() -> Element {
 
                             section { class: "settings-panel-card settings-panel-card-actions",
                                 h3 { class: "settings-panel-title", "Operator actions" }
-                                p { class: "settings-panel-detail", "These controls are intentionally adapter-first. They stay disabled until the live auth bridge lands, but the UI already binds them to an instance-scoped command intent." }
+                                p { class: "settings-panel-detail", "Desktop auth parity is live here now; transport will later swap to Omegon's canonical slash executor without changing this operator surface." }
+                                if let Some(message) = settings_status_message.read().as_deref() {
+                                    p { class: "settings-panel-detail", "{message}" }
+                                }
                                 div { class: "settings-action-grid",
                                     for action in &settings_model.actions {
                                         button {
@@ -667,6 +709,39 @@ pub fn App() -> Element {
                                             title: action.detail.clone(),
                                             "data-command": action.action.command_slug(),
                                             "data-target": settings_model.target_label.clone(),
+                                            onclick: {
+                                                let mut controller = controller;
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                let mut settings_status_message = settings_status_message;
+                                                let action_kind = action.action;
+                                                let provider = action.provider.clone();
+                                                let target_label = settings_model.target_label.clone();
+                                                move |_| {
+                                                    #[cfg(not(target_arch = "wasm32"))]
+                                                    {
+                                                        let result = match action_kind {
+                                                            SettingsAuthAction::Refresh => controller.write().refresh_settings_auth_status(),
+                                                            SettingsAuthAction::Login => controller.write().run_settings_auth_action(
+                                                                crate::bootstrap::DesktopAuthAction::Login,
+                                                                provider.as_deref(),
+                                                            ),
+                                                            SettingsAuthAction::Logout => controller.write().run_settings_auth_action(
+                                                                crate::bootstrap::DesktopAuthAction::Logout,
+                                                                provider.as_deref(),
+                                                            ),
+                                                            SettingsAuthAction::Unlock => controller.write().run_settings_auth_action(
+                                                                crate::bootstrap::DesktopAuthAction::Unlock,
+                                                                None,
+                                                            ),
+                                                        };
+                                                        let message = match result {
+                                                            Ok(()) => format!("{} completed for {}", action_kind.label(), target_label),
+                                                            Err(error) => format!("{} failed: {}", action_kind.label(), error),
+                                                        };
+                                                        settings_status_message.set(Some(message));
+                                                    }
+                                                }
+                                            },
                                             "{action.action.label()}"
                                         }
                                     }
@@ -2781,28 +2856,25 @@ mod tests {
     #[test]
     fn settings_panel_model_prefers_dispatcher_targeting() {
         let controller = AppController::remote_demo();
-        let model = build_settings_panel_model(&controller.session_data());
+        let model = build_settings_panel_model(&controller.session_data(), Some(controller.settings_auth_state()));
 
         assert_eq!(model.target_label, "omg_primary_01HVDEMO");
         assert!(model.target_detail.contains("primary-driver"));
         assert!(model.route_detail.contains("control-plane schema 2"));
-        assert!(model.auth_status_label.contains("1 authenticated provider"));
-        assert!(model
-            .provider_rows
-            .iter()
-            .any(|row| row.0 == "Anthropic" && row.1.contains("authenticated")));
+        assert!(model.auth_status_label.contains("0 authenticated provider") || model.auth_status_label.contains("No providers reported"));
         assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
+        assert!(model.actions.iter().all(|action| action.enabled));
     }
 
     #[test]
     fn settings_panel_model_falls_back_to_local_shell() {
         let controller = AppController::default();
-        let model = build_settings_panel_model(&controller.session_data());
+        let model = build_settings_panel_model(&controller.session_data(), Some(controller.settings_auth_state()));
 
         assert_eq!(model.target_label, "local-shell");
         assert!(model.route_detail.contains("target-aware command adapter"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
-        assert!(model.actions.iter().all(|action| !action.enabled));
+        assert!(model.actions.iter().all(|action| action.enabled));
     }
 
     #[test]

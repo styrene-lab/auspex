@@ -16,6 +16,138 @@ use crate::event_stream::{
 use crate::omegon_control::OmegonStartupInfo;
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ProviderAuthStatus {
+    pub name: String,
+    pub authenticated: bool,
+    pub auth_method: Option<String>,
+    pub detail: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct DesktopAuthSnapshot {
+    pub providers: Vec<ProviderAuthStatus>,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum DesktopAuthAction {
+    Refresh,
+    Login,
+    Logout,
+    Unlock,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl DesktopAuthAction {
+    pub fn subcommand(self) -> &'static str {
+        match self {
+            Self::Refresh => "status",
+            Self::Login => "login",
+            Self::Logout => "logout",
+            Self::Unlock => "unlock",
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn omegon_command_path() -> Option<PathBuf> {
+    find_omegon_binary().or_else(|| Some(PathBuf::from("omegon")))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn load_desktop_auth_snapshot() -> Result<DesktopAuthSnapshot, String> {
+    let binary = omegon_command_path().ok_or_else(|| "Omegon binary not available".to_string())?;
+    let output = std::process::Command::new(binary)
+        .args(["auth", "status"])
+        .output()
+        .map_err(|error| format!("failed to run omegon auth status: {error}"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("omegon auth status failed with {}", output.status)
+        } else {
+            stderr
+        });
+    }
+
+    parse_desktop_auth_status(&String::from_utf8_lossy(&output.stdout))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_desktop_auth_action(
+    action: DesktopAuthAction,
+    provider: Option<&str>,
+) -> Result<DesktopAuthSnapshot, String> {
+    let binary = omegon_command_path().ok_or_else(|| "Omegon binary not available".to_string())?;
+    let mut command = std::process::Command::new(binary);
+    command.arg("auth").arg(action.subcommand());
+    if let Some(provider) = provider.filter(|value| !value.trim().is_empty()) {
+        command.arg(provider.trim());
+    }
+    if matches!(action, DesktopAuthAction::Logout) {
+        command.arg("--yes");
+    }
+
+    let output = command
+        .output()
+        .map_err(|error| format!("failed to run omegon auth {}: {error}", action.subcommand()))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(if stderr.is_empty() {
+            format!("omegon auth {} failed with {}", action.subcommand(), output.status)
+        } else {
+            stderr
+        });
+    }
+
+    load_desktop_auth_snapshot()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn parse_desktop_auth_status(stdout: &str) -> Result<DesktopAuthSnapshot, String> {
+    let mut providers = Vec::new();
+    for line in stdout.lines() {
+        let trimmed = line.trim();
+        if trimmed.is_empty() || trimmed.starts_with("Authentication Status") {
+            continue;
+        }
+        let status = if let Some(rest) = trimmed.strip_prefix('✓') {
+            (true, rest.trim())
+        } else if let Some(rest) = trimmed.strip_prefix('✗') {
+            (false, rest.trim())
+        } else {
+            continue;
+        };
+        let parts: Vec<&str> = status.1.split_whitespace().collect();
+        if parts.is_empty() {
+            continue;
+        }
+        let auth_method = parts.last().map(|value| value.trim_matches(['(', ')'])).map(str::to_string);
+        let name = if parts.len() > 1 {
+            parts[..parts.len() - 1].join(" ")
+        } else {
+            parts[0].to_string()
+        };
+        providers.push(ProviderAuthStatus {
+            name,
+            authenticated: status.0,
+            auth_method,
+            detail: status.1.to_string(),
+        });
+    }
+
+    if providers.is_empty() {
+        return Err("omegon auth status returned no provider rows".into());
+    }
+
+    Ok(DesktopAuthSnapshot { providers })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub const SNAPSHOT_FILE_ENV: &str = "AUSPEX_REMOTE_SNAPSHOT_PATH";
 #[cfg(not(target_arch = "wasm32"))]
 pub const STATE_URL_ENV: &str = "AUSPEX_OMEGON_STATE_URL";
@@ -813,8 +945,23 @@ mod tests {
     }
 
     #[test]
-    fn default_state_url_is_local_omegon_endpoint() {
-        assert_eq!(DEFAULT_STATE_URL, "http://127.0.0.1:7842/api/state");
+    fn parse_desktop_auth_status_extracts_provider_rows() {
+        let snapshot = parse_desktop_auth_status(
+            "Authentication Status:\n  ✓ Anthropic/Claude oauth (stored)\n  ✗ OpenAI API       api-key\n",
+        )
+        .expect("auth status should parse");
+
+        assert_eq!(snapshot.providers.len(), 2);
+        assert_eq!(snapshot.providers[0].name, "Anthropic/Claude oauth");
+        assert!(snapshot.providers[0].authenticated);
+        assert_eq!(snapshot.providers[1].name, "OpenAI API");
+        assert!(!snapshot.providers[1].authenticated);
+    }
+
+    #[test]
+    fn parse_desktop_auth_status_rejects_empty_output() {
+        let err = parse_desktop_auth_status("Authentication Status:\n\n").unwrap_err();
+        assert!(err.contains("no provider rows"));
     }
 
     #[test]

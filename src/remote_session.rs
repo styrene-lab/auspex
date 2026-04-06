@@ -581,6 +581,7 @@ impl HostSessionModel for RemoteHostSession {
                         .map(|p| ProviderInfo {
                             name: p.name.clone(),
                             authenticated: p.authenticated,
+                            auth_method: p.auth_method.clone(),
                             model: p.model.clone(),
                         })
                         .collect()
