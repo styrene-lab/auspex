@@ -17,6 +17,7 @@ const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
     Chat,
+    Session,
     Scribe,
     Graph,
     Audit,
@@ -678,6 +679,11 @@ pub fn App() -> Element {
                             "Chat"
                         }
                         button {
+                            class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" },
+                            onclick: move |_| workspace.set(Workspace::Session),
+                            "Session"
+                        }
+                        button {
                             class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" },
                             onclick: move |_| workspace.set(Workspace::Scribe),
                             "Scribe"
@@ -836,6 +842,19 @@ pub fn App() -> Element {
                                 }),
                             },
                         )}
+                    } else if *workspace.read() == Workspace::Session {
+                        SessionScreen {
+                            data: controller.read().session_data(),
+                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                    stream.send_command(command.command_json);
+                                }
+                            })),
+                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                focus_transcript_target(controller.read().transcript(), &target);
+                            }))
+                        }
                     } else if *workspace.read() == Workspace::Scribe {
                         ScribeScreen {
                             summary: controller.read().summary().clone(),
@@ -2032,6 +2051,7 @@ fn build_dispatch_context_strip_model(
         "{} · {}",
         match workspace {
             Workspace::Chat => "chat",
+            Workspace::Session => "session",
             Workspace::Scribe => "scribe",
             Workspace::Graph => "graph",
             Workspace::Audit => "audit",
