@@ -37,6 +37,24 @@ pub struct SlashCommandResult {
     pub output: String,
 }
 
+fn provider_status_key(name: &str) -> Option<String> {
+    let normalized: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    normalized
+        .split_whitespace()
+        .next()
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned)
+}
+
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
         "focused": {
@@ -633,14 +651,23 @@ impl AppController {
     pub fn refresh_settings_auth_status(&mut self) -> Result<(), String> {
         match crate::bootstrap::load_desktop_auth_snapshot() {
             Ok(snapshot) => {
+                let existing_providers = self.session.model().session_data().providers;
                 let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
                     .iter()
-                    .map(|provider| crate::fixtures::ProviderInfo {
-                        name: provider.name.clone(),
-                        authenticated: provider.authenticated,
-                        auth_method: provider.auth_method.clone(),
-                        model: None,
+                    .map(|provider| {
+                        let existing = existing_providers
+                            .iter()
+                            .find(|existing| {
+                                provider_status_key(&existing.name)
+                                    == provider_status_key(&provider.name)
+                            });
+                        crate::fixtures::ProviderInfo {
+                            name: provider.name.clone(),
+                            authenticated: provider.authenticated,
+                            auth_method: provider.auth_method.clone(),
+                            model: existing.and_then(|provider| provider.model.clone()),
+                        }
                     })
                     .collect();
                 self.settings_auth_state.providers = providers;
@@ -649,11 +676,17 @@ impl AppController {
                         snapshot
                             .providers
                             .into_iter()
-                            .map(|provider| crate::omegon_control::ProviderStatusSnapshot {
-                                name: provider.name,
-                                authenticated: provider.authenticated,
-                                auth_method: provider.auth_method,
-                                model: None,
+                            .map(|provider| {
+                                let existing = existing_providers.iter().find(|existing| {
+                                    provider_status_key(&existing.name)
+                                        == provider_status_key(&provider.name)
+                                });
+                                crate::omegon_control::ProviderStatusSnapshot {
+                                    name: provider.name,
+                                    authenticated: provider.authenticated,
+                                    auth_method: provider.auth_method,
+                                    model: existing.and_then(|provider| provider.model.clone()),
+                                }
                             })
                             .collect(),
                     );
@@ -680,14 +713,23 @@ impl AppController {
     ) -> Result<(), String> {
         match crate::bootstrap::run_desktop_auth_action(action, provider) {
             Ok(snapshot) => {
+                let existing_providers = self.session.model().session_data().providers;
                 let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
                     .iter()
-                    .map(|provider| crate::fixtures::ProviderInfo {
-                        name: provider.name.clone(),
-                        authenticated: provider.authenticated,
-                        auth_method: provider.auth_method.clone(),
-                        model: None,
+                    .map(|provider| {
+                        let existing = existing_providers
+                            .iter()
+                            .find(|existing| {
+                                provider_status_key(&existing.name)
+                                    == provider_status_key(&provider.name)
+                            });
+                        crate::fixtures::ProviderInfo {
+                            name: provider.name.clone(),
+                            authenticated: provider.authenticated,
+                            auth_method: provider.auth_method.clone(),
+                            model: existing.and_then(|provider| provider.model.clone()),
+                        }
                     })
                     .collect();
                 self.settings_auth_state.providers = providers;
@@ -696,11 +738,17 @@ impl AppController {
                         snapshot
                             .providers
                             .into_iter()
-                            .map(|provider| crate::omegon_control::ProviderStatusSnapshot {
-                                name: provider.name,
-                                authenticated: provider.authenticated,
-                                auth_method: provider.auth_method,
-                                model: None,
+                            .map(|provider| {
+                                let existing = existing_providers.iter().find(|existing| {
+                                    provider_status_key(&existing.name)
+                                        == provider_status_key(&provider.name)
+                                });
+                                crate::omegon_control::ProviderStatusSnapshot {
+                                    name: provider.name,
+                                    authenticated: provider.authenticated,
+                                    auth_method: provider.auth_method,
+                                    model: existing.and_then(|provider| provider.model.clone()),
+                                }
                             })
                             .collect(),
                     );
@@ -825,10 +873,10 @@ impl AppController {
                     "provider: {}\nsource: {}\ninstance: {}\nrole: {}\nprofile: {}\nmodel: {}",
                     provider.provider,
                     provider.source,
-                    provider.instance_id.as_deref().unwrap_or("unreported"),
-                    provider.role.as_deref().unwrap_or("unreported"),
-                    provider.profile.as_deref().unwrap_or("unreported"),
-                    provider.model.as_deref().unwrap_or("unreported"),
+                    provider.instance_id.as_deref().unwrap_or("not reported"),
+                    provider.role.as_deref().unwrap_or("not reported"),
+                    provider.profile.as_deref().unwrap_or("not reported"),
+                    provider.model.as_deref().unwrap_or("model not reported"),
                 ),
             ));
         }
@@ -843,11 +891,11 @@ impl AppController {
                 ),
                 format!(
                     "instance: {}\nrole: {}\nprofile: {}\nbase_url: {}\nauth_mode: {}",
-                    control_plane.instance_id.as_deref().unwrap_or("unreported"),
-                    control_plane.role.as_deref().unwrap_or("unreported"),
-                    control_plane.profile.as_deref().unwrap_or("unreported"),
-                    control_plane.base_url.as_deref().unwrap_or("unreported"),
-                    control_plane.auth_mode.as_deref().unwrap_or("unreported"),
+                    control_plane.instance_id.as_deref().unwrap_or("not reported"),
+                    control_plane.role.as_deref().unwrap_or("not reported"),
+                    control_plane.profile.as_deref().unwrap_or("not reported"),
+                    control_plane.base_url.as_deref().unwrap_or("not reported"),
+                    control_plane.auth_mode.as_deref().unwrap_or("not reported"),
                 ),
             ));
         }

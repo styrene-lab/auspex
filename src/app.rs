@@ -187,7 +187,7 @@ fn build_settings_panel_model(
             .observed_base_url
             .as_deref()
             .filter(|value| !value.is_empty())
-            .unwrap_or("unreported control plane");
+            .unwrap_or("No control-plane endpoint reported");
         format!(
             "Prepared to route operator actions through command envelopes for target {target_label} over control-plane schema {schema} ({endpoint})."
         )
@@ -299,8 +299,8 @@ fn build_settings_panel_model(
                 let auth_method = provider
                     .auth_method
                     .as_deref()
-                    .unwrap_or("auth method unreported");
-                let model = provider.model.as_deref().unwrap_or("model unreported");
+                    .unwrap_or("auth method not reported");
+                let model = provider.model.as_deref().unwrap_or("model not reported");
                 let status_label = if provider.authenticated {
                     "Authenticated"
                 } else {
@@ -2096,16 +2096,16 @@ fn build_dispatch_context_strip_model(
                 .iter()
                 .find_map(|provider| provider.model.clone())
         })
-        .unwrap_or_else(|| "unreported".into());
+        .unwrap_or_else(|| "model not reported".into());
 
     let thinking = if session.thinking_level.trim().is_empty() {
-        "unreported".into()
+        "not reported".into()
     } else {
         session.thinking_level.clone()
     };
 
     let tier = if session.capability_tier.trim().is_empty() {
-        "unreported".into()
+        "not reported".into()
     } else {
         session.capability_tier.clone()
     };
@@ -3613,7 +3613,8 @@ mod tests {
             activity_kind: ActivityKind::Idle,
             work: "No focused work".into(),
         };
-        let banner = render_chat_status_banner(&summary, true, false);
+        let session = crate::fixtures::SessionData::default();
+        let banner = render_chat_status_banner(&summary, &session, true, false);
         let debug = format!("{banner:?}");
 
         assert!(debug.contains("Run active"));
