@@ -234,6 +234,11 @@ pub struct DispatcherBindingData {
 pub struct ProviderTelemetryData {
     pub provider: String,
     pub source: String,
+    pub route_id: Option<String>,
+    pub instance_id: Option<String>,
+    pub role: Option<String>,
+    pub profile: Option<String>,
+    pub model: Option<String>,
     pub requests_remaining: Option<u64>,
     pub tokens_remaining: Option<u64>,
     pub retry_after_secs: Option<u64>,
@@ -245,6 +250,10 @@ pub struct ProviderTelemetryData {
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct ControlPlaneTelemetryData {
+    pub route_id: Option<String>,
+    pub instance_id: Option<String>,
+    pub role: Option<String>,
+    pub profile: Option<String>,
     pub startup_url: Option<String>,
     pub health_url: Option<String>,
     pub ready_url: Option<String>,
@@ -293,11 +302,13 @@ pub struct SessionTelemetryData {
     pub route_summary: String,
     pub latest_turn_summary: String,
     pub latest_provider_telemetry: Option<ProviderTelemetryData>,
+    pub provider_rollups: Vec<ProviderTelemetryData>,
     pub latest_estimated_tokens: Option<u64>,
     pub latest_actual_input_tokens: Option<u64>,
     pub latest_actual_output_tokens: Option<u64>,
     pub latest_cache_read_tokens: Option<u64>,
     pub control_plane: Option<ControlPlaneTelemetryData>,
+    pub control_plane_rollups: Vec<ControlPlaneTelemetryData>,
 }
 
 /// Snapshot of harness and session state for the Session power-mode screen.
@@ -729,11 +740,13 @@ impl HostSessionModel for MockHostSession {
                 route_summary: "local shell".into(),
                 latest_turn_summary: "turns 4 · tool calls 12".into(),
                 latest_provider_telemetry: None,
+                provider_rollups: Vec::new(),
                 latest_estimated_tokens: None,
                 latest_actual_input_tokens: None,
                 latest_actual_output_tokens: None,
                 latest_cache_read_tokens: None,
                 control_plane: None,
+                control_plane_rollups: Vec::new(),
             },
             ..Default::default()
         }
