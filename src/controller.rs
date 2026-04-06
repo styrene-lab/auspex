@@ -11,6 +11,9 @@ use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
 use crate::state_engine::{AttachedInstanceRecord, AttachedInstanceStateEngine};
 
+#[path = "telemetry.rs"]
+mod telemetry;
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandRouteOption {
     pub route_id: String,
@@ -397,6 +400,14 @@ impl AppController {
         if !self.settings_auth_state.providers.is_empty() {
             data.providers = self.settings_auth_state.providers.clone();
         }
+
+        let lifecycle = telemetry::aggregate_lifecycle_telemetry(
+            self.attached_instance_engine.attached_instances(),
+            self.attached_instance_engine.registry_store(),
+            &self.attached_instance_engine.selected_command_route_id(),
+        );
+        data.telemetry.lifecycle_summary = lifecycle.summary.clone();
+        data.telemetry.lifecycle = lifecycle;
         data
     }
 
@@ -718,7 +729,7 @@ mod tests {
     use super::*;
     use crate::audit_timeline::AuditEntryKind;
     use crate::fixtures::MessageRole;
-    use crate::runtime_types::InstanceRecord;
+    use crate::runtime_types::{InstanceFreshness, InstanceRecord};
 
     const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;
 
@@ -1496,5 +1507,101 @@ mod tests {
             .unwrap()
             .text
             .contains("Dispatcher switch failed (dispatcher-switch-1): supervisor-heavy · openai:gpt-4.1 [backend_rejected]"));
+    }
+
+    #[test]
+    fn session_data_telemetry_includes_selected_route_lifecycle_freshness() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        controller.evaluate_instance_lifecycle(100);
+
+        let session = controller.session_data();
+        assert_eq!(session.telemetry.lifecycle.attached_count, 1);
+        assert_eq!(
+            session
+                .telemetry
+                .lifecycle
+                .selected_instance
+                .as_ref()
+                .map(|instance| instance.instance_id.as_str()),
+            Some("omg_primary_01HVDEMO")
+        );
+        assert_eq!(
+            session
+                .telemetry
+                .lifecycle
+                .selected_instance
+                .as_ref()
+                .and_then(|instance| instance.freshness.as_deref()),
+            Some("fresh")
+        );
+        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · ready · freshness fresh");
+    }
+
+    #[test]
+    fn session_data_telemetry_updates_when_selected_route_becomes_stale() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        let instance_id = controller.attached_instances()[0].instance_id.clone();
+        controller.attach_instance_record(AttachedInstanceRecord {
+            instance_id: instance_id.clone(),
+            route_id: "session-dispatcher".into(),
+            role: "primary-driver".into(),
+            profile: "primary-interactive".into(),
+            session_key: "remote:session_01HVDEMO".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("anthropic:claude-sonnet-4-6".into()),
+            dispatcher_instance_id: Some(instance_id.clone()),
+            registry_record: Some(InstanceRecord {
+                schema_version: 1,
+                identity: crate::runtime_types::WorkerIdentity {
+                    instance_id: instance_id.clone(),
+                    role: crate::runtime_types::WorkerRole::PrimaryDriver,
+                    profile: "primary-interactive".into(),
+                    status: crate::runtime_types::WorkerLifecycleState::Ready,
+                    created_at: "2026-04-06T00:00:00Z".into(),
+                    updated_at: "2026-04-06T00:00:01Z".into(),
+                },
+                ownership: crate::runtime_types::WorkerOwnership {
+                    owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                    owner_id: "session_01HVDEMO".into(),
+                    parent_instance_id: None,
+                },
+                desired: crate::runtime_types::DesiredWorkerState::default(),
+                observed: crate::runtime_types::ObservedWorkerState {
+                    health: crate::runtime_types::ObservedHealth {
+                        ready: true,
+                        degraded_reason: None,
+                        last_heartbeat_at: None,
+                        last_seen_at: Some("100".into()),
+                        freshness: Some(InstanceFreshness::Fresh),
+                    },
+                    ..Default::default()
+                },
+            }),
+        });
+
+        controller.evaluate_instance_lifecycle(401);
+
+        let session = controller.session_data();
+        assert_eq!(
+            session
+                .telemetry
+                .lifecycle
+                .selected_instance
+                .as_ref()
+                .and_then(|instance| instance.freshness.as_deref()),
+            Some("stale")
+        );
+        assert_eq!(
+            session
+                .telemetry
+                .lifecycle
+                .selected_instance
+                .as_ref()
+                .and_then(|instance| instance.status.as_deref()),
+            Some("lost")
+        );
+        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · lost · freshness stale");
     }
 }

@@ -1,8 +1,4 @@
 use crate::session_model::HostSessionModel;
-#[allow(unused_imports)]
-pub use crate::telemetry::{
-    ControlPlaneTelemetryData, ProviderTelemetryData, SessionTelemetryData,
-};
 
 // ── View-model types ────────────────────────────────────────
 
@@ -232,6 +228,63 @@ pub struct DispatcherBindingData {
     pub instance_descriptor: Option<InstanceDescriptorData>,
     pub available_options: Vec<DispatcherOptionData>,
     pub switch_state: Option<DispatcherSwitchStateData>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ProviderTelemetryData {
+    pub provider: String,
+    pub source: String,
+    pub requests_remaining: Option<u64>,
+    pub tokens_remaining: Option<u64>,
+    pub retry_after_secs: Option<u64>,
+    pub request_id: Option<String>,
+    pub unified_5h_utilization_pct: Option<String>,
+    pub unified_7d_utilization_pct: Option<String>,
+    pub codex_primary_pct: Option<u64>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct ControlPlaneTelemetryData {
+    pub startup_url: Option<String>,
+    pub health_url: Option<String>,
+    pub ready_url: Option<String>,
+    pub auth_mode: Option<String>,
+    pub base_url: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct LifecycleInstanceTelemetryData {
+    pub instance_id: String,
+    pub route_id: String,
+    pub role: String,
+    pub profile: String,
+    pub base_url: Option<String>,
+    pub status: Option<String>,
+    pub freshness: Option<String>,
+    pub last_seen_at: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct LifecycleTelemetryData {
+    pub summary: String,
+    pub attached_count: usize,
+    pub selected_route_id: Option<String>,
+    pub selected_instance: Option<LifecycleInstanceTelemetryData>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct SessionTelemetryData {
+    pub provider_summary: String,
+    pub lifecycle_summary: String,
+    pub lifecycle: LifecycleTelemetryData,
+    pub route_summary: String,
+    pub latest_turn_summary: String,
+    pub latest_provider_telemetry: Option<ProviderTelemetryData>,
+    pub latest_estimated_tokens: Option<u64>,
+    pub latest_actual_input_tokens: Option<u64>,
+    pub latest_actual_output_tokens: Option<u64>,
+    pub latest_cache_read_tokens: Option<u64>,
+    pub control_plane: Option<ControlPlaneTelemetryData>,
 }
 
 /// Snapshot of harness and session state for the Session power-mode screen.
@@ -656,6 +709,10 @@ impl HostSessionModel for MockHostSession {
             telemetry: SessionTelemetryData {
                 provider_summary: "1 / 1 authenticated".into(),
                 lifecycle_summary: "no active delegates".into(),
+                lifecycle: LifecycleTelemetryData {
+                    summary: "no attached instances".into(),
+                    ..Default::default()
+                },
                 route_summary: "local shell".into(),
                 latest_turn_summary: "turns 4 · tool calls 12".into(),
                 latest_provider_telemetry: None,

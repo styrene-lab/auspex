@@ -1,43 +1,13 @@
+use crate::fixtures::{
+    ControlPlaneTelemetryData, LifecycleInstanceTelemetryData, LifecycleTelemetryData,
+    ProviderTelemetryData, SessionTelemetryData,
+};
+use crate::instance_registry::InstanceRegistryStore;
 use crate::omegon_control::{
     DispatcherBindingSnapshot, HarnessStatusSnapshot, OmegonControlPlaneDescriptor,
     OmegonInstanceDescriptor, ProviderTelemetrySnapshot,
 };
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct ProviderTelemetryData {
-    pub provider: String,
-    pub source: String,
-    pub requests_remaining: Option<u64>,
-    pub tokens_remaining: Option<u64>,
-    pub retry_after_secs: Option<u64>,
-    pub request_id: Option<String>,
-    pub unified_5h_utilization_pct: Option<String>,
-    pub unified_7d_utilization_pct: Option<String>,
-    pub codex_primary_pct: Option<u64>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct ControlPlaneTelemetryData {
-    pub startup_url: Option<String>,
-    pub health_url: Option<String>,
-    pub ready_url: Option<String>,
-    pub auth_mode: Option<String>,
-    pub base_url: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq, Default)]
-pub struct SessionTelemetryData {
-    pub provider_summary: String,
-    pub lifecycle_summary: String,
-    pub route_summary: String,
-    pub latest_turn_summary: String,
-    pub latest_provider_telemetry: Option<ProviderTelemetryData>,
-    pub latest_estimated_tokens: Option<u64>,
-    pub latest_actual_input_tokens: Option<u64>,
-    pub latest_actual_output_tokens: Option<u64>,
-    pub latest_cache_read_tokens: Option<u64>,
-    pub control_plane: Option<ControlPlaneTelemetryData>,
-}
+use crate::state_engine::AttachedInstanceRecord;
 
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct LatestTurnTelemetry {
@@ -107,6 +77,7 @@ pub fn build_session_telemetry(
     SessionTelemetryData {
         provider_summary,
         lifecycle_summary,
+        lifecycle: LifecycleTelemetryData::default(),
         route_summary,
         latest_turn_summary,
         latest_provider_telemetry: latest_turn
@@ -133,6 +104,41 @@ pub fn build_session_telemetry(
                     base_url: binding.observed_base_url.clone(),
                 })
             }),
+    }
+}
+
+pub fn aggregate_lifecycle_telemetry(
+    attached_instances: &[AttachedInstanceRecord],
+    registry_store: &InstanceRegistryStore,
+    selected_route_id: &str,
+) -> LifecycleTelemetryData {
+    let selected_instance = attached_instances
+        .iter()
+        .find(|instance| instance.route_id == selected_route_id)
+        .map(|instance| project_lifecycle_instance(instance, registry_store));
+
+    let summary = if attached_instances.is_empty() {
+        "no attached instances".into()
+    } else if let Some(selected) = selected_instance.as_ref() {
+        let status = selected.status.as_deref().unwrap_or("unknown");
+        match selected.freshness.as_deref() {
+            Some(freshness) => format!(
+                "{} attached instance(s) · {} · freshness {}",
+                attached_instances.len(),
+                status,
+                freshness
+            ),
+            None => format!("{} attached instance(s) · {}", attached_instances.len(), status),
+        }
+    } else {
+        format!("{} attached instance(s) · route unavailable", attached_instances.len())
+    };
+
+    LifecycleTelemetryData {
+        summary,
+        attached_count: attached_instances.len(),
+        selected_route_id: (!selected_route_id.is_empty()).then(|| selected_route_id.to_string()),
+        selected_instance,
     }
 }
 
@@ -166,11 +172,49 @@ pub fn project_control_plane_telemetry(
     }
 }
 
+fn project_lifecycle_instance(
+    instance: &AttachedInstanceRecord,
+    registry_store: &InstanceRegistryStore,
+) -> LifecycleInstanceTelemetryData {
+    let registry_record = instance.registry_record.as_ref().or_else(|| {
+        registry_store
+            .instances
+            .iter()
+            .find(|record| record.identity.instance_id == instance.instance_id)
+    });
+
+    LifecycleInstanceTelemetryData {
+        instance_id: instance.instance_id.clone(),
+        route_id: instance.route_id.clone(),
+        role: instance.role.clone(),
+        profile: instance.profile.clone(),
+        base_url: instance.base_url.clone(),
+        status: registry_record
+            .map(|record| format!("{:?}", record.identity.status).to_ascii_lowercase()),
+        freshness: registry_record.and_then(|record| {
+            record
+                .observed
+                .health
+                .freshness
+                .as_ref()
+                .map(|freshness| format!("{:?}", freshness).to_ascii_lowercase())
+        }),
+        last_seen_at: registry_record.and_then(|record| record.observed.health.last_seen_at.clone()),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::SessionData;
+    use crate::instance_registry::InstanceRegistryStore;
     use crate::omegon_control::{
-        DelegateSummarySnapshot, OmegonInstanceIdentity, ProviderStatusSnapshot,
+        DelegateSummarySnapshot, DispatcherBindingSnapshot, HarnessStatusSnapshot,
+        OmegonControlPlaneDescriptor, OmegonInstanceDescriptor, OmegonInstanceIdentity,
+        ProviderStatusSnapshot,
+    };
+    use crate::state_engine::{
+        AttachedInstanceRecord, AttachedInstanceStateEngine, HOST_CONTROL_PLANE_ROUTE_ID,
     };
 
     #[test]
@@ -307,5 +351,37 @@ mod tests {
                 ..ControlPlaneTelemetryData::default()
             })
         );
+    }
+
+    #[test]
+    fn lifecycle_aggregation_reports_selected_instance_freshness() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_service_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "detached-service".into(),
+            profile: "background-sync".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:9001".into()),
+            model: Some("anthropic:claude-haiku".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        engine.registry_store().instances[0].observed.health.last_seen_at = Some("100".into());
+        engine.evaluate_lifecycle_policy(100);
+
+        let lifecycle = aggregate_lifecycle_telemetry(
+            engine.attached_instances(),
+            engine.registry_store(),
+            HOST_CONTROL_PLANE_ROUTE_ID,
+        );
+
+        assert_eq!(lifecycle.attached_count, 1);
+        assert_eq!(lifecycle.selected_route_id.as_deref(), Some(HOST_CONTROL_PLANE_ROUTE_ID));
+        assert_eq!(lifecycle.selected_instance.as_ref().unwrap().freshness.as_deref(), Some("fresh"));
     }
 }
