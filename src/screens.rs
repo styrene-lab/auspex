@@ -1359,6 +1359,7 @@ fn kv_row(key: &str, value: &str) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::fixtures::SessionTelemetryData;
     use crate::fixtures::InstanceControlPlaneData;
 
     fn binding() -> DispatcherBindingData {
@@ -1530,10 +1531,10 @@ mod tests {
         assert!(labels.contains(&("Thinking", "high")));
         assert!(labels.contains(&("Capability tier", "gloriana")));
         assert!(labels.contains(&("Providers", "1 / 2 authenticated")));
-        assert!(labels.contains(&("Delegates", "2 active")));
+        assert!(labels.contains(&("Delegates", "2 active delegate(s)")));
         assert!(labels.contains(&(
             "Dispatcher",
-            "primary-interactive · anthropic:claude-sonnet-4-6"
+            "dispatcher omg_primary_01HVDEMO · anthropic:claude-sonnet-4-6"
         )));
     }
 
