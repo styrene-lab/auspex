@@ -600,10 +600,12 @@ pub fn App() -> Element {
     #[cfg(not(target_arch = "wasm32"))]
     use_future(move || {
         let mut settings_open = settings_open;
+        let mut controller = controller;
         async move {
             loop {
                 while let Ok(event) = dioxus::desktop::muda::MenuEvent::receiver().try_recv() {
                     if event.id().as_ref() == SETTINGS_MENU_ID {
+                        let _ = controller.write().refresh_settings_auth_status();
                         settings_open.set(true);
                     }
                 }
@@ -687,7 +689,13 @@ pub fn App() -> Element {
                         button {
                             class: "topbar-settings-button",
                             r#type: "button",
-                            onclick: move |_| settings_open.set(true),
+                            onclick: move |_| {
+                                #[cfg(not(target_arch = "wasm32"))]
+                                {
+                                    let _ = controller.write().refresh_settings_auth_status();
+                                }
+                                settings_open.set(true)
+                            },
                             title: "Open operator settings",
                             "Settings"
                         }
@@ -858,7 +866,13 @@ pub fn App() -> Element {
                                         button {
                                             class: "composer-blocked-action",
                                             r#type: "button",
-                                            onclick: move |_| settings_open.set(true),
+                                            onclick: move |_| {
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                {
+                                                    let _ = controller.write().refresh_settings_auth_status();
+                                                }
+                                                settings_open.set(true)
+                                            },
                                             "{blocked.action_label}"
                                         }
                                     }
@@ -2715,9 +2729,10 @@ mod tests {
         AuditFilters, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
         audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
         build_chat_empty_state_model, build_dispatch_context_strip_model,
-        build_left_rail_inventory, build_settings_panel_model, chat_status_tone,
-        context_window_label, find_transcript_anchor, looks_like_structured_payload,
-        render_chat_status_banner, render_dispatch_context_strip, should_expand_system_notice,
+        build_left_rail_inventory, build_provider_blocked_composer_model,
+        build_settings_panel_model, chat_status_tone, context_window_label,
+        find_transcript_anchor, looks_like_structured_payload, render_chat_status_banner,
+        render_dispatch_context_strip, should_expand_system_notice,
         should_expand_tool_args, should_expand_tool_output, system_block_class, system_block_tone,
         system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
         tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
