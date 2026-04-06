@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-rc.3] - 2026-04-06
+
+### Changed
+- Warning/blocked UI surfaces now use a cleaner amber palette instead of muddy brown warning tones.
+- Chat composer now swaps dead disabled input for a provider-setup callout when no authenticated providers are available.
+- Successful provider auth now closes Settings, returns focus to Chat, and surfaces a provider-ready confirmation notice.
+
+### Fixed
+- Opening Settings now refreshes desktop auth status immediately, so provider cards/actions hydrate from the auth bridge instead of appearing inert behind stale empty inventory.
+- Composer submit gating now respects the effective provider inventory shown to the operator, not just the raw remote session model.
+
 ## [0.1.0-rc.2] - 2026-04-06
 
 ### Added
