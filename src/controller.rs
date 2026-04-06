@@ -6,6 +6,18 @@ use crate::fixtures::{
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::session_model::HostSessionModel;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommandTarget {
+    pub session_key: String,
+    pub dispatcher_instance_id: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct TargetedCommand {
+    pub target: CommandTarget,
+    pub command_json: String,
+}
+
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
         "focused": {
@@ -326,6 +338,24 @@ impl AppController {
         self.session.model_mut().composer_mut().set_draft(value);
     }
 
+    fn command_target(&self) -> CommandTarget {
+        let session_key = self.session_audit_key();
+        let dispatcher_instance_id = match &self.session {
+            SessionSource::Remote(session) => session
+                .session_data()
+                .dispatcher_binding
+                .as_ref()
+                .map(|binding| binding.dispatcher_instance_id.clone())
+                .filter(|value| !value.is_empty()),
+            SessionSource::Mock(_) => None,
+        };
+
+        CommandTarget {
+            session_key,
+            dispatcher_instance_id,
+        }
+    }
+
     fn session_audit_key(&self) -> String {
         match &self.session {
             SessionSource::Remote(session) => session
@@ -358,7 +388,8 @@ impl AppController {
         submitted
     }
 
-    pub fn submit_prompt_command_json(&mut self) -> Option<String> {
+    pub fn submit_prompt_command(&mut self) -> Option<TargetedCommand> {
+        let target = self.command_target();
         match &mut self.session {
             SessionSource::Remote(session) => {
                 let trimmed = session.composer().draft().trim().to_string();
@@ -369,31 +400,65 @@ impl AppController {
                     return None;
                 }
                 self.refresh_audit_timeline();
-                Some(
-                    serde_json::json!({
+                Some(TargetedCommand {
+                    target,
+                    command_json: serde_json::json!({
                         "type": "user_prompt",
                         "text": trimmed,
                     })
                     .to_string(),
-                )
+                })
             }
             SessionSource::Mock(session) => {
                 let submitted = session.submit();
                 if submitted {
                     self.refresh_audit_timeline();
                 }
-                submitted.then(String::new)
+                submitted.then(|| TargetedCommand {
+                    target,
+                    command_json: String::new(),
+                })
             }
         }
-        .filter(|command| !command.is_empty())
+        .filter(|command| !command.command_json.is_empty())
     }
 
-    pub fn cancel_command_json(&self) -> Option<String> {
+    pub fn cancel_command(&self) -> Option<TargetedCommand> {
         match &self.session {
-            SessionSource::Remote(session) if session.is_run_active() => {
-                Some(serde_json::json!({ "type": "cancel" }).to_string())
-            }
+            SessionSource::Remote(session) if session.is_run_active() => Some(TargetedCommand {
+                target: self.command_target(),
+                command_json: serde_json::json!({ "type": "cancel" }).to_string(),
+            }),
             _ => None,
+        }
+    }
+
+    #[allow(dead_code)]
+    pub fn request_dispatcher_switch_command(
+        &mut self,
+        profile: &str,
+        model: Option<&str>,
+    ) -> Option<TargetedCommand> {
+        let target = self.command_target();
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                match session.request_dispatcher_switch(profile, model)? {
+                    DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
+                        TargetedCommand {
+                            target,
+                            command_json: serde_json::json!({
+                                "type": "switch_dispatcher",
+                                "request_id": request_id,
+                                "profile": profile,
+                                "model": model,
+                            })
+                            .to_string(),
+                        },
+                    ),
+                    DispatcherSwitchCommandOutcome::Noop => None,
+                }
+            }
+            SessionSource::Mock(_) => None,
         }
     }
 
@@ -403,23 +468,8 @@ impl AppController {
         profile: &str,
         model: Option<&str>,
     ) -> Option<String> {
-        match &mut self.session {
-            SessionSource::Remote(session) => {
-                match session.request_dispatcher_switch(profile, model)? {
-                    DispatcherSwitchCommandOutcome::Issued { request_id } => Some(
-                        serde_json::json!({
-                            "type": "switch_dispatcher",
-                            "request_id": request_id,
-                            "profile": profile,
-                            "model": model,
-                        })
-                        .to_string(),
-                    ),
-                    DispatcherSwitchCommandOutcome::Noop => None,
-                }
-            }
-            SessionSource::Mock(_) => None,
-        }
+        self.request_dispatcher_switch_command(profile, model)
+            .map(|command| command.command_json)
     }
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
@@ -516,9 +566,17 @@ mod tests {
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.update_draft("ship it");
 
-        let command = controller.submit_prompt_command_json().unwrap();
+        let command = controller.submit_prompt_command().unwrap();
 
-        assert_eq!(command, r#"{"text":"ship it","type":"user_prompt"}"#);
+        assert_eq!(
+            command.command_json,
+            r#"{"text":"ship it","type":"user_prompt"}"#
+        );
+        assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
+        assert_eq!(
+            command.target.dispatcher_instance_id.as_deref(),
+            Some("omg_primary_01HVDEMO")
+        );
         assert_eq!(controller.messages()[1].role, MessageRole::User);
     }
 
@@ -675,7 +733,7 @@ mod tests {
         assert!(!controller.can_submit());
 
         controller.update_draft("rush message");
-        let result = controller.submit_prompt_command_json();
+        let result = controller.submit_prompt_command();
         assert!(
             result.is_none(),
             "submit must be blocked while run is active"
@@ -687,16 +745,21 @@ mod tests {
         let mut controller =
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
-        assert!(controller.cancel_command_json().is_none());
+        assert!(controller.cancel_command().is_none());
 
         controller
             .apply_remote_event_json(r#"{"type":"turn_start","turn":1}"#)
             .unwrap();
 
         let cancel = controller
-            .cancel_command_json()
+            .cancel_command()
             .expect("cancel command expected during active run");
-        assert_eq!(cancel, r#"{"type":"cancel"}"#);
+        assert_eq!(cancel.command_json, r#"{"type":"cancel"}"#);
+        assert_eq!(cancel.target.session_key, "remote:session_01HVDEMO");
+        assert_eq!(
+            cancel.target.dispatcher_instance_id.as_deref(),
+            Some("omg_primary_01HVDEMO")
+        );
     }
 
     #[test]
@@ -721,12 +784,17 @@ mod tests {
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         let command = controller
-            .request_dispatcher_switch_command_json("supervisor-heavy", Some("openai:gpt-4.1"))
+            .request_dispatcher_switch_command("supervisor-heavy", Some("openai:gpt-4.1"))
             .unwrap();
 
         assert_eq!(
-            command,
+            command.command_json,
             r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","request_id":"dispatcher-switch-1","type":"switch_dispatcher"}"#
+        );
+        assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
+        assert_eq!(
+            command.target.dispatcher_instance_id.as_deref(),
+            Some("omg_primary_01HVDEMO")
         );
 
         let session = controller.session_data();

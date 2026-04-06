@@ -287,9 +287,9 @@ pub fn App() -> Element {
                                 controller.write().set_transcript_auto_expand(enabled);
                             })),
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
+                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command);
+                                    stream.send_command(command.command_json);
                                 }
                             })),
                             on_transcript_focus: Some(EventHandler::new(move |target: String| {
@@ -320,9 +320,9 @@ pub fn App() -> Element {
                                 class: "composer",
                                 onsubmit: move |event| {
                                     event.prevent_default();
-                                    let command = controller.write().submit_prompt_command_json();
+                                    let command = controller.write().submit_prompt_command();
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                        stream.send_command(command);
+                                        stream.send_command(command.command_json);
                                     }
                                 },
                                 {render_dispatch_context_strip(&dispatch_context)}
@@ -342,11 +342,11 @@ pub fn App() -> Element {
                                             && (event.modifiers().contains(Modifiers::CONTROL)
                                                 || event.modifiers().contains(Modifiers::META))
                                         {
-                                            let command = controller.write().submit_prompt_command_json();
+                                            let command = controller.write().submit_prompt_command();
                                             if let (Some(command), Some(stream)) =
                                                 (command, event_stream.read().clone())
                                             {
-                                                stream.send_command(command);
+                                                stream.send_command(command.command_json);
                                             }
                                         }
                                     },
@@ -357,10 +357,10 @@ pub fn App() -> Element {
                                             class: "composer-cancel",
                                             r#type: "button",
                                             onclick: move |_| {
-                                                if let Some(command) = controller.read().cancel_command_json()
+                                                if let Some(command) = controller.read().cancel_command()
                                                     && let Some(stream) = event_stream.read().clone()
                                                 {
-                                                    stream.send_command(command);
+                                                    stream.send_command(command.command_json);
                                                 }
                                             },
                                             "Cancel"
@@ -384,9 +384,9 @@ pub fn App() -> Element {
                     SessionScreen {
                         data: controller.read().session_data(),
                         on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                            let command = controller.write().request_dispatcher_switch_command_json(&profile, model.as_deref());
+                            let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                             if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                stream.send_command(command);
+                                stream.send_command(command.command_json);
                             }
                         })),
                         on_transcript_focus: Some(EventHandler::new(move |target: String| {
