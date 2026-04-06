@@ -540,6 +540,41 @@ pub fn SessionScreen(
                 }
             }
 
+            if data.telemetry.lifecycle.attached_count > 0 {
+                section { class: "screen-section",
+                    h2 { class: "screen-section-title", "Lifecycle rollup" }
+                    div { class: "kv-grid",
+                        {kv_row("Attached", &data.telemetry.lifecycle.counts.total_attached.to_string())}
+                        {kv_row("Fresh", &data.telemetry.lifecycle.counts.fresh.to_string())}
+                        {kv_row("Stale", &data.telemetry.lifecycle.counts.stale.to_string())}
+                        {kv_row("Lost", &data.telemetry.lifecycle.counts.lost.to_string())}
+                        {kv_row("Abandoned", &data.telemetry.lifecycle.counts.abandoned.to_string())}
+                        {kv_row("Reaped", &data.telemetry.lifecycle.counts.reaped.to_string())}
+                        {kv_row("Unknown", &data.telemetry.lifecycle.counts.unknown.to_string())}
+                    }
+                    for instance in &data.telemetry.lifecycle.instances {
+                        div { class: "kv-grid",
+                            {kv_row("Route", &instance.route_id)}
+                            {kv_row("Instance", &instance.instance_id)}
+                            {kv_row("Role", &instance.role)}
+                            {kv_row("Profile", &instance.profile)}
+                            if let Some(status) = instance.status.as_deref() {
+                                {kv_row("Status", status)}
+                            }
+                            if let Some(freshness) = instance.freshness.as_deref() {
+                                {kv_row("Freshness", freshness)}
+                            }
+                            if let Some(base_url) = instance.base_url.as_deref() {
+                                {kv_row("Base URL", base_url)}
+                            }
+                            if let Some(last_seen_at) = instance.last_seen_at.as_deref() {
+                                {kv_row("Last seen", last_seen_at)}
+                            }
+                        }
+                    }
+                }
+            }
+
             if let Some(control_plane) = &data.telemetry.control_plane {
                 section { class: "screen-section",
                     h2 { class: "screen-section-title", "Control-plane telemetry" }
@@ -1492,7 +1527,40 @@ mod tests {
             telemetry: SessionTelemetryData {
                 provider_summary: "1 / 2 authenticated".into(),
                 lifecycle_summary: "2 active delegate(s)".into(),
-                lifecycle: crate::fixtures::LifecycleTelemetryData::default(),
+                lifecycle: crate::fixtures::LifecycleTelemetryData {
+                    counts: crate::fixtures::LifecycleRollupCountsData {
+                        total_attached: 2,
+                        fresh: 1,
+                        stale: 1,
+                        lost: 0,
+                        abandoned: 0,
+                        reaped: 0,
+                        unknown: 0,
+                    },
+                    instances: vec![
+                        crate::fixtures::LifecycleInstanceTelemetryData {
+                            instance_id: "omg_primary_01HVDEMO".into(),
+                            route_id: "session-dispatcher".into(),
+                            role: "primary-driver".into(),
+                            profile: "primary-interactive".into(),
+                            base_url: Some("http://127.0.0.1:7842".into()),
+                            status: Some("ready".into()),
+                            freshness: Some("fresh".into()),
+                            last_seen_at: Some("2026-04-06T00:00:00Z".into()),
+                        },
+                        crate::fixtures::LifecycleInstanceTelemetryData {
+                            instance_id: "omg_host_01HVDEMO".into(),
+                            route_id: "host-control-plane".into(),
+                            role: "primary-driver".into(),
+                            profile: "control-plane".into(),
+                            base_url: Some("http://127.0.0.1:7842".into()),
+                            status: Some("lost".into()),
+                            freshness: Some("stale".into()),
+                            last_seen_at: Some("2026-04-05T23:59:00Z".into()),
+                        },
+                    ],
+                    ..crate::fixtures::LifecycleTelemetryData::default()
+                },
                 route_summary: "dispatcher omg_primary_01HVDEMO · anthropic:claude-sonnet-4-6".into(),
                 latest_turn_summary: "turns 12 · tool calls 34".into(),
                 latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {

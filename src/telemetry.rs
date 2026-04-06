@@ -1,6 +1,6 @@
 use crate::fixtures::{
-    ControlPlaneTelemetryData, LifecycleInstanceTelemetryData, LifecycleTelemetryData,
-    ProviderInfo, ProviderTelemetryData, SessionTelemetryData,
+    ControlPlaneTelemetryData, LifecycleInstanceTelemetryData, LifecycleRollupCountsData,
+    LifecycleTelemetryData, ProviderInfo, ProviderTelemetryData, SessionTelemetryData,
 };
 use crate::instance_registry::InstanceRegistryStore;
 use crate::omegon_control::{
@@ -121,10 +121,14 @@ pub fn aggregate_lifecycle_telemetry(
     registry_store: &InstanceRegistryStore,
     selected_route_id: &str,
 ) -> LifecycleTelemetryData {
-    let selected_instance = attached_instances
+    let instances: Vec<LifecycleInstanceTelemetryData> = attached_instances
+        .iter()
+        .map(|instance| project_lifecycle_instance(instance, registry_store))
+        .collect();
+    let selected_instance = instances
         .iter()
         .find(|instance| instance.route_id == selected_route_id)
-        .map(|instance| project_lifecycle_instance(instance, registry_store));
+        .cloned();
 
     let summary = if attached_instances.is_empty() {
         "no attached instances".into()
@@ -148,7 +152,31 @@ pub fn aggregate_lifecycle_telemetry(
         attached_count: attached_instances.len(),
         selected_route_id: (!selected_route_id.is_empty()).then(|| selected_route_id.to_string()),
         selected_instance,
+        counts: summarize_lifecycle_counts(&instances),
+        instances,
     }
+}
+
+fn summarize_lifecycle_counts(
+    instances: &[LifecycleInstanceTelemetryData],
+) -> LifecycleRollupCountsData {
+    let mut counts = LifecycleRollupCountsData {
+        total_attached: instances.len(),
+        ..Default::default()
+    };
+
+    for instance in instances {
+        match instance.freshness.as_deref().unwrap_or("unknown") {
+            "fresh" => counts.fresh += 1,
+            "stale" => counts.stale += 1,
+            "lost" => counts.lost += 1,
+            "abandoned" => counts.abandoned += 1,
+            "reaped" => counts.reaped += 1,
+            _ => counts.unknown += 1,
+        }
+    }
+
+    counts
 }
 
 pub fn project_provider_telemetry(snapshot: ProviderTelemetrySnapshot) -> ProviderTelemetryData {

@@ -265,11 +265,24 @@ pub struct LifecycleInstanceTelemetryData {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct LifecycleRollupCountsData {
+    pub total_attached: usize,
+    pub fresh: usize,
+    pub stale: usize,
+    pub lost: usize,
+    pub abandoned: usize,
+    pub reaped: usize,
+    pub unknown: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct LifecycleTelemetryData {
     pub summary: String,
     pub attached_count: usize,
     pub selected_route_id: Option<String>,
     pub selected_instance: Option<LifecycleInstanceTelemetryData>,
+    pub counts: LifecycleRollupCountsData,
+    pub instances: Vec<LifecycleInstanceTelemetryData>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
