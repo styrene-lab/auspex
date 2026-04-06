@@ -258,6 +258,12 @@ impl AppController {
         self.attached_instance_engine.attached_instances()
     }
 
+    pub fn evaluate_instance_lifecycle(&mut self, now_epoch_seconds: u64) {
+        self.attached_instance_engine.evaluate_lifecycle_policy(now_epoch_seconds);
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.persist_instance_registry();
+    }
+
     #[allow(dead_code)]
     pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
         self.attached_instance_engine.attach_instance(instance);

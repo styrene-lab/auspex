@@ -65,6 +65,7 @@ struct SettingsPanelModel {
     target_label: String,
     target_detail: String,
     route_detail: String,
+    lifecycle_summary: String,
     auth_status_label: String,
     auth_status_detail: String,
     provider_rows: Vec<(String, String)>,
@@ -150,6 +151,26 @@ fn build_settings_panel_model(
         )
     };
 
+    let lifecycle_summary = controller
+        .attached_instances()
+        .iter()
+        .find(|instance| instance.instance_id == target_label)
+        .and_then(|instance| instance.registry_record.as_ref())
+        .map(|record| {
+            let freshness = record
+                .observed
+                .health
+                .freshness
+                .as_ref()
+                .map(|freshness| format!("{freshness:?}").to_ascii_lowercase())
+                .unwrap_or_else(|| "unknown".into());
+            format!(
+                "Lifecycle: {:?} · freshness {}",
+                record.identity.status, freshness
+            )
+        })
+        .unwrap_or_else(|| "Lifecycle: unavailable".into());
+
     let authenticated = session
         .providers
         .iter()
@@ -222,6 +243,7 @@ fn build_settings_panel_model(
         target_label,
         target_detail,
         route_detail,
+        lifecycle_summary,
         auth_status_label,
         auth_status_detail,
         provider_rows,
@@ -289,6 +311,14 @@ pub fn App() -> Element {
         let mut settings_status_message = settings_status_message;
         async move {
             loop {
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let now_epoch_seconds = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_secs())
+                        .unwrap_or(0);
+                    controller.write().evaluate_instance_lifecycle(now_epoch_seconds);
+                }
                 if let Some(handle) = event_stream.read().clone() {
                     let events = handle.inbox.drain();
                     if !events.is_empty() {
@@ -709,6 +739,7 @@ pub fn App() -> Element {
                                 }
                                 p { class: "settings-panel-detail", "{settings_model.target_detail}" }
                                 p { class: "settings-panel-detail", "{settings_model.route_detail}" }
+                                p { class: "settings-panel-detail", "{settings_model.lifecycle_summary}" }
                                 div { class: "settings-provider-list",
                                     for (route_id, label, detail) in &settings_model.route_options {
                                         button {
@@ -2965,6 +2996,7 @@ mod tests {
         assert_eq!(model.target_label, "omg_primary_01HVDEMO");
         assert!(model.target_detail.contains("primary-driver"));
         assert!(model.route_detail.contains("session-dispatcher"));
+        assert!(model.lifecycle_summary.contains("Lifecycle:"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
         assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
         assert!(model.actions.iter().all(|action| action.enabled));
@@ -2977,6 +3009,7 @@ mod tests {
 
         assert_eq!(model.target_label, "local-shell");
         assert!(model.route_detail.contains("local-shell") || model.route_detail.contains("Local shell"));
+        assert!(model.lifecycle_summary.contains("Lifecycle:"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
         assert!(model.actions.iter().all(|action| action.enabled));
     }
