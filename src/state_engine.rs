@@ -89,6 +89,56 @@ impl AttachedInstanceStateEngine {
         self.selected_command_route_id = Some(route_id.into());
     }
 
+    pub fn attach_instance(&mut self, instance: AttachedInstanceRecord) {
+        let next_record = synthesize_instance_record(&instance);
+        if let Some(position) = self
+            .registry_store
+            .instances
+            .iter()
+            .position(|record| record.identity.instance_id == next_record.identity.instance_id)
+        {
+            self.registry_store.instances[position] = next_record.clone();
+        } else {
+            self.registry_store.instances.push(next_record.clone());
+        }
+
+        let next_instance = AttachedInstanceRecord {
+            registry_record: Some(next_record),
+            ..instance
+        };
+        if let Some(position) = self
+            .attached_instances
+            .iter()
+            .position(|existing| existing.instance_id == next_instance.instance_id)
+        {
+            self.attached_instances[position] = next_instance;
+        } else {
+            self.attached_instances.push(next_instance);
+        }
+    }
+
+    pub fn detach_instance(&mut self, instance_id: &str) {
+        self.attached_instances
+            .retain(|instance| instance.instance_id != instance_id);
+        self.registry_store.instances.retain(|record| {
+            !(record.identity.instance_id == instance_id
+                && record.ownership.owner_kind == crate::runtime_types::OwnerKind::AuspexSession
+                && record.ownership.owner_id == self.session_key.trim_start_matches("remote:"))
+        });
+    }
+
+    pub fn purge_stale_instances(&mut self, active_instance_ids: &[String]) {
+        let active: std::collections::HashSet<&str> =
+            active_instance_ids.iter().map(String::as_str).collect();
+        self.attached_instances
+            .retain(|instance| active.contains(instance.instance_id.as_str()));
+        self.registry_store.instances.retain(|record| {
+            record.ownership.owner_kind != crate::runtime_types::OwnerKind::AuspexSession
+                || record.ownership.owner_id != self.session_key.trim_start_matches("remote:")
+                || active.contains(record.identity.instance_id.as_str())
+        });
+    }
+
     pub fn selected_command_route_id(&self) -> String {
         let routes = self.available_command_routes();
         if let Some(selected) = self.selected_command_route_id.as_ref()
@@ -776,5 +826,101 @@ mod tests {
                 dispatcher_instance_id: None,
             }
         );
+    }
+
+    #[test]
+    fn attach_instance_merges_into_registry_and_route_state() {
+        let mut engine = AttachedInstanceStateEngine::default();
+        engine.reconcile_session_snapshot("remote:session_01HVTEST", &SessionData::default());
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_host_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "host".into(),
+            profile: "control-plane".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("openai:gpt-4.1".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+
+        assert!(engine
+            .attached_instances()
+            .iter()
+            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+        assert!(engine
+            .registry_store()
+            .instances
+            .iter()
+            .any(|record| record.identity.instance_id == "omg_host_01HVTEST"));
+    }
+
+    #[test]
+    fn detach_instance_removes_session_owned_registry_record() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_host_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "host".into(),
+            profile: "control-plane".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("openai:gpt-4.1".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        engine.detach_instance("omg_host_01HVTEST");
+
+        assert!(!engine
+            .attached_instances()
+            .iter()
+            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+        assert!(!engine
+            .registry_store()
+            .instances
+            .iter()
+            .any(|record| record.identity.instance_id == "omg_host_01HVTEST"));
+    }
+
+    #[test]
+    fn purge_stale_instances_removes_non_active_session_records() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_host_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "host".into(),
+            profile: "control-plane".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("openai:gpt-4.1".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_dispatcher_01HVTEST".into(),
+            route_id: SESSION_DISPATCHER_ROUTE_ID.into(),
+            role: "primary-driver".into(),
+            profile: "primary-interactive".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("anthropic:claude-sonnet-4-6".into()),
+            dispatcher_instance_id: Some("omg_dispatcher_01HVTEST".into()),
+            registry_record: None,
+        });
+
+        engine.purge_stale_instances(&["omg_dispatcher_01HVTEST".into()]);
+
+        assert_eq!(engine.attached_instances().len(), 1);
+        assert_eq!(engine.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(engine.registry_store().instances.len(), 1);
+        assert_eq!(engine.registry_store().instances[0].identity.instance_id, "omg_dispatcher_01HVTEST");
     }
 }

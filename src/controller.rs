@@ -258,6 +258,24 @@ impl AppController {
         self.attached_instance_engine.attached_instances()
     }
 
+    pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
+        self.attached_instance_engine.attach_instance(instance);
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.persist_instance_registry();
+    }
+
+    pub fn detach_instance_record(&mut self, instance_id: &str) {
+        self.attached_instance_engine.detach_instance(instance_id);
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.persist_instance_registry();
+    }
+
+    pub fn purge_stale_instance_records(&mut self, active_instance_ids: &[String]) {
+        self.attached_instance_engine.purge_stale_instances(active_instance_ids);
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.persist_instance_registry();
+    }
+
     pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
         match self.shell_state() {
             ShellState::StartingOmegon => Some(AppSurfaceNotice {
@@ -814,6 +832,63 @@ mod tests {
         let command = controller.submit_prompt_command().expect("targeted command");
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
         assert_eq!(command.target.dispatcher_instance_id, Some("omg_primary_01HVDEMO".into()));
+    }
+
+    #[test]
+    fn controller_attach_and_detach_instance_persist_registry_state() {
+        let mut controller = AppController::default();
+        controller.attach_instance_record(AttachedInstanceRecord {
+            instance_id: "omg_host_01HVTEST".into(),
+            route_id: crate::state_engine::HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "host".into(),
+            profile: "control-plane".into(),
+            session_key: "mock:ready".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("openai:gpt-4.1".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        assert!(controller
+            .attached_instances()
+            .iter()
+            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+
+        controller.detach_instance_record("omg_host_01HVTEST");
+        assert!(!controller
+            .attached_instances()
+            .iter()
+            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+    }
+
+    #[test]
+    fn controller_purges_stale_instance_records() {
+        let mut controller = AppController::default();
+        controller.attach_instance_record(AttachedInstanceRecord {
+            instance_id: "omg_host_01HVTEST".into(),
+            route_id: crate::state_engine::HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "host".into(),
+            profile: "control-plane".into(),
+            session_key: "mock:ready".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("openai:gpt-4.1".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        controller.attach_instance_record(AttachedInstanceRecord {
+            instance_id: "omg_dispatcher_01HVTEST".into(),
+            route_id: crate::state_engine::SESSION_DISPATCHER_ROUTE_ID.into(),
+            role: "primary-driver".into(),
+            profile: "primary-interactive".into(),
+            session_key: "mock:ready".into(),
+            base_url: Some("http://127.0.0.1:7842".into()),
+            model: Some("anthropic:claude-sonnet-4-6".into()),
+            dispatcher_instance_id: Some("omg_dispatcher_01HVTEST".into()),
+            registry_record: None,
+        });
+
+        controller.purge_stale_instance_records(&["omg_dispatcher_01HVTEST".into()]);
+        assert_eq!(controller.attached_instances().len(), 1);
+        assert_eq!(controller.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
     }
 
     #[cfg(not(target_arch = "wasm32"))]
