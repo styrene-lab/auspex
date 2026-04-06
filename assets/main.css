@@ -12,9 +12,9 @@
   --surface-panel-gradient: linear-gradient(180deg, var(--surface-1) 0%, #0f141b 100%);
   --surface-control-hover: #0f1622;
   --surface-control-active: #0f1f16;
-  --surface-control-pending: #2a1d0f;
-  --surface-warn: #2b1a0b;
-  --surface-warn-soft: #24170a;
+  --surface-control-pending: #2f1d08;
+  --surface-warn: #331c08;
+  --surface-warn-soft: #2a1607;
   --surface-danger: var(--surface-danger);
   --surface-danger-soft: var(--surface-danger-soft);
   --surface-info: var(--surface-info);
@@ -55,7 +55,7 @@
   --border-success: var(--border-success);
   --border-success-strong: #1f6f43;
   --border-warn: var(--border-warn);
-  --border-warn-strong: #7a531f;
+  --border-warn-strong: #96611f;
   --border-danger: var(--border-danger);
   --border-danger-strong: #6e2d35;
   --border-child: var(--border-child);
@@ -626,8 +626,8 @@ body > * {
 }
 
 .chat-status-banner-blocked {
-  border-color: var(--border-warn);
-  background: var(--surface-warn-soft);
+  border-color: rgba(214, 136, 43, 0.72);
+  background: linear-gradient(180deg, rgba(49, 28, 9, 0.98), rgba(35, 20, 7, 0.98));
 }
 
 .chat-status-label {
@@ -1348,9 +1348,9 @@ body > * {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.75rem 0.8rem;
-  border: 1px solid rgba(199, 123, 36, 0.46);
+  border: 1px solid rgba(214, 136, 43, 0.52);
   border-radius: 10px;
-  background: linear-gradient(180deg, rgba(45, 28, 10, 0.96), rgba(28, 18, 8, 0.98));
+  background: linear-gradient(180deg, rgba(52, 30, 8, 0.98), rgba(34, 20, 6, 0.98));
 }
 
 .composer-blocked-title {
@@ -1358,7 +1358,7 @@ body > * {
   font-size: 0.82rem;
   font-weight: 700;
   letter-spacing: 0.04em;
-  color: #ffbf69;
+  color: #ffb04c;
 }
 
 .composer-blocked-detail {
@@ -2185,7 +2185,7 @@ body > * {
 
 .settings-modal-grid {
   display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
+  grid-template-columns: minmax(20rem, 0.9fr) minmax(24rem, 1.1fr);
   gap: 0.9rem;
 }
 
@@ -2202,13 +2202,10 @@ body > * {
 }
 
 .settings-panel-card-target,
-.settings-panel-card-auth {
-  grid-column: span 6;
-}
-
+.settings-panel-card-auth,
 .settings-panel-card-status,
 .settings-panel-card-actions {
-  grid-column: span 6;
+  grid-column: auto;
 }
 
 .settings-panel-title {

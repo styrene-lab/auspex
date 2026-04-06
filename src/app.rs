@@ -129,16 +129,19 @@ fn build_settings_panel_model(
         .and_then(|binding| binding.instance_descriptor.as_ref())
         .or(session.instance_descriptor.as_ref());
 
-    let target_label = dispatcher_binding
-        .map(|binding| binding.dispatcher_instance_id.as_str())
-        .filter(|value| !value.is_empty())
+    let target_label = selected_route
+        .map(|route| route.label.clone())
         .or_else(|| {
-            descriptor
-                .map(|descriptor| descriptor.identity.instance_id.as_str())
+            dispatcher_binding
+                .map(|binding| binding.dispatcher_instance_id.clone())
                 .filter(|value| !value.is_empty())
         })
-        .unwrap_or("local-shell")
-        .to_string();
+        .or_else(|| {
+            descriptor
+                .map(|descriptor| descriptor.identity.instance_id.clone())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or_else(|| "local-shell".to_string());
 
     let target_role = dispatcher_binding
         .map(|binding| binding.expected_role.as_str())
@@ -165,7 +168,11 @@ fn build_settings_panel_model(
         .filter(|value| !value.is_empty())
         .unwrap_or("local-session");
 
-    let target_detail = format!("{target_role} · {target_profile} · session {target_session}");
+    let target_detail = if let Some(route) = selected_route {
+        format!("{} · {}", route.label, route.detail)
+    } else {
+        format!("{target_role} · {target_profile} · session {target_session}")
+    };
 
     let route_detail = if let Some(route) = selected_route {
         format!(
@@ -831,6 +838,7 @@ pub fn App() -> Element {
                         div { class: "chat-workspace",
                             {render_chat_status_banner(
                                 controller.read().summary(),
+                                &controller.read().session_data(),
                                 controller.read().is_run_active(),
                                 controller.read().can_submit(),
                             )}
@@ -1848,15 +1856,24 @@ fn build_chat_empty_state_model(
 
 fn render_chat_status_banner(
     summary: &crate::fixtures::HostSessionSummary,
+    session: &crate::fixtures::SessionData,
     is_run_active: bool,
     can_submit: bool,
 ) -> Element {
+    let provider_ready = session.providers.iter().any(|provider| provider.authenticated);
     let (banner_class, banner_state, label, detail) = if is_run_active {
         (
             "chat-status-banner chat-status-banner-running",
             "running",
             "Run active",
             "Omegon is working. New input is paused until the current run completes or you cancel it.",
+        )
+    } else if !can_submit && !provider_ready {
+        (
+            "chat-status-banner chat-status-banner-blocked",
+            "blocked",
+            "Prompt execution blocked",
+            "No authenticated providers are available for prompt execution. Open Settings to authenticate a runnable backend.",
         )
     } else if !can_submit {
         (
