@@ -3,6 +3,7 @@ use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
     HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
 };
+use crate::instance_registry::InstanceRegistryStore;
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
@@ -147,6 +148,7 @@ pub struct AppController {
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
     audit_timeline: AuditTimelineStore,
+    instance_registry: InstanceRegistryStore,
     attached_instance_engine: AttachedInstanceStateEngine,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
@@ -159,6 +161,7 @@ impl Default for AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
+            instance_registry: InstanceRegistryStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
@@ -177,6 +180,13 @@ impl Default for AppController {
 
 impl AppController {
     pub fn from_remote_snapshot_json(json: &str) -> Result<Self, serde_json::Error> {
+        Self::from_remote_snapshot_json_with_registry(json, InstanceRegistryStore::default())
+    }
+
+    pub fn from_remote_snapshot_json_with_registry(
+        json: &str,
+        instance_registry: InstanceRegistryStore,
+    ) -> Result<Self, serde_json::Error> {
         let session = RemoteHostSession::from_snapshot_json(json)?;
         let mut controller = Self {
             session: SessionSource::Remote(Box::new(session)),
@@ -184,6 +194,7 @@ impl AppController {
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
+            instance_registry,
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -205,6 +216,12 @@ impl AppController {
     pub fn with_audit_timeline(mut self, audit_timeline: AuditTimelineStore) -> Self {
         self.audit_timeline = audit_timeline;
         self.refresh_audit_timeline();
+        self
+    }
+
+    pub fn with_instance_registry(mut self, instance_registry: InstanceRegistryStore) -> Self {
+        self.instance_registry = instance_registry;
+        self.rebuild_attached_instances();
         self
     }
 
@@ -501,8 +518,11 @@ impl AppController {
         let session_key = self.session_audit_key();
         let session = self.session.model().session_data();
         let selected_route = self.attached_instance_engine.selected_command_route_id();
-        self.attached_instance_engine =
-            AttachedInstanceStateEngine::from_session_snapshot(session_key, &session);
+        self.attached_instance_engine = AttachedInstanceStateEngine::from_registry_and_session(
+            self.instance_registry.clone(),
+            session_key,
+            &session,
+        );
         self.attached_instance_engine.select_command_route(selected_route);
     }
 
@@ -640,6 +660,7 @@ mod tests {
     use super::*;
     use crate::audit_timeline::AuditEntryKind;
     use crate::fixtures::MessageRole;
+    use crate::runtime_types::InstanceRecord;
 
     const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;
 
@@ -686,6 +707,90 @@ mod tests {
         assert_eq!(controller.attached_instances().len(), 1);
         assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
         assert_eq!(controller.selected_command_route_id(), "session-dispatcher");
+    }
+
+    #[test]
+    fn registry_backed_controller_hydrates_host_route_from_persisted_record() {
+        let registry = InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![InstanceRecord {
+                schema_version: 1,
+                identity: crate::runtime_types::WorkerIdentity {
+                    instance_id: "omg_host_01HVDEMO".into(),
+                    role: crate::runtime_types::WorkerRole::PrimaryDriver,
+                    profile: "control-plane".into(),
+                    status: crate::runtime_types::WorkerLifecycleState::Ready,
+                    created_at: "2026-04-06T00:00:00Z".into(),
+                    updated_at: "2026-04-06T00:00:01Z".into(),
+                },
+                ownership: crate::runtime_types::WorkerOwnership {
+                    owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                    owner_id: "session_01HVDEMO".into(),
+                    parent_instance_id: None,
+                },
+                desired: crate::runtime_types::DesiredWorkerState {
+                    backend: crate::runtime_types::BackendConfig {
+                        kind: crate::runtime_types::BackendKind::LocalProcess,
+                        image: None,
+                        namespace: None,
+                        resources: None,
+                    },
+                    workspace: crate::runtime_types::WorkspaceBinding {
+                        cwd: "/repo".into(),
+                        workspace_id: "repo:demo".into(),
+                        branch: Some("main".into()),
+                    },
+                    task: None,
+                    policy: crate::runtime_types::PolicyOverrides {
+                        model: Some("openai:gpt-4.1".into()),
+                        ..Default::default()
+                    },
+                },
+                observed: crate::runtime_types::ObservedWorkerState {
+                    placement: crate::runtime_types::ObservedPlacement {
+                        placement_id: "pid/9001".into(),
+                        host: "desktop:local".into(),
+                        pid: Some(9001),
+                        namespace: None,
+                        pod_name: None,
+                        container_name: None,
+                    },
+                    control_plane: crate::runtime_types::ObservedControlPlane {
+                        schema_version: 2,
+                        omegon_version: "0.15.10-rc.17".into(),
+                        base_url: "http://127.0.0.1:7842".into(),
+                        startup_url: "http://127.0.0.1:7842/api/startup".into(),
+                        health_url: "http://127.0.0.1:7842/api/healthz".into(),
+                        ready_url: "http://127.0.0.1:7842/api/readyz".into(),
+                        ws_url: "ws://127.0.0.1:7842/ws".into(),
+                        auth_mode: "ephemeral-bearer".into(),
+                        token_ref: None,
+                        last_ready_at: Some("2026-04-06T00:00:02Z".into()),
+                    },
+                    health: crate::runtime_types::ObservedHealth {
+                        ready: true,
+                        degraded_reason: None,
+                        last_heartbeat_at: Some("2026-04-06T00:00:03Z".into()),
+                    },
+                    exit: crate::runtime_types::ObservedExit {
+                        exited: false,
+                        exit_code: None,
+                        exit_reason: None,
+                        exited_at: None,
+                    },
+                },
+            }],
+        };
+
+        let controller = AppController::from_remote_snapshot_json_with_registry(
+            REMOTE_SNAPSHOT_JSON,
+            registry,
+        )
+        .unwrap();
+
+        let routes = controller.available_command_routes();
+        assert!(routes.iter().any(|route| route.route_id == "host-control-plane"));
+        assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
     }
 
     #[test]

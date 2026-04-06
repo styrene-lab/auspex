@@ -13,6 +13,9 @@ use crate::event_stream::{
     EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
     spawn_websocket_event_stream,
 };
+use crate::instance_registry::{
+    default_instance_registry_path, load_or_default as load_registry_or_default,
+};
 use crate::omegon_control::OmegonStartupInfo;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -253,6 +256,10 @@ impl BootstrapResult {
         if let Some(path) = default_audit_timeline_path() {
             controller = controller.with_audit_timeline(load_or_default(&path));
         }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_instance_registry_path() {
+            controller = controller.with_instance_registry(load_registry_or_default(&path));
+        }
         controller.set_scenario(crate::fixtures::DevScenario::StartupFailure);
         controller.set_bootstrap_note(Some(note.clone()));
         Self {
@@ -268,6 +275,10 @@ impl BootstrapResult {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = default_audit_timeline_path() {
             controller = controller.with_audit_timeline(load_or_default(&path));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_instance_registry_path() {
+            controller = controller.with_instance_registry(load_registry_or_default(&path));
         }
         controller.set_scenario(crate::fixtures::DevScenario::CompatibilityFailure);
         controller.set_bootstrap_note(Some(note.clone()));
@@ -288,6 +299,10 @@ impl BootstrapResult {
         #[cfg(not(target_arch = "wasm32"))]
         if let Some(path) = default_audit_timeline_path() {
             controller = controller.with_audit_timeline(load_or_default(&path));
+        }
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_instance_registry_path() {
+            controller = controller.with_instance_registry(load_registry_or_default(&path));
         }
         controller.set_scenario(crate::fixtures::DevScenario::Booting);
         controller.set_bootstrap_note(Some(format!("Starting Omegon at {label}\u{2026}")));
@@ -371,7 +386,10 @@ pub async fn bootstrap_from_http_state_async(
         .text()
         .await
         .map_err(|error| format!("could not read response body: {error}"))?;
-    let mut controller = AppController::from_remote_snapshot_json(&body)
+    let registry_store = default_instance_registry_path()
+        .map(|path| load_registry_or_default(&path))
+        .unwrap_or_default();
+    let mut controller = AppController::from_remote_snapshot_json_with_registry(&body, registry_store)
         .map_err(|error| format!("invalid state payload: {error}"))?;
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = default_audit_timeline_path() {
@@ -523,7 +541,10 @@ pub fn websocket_token_from_env() -> Option<String> {
 pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, String> {
     let contents = fs::read_to_string(path)
         .map_err(|error| format!("could not read snapshot file: {error}"))?;
-    let mut controller = AppController::from_remote_snapshot_json(&contents)
+    let registry_store = default_instance_registry_path()
+        .map(|registry_path| load_registry_or_default(&registry_path))
+        .unwrap_or_default();
+    let mut controller = AppController::from_remote_snapshot_json_with_registry(&contents, registry_store)
         .map_err(|error| format!("invalid snapshot JSON: {error}"))?;
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(audit_path) = default_audit_timeline_path() {
