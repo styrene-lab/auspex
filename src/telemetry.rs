@@ -1,6 +1,6 @@
 use crate::fixtures::{
     ControlPlaneTelemetryData, LifecycleInstanceTelemetryData, LifecycleTelemetryData,
-    ProviderTelemetryData, SessionTelemetryData,
+    ProviderInfo, ProviderTelemetryData, SessionTelemetryData,
 };
 use crate::instance_registry::InstanceRegistryStore;
 use crate::omegon_control::{
@@ -105,6 +105,15 @@ pub fn build_session_telemetry(
                 })
             }),
     }
+}
+
+pub fn summarize_provider_inventory(providers: &[ProviderInfo]) -> String {
+    if providers.is_empty() {
+        return "providers unavailable".into();
+    }
+
+    let authenticated = providers.iter().filter(|provider| provider.authenticated).count();
+    format!("{authenticated} / {} authenticated", providers.len())
 }
 
 pub fn aggregate_lifecycle_telemetry(

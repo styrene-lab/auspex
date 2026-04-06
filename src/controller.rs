@@ -1,7 +1,8 @@
 use crate::audit_timeline::{AuditTimelineQuery, AuditTimelineStore, AuditTimelineView};
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
-    HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
+    HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState,
+    WorkData,
 };
 use crate::instance_registry::{
     InstanceRegistryStore, default_instance_registry_path, persist as persist_instance_registry,
@@ -152,19 +153,21 @@ pub struct AppController {
     audit_timeline: AuditTimelineStore,
     instance_registry: InstanceRegistryStore,
     attached_instance_engine: AttachedInstanceStateEngine,
+    telemetry_snapshot: SessionTelemetryData,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
 }
 
 impl Default for AppController {
     fn default() -> Self {
-        Self {
+        let mut controller = Self {
             session: SessionSource::default(),
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
             instance_registry: InstanceRegistryStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
+            telemetry_snapshot: SessionTelemetryData::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![crate::fixtures::ProviderInfo {
@@ -176,7 +179,9 @@ impl Default for AppController {
                 last_error: None,
                 last_action: None,
             },
-        }
+        };
+        controller.refresh_telemetry_snapshot();
+        controller
     }
 }
 
@@ -197,6 +202,7 @@ impl AppController {
             audit_timeline: AuditTimelineStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             instance_registry,
+            telemetry_snapshot: SessionTelemetryData::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -205,6 +211,7 @@ impl AppController {
             },
         };
         controller.rebuild_attached_instances();
+        controller.refresh_telemetry_snapshot();
         controller.refresh_audit_timeline();
         Ok(controller)
     }
@@ -224,6 +231,7 @@ impl AppController {
     pub fn with_instance_registry(mut self, instance_registry: InstanceRegistryStore) -> Self {
         self.instance_registry = instance_registry;
         self.rebuild_attached_instances();
+        self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
         self
     }
@@ -251,6 +259,7 @@ impl AppController {
 
     pub fn select_command_route(&mut self, route_id: &str) {
         self.attached_instance_engine.select_command_route(route_id.to_string());
+        self.refresh_telemetry_snapshot();
     }
 
     #[allow(dead_code)]
@@ -261,6 +270,7 @@ impl AppController {
     pub fn evaluate_instance_lifecycle(&mut self, now_epoch_seconds: u64) {
         self.attached_instance_engine.evaluate_lifecycle_policy(now_epoch_seconds);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
     }
 
@@ -268,6 +278,7 @@ impl AppController {
     pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
         self.attached_instance_engine.attach_instance(instance);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
     }
 
@@ -275,6 +286,7 @@ impl AppController {
     pub fn detach_instance_record(&mut self, instance_id: &str) {
         self.attached_instance_engine.detach_instance(instance_id);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
     }
 
@@ -282,6 +294,7 @@ impl AppController {
     pub fn purge_stale_instance_records(&mut self, active_instance_ids: &[String]) {
         self.attached_instance_engine.purge_stale_instances(active_instance_ids);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
     }
 
@@ -355,6 +368,7 @@ impl AppController {
             }
         }
         self.rebuild_attached_instances();
+        self.refresh_telemetry_snapshot();
         self.bootstrap_note = None;
         self.refresh_audit_timeline();
     }
@@ -397,14 +411,7 @@ impl AppController {
         if !self.settings_auth_state.providers.is_empty() {
             data.providers = self.settings_auth_state.providers.clone();
         }
-
-        let lifecycle = crate::telemetry::aggregate_lifecycle_telemetry(
-            self.attached_instance_engine.attached_instances(),
-            self.attached_instance_engine.registry_store(),
-            &self.attached_instance_engine.selected_command_route_id(),
-        );
-        data.telemetry.lifecycle_summary = lifecycle.summary.clone();
-        data.telemetry.lifecycle = lifecycle;
+        data.telemetry = self.telemetry_snapshot.clone();
         data
     }
 
@@ -469,6 +476,7 @@ impl AppController {
                     .collect();
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some("auth.refresh".into());
+                self.refresh_telemetry_snapshot();
                 Ok(())
             }
             Err(error) => {
@@ -498,6 +506,7 @@ impl AppController {
                     .collect();
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some(format!("auth.{}", action.subcommand()));
+                self.refresh_telemetry_snapshot();
                 Ok(())
             }
             Err(error) => {
@@ -514,6 +523,7 @@ impl AppController {
 
     pub fn set_scenario(&mut self, scenario: DevScenario) {
         self.session.model_mut().set_scenario(scenario);
+        self.refresh_telemetry_snapshot();
         self.refresh_audit_timeline();
     }
 
@@ -575,6 +585,29 @@ impl AppController {
         );
         self.attached_instance_engine.select_command_route(selected_route);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
+    }
+
+    fn effective_provider_inventory(&self, model_data: &SessionData) -> Vec<crate::fixtures::ProviderInfo> {
+        #[cfg(not(target_arch = "wasm32"))]
+        if !self.settings_auth_state.providers.is_empty() {
+            return self.settings_auth_state.providers.clone();
+        }
+        model_data.providers.clone()
+    }
+
+    fn refresh_telemetry_snapshot(&mut self) {
+        let model_data = self.session.model().session_data();
+        let mut telemetry = model_data.telemetry.clone();
+        let providers = self.effective_provider_inventory(&model_data);
+        telemetry.provider_summary = crate::telemetry::summarize_provider_inventory(&providers);
+        let lifecycle = crate::telemetry::aggregate_lifecycle_telemetry(
+            self.attached_instance_engine.attached_instances(),
+            self.attached_instance_engine.registry_store(),
+            &self.attached_instance_engine.selected_command_route_id(),
+        );
+        telemetry.lifecycle_summary = lifecycle.summary.clone();
+        telemetry.lifecycle = lifecycle;
+        self.telemetry_snapshot = telemetry;
     }
 
     fn persist_instance_registry(&self) {
@@ -689,6 +722,7 @@ impl AppController {
                         .map(|instance| instance.instance_id.clone())
                         .collect();
                     self.purge_stale_instance_records(&active_instance_ids);
+                    self.refresh_telemetry_snapshot();
                     self.persist_instance_registry();
                     self.refresh_audit_timeline();
                 }
