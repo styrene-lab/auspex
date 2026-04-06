@@ -3,7 +3,9 @@ use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
     HostSessionSummary, MockHostSession, SessionData, ShellState, WorkData,
 };
-use crate::instance_registry::InstanceRegistryStore;
+use crate::instance_registry::{
+    InstanceRegistryStore, default_instance_registry_path, persist as persist_instance_registry,
+};
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
@@ -222,6 +224,7 @@ impl AppController {
     pub fn with_instance_registry(mut self, instance_registry: InstanceRegistryStore) -> Self {
         self.instance_registry = instance_registry;
         self.rebuild_attached_instances();
+        self.persist_instance_registry();
         self
     }
 
@@ -524,6 +527,14 @@ impl AppController {
             &session,
         );
         self.attached_instance_engine.select_command_route(selected_route);
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+    }
+
+    fn persist_instance_registry(&self) {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(path) = default_instance_registry_path() {
+            let _ = persist_instance_registry(&path, &self.instance_registry);
+        }
     }
 
     #[allow(dead_code)]
@@ -624,6 +635,7 @@ impl AppController {
                 let applied = session.apply_event_json(json)?;
                 if applied {
                     self.rebuild_attached_instances();
+                    self.persist_instance_registry();
                     self.refresh_audit_timeline();
                 }
                 Ok(applied)

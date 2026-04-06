@@ -48,8 +48,10 @@ impl AttachedInstanceStateEngine {
         session: &SessionData,
     ) -> Self {
         let session_key = session_key.into();
+        let attached_instances = reconcile_attached_instances(&registry_store, session_key.clone(), session);
+        let registry_store = merge_attached_instances_into_registry(registry_store, &attached_instances);
         Self {
-            attached_instances: reconcile_attached_instances(&registry_store, session_key.clone(), session),
+            attached_instances,
             session_key,
             selected_command_route_id: None,
             registry_store,
@@ -67,7 +69,9 @@ impl AttachedInstanceStateEngine {
     pub fn reconcile_session_snapshot(&mut self, session_key: impl Into<String>, session: &SessionData) {
         let session_key = session_key.into();
         let selected_route = self.selected_command_route_id();
-        self.attached_instances = reconcile_attached_instances(&self.registry_store, session_key.clone(), session);
+        let attached_instances = reconcile_attached_instances(&self.registry_store, session_key.clone(), session);
+        self.registry_store = merge_attached_instances_into_registry(self.registry_store.clone(), &attached_instances);
+        self.attached_instances = attached_instances;
         self.session_key = session_key;
         self.selected_command_route_id = Some(selected_route);
     }
@@ -75,8 +79,9 @@ impl AttachedInstanceStateEngine {
     pub fn replace_registry_store(&mut self, registry_store: InstanceRegistryStore, session: &SessionData) {
         let session_key = self.session_key.clone();
         let selected_route = self.selected_command_route_id();
-        self.registry_store = registry_store;
-        self.attached_instances = reconcile_attached_instances(&self.registry_store, session_key, session);
+        let attached_instances = reconcile_attached_instances(&registry_store, session_key, session);
+        self.registry_store = merge_attached_instances_into_registry(registry_store, &attached_instances);
+        self.attached_instances = attached_instances;
         self.selected_command_route_id = Some(selected_route);
     }
 
@@ -297,6 +302,111 @@ pub fn project_command_route(instance: &AttachedInstanceRecord) -> CommandRouteP
             session_key: instance.session_key.clone(),
             dispatcher_instance_id: instance.dispatcher_instance_id.clone(),
         },
+    }
+}
+
+fn merge_attached_instances_into_registry(
+    mut registry_store: InstanceRegistryStore,
+    attached_instances: &[AttachedInstanceRecord],
+) -> InstanceRegistryStore {
+    for instance in attached_instances {
+        let next_record = synthesize_instance_record(instance);
+        if let Some(position) = registry_store
+            .instances
+            .iter()
+            .position(|record| record.identity.instance_id == next_record.identity.instance_id)
+        {
+            registry_store.instances[position] = next_record;
+        } else {
+            registry_store.instances.push(next_record);
+        }
+    }
+    registry_store
+}
+
+fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceRecord {
+    let mut record = instance.registry_record.clone().unwrap_or_else(|| InstanceRecord {
+        schema_version: 1,
+        identity: crate::runtime_types::WorkerIdentity {
+            instance_id: instance.instance_id.clone(),
+            role: infer_worker_role(instance),
+            profile: instance.profile.clone(),
+            status: crate::runtime_types::WorkerLifecycleState::Ready,
+            created_at: String::new(),
+            updated_at: String::new(),
+        },
+        ownership: crate::runtime_types::WorkerOwnership {
+            owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+            owner_id: instance.session_key.trim_start_matches("remote:").to_string(),
+            parent_instance_id: None,
+        },
+        desired: crate::runtime_types::DesiredWorkerState {
+            backend: crate::runtime_types::BackendConfig {
+                kind: crate::runtime_types::BackendKind::LocalProcess,
+                image: None,
+                namespace: None,
+                resources: None,
+            },
+            workspace: crate::runtime_types::WorkspaceBinding {
+                cwd: String::new(),
+                workspace_id: String::new(),
+                branch: None,
+            },
+            task: None,
+            policy: crate::runtime_types::PolicyOverrides::default(),
+        },
+        observed: crate::runtime_types::ObservedWorkerState {
+            placement: crate::runtime_types::ObservedPlacement {
+                placement_id: String::new(),
+                host: String::new(),
+                pid: None,
+                namespace: None,
+                pod_name: None,
+                container_name: None,
+            },
+            control_plane: crate::runtime_types::ObservedControlPlane {
+                schema_version: 0,
+                omegon_version: String::new(),
+                base_url: String::new(),
+                startup_url: String::new(),
+                health_url: String::new(),
+                ready_url: String::new(),
+                ws_url: String::new(),
+                auth_mode: String::new(),
+                token_ref: None,
+                last_ready_at: None,
+            },
+            health: crate::runtime_types::ObservedHealth {
+                ready: true,
+                degraded_reason: None,
+                last_heartbeat_at: None,
+            },
+            exit: crate::runtime_types::ObservedExit {
+                exited: false,
+                exit_code: None,
+                exit_reason: None,
+                exited_at: None,
+            },
+        },
+    });
+
+    record.identity.instance_id = instance.instance_id.clone();
+    record.identity.role = infer_worker_role(instance);
+    record.identity.profile = instance.profile.clone();
+    record.ownership.owner_kind = crate::runtime_types::OwnerKind::AuspexSession;
+    record.ownership.owner_id = instance.session_key.trim_start_matches("remote:").to_string();
+    record.desired.policy.model = instance.model.clone();
+    if let Some(base_url) = instance.base_url.clone() {
+        record.observed.control_plane.base_url = base_url;
+    }
+    record
+}
+
+fn infer_worker_role(instance: &AttachedInstanceRecord) -> crate::runtime_types::WorkerRole {
+    if instance.dispatcher_instance_id.is_some() {
+        crate::runtime_types::WorkerRole::PrimaryDriver
+    } else {
+        crate::runtime_types::WorkerRole::DetachedService
     }
 }
 
@@ -583,6 +693,39 @@ mod tests {
         assert_eq!(attached[0].base_url.as_deref(), Some("http://127.0.0.1:7842"));
         assert_eq!(attached[0].model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
         assert!(attached[0].registry_record.is_some());
+    }
+
+    #[test]
+    fn state_engine_merges_reconciled_instances_back_into_registry_store() {
+        let session = SessionData {
+            dispatcher_binding: Some(DispatcherBindingData {
+                session_id: "session_01HVTEST".into(),
+                dispatcher_instance_id: "omg_dispatcher_01HVTEST".into(),
+                expected_role: "primary-driver".into(),
+                expected_profile: "primary-interactive".into(),
+                expected_model: Some("anthropic:claude-sonnet-4-6".into()),
+                control_plane_schema: 2,
+                token_ref: None,
+                observed_base_url: Some("http://127.0.0.1:7842".into()),
+                last_verified_at: None,
+                instance_descriptor: None,
+                available_options: vec![],
+                switch_state: None,
+            }),
+            ..SessionData::default()
+        };
+
+        let engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &session,
+        );
+
+        assert!(engine
+            .registry_store()
+            .instances
+            .iter()
+            .any(|record| record.identity.instance_id == "omg_dispatcher_01HVTEST"));
     }
 
     #[test]
