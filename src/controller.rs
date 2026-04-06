@@ -155,6 +155,7 @@ pub struct AppController {
     attached_instance_engine: AttachedInstanceStateEngine,
     telemetry_snapshot: SessionTelemetryData,
     last_audited_telemetry_snapshot: SessionTelemetryData,
+    telemetry_audit_sequence: u64,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
 }
@@ -170,6 +171,7 @@ impl Default for AppController {
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             telemetry_snapshot: SessionTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
+            telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![crate::fixtures::ProviderInfo {
@@ -206,6 +208,7 @@ impl AppController {
             instance_registry,
             telemetry_snapshot: SessionTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
+            telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -583,33 +586,74 @@ impl AppController {
             return;
         }
 
+        self.telemetry_audit_sequence += 1;
+        let sequence = self.telemetry_audit_sequence;
         let telemetry = &self.telemetry_snapshot;
-        let entries = [
+        let mut entries = vec![
             crate::audit_timeline::AuditEntry::telemetry(
                 session_key,
-                "provider-summary",
+                &format!("provider-summary-{sequence}"),
                 "Telemetry · Provider summary",
                 telemetry.provider_summary.clone(),
             ),
             crate::audit_timeline::AuditEntry::telemetry(
                 session_key,
-                "lifecycle-summary",
+                &format!("lifecycle-summary-{sequence}"),
                 "Telemetry · Lifecycle summary",
                 telemetry.lifecycle_summary.clone(),
             ),
             crate::audit_timeline::AuditEntry::telemetry(
                 session_key,
-                "route-summary",
+                &format!("route-summary-{sequence}"),
                 "Telemetry · Route summary",
                 telemetry.route_summary.clone(),
             ),
             crate::audit_timeline::AuditEntry::telemetry(
                 session_key,
-                "latest-turn-summary",
+                &format!("latest-turn-summary-{sequence}"),
                 "Telemetry · Latest turn summary",
                 telemetry.latest_turn_summary.clone(),
             ),
         ];
+
+        for (index, provider) in telemetry.provider_rollups.iter().enumerate() {
+            entries.push(crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                &format!("provider-rollup-{sequence}-{index}"),
+                format!(
+                    "Telemetry · Provider rollup · {}",
+                    provider.route_id.as_deref().unwrap_or("unrouted")
+                ),
+                format!(
+                    "provider: {}\nsource: {}\ninstance: {}\nrole: {}\nprofile: {}\nmodel: {}",
+                    provider.provider,
+                    provider.source,
+                    provider.instance_id.as_deref().unwrap_or("unreported"),
+                    provider.role.as_deref().unwrap_or("unreported"),
+                    provider.profile.as_deref().unwrap_or("unreported"),
+                    provider.model.as_deref().unwrap_or("unreported"),
+                ),
+            ));
+        }
+
+        for (index, control_plane) in telemetry.control_plane_rollups.iter().enumerate() {
+            entries.push(crate::audit_timeline::AuditEntry::telemetry(
+                session_key,
+                &format!("control-plane-rollup-{sequence}-{index}"),
+                format!(
+                    "Telemetry · Control-plane rollup · {}",
+                    control_plane.route_id.as_deref().unwrap_or("unrouted")
+                ),
+                format!(
+                    "instance: {}\nrole: {}\nprofile: {}\nbase_url: {}\nauth_mode: {}",
+                    control_plane.instance_id.as_deref().unwrap_or("unreported"),
+                    control_plane.role.as_deref().unwrap_or("unreported"),
+                    control_plane.profile.as_deref().unwrap_or("unreported"),
+                    control_plane.base_url.as_deref().unwrap_or("unreported"),
+                    control_plane.auth_mode.as_deref().unwrap_or("unreported"),
+                ),
+            ));
+        }
 
         for entry in entries {
             let _ = self.audit_timeline.append_entry(entry);
@@ -1188,7 +1232,7 @@ mod tests {
         controller.update_draft("hello audit");
         assert!(controller.submit_prompt());
 
-        assert_eq!(controller.audit_timeline().entries.len(), 2);
+        assert_eq!(controller.audit_timeline().entries.len(), 6);
         assert_eq!(
             controller.audit_timeline().entries[0].block_id,
             "mock:ready:turn-1-block-0"
@@ -1198,6 +1242,18 @@ mod tests {
                 .content
                 .contains("scaffold only proves")
         );
+        assert!(controller
+            .audit_timeline()
+            .entries
+            .iter()
+            .any(|entry| entry.kind == AuditEntryKind::Telemetry
+                && entry.label == "Telemetry · Provider summary"));
+        assert!(controller
+            .audit_timeline()
+            .entries
+            .iter()
+            .any(|entry| entry.kind == AuditEntryKind::Telemetry
+                && entry.label.starts_with("Telemetry · Provider rollup")));
     }
 
     #[test]
