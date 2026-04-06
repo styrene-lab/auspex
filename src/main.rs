@@ -4,6 +4,7 @@ mod bootstrap;
 mod controller;
 mod event_stream;
 mod fixtures;
+mod instance_registry;
 mod omegon_control;
 mod remote_session;
 mod runtime_types;
