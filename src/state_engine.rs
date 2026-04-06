@@ -196,6 +196,35 @@ pub fn reconcile_attached_instances(
             dispatcher_instance_id: None,
             registry_record,
         });
+    } else if let Some(registry_record) = registry_store
+        .instances
+        .iter()
+        .find(|record| {
+            record.ownership.owner_kind == crate::runtime_types::OwnerKind::AuspexSession
+                && record.ownership.owner_id == session_key.trim_start_matches("remote:")
+                && record.identity.instance_id != session
+                    .dispatcher_binding
+                    .as_ref()
+                    .map(|binding| binding.dispatcher_instance_id.as_str())
+                    .unwrap_or_default()
+        })
+        .cloned()
+    {
+        attached_instances.push(AttachedInstanceRecord {
+            instance_id: registry_record.identity.instance_id.clone(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: match registry_record.identity.role {
+                crate::runtime_types::WorkerRole::PrimaryDriver => "primary-driver".into(),
+                crate::runtime_types::WorkerRole::SupervisedChild => "supervised-child".into(),
+                crate::runtime_types::WorkerRole::DetachedService => "detached-service".into(),
+            },
+            profile: registry_record.identity.profile.clone(),
+            session_key: session_key.clone(),
+            base_url: Some(registry_record.observed.control_plane.base_url.clone()),
+            model: registry_record.desired.policy.model.clone(),
+            dispatcher_instance_id: None,
+            registry_record: Some(registry_record),
+        });
     }
 
     if let Some(binding) = session.dispatcher_binding.as_ref() {
