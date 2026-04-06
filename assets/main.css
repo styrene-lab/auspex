@@ -1343,6 +1343,48 @@ body > * {
   opacity: 0.6;
 }
 
+.composer-blocked-callout {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 0.75rem 0.8rem;
+  border: 1px solid rgba(121, 88, 43, 0.42);
+  border-radius: 10px;
+  background: linear-gradient(180deg, rgba(37, 28, 16, 0.96), rgba(24, 18, 11, 0.98));
+}
+
+.composer-blocked-title {
+  margin: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  color: #f2c879;
+}
+
+.composer-blocked-detail {
+  margin: 0;
+  font-size: 0.78rem;
+  line-height: 1.45;
+  color: var(--text-secondary);
+}
+
+.composer-blocked-action {
+  align-self: flex-start;
+  border: 1px solid rgba(121, 88, 43, 0.52);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(52, 39, 22, 0.98), rgba(33, 25, 15, 0.98));
+  color: var(--text-primary);
+  padding: 0.34rem 0.7rem;
+  font: inherit;
+  font-size: 0.76rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.composer-blocked-action:hover {
+  background: linear-gradient(180deg, rgba(60, 45, 25, 0.98), rgba(39, 29, 17, 0.98));
+}
+
 .composer-submit {
   align-self: flex-end;
   border: 0;

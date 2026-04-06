@@ -439,6 +439,29 @@ fn build_settings_panel_model(
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ProviderBlockedComposerModel {
+    title: String,
+    detail: String,
+    action_label: String,
+}
+
+fn build_provider_blocked_composer_model(
+    session: &crate::fixtures::SessionData,
+    can_submit: bool,
+) -> Option<ProviderBlockedComposerModel> {
+    if can_submit || session.providers.iter().any(|provider| provider.authenticated) {
+        return None;
+    }
+
+    Some(ProviderBlockedComposerModel {
+        title: "Prompt execution blocked".into(),
+        detail:
+            "Omegon has no authenticated providers. Authenticate a provider in Settings before sending prompts so Auspex can route work to a runnable model backend.".into(),
+        action_label: "Open Settings".into(),
+    })
+}
+
 #[component]
 pub fn App() -> Element {
     let bootstrap = try_consume_context::<BootstrapResult>();
@@ -601,6 +624,8 @@ pub fn App() -> Element {
         controller.read().is_run_active(),
         controller.read().can_submit(),
     );
+    let provider_blocked_composer =
+        build_provider_blocked_composer_model(&session, controller.read().can_submit());
 
     rsx! {
         document::Style { "{MAIN_CSS}" }
@@ -812,38 +837,43 @@ pub fn App() -> Element {
                                     }
                                 },
                                 {render_dispatch_context_strip(&dispatch_context)}
-                                textarea {
-                                    class: "composer-input",
-                                    rows: "3",
-                                    value: controller.read().composer().draft().to_string(),
-                                    disabled: !controller.read().can_submit(),
-                                    placeholder: if controller.read().can_submit() {
-                                        "Start with the smallest useful prompt…"
-                                    } else if controller
-                                        .read()
-                                        .session_data()
-                                        .providers
-                                        .iter()
-                                        .all(|provider| !provider.authenticated)
-                                    {
-                                        "Prompt execution is blocked until a provider is authenticated in Settings."
-                                    } else {
-                                        "Conversation input is unavailable in the current host state."
-                                    },
-                                    oninput: move |event| controller.write().update_draft(event.value()),
-                                    onkeydown: move |event| {
-                                        if event.key() == Key::Enter
-                                            && (event.modifiers().contains(Modifiers::CONTROL)
-                                                || event.modifiers().contains(Modifiers::META))
-                                        {
-                                            let command = controller.write().submit_prompt_command();
-                                            if let (Some(command), Some(stream)) =
-                                                (command, event_stream.read().clone())
-                                            {
-                                                stream.send_command(command.command_json);
-                                            }
+                                if let Some(blocked) = &provider_blocked_composer {
+                                    div { class: "composer-blocked-callout",
+                                        h3 { class: "composer-blocked-title", "{blocked.title}" }
+                                        p { class: "composer-blocked-detail", "{blocked.detail}" }
+                                        button {
+                                            class: "composer-blocked-action",
+                                            r#type: "button",
+                                            onclick: move |_| settings_open.set(true),
+                                            "{blocked.action_label}"
                                         }
-                                    },
+                                    }
+                                } else {
+                                    textarea {
+                                        class: "composer-input",
+                                        rows: "3",
+                                        value: controller.read().composer().draft().to_string(),
+                                        disabled: !controller.read().can_submit(),
+                                        placeholder: if controller.read().can_submit() {
+                                            "Start with the smallest useful prompt…"
+                                        } else {
+                                            "Conversation input is unavailable in the current host state."
+                                        },
+                                        oninput: move |event| controller.write().update_draft(event.value()),
+                                        onkeydown: move |event| {
+                                            if event.key() == Key::Enter
+                                                && (event.modifiers().contains(Modifiers::CONTROL)
+                                                    || event.modifiers().contains(Modifiers::META))
+                                            {
+                                                let command = controller.write().submit_prompt_command();
+                                                if let (Some(command), Some(stream)) =
+                                                    (command, event_stream.read().clone())
+                                                {
+                                                    stream.send_command(command.command_json);
+                                                }
+                                            }
+                                        },
+                                    }
                                 }
                                 div { class: "composer-actions",
                                     if controller.read().is_run_active() {
@@ -3316,6 +3346,35 @@ mod tests {
                 .send_detail
                 .contains("authenticated providers")
         );
+    }
+
+    #[test]
+    fn provider_blocked_composer_model_requires_authenticated_provider() {
+        let blocked = build_provider_blocked_composer_model(
+            &crate::fixtures::SessionData {
+                providers: vec![],
+                ..Default::default()
+            },
+            false,
+        )
+        .expect("blocked state should render a setup callout");
+        assert_eq!(blocked.title, "Prompt execution blocked");
+        assert!(blocked.detail.contains("Authenticate a provider in Settings"));
+        assert_eq!(blocked.action_label, "Open Settings");
+
+        assert!(build_provider_blocked_composer_model(
+            &crate::fixtures::SessionData {
+                providers: vec![crate::fixtures::ProviderInfo {
+                    name: "Anthropic".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("claude-sonnet".into()),
+                }],
+                ..Default::default()
+            },
+            true,
+        )
+        .is_none());
     }
 
     #[test]
