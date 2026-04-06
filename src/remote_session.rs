@@ -20,6 +20,15 @@ pub enum DispatcherSwitchCommandOutcome {
     Noop,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+struct LatestTurnTelemetry {
+    provider_telemetry: Option<ProviderTelemetrySnapshot>,
+    estimated_tokens: Option<u64>,
+    actual_input_tokens: Option<u64>,
+    actual_output_tokens: Option<u64>,
+    cache_read_tokens: Option<u64>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RemoteHostSession {
     shell_state: ShellState,
@@ -31,11 +40,7 @@ pub struct RemoteHostSession {
     pending_text: String,
     run_active: bool,
     next_dispatcher_request_id: u64,
-    latest_provider_telemetry: Option<ProviderTelemetrySnapshot>,
-    latest_estimated_tokens: Option<u64>,
-    latest_actual_input_tokens: Option<u64>,
-    latest_actual_output_tokens: Option<u64>,
-    latest_cache_read_tokens: Option<u64>,
+    latest_turn_telemetry: LatestTurnTelemetry,
     // Raw snapshot sub-sections kept for Power mode screens.
     design: crate::omegon_control::DesignSnapshot,
     openspec: crate::omegon_control::OpenSpecSnapshot,
@@ -110,11 +115,7 @@ impl RemoteHostSession {
             pending_text: String::new(),
             run_active: false,
             next_dispatcher_request_id: 1,
-            latest_provider_telemetry: None,
-            latest_estimated_tokens: None,
-            latest_actual_input_tokens: None,
-            latest_actual_output_tokens: None,
-            latest_cache_read_tokens: None,
+            latest_turn_telemetry: LatestTurnTelemetry::default(),
             design: snapshot.design,
             openspec: snapshot.openspec,
             cleave: snapshot.cleave,
@@ -377,11 +378,13 @@ impl RemoteHostSession {
                 self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
                 self.summary.activity_kind = ActivityKind::Completed;
-                self.latest_estimated_tokens = estimated_tokens;
-                self.latest_actual_input_tokens = actual_input_tokens;
-                self.latest_actual_output_tokens = actual_output_tokens;
-                self.latest_cache_read_tokens = cache_read_tokens;
-                self.latest_provider_telemetry = provider_telemetry;
+                self.latest_turn_telemetry = LatestTurnTelemetry {
+                    provider_telemetry,
+                    estimated_tokens,
+                    actual_input_tokens,
+                    actual_output_tokens,
+                    cache_read_tokens,
+                };
                 true
             }
             OmegonEvent::ToolStart { id, name, args } => {
@@ -639,11 +642,7 @@ impl HostSessionModel for RemoteHostSession {
                 self.session_stats.tool_calls,
                 self.dispatcher_binding.as_ref(),
                 self.instance_descriptor.as_ref(),
-                self.latest_provider_telemetry.clone(),
-                self.latest_estimated_tokens,
-                self.latest_actual_input_tokens,
-                self.latest_actual_output_tokens,
-                self.latest_cache_read_tokens,
+                &self.latest_turn_telemetry,
             ),
             instance_descriptor: self.instance_descriptor.as_ref().map(project_instance_descriptor),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
@@ -1131,11 +1130,7 @@ fn build_session_telemetry(
     tool_calls: u32,
     dispatcher: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
     instance_descriptor: Option<&OmegonInstanceDescriptor>,
-    latest_provider_telemetry: Option<ProviderTelemetrySnapshot>,
-    latest_estimated_tokens: Option<u64>,
-    latest_actual_input_tokens: Option<u64>,
-    latest_actual_output_tokens: Option<u64>,
-    latest_cache_read_tokens: Option<u64>,
+    latest_turn: &LatestTurnTelemetry,
 ) -> SessionTelemetryData {
     let authenticated = harness
         .map(|h| h.providers.iter().filter(|provider| provider.authenticated).count())
@@ -1190,22 +1185,30 @@ fn build_session_telemetry(
         lifecycle_summary,
         route_summary,
         latest_turn_summary,
-        latest_provider_telemetry: latest_provider_telemetry.map(project_provider_telemetry),
-        latest_estimated_tokens,
-        latest_actual_input_tokens,
-        latest_actual_output_tokens,
-        latest_cache_read_tokens,
-        control_plane: instance_descriptor.and_then(|instance| {
-            instance.control_plane.as_ref().map(|control_plane| SessionTelemetryDataControlPlaneAdapter::from_control_plane(control_plane))
-        }).or_else(|| dispatcher.and_then(|binding| {
-            Some(ControlPlaneTelemetryData {
-                startup_url: None,
-                health_url: None,
-                ready_url: None,
-                auth_mode: None,
-                base_url: binding.observed_base_url.clone(),
+        latest_provider_telemetry: latest_turn
+            .provider_telemetry
+            .clone()
+            .map(project_provider_telemetry),
+        latest_estimated_tokens: latest_turn.estimated_tokens,
+        latest_actual_input_tokens: latest_turn.actual_input_tokens,
+        latest_actual_output_tokens: latest_turn.actual_output_tokens,
+        latest_cache_read_tokens: latest_turn.cache_read_tokens,
+        control_plane: instance_descriptor
+            .and_then(|instance| {
+                instance
+                    .control_plane
+                    .as_ref()
+                    .map(SessionTelemetryDataControlPlaneAdapter::from_control_plane)
             })
-        })),
+            .or_else(|| {
+                dispatcher.map(|binding| ControlPlaneTelemetryData {
+                    startup_url: None,
+                    health_url: None,
+                    ready_url: None,
+                    auth_mode: None,
+                    base_url: binding.observed_base_url.clone(),
+                })
+            }),
     }
 }
 
