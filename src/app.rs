@@ -2,10 +2,10 @@ use dioxus::prelude::*;
 
 use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use crate::bootstrap::BootstrapResult;
-use crate::controller::{AppController, SessionMode};
+use crate::controller::AppController;
 use crate::event_stream::EventStreamHandle;
-use crate::fixtures::{DevScenario, MessageRole, TranscriptData};
-use crate::screens::{GraphScreen, ScribeScreen, SessionScreen, WorkScreen};
+use crate::fixtures::{MessageRole, TranscriptData};
+use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
 /// the stylesheet is always available in the bundled .app.
@@ -305,6 +305,9 @@ pub fn App() -> Element {
                             )}
                             main { class: "transcript",
                                 {render_transcript(
+                                    controller.read().summary(),
+                                    &controller.read().work_data(),
+                                    &controller.read().session_data(),
                                     controller.read().transcript(),
                                     controller.read().messages(),
                                     controller.read().transcript_auto_expand(),
@@ -695,21 +698,26 @@ fn transcript_disclosure_open(open_by_default: bool, auto_expand: bool) -> bool 
 }
 
 fn render_transcript(
+    summary: &crate::fixtures::HostSessionSummary,
+    work: &crate::fixtures::WorkData,
+    session: &crate::fixtures::SessionData,
     transcript: &TranscriptData,
     messages: &[crate::fixtures::ChatMessage],
     auto_expand: bool,
 ) -> Element {
-    if transcript.turns.is_empty() && messages.len() <= 2 {
+    if let Some(empty_state) = build_chat_empty_state_model(summary, work, session, transcript, messages) {
         rsx! {
-            section { class: "chat-empty-state",
-                h2 { "Ready for first contact" }
-                p {
-                    "Auspex is attached. Start with a small directive, a status question, or a dispatcher/profile change if you need a different operator posture."
-                }
+            section {
+                class: "chat-empty-state",
+                "data-surface": "panel",
+                "data-tone": if empty_state.detached { "warn" } else { "info" },
+                span { class: "chat-empty-kicker", "{empty_state.kicker}" }
+                h2 { "{empty_state.title}" }
+                p { class: "chat-empty-detail", "{empty_state.detail}" }
                 ul { class: "chat-empty-list",
-                    li { "Summarize the current host session and any active work." }
-                    li { "Inspect dispatcher status and tell me whether a switch is needed." }
-                    li { "Plan the next implementation step from the focused design state." }
+                    for item in &empty_state.guidance {
+                        li { "{item}" }
+                    }
                 }
             }
             for message in messages.iter() {
@@ -905,6 +913,92 @@ fn render_transcript(
             }
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ChatEmptyStateModel {
+    kicker: String,
+    title: String,
+    detail: String,
+    guidance: Vec<String>,
+    detached: bool,
+}
+
+fn build_chat_empty_state_model(
+    summary: &crate::fixtures::HostSessionSummary,
+    work: &crate::fixtures::WorkData,
+    session: &crate::fixtures::SessionData,
+    transcript: &TranscriptData,
+    messages: &[crate::fixtures::ChatMessage],
+) -> Option<ChatEmptyStateModel> {
+    if !transcript.turns.is_empty() {
+        return None;
+    }
+
+    let is_starter_state = messages.len() <= 2 || session.git_detached;
+    if !is_starter_state {
+        return None;
+    }
+
+    let branch = session.git_branch.as_deref().unwrap_or("detached");
+    let work_title = work
+        .focused_title
+        .as_deref()
+        .filter(|value| !value.is_empty())
+        .unwrap_or(summary.work.as_str());
+    let dispatcher_target = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.expected_model.as_deref())
+        .unwrap_or("current dispatcher model");
+    let session_label = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.session_id.as_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("local session");
+
+    let (kicker, title, detail) = if session.git_detached {
+        (
+            format!("Detached workspace · {branch}"),
+            "New Project starter".into(),
+            format!(
+                "Auspex is attached to {session_label}, but the workspace is detached from {branch}. Re-anchor the branch or state the project goal before the first run so dispatch stays grounded."
+            ),
+        )
+    } else {
+        (
+            format!("{session_label} · {branch}"),
+            "New Project starter".into(),
+            format!(
+                "No transcript history is attached yet. Start with the smallest directive that establishes project intent, validates dispatcher posture, or confirms the next work item around {work_title}."
+            ),
+        )
+    };
+
+    let mut guidance = vec![format!(
+        "Summarize the current session, branch, and work focus around {work_title}."
+    )];
+    guidance.push(format!(
+        "Confirm whether {dispatcher_target} is the right model before starting implementation."
+    ));
+    if session.git_detached {
+        guidance.push(format!(
+            "Explain whether to reattach the workspace or continue detached from {branch}."
+        ));
+    } else {
+        guidance.push(format!(
+            "Plan the first concrete step that advances {work_title} without over-scoping the run."
+        ));
+    }
+
+    Some(ChatEmptyStateModel {
+        kicker,
+        title,
+        detail,
+        guidance,
+        detached: session.git_detached,
+    })
 }
 
 fn render_chat_status_banner(
@@ -1559,9 +1653,9 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 mod tests {
     use super::{
         AuditFilters, app_surface_state, app_surface_tone, audit_entry_matches_filters,
-        audit_kind_key, block_origin_label, build_audit_panel_model, build_left_rail_inventory,
-        chat_status_tone, find_transcript_anchor, looks_like_structured_payload,
-        render_chat_status_banner, should_expand_system_notice, should_expand_tool_args,
+        audit_kind_key, block_origin_label, build_audit_panel_model,
+        build_chat_empty_state_model, build_left_rail_inventory, chat_status_tone,
+        find_transcript_anchor, looks_like_structured_payload, render_chat_status_banner, should_expand_system_notice, should_expand_tool_args,
         should_expand_tool_output, system_block_class, system_block_tone,
         system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
         tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
@@ -1841,6 +1935,76 @@ mod tests {
         assert_eq!(panel.total_count, 0);
         assert_eq!(panel.filtered_count, 0);
         assert_eq!(panel.latest_label, "No transcript blocks retained yet");
+    }
+
+    #[test]
+    fn chat_empty_state_uses_new_project_starter_when_history_is_empty() {
+        let controller = AppController::default();
+        let model = build_chat_empty_state_model(
+            controller.summary(),
+            &controller.work_data(),
+            &controller.session_data(),
+            controller.transcript(),
+            controller.messages(),
+        )
+        .expect("default controller should expose the starter state");
+
+        assert_eq!(model.title, "New Project starter");
+        assert!(!model.detached);
+        assert!(model.kicker.contains("main"));
+        assert!(model.detail.contains("No transcript history is attached yet"));
+        assert_eq!(model.guidance.len(), 3);
+        assert!(model.guidance[0].contains("Summarize the current session"));
+        assert!(model.guidance[1].contains("right model"));
+    }
+
+    #[test]
+    fn chat_empty_state_calls_out_detached_workspace() {
+        let controller = AppController::default();
+        let mut session = controller.session_data();
+        session.git_detached = true;
+        session.git_branch = Some("feature/prototype".into());
+
+        let model = build_chat_empty_state_model(
+            controller.summary(),
+            &controller.work_data(),
+            &session,
+            controller.transcript(),
+            controller.messages(),
+        )
+        .expect("detached empty state should still render starter guidance");
+
+        assert!(model.detached);
+        assert!(model.kicker.contains("Detached workspace"));
+        assert!(model.detail.contains("detached from feature/prototype"));
+        assert!(model.guidance[2].contains("reattach the workspace"));
+    }
+
+    #[test]
+    fn chat_empty_state_hides_once_transcript_turns_exist() {
+        let controller = AppController::default();
+        let transcript = TranscriptData {
+            turns: vec![crate::fixtures::Turn {
+                number: 1,
+                blocks: vec![crate::fixtures::TurnBlock::Text(AttributedText {
+                    text: "hello".into(),
+                    origin: None,
+                    notice_kind: None,
+                })],
+            }],
+            active_turn: None,
+            context_tokens: None,
+        };
+
+        let model = build_chat_empty_state_model(
+            controller.summary(),
+            &controller.work_data(),
+            &controller.session_data(),
+            &transcript,
+            controller.messages(),
+        );
+
+        assert!(model.is_none());
     }
 
     #[test]
