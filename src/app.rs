@@ -59,6 +59,24 @@ struct SettingsActionModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct SettingsProviderCardModel {
+    name: String,
+    provider_key: Option<String>,
+    status_label: String,
+    status_detail: String,
+    capability_detail: String,
+    guidance: String,
+    login_action: SettingsActionModel,
+    logout_action: SettingsActionModel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SettingsStatusRowModel {
+    label: String,
+    value: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct SettingsPanelModel {
     selected_route_id: String,
     route_options: Vec<(String, String, String)>,
@@ -68,10 +86,31 @@ struct SettingsPanelModel {
     lifecycle_summary: String,
     auth_status_label: String,
     auth_status_detail: String,
-    provider_rows: Vec<(String, String)>,
-    actions: Vec<SettingsActionModel>,
+    provider_guidance: String,
+    provider_cards: Vec<SettingsProviderCardModel>,
+    secrets_rows: Vec<SettingsStatusRowModel>,
+    vault_rows: Vec<SettingsStatusRowModel>,
+    general_actions: Vec<SettingsActionModel>,
     last_error: Option<String>,
     last_action: Option<String>,
+}
+
+fn provider_command_name(name: &str) -> Option<String> {
+    let normalized: String = name
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                ' '
+            }
+        })
+        .collect();
+    normalized
+        .split_whitespace()
+        .next()
+        .filter(|token| !token.is_empty())
+        .map(ToOwned::to_owned)
 }
 
 fn build_settings_panel_model(
@@ -131,9 +170,7 @@ fn build_settings_panel_model(
     let route_detail = if let Some(route) = selected_route {
         format!(
             "Operator actions currently target {} ({}) via route {}. This will later bind to Omegon's canonical slash executor without changing the surface.",
-            route.label,
-            route.detail,
-            route.route_id
+            route.label, route.detail, route.route_id
         )
     } else if let Some(binding) = dispatcher_binding {
         let schema = binding.control_plane_schema;
@@ -171,12 +208,15 @@ fn build_settings_panel_model(
         })
         .unwrap_or_else(|| "Lifecycle: unavailable".into());
 
-    let authenticated = session
-        .providers
+    let provider_inventory = auth_state
+        .filter(|state| !state.providers.is_empty())
+        .map(|state| state.providers.as_slice())
+        .unwrap_or(session.providers.as_slice());
+    let authenticated = provider_inventory
         .iter()
         .filter(|provider| provider.authenticated)
         .count();
-    let provider_total = session.providers.len();
+    let provider_total = provider_inventory.len();
     let auth_status_label = if authenticated > 0 {
         format!("{authenticated} authenticated provider(s)")
     } else if provider_total > 0 {
@@ -194,7 +234,7 @@ fn build_settings_panel_model(
             "No host providers are currently visible. Refresh the auth bridge to inspect current credentials.".to_string()
         } else {
             format!(
-                "Auth bridge actions stay instance-scoped to {target_label} and now execute through the desktop bridge while the canonical slash transport lands."
+                "Auth and secret actions stay instance-scoped to {target_label}. Use the provider cards below to log in, log out, and confirm which backend is currently runnable."
             )
         }
     } else if provider_total == 0 {
@@ -205,27 +245,6 @@ fn build_settings_panel_model(
         )
     };
 
-    let provider_rows = if session.providers.is_empty() {
-        vec![(
-            "Providers".to_string(),
-            "No provider inventory reported by the attached host".to_string(),
-        )]
-    } else {
-        session
-            .providers
-            .iter()
-            .map(|provider| {
-                let state = if provider.authenticated {
-                    "authenticated"
-                } else {
-                    "requires auth"
-                };
-                let model = provider.model.as_deref().unwrap_or("model unreported");
-                (provider.name.clone(), format!("{state} · {model}"))
-            })
-            .collect()
-    };
-
     let action_target_label = target_label.clone();
     let action_detail = |verb: &str| {
         format!(
@@ -233,6 +252,157 @@ fn build_settings_panel_model(
             action_target_label
         )
     };
+
+    let provider_guidance = if provider_total == 0 {
+        "Refresh status first. Auspex cannot offer provider-specific login or logout until the attached host reports a provider inventory.".to_string()
+    } else if authenticated == 0 {
+        "At least one provider is known, but none are authenticated. Use a Login action on the provider you want to activate, then refresh status if the browser handoff completes outside the app.".to_string()
+    } else {
+        "Authenticated providers can execute prompts immediately. Log out from a card to force account rotation, or log in to add a second provider before switching models.".to_string()
+    };
+
+    let provider_cards = if provider_inventory.is_empty() {
+        vec![SettingsProviderCardModel {
+            name: "No provider inventory".to_string(),
+            provider_key: None,
+            status_label: "Unknown".to_string(),
+            status_detail: "The attached host did not report providers.".to_string(),
+            capability_detail: "Model availability is unknown until the next auth refresh.".to_string(),
+            guidance: "Run Refresh status to query the desktop auth bridge before asking the operator to fix credentials manually.".to_string(),
+            login_action: SettingsActionModel {
+                action: SettingsAuthAction::Login,
+                detail: action_detail("auth.login"),
+                enabled: false,
+                provider: None,
+            },
+            logout_action: SettingsActionModel {
+                action: SettingsAuthAction::Logout,
+                detail: action_detail("auth.logout"),
+                enabled: false,
+                provider: None,
+            },
+        }]
+    } else {
+        provider_inventory
+            .iter()
+            .map(|provider| {
+                let provider_key = provider_command_name(&provider.name);
+                let auth_method = provider
+                    .auth_method
+                    .as_deref()
+                    .unwrap_or("auth method unreported");
+                let model = provider.model.as_deref().unwrap_or("model unreported");
+                let status_label = if provider.authenticated {
+                    "Authenticated"
+                } else {
+                    "Needs login"
+                }
+                .to_string();
+                let status_detail = if provider.authenticated {
+                    format!("Signed in via {auth_method}")
+                } else {
+                    format!("Credential handshake missing via {auth_method}")
+                };
+                let capability_detail = format!("Current model surface: {model}");
+                let guidance = if provider.authenticated {
+                    "Provider looks runnable from the current snapshot. Logout is available if you need to clear credentials or switch accounts in the browser.".to_string()
+                } else {
+                    "This provider is known but not authenticated. Login will trigger the host-backed auth flow; refresh after browser completion if state does not update automatically.".to_string()
+                };
+                SettingsProviderCardModel {
+                    name: provider.name.clone(),
+                    provider_key: provider_key.clone(),
+                    status_label,
+                    status_detail,
+                    capability_detail,
+                    guidance,
+                    login_action: SettingsActionModel {
+                        action: SettingsAuthAction::Login,
+                        detail: action_detail("auth.login"),
+                        enabled: provider_key.is_some(),
+                        provider: provider_key.clone(),
+                    },
+                    logout_action: SettingsActionModel {
+                        action: SettingsAuthAction::Logout,
+                        detail: action_detail("auth.logout"),
+                        enabled: provider_key.is_some(),
+                        provider: provider_key,
+                    },
+                }
+            })
+            .collect()
+    };
+
+    let dispatcher_token_ref = dispatcher_binding
+        .and_then(|binding| binding.token_ref.as_deref())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("No dispatcher token reference reported")
+        .to_string();
+    let control_plane_auth_mode = session
+        .telemetry
+        .control_plane
+        .as_ref()
+        .and_then(|control_plane| control_plane.auth_mode.as_deref())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unreported")
+        .to_string();
+    let control_plane_base_url = session
+        .telemetry
+        .control_plane
+        .as_ref()
+        .and_then(|control_plane| control_plane.base_url.as_deref())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            dispatcher_binding
+                .and_then(|binding| binding.observed_base_url.as_deref())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("unreported")
+        .to_string();
+
+    let secrets_rows = vec![
+        SettingsStatusRowModel {
+            label: "Provider coverage".into(),
+            value: if provider_total == 0 {
+                "No provider inventory reported".into()
+            } else {
+                format!("{authenticated} / {provider_total} authenticated")
+            },
+        },
+        SettingsStatusRowModel {
+            label: "Dispatcher token ref".into(),
+            value: dispatcher_token_ref,
+        },
+        SettingsStatusRowModel {
+            label: "Control-plane auth".into(),
+            value: control_plane_auth_mode,
+        },
+    ];
+
+    let vault_rows = vec![
+        SettingsStatusRowModel {
+            label: "Vault bridge".into(),
+            value: if session.memory_available {
+                "Available to the attached host".into()
+            } else if let Some(warning) = session.memory_warning.as_deref() {
+                format!("Limited: {warning}")
+            } else {
+                "Unavailable from current snapshot".into()
+            },
+        },
+        SettingsStatusRowModel {
+            label: "Unlock flow".into(),
+            value: if auth_state.and_then(|state| state.last_action.as_deref()) == Some("unlock") {
+                "Last requested action was unlock".into()
+            } else {
+                "Use Unlock to reopen the host vault or keyring flow".into()
+            },
+        },
+        SettingsStatusRowModel {
+            label: "Control-plane endpoint".into(),
+            value: control_plane_base_url,
+        },
+    ];
 
     SettingsPanelModel {
         selected_route_id,
@@ -246,25 +416,16 @@ fn build_settings_panel_model(
         lifecycle_summary,
         auth_status_label,
         auth_status_detail,
-        provider_rows,
-        actions: vec![
+        provider_guidance,
+        provider_cards,
+        secrets_rows,
+        vault_rows,
+        general_actions: vec![
             SettingsActionModel {
                 action: SettingsAuthAction::Refresh,
                 detail: "Refresh live provider auth status through the desktop auth bridge.".into(),
                 enabled: true,
                 provider: None,
-            },
-            SettingsActionModel {
-                action: SettingsAuthAction::Login,
-                detail: action_detail("auth.login"),
-                enabled: true,
-                provider: Some("anthropic".into()),
-            },
-            SettingsActionModel {
-                action: SettingsAuthAction::Logout,
-                detail: action_detail("auth.logout"),
-                enabled: true,
-                provider: Some("anthropic".into()),
             },
             SettingsActionModel {
                 action: SettingsAuthAction::Unlock,
@@ -317,7 +478,9 @@ pub fn App() -> Element {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|duration| duration.as_secs())
                         .unwrap_or(0);
-                    controller.write().evaluate_instance_lifecycle(now_epoch_seconds);
+                    controller
+                        .write()
+                        .evaluate_instance_lifecycle(now_epoch_seconds);
                 }
                 if let Some(handle) = event_stream.read().clone() {
                     let events = handle.inbox.drain();
@@ -325,11 +488,19 @@ pub fn App() -> Element {
                         let mut controller = controller.write();
                         for event in events {
                             #[cfg(not(target_arch = "wasm32"))]
-                            if let Some(result) = crate::controller::AppController::parse_slash_command_result(&event) {
+                            if let Some(result) =
+                                crate::controller::AppController::parse_slash_command_result(&event)
+                            {
                                 let message = if result.accepted {
-                                    format!("Slash {} {} succeeded: {}", result.name, result.args, result.output)
+                                    format!(
+                                        "Slash {} {} succeeded: {}",
+                                        result.name, result.args, result.output
+                                    )
                                 } else {
-                                    format!("Slash {} {} failed: {}", result.name, result.args, result.output)
+                                    format!(
+                                        "Slash {} {} failed: {}",
+                                        result.name, result.args, result.output
+                                    )
                                 };
                                 settings_status_message.set(Some(message));
                                 if result.accepted
@@ -409,7 +580,11 @@ pub fn App() -> Element {
 
     let session = controller.read().session_data();
     #[cfg(not(target_arch = "wasm32"))]
-    let settings_model = build_settings_panel_model(&controller.read(), &session, Some(controller.read().settings_auth_state()));
+    let settings_model = build_settings_panel_model(
+        &controller.read(),
+        &session,
+        Some(controller.read().settings_auth_state()),
+    );
     #[cfg(target_arch = "wasm32")]
     let settings_model = build_settings_panel_model(&controller.read(), &session, None);
     let bootstrap_surface = controller
@@ -720,7 +895,7 @@ pub fn App() -> Element {
                             div { class: "settings-modal-heading",
                                 span { class: "settings-modal-kicker", "Operator controls" }
                                 h2 { class: "settings-modal-title", "Settings" }
-                                p { class: "settings-modal-detail", "Instance-aware operator controls are routed from this surface so Auspex can target the correct Omegon session as multi-instance support expands." }
+                                p { class: "settings-modal-detail", "Manage provider auth, secrets exposure, and vault readiness from the same in-app operator workflow that now targets the attached Omegon instance." }
                             }
                             button {
                                 class: "settings-modal-close",
@@ -731,7 +906,7 @@ pub fn App() -> Element {
                         }
 
                         div { class: "settings-modal-grid",
-                            section { class: "settings-panel-card",
+                            section { class: "settings-panel-card settings-panel-card-target",
                                 h3 { class: "settings-panel-title", "Command target" }
                                 div { class: "settings-target-chip",
                                     span { class: "settings-target-label", "Target" }
@@ -740,10 +915,10 @@ pub fn App() -> Element {
                                 p { class: "settings-panel-detail", "{settings_model.target_detail}" }
                                 p { class: "settings-panel-detail", "{settings_model.route_detail}" }
                                 p { class: "settings-panel-detail", "{settings_model.lifecycle_summary}" }
-                                div { class: "settings-provider-list",
+                                div { class: "settings-route-list",
                                     for (route_id, label, detail) in &settings_model.route_options {
                                         button {
-                                            class: "settings-action-button",
+                                            class: "settings-action-button settings-route-button",
                                             r#type: "button",
                                             disabled: route_id == &settings_model.selected_route_id,
                                             title: detail.clone(),
@@ -752,27 +927,170 @@ pub fn App() -> Element {
                                                 let route_id = route_id.clone();
                                                 move |_| controller.write().select_command_route(&route_id)
                                             },
-                                            "{label}"
+                                            span { class: "settings-route-button-label", "{label}" }
+                                            span { class: "settings-route-button-detail", "{detail}" }
                                         }
                                     }
                                 }
                             }
 
-                            section { class: "settings-panel-card",
-                                h3 { class: "settings-panel-title", "Auth status" }
+                            section { class: "settings-panel-card settings-panel-card-auth",
+                                h3 { class: "settings-panel-title", "Provider auth" }
                                 p { class: "settings-auth-status", "{settings_model.auth_status_label}" }
                                 p { class: "settings-panel-detail", "{settings_model.auth_status_detail}" }
+                                p { class: "settings-panel-detail", "{settings_model.provider_guidance}" }
                                 if let Some(last_action) = settings_model.last_action.as_deref() {
                                     p { class: "settings-panel-detail", "Last action: {last_action}" }
                                 }
                                 if let Some(error) = settings_model.last_error.as_deref() {
-                                    p { class: "settings-panel-detail", "Last error: {error}" }
+                                    p { class: "settings-panel-detail settings-panel-detail-error", "Last error: {error}" }
                                 }
-                                div { class: "settings-provider-list",
-                                    for (name, detail) in &settings_model.provider_rows {
-                                        div { class: "settings-provider-row",
-                                            strong { class: "settings-provider-name", "{name}" }
-                                            span { class: "settings-provider-detail", "{detail}" }
+                                div { class: "settings-provider-card-list",
+                                    for provider_card in &settings_model.provider_cards {
+                                        article {
+                                            class: "settings-provider-card",
+                                            "data-provider": provider_card.provider_key.clone().unwrap_or_else(|| "unreported".into()),
+                                            h4 { class: "settings-provider-name", "{provider_card.name}" }
+                                            p { class: "settings-provider-status", "{provider_card.status_label}" }
+                                            p { class: "settings-provider-detail", "{provider_card.status_detail}" }
+                                            p { class: "settings-provider-detail", "{provider_card.capability_detail}" }
+                                            p { class: "settings-provider-guidance", "{provider_card.guidance}" }
+                                            div { class: "settings-provider-action-row",
+                                                button {
+                                                    class: "settings-action-button settings-provider-action-button",
+                                                    r#type: "button",
+                                                    disabled: !provider_card.login_action.enabled,
+                                                    title: provider_card.login_action.detail.clone(),
+                                                    "data-command": provider_card.login_action.action.command_slug(),
+                                                    "data-provider": provider_card.provider_key.clone().unwrap_or_default(),
+                                                    onclick: {
+                                                        let mut controller = controller;
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        let mut settings_status_message = settings_status_message;
+                                                        let action_kind = provider_card.login_action.action;
+                                                        let provider = provider_card.login_action.provider.clone();
+                                                        let target_label = settings_model.target_label.clone();
+                                                        move |_| {
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            {
+                                                                let result = match action_kind {
+                                                                    SettingsAuthAction::Refresh => controller.write().refresh_settings_auth_status(),
+                                                                    SettingsAuthAction::Login => {
+                                                                        if let Some(stream) = event_stream.read().clone() {
+                                                                            let provider_name = provider.clone().unwrap_or_else(|| "anthropic".into());
+                                                                            let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                                name: "login".into(),
+                                                                                args: provider_name.clone(),
+                                                                                raw_input: format!("/login {provider_name}"),
+                                                                            };
+                                                                            let target = controller.read().current_command_target();
+                                                                            let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                            stream.send_command(command.command_json);
+                                                                            Ok(())
+                                                                        } else {
+                                                                            controller.write().run_settings_auth_action(
+                                                                                crate::bootstrap::DesktopAuthAction::Login,
+                                                                                provider.as_deref(),
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                    SettingsAuthAction::Logout => unreachable!(),
+                                                                    SettingsAuthAction::Unlock => unreachable!(),
+                                                                };
+                                                                let message = match result {
+                                                                    Ok(()) => format!("{} dispatched for {}", action_kind.label(), target_label),
+                                                                    Err(error) => format!("{} failed: {}", action_kind.label(), error),
+                                                                };
+                                                                settings_status_message.set(Some(message));
+                                                            }
+                                                        }
+                                                    },
+                                                    "Browser login"
+                                                }
+                                                button {
+                                                    class: "settings-action-button settings-provider-action-button settings-provider-action-button-secondary",
+                                                    r#type: "button",
+                                                    disabled: !provider_card.logout_action.enabled,
+                                                    title: provider_card.logout_action.detail.clone(),
+                                                    "data-command": provider_card.logout_action.action.command_slug(),
+                                                    "data-provider": provider_card.provider_key.clone().unwrap_or_default(),
+                                                    onclick: {
+                                                        let mut controller = controller;
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        let mut settings_status_message = settings_status_message;
+                                                        let action_kind = provider_card.logout_action.action;
+                                                        let provider = provider_card.logout_action.provider.clone();
+                                                        let target_label = settings_model.target_label.clone();
+                                                        move |_| {
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            {
+                                                                let result = match action_kind {
+                                                                    SettingsAuthAction::Refresh => controller.write().refresh_settings_auth_status(),
+                                                                    SettingsAuthAction::Login => unreachable!(),
+                                                                    SettingsAuthAction::Logout => {
+                                                                        if let Some(stream) = event_stream.read().clone() {
+                                                                            let provider_name = provider.clone().unwrap_or_default();
+                                                                            let raw_input = if provider_name.is_empty() {
+                                                                                "/logout".to_string()
+                                                                            } else {
+                                                                                format!("/logout {provider_name}")
+                                                                            };
+                                                                            let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                                name: "logout".into(),
+                                                                                args: provider_name,
+                                                                                raw_input,
+                                                                            };
+                                                                            let target = controller.read().current_command_target();
+                                                                            let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                            stream.send_command(command.command_json);
+                                                                            Ok(())
+                                                                        } else {
+                                                                            controller.write().run_settings_auth_action(
+                                                                                crate::bootstrap::DesktopAuthAction::Logout,
+                                                                                provider.as_deref(),
+                                                                            )
+                                                                        }
+                                                                    }
+                                                                    SettingsAuthAction::Unlock => unreachable!(),
+                                                                };
+                                                                let message = match result {
+                                                                    Ok(()) => format!("{} dispatched for {}", action_kind.label(), target_label),
+                                                                    Err(error) => format!("{} failed: {}", action_kind.label(), error),
+                                                                };
+                                                                settings_status_message.set(Some(message));
+                                                            }
+                                                        }
+                                                    },
+                                                    "Logout"
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section { class: "settings-panel-card settings-panel-card-status",
+                                h3 { class: "settings-panel-title", "Secrets and vault" }
+                                p { class: "settings-panel-detail", "Status parity here is derived from the same attached-session snapshot as the rest of the operator UI, so secret and vault hints stay tied to the current route and target." }
+                                div { class: "settings-status-section",
+                                    h4 { class: "settings-status-section-title", "Secrets" }
+                                    div { class: "settings-status-list",
+                                        for row in &settings_model.secrets_rows {
+                                            div { class: "settings-status-row",
+                                                span { class: "settings-status-label", "{row.label}" }
+                                                span { class: "settings-status-value", "{row.value}" }
+                                            }
+                                        }
+                                    }
+                                }
+                                div { class: "settings-status-section",
+                                    h4 { class: "settings-status-section-title", "Vault" }
+                                    div { class: "settings-status-list",
+                                        for row in &settings_model.vault_rows {
+                                            div { class: "settings-status-row",
+                                                span { class: "settings-status-label", "{row.label}" }
+                                                span { class: "settings-status-value", "{row.value}" }
+                                            }
                                         }
                                     }
                                 }
@@ -780,14 +1098,14 @@ pub fn App() -> Element {
 
                             section { class: "settings-panel-card settings-panel-card-actions",
                                 h3 { class: "settings-panel-title", "Operator actions" }
-                                p { class: "settings-panel-detail", "Desktop auth parity is live here now; transport will later swap to Omegon's canonical slash executor without changing this operator surface." }
+                                p { class: "settings-panel-detail", "Refresh provider state after browser auth, or unlock the host vault/keyring flow when secrets are present but not usable." }
                                 if let Some(message) = settings_status_message.read().as_deref() {
-                                    p { class: "settings-panel-detail", "{message}" }
+                                    p { class: "settings-panel-detail settings-operator-message", "{message}" }
                                 }
                                 div { class: "settings-action-grid",
-                                    for action in &settings_model.actions {
+                                    for action in &settings_model.general_actions {
                                         button {
-                                            class: "settings-action-button",
+                                            class: "settings-action-button settings-general-action-button",
                                             r#type: "button",
                                             disabled: !action.enabled,
                                             title: action.detail.clone(),
@@ -805,49 +1123,8 @@ pub fn App() -> Element {
                                                     {
                                                         let result = match action_kind {
                                                             SettingsAuthAction::Refresh => controller.write().refresh_settings_auth_status(),
-                                                            SettingsAuthAction::Login => {
-                                                                if let Some(stream) = event_stream.read().clone() {
-                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
-                                                                        name: "login".into(),
-                                                                        args: provider.clone().unwrap_or_else(|| "anthropic".into()),
-                                                                        raw_input: format!("/login {}", provider.clone().unwrap_or_else(|| "anthropic".into())),
-                                                                    };
-                                                                    let target = controller.read().current_command_target();
-                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                    stream.send_command(command.command_json.clone());
-                                                                    Ok(())
-                                                                } else {
-                                                                    controller.write().run_settings_auth_action(
-                                                                        crate::bootstrap::DesktopAuthAction::Login,
-                                                                        provider.as_deref(),
-                                                                    )
-                                                                }
-                                                            }
-                                                            SettingsAuthAction::Logout => {
-                                                                if let Some(stream) = event_stream.read().clone() {
-                                                                    let provider_name = provider.clone().unwrap_or_else(|| "anthropic".into());
-                                                                    let args = if provider_name.is_empty() { String::new() } else { provider_name.clone() };
-                                                                    let raw_input = if args.is_empty() {
-                                                                        "/logout".to_string()
-                                                                    } else {
-                                                                        format!("/logout {args}")
-                                                                    };
-                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
-                                                                        name: "logout".into(),
-                                                                        args,
-                                                                        raw_input,
-                                                                    };
-                                                                    let target = controller.read().current_command_target();
-                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                    stream.send_command(command.command_json);
-                                                                    Ok(())
-                                                                } else {
-                                                                    controller.write().run_settings_auth_action(
-                                                                        crate::bootstrap::DesktopAuthAction::Logout,
-                                                                        provider.as_deref(),
-                                                                    )
-                                                                }
-                                                            }
+                                                            SettingsAuthAction::Login => unreachable!(),
+                                                            SettingsAuthAction::Logout => unreachable!(),
                                                             SettingsAuthAction::Unlock => {
                                                                 if let Some(stream) = event_stream.read().clone() {
                                                                     let slash = crate::runtime_types::CanonicalSlashCommand {
@@ -862,7 +1139,7 @@ pub fn App() -> Element {
                                                                 } else {
                                                                     controller.write().run_settings_auth_action(
                                                                         crate::bootstrap::DesktopAuthAction::Unlock,
-                                                                        None,
+                                                                        provider.as_deref(),
                                                                     )
                                                                 }
                                                             }
@@ -880,7 +1157,7 @@ pub fn App() -> Element {
                                     }
                                 }
                                 ul { class: "settings-action-notes",
-                                    for action in &settings_model.actions {
+                                    for action in &settings_model.general_actions {
                                         li {
                                             strong { "{action.action.label()}" }
                                             span { " — {action.detail}" }
@@ -1205,7 +1482,9 @@ fn render_transcript(
     messages: &[crate::fixtures::ChatMessage],
     auto_expand: bool,
 ) -> Element {
-    if let Some(empty_state) = build_chat_empty_state_model(summary, work, session, transcript, messages) {
+    if let Some(empty_state) =
+        build_chat_empty_state_model(summary, work, session, transcript, messages)
+    {
         rsx! {
             section {
                 class: "chat-empty-state",
@@ -1662,7 +1941,12 @@ fn build_dispatch_context_strip_model(
                 .and_then(|descriptor| descriptor.policy.as_ref())
                 .and_then(|policy| policy.model.clone())
         })
-        .or_else(|| session.providers.iter().find_map(|provider| provider.model.clone()))
+        .or_else(|| {
+            session
+                .providers
+                .iter()
+                .find_map(|provider| provider.model.clone())
+        })
         .unwrap_or_else(|| "unreported".into());
 
     let thinking = if session.thinking_level.trim().is_empty() {
@@ -1692,7 +1976,10 @@ fn build_dispatch_context_strip_model(
     };
 
     let trimmed_draft = draft.trim();
-    let provider_ready = session.providers.iter().any(|provider| provider.authenticated);
+    let provider_ready = session
+        .providers
+        .iter()
+        .any(|provider| provider.authenticated);
     let (send_label, send_tone, send_detail) = if is_run_active {
         (
             "Blocked by active run".to_string(),
@@ -1723,7 +2010,10 @@ fn build_dispatch_context_strip_model(
         (
             "Ready to send".to_string(),
             "success",
-            format!("Prompt ready: {} character(s) queued for dispatch.", trimmed_draft.chars().count()),
+            format!(
+                "Prompt ready: {} character(s) queued for dispatch.",
+                trimmed_draft.chars().count()
+            ),
         )
     };
 
@@ -2367,20 +2657,17 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuditFilters, Workspace, app_surface_state, app_surface_tone,
-        audit_entry_matches_filters, audit_kind_key, block_origin_label,
-        build_audit_panel_model, build_chat_empty_state_model,
-        build_dispatch_context_strip_model, build_left_rail_inventory,
-        build_settings_panel_model,
-        chat_status_tone, context_window_label, find_transcript_anchor,
-        looks_like_structured_payload, render_chat_status_banner,
-        render_dispatch_context_strip, should_expand_system_notice,
-        should_expand_tool_args, should_expand_tool_output, system_block_class,
-        system_block_tone, system_notice_summary_label, text_block_class,
-        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
-        tool_result_label, tool_status_label, tool_visual_state,
-        transcript_block_dom_id, transcript_disclosure_meta,
-        transcript_disclosure_open, SettingsAuthAction,
+        AuditFilters, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
+        audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
+        build_chat_empty_state_model, build_dispatch_context_strip_model,
+        build_left_rail_inventory, build_settings_panel_model, chat_status_tone,
+        context_window_label, find_transcript_anchor, looks_like_structured_payload,
+        render_chat_status_banner, render_dispatch_context_strip, should_expand_system_notice,
+        should_expand_tool_args, should_expand_tool_output, system_block_class, system_block_tone,
+        system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
+        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
+        tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
+        transcript_disclosure_open,
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::{AppController, SessionMode};
@@ -2672,7 +2959,11 @@ mod tests {
         assert_eq!(model.title, "New Project starter");
         assert!(!model.detached);
         assert!(model.kicker.contains("main"));
-        assert!(model.detail.contains("No transcript history is attached yet"));
+        assert!(
+            model
+                .detail
+                .contains("No transcript history is attached yet")
+        );
         assert_eq!(model.guidance.len(), 3);
         assert!(model.guidance[0].contains("Summarize the current session"));
         assert!(model.guidance[1].contains("right model"));
@@ -2916,7 +3207,12 @@ mod tests {
             value: "victory".into(),
             tone: "muted",
         }));
-        assert!(model.items.iter().any(|item| item.label == "Send" && item.value == "Ready to send"));
+        assert!(
+            model
+                .items
+                .iter()
+                .any(|item| item.label == "Send" && item.value == "Ready to send")
+        );
 
         let rendered = render_dispatch_context_strip(&model);
         let debug = format!("{rendered:?}");
@@ -2956,7 +3252,12 @@ mod tests {
             false,
         );
         assert_eq!(active_run.state, "running");
-        assert!(active_run.items.iter().any(|item| item.label == "Send" && item.value == "Blocked by active run"));
+        assert!(
+            active_run
+                .items
+                .iter()
+                .any(|item| item.label == "Send" && item.value == "Blocked by active run")
+        );
 
         let blank = build_dispatch_context_strip_model(
             Workspace::Chat,
@@ -2968,8 +3269,18 @@ mod tests {
             true,
         );
         assert_eq!(blank.state, "ready");
-        assert!(blank.items.iter().any(|item| item.label == "Send" && item.value == "Needs prompt text"));
-        assert!(blank.items.iter().any(|item| item.label == "Who" && item.value == "Attached to local shell"));
+        assert!(
+            blank
+                .items
+                .iter()
+                .any(|item| item.label == "Send" && item.value == "Needs prompt text")
+        );
+        assert!(
+            blank
+                .items
+                .iter()
+                .any(|item| item.label == "Who" && item.value == "Attached to local shell")
+        );
 
         let blocked_providers = build_dispatch_context_strip_model(
             Workspace::Chat,
@@ -2983,14 +3294,27 @@ mod tests {
             false,
             false,
         );
-        assert!(blocked_providers.items.iter().any(|item| item.label == "Send" && item.value == "Host missing providers"));
-        assert!(blocked_providers.send_detail.contains("authenticated providers"));
+        assert!(
+            blocked_providers
+                .items
+                .iter()
+                .any(|item| item.label == "Send" && item.value == "Host missing providers")
+        );
+        assert!(
+            blocked_providers
+                .send_detail
+                .contains("authenticated providers")
+        );
     }
 
     #[test]
     fn settings_panel_model_prefers_dispatcher_targeting() {
         let controller = AppController::remote_demo();
-        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(controller.settings_auth_state()));
+        let model = build_settings_panel_model(
+            &controller,
+            &controller.session_data(),
+            Some(controller.settings_auth_state()),
+        );
 
         assert_eq!(model.selected_route_id, "session-dispatcher");
         assert_eq!(model.target_label, "omg_primary_01HVDEMO");
@@ -2998,20 +3322,56 @@ mod tests {
         assert!(model.route_detail.contains("session-dispatcher"));
         assert!(model.lifecycle_summary.contains("Lifecycle:"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
-        assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
-        assert!(model.actions.iter().all(|action| action.enabled));
+        assert_eq!(
+            model.general_actions[0].action.command_slug(),
+            "auth.refresh"
+        );
+        assert!(model.general_actions.iter().all(|action| action.enabled));
+        assert_eq!(model.provider_cards.len(), 1);
+        assert_eq!(model.provider_cards[0].status_label, "Authenticated");
+        assert!(
+            model
+                .secrets_rows
+                .iter()
+                .any(|row| row.label == "Provider coverage" && row.value == "1 / 1 authenticated")
+        );
     }
 
     #[test]
     fn settings_panel_model_falls_back_to_local_shell() {
         let controller = AppController::default();
-        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(controller.settings_auth_state()));
+        let model = build_settings_panel_model(
+            &controller,
+            &controller.session_data(),
+            Some(controller.settings_auth_state()),
+        );
 
         assert_eq!(model.target_label, "local-shell");
-        assert!(model.route_detail.contains("local-shell") || model.route_detail.contains("Local shell"));
+        assert!(
+            model.route_detail.contains("local-shell")
+                || model.route_detail.contains("Local shell")
+        );
         assert!(model.lifecycle_summary.contains("Lifecycle:"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
-        assert!(model.actions.iter().all(|action| action.enabled));
+        assert!(model.general_actions.iter().all(|action| action.enabled));
+        assert!(
+            model
+                .provider_guidance
+                .contains("Authenticated providers can execute")
+        );
+    }
+
+    #[test]
+    fn settings_panel_model_disables_provider_actions_without_inventory() {
+        let controller = AppController::default();
+        let session = crate::fixtures::SessionData::default();
+        let model = build_settings_panel_model(&controller, &session, None);
+
+        assert_eq!(model.auth_status_label, "No providers reported");
+        assert_eq!(model.provider_cards.len(), 1);
+        assert!(!model.provider_cards[0].login_action.enabled);
+        assert!(!model.provider_cards[0].logout_action.enabled);
+        assert!(model.provider_guidance.contains("Refresh status first"));
     }
 
     #[test]
