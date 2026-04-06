@@ -136,12 +136,12 @@ impl AttachedInstanceStateEngine {
             if record.ownership.owner_kind == crate::runtime_types::OwnerKind::AuspexSession
                 && record.ownership.owner_id == self.session_key.trim_start_matches("remote:")
                 && !active.contains(record.identity.instance_id.as_str())
+                && record.identity.role == crate::runtime_types::WorkerRole::DetachedService
             {
-                if record.identity.role == crate::runtime_types::WorkerRole::DetachedService {
-                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Lost;
-                    record.observed.health.ready = false;
-                    record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Stale);
-                }
+                record.identity.status = crate::runtime_types::WorkerLifecycleState::Lost;
+                record.observed.health.ready = false;
+                record.observed.health.freshness =
+                    Some(crate::runtime_types::InstanceFreshness::Stale);
             }
         }
         self.registry_store.instances.retain(|record| {
@@ -954,8 +954,14 @@ mod tests {
 
         assert_eq!(engine.attached_instances().len(), 1);
         assert_eq!(engine.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
-        assert_eq!(engine.registry_store().instances.len(), 1);
-        assert_eq!(engine.registry_store().instances[0].identity.instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(engine.registry_store().instances.len(), 2);
+        assert_eq!(engine.registry_store().instances[0].identity.instance_id, "omg_host_01HVTEST");
+        assert_eq!(engine.registry_store().instances[0].identity.status, crate::runtime_types::WorkerLifecycleState::Lost);
+        assert_eq!(
+            engine.registry_store().instances[0].observed.health.freshness,
+            Some(crate::runtime_types::InstanceFreshness::Stale)
+        );
+        assert_eq!(engine.registry_store().instances[1].identity.instance_id, "omg_dispatcher_01HVTEST");
     }
 
     #[test]
