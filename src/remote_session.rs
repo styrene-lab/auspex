@@ -522,7 +522,9 @@ impl HostSessionModel for RemoteHostSession {
     }
 
     fn can_submit(&self) -> bool {
-        !self.run_active && matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
+        !self.run_active
+            && matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
+            && harness_can_execute_prompts(self.harness_snapshot.as_ref())
     }
 
     fn is_run_active(&self) -> bool {
@@ -1099,7 +1101,17 @@ fn status_from_harness(harness: Option<&HarnessStatusSnapshot>) -> (ShellState, 
         return (ShellState::Degraded, DevScenario::Degraded);
     }
 
+    if !harness_can_execute_prompts(Some(harness)) {
+        return (ShellState::Degraded, DevScenario::Degraded);
+    }
+
     (ShellState::Ready, DevScenario::Ready)
+}
+
+fn harness_can_execute_prompts(harness: Option<&HarnessStatusSnapshot>) -> bool {
+    harness
+        .map(|harness| harness.providers.iter().any(|provider| provider.authenticated))
+        .unwrap_or(true)
 }
 
 fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStatusSnapshot) {
@@ -1109,6 +1121,9 @@ fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStat
 
     if let Some(warning) = harness.memory_warning.as_ref() {
         summary.activity = warning.clone();
+        summary.activity_kind = ActivityKind::Degraded;
+    } else if !harness_can_execute_prompts(Some(harness)) {
+        summary.activity = "No authenticated providers reported by Omegon".into();
         summary.activity_kind = ActivityKind::Degraded;
     } else if !harness.active_delegates.is_empty() {
         summary.activity = format!("{} delegate task(s) active", harness.active_delegates.len());
@@ -1336,6 +1351,26 @@ mod tests {
         assert_eq!(session.scenario(), DevScenario::Degraded);
         assert_eq!(session.summary().activity, "Memory database unavailable");
         assert_eq!(session.summary().activity_kind, ActivityKind::Degraded);
+    }
+
+    #[test]
+    fn missing_authenticated_providers_block_submit_and_degrade_shell_state() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(
+                r#"{"type":"harness_status_changed","status":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}"#,
+            )
+            .unwrap();
+        session.composer_mut().set_draft("hello");
+
+        assert_eq!(session.shell_state(), ShellState::Degraded);
+        assert_eq!(session.scenario(), DevScenario::Degraded);
+        assert_eq!(session.summary().activity, "No authenticated providers reported by Omegon");
+        assert_eq!(session.summary().activity_kind, ActivityKind::Degraded);
+        assert!(!session.can_submit());
+        assert!(!session.submit());
+        assert_eq!(session.messages().len(), 1);
     }
 
     #[test]

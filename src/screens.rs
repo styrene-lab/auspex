@@ -713,6 +713,15 @@ fn session_alerts(data: &SessionData) -> Vec<SessionAlert> {
         });
     }
 
+    if data.providers.is_empty() {
+        alerts.push(SessionAlert {
+            class_name: "session-alert session-alert-danger",
+            tone: "danger",
+            title: "Prompt execution unavailable",
+            body: "Omegon did not report any authenticated providers, so submitted prompts may queue without producing a response.".into(),
+        });
+    }
+
     if !data.memory_available {
         alerts.push(SessionAlert {
             class_name: "session-alert session-alert-danger",
@@ -1497,12 +1506,13 @@ mod tests {
         let titles: Vec<_> = alerts.iter().map(|alert| alert.title).collect();
 
         assert!(titles.contains(&"Memory attention needed"));
+        assert!(titles.contains(&"Prompt execution unavailable"));
         assert!(titles.contains(&"Project memory offline"));
         assert!(titles.contains(&"Cleave unavailable"));
         assert!(titles.contains(&"Dispatcher binding missing"));
         assert_eq!(alerts[0].tone, "warn");
-        assert_eq!(alerts[1].tone, "danger");
-        assert_eq!(alerts[3].tone, "muted");
+        assert!(alerts.iter().any(|alert| alert.title == "Prompt execution unavailable" && alert.tone == "danger"));
+        assert!(alerts.iter().any(|alert| alert.title == "Dispatcher binding missing" && alert.tone == "muted"));
     }
 
     #[test]

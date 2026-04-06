@@ -1195,12 +1195,19 @@ fn build_dispatch_context_strip_model(
     };
 
     let trimmed_draft = draft.trim();
+    let provider_ready = session.providers.iter().any(|provider| provider.authenticated);
     let (send_label, send_tone, send_detail) = if is_run_active {
         (
             "Blocked by active run".to_string(),
             "info",
             "Wait for the current run to finish or cancel it before sending another prompt."
                 .to_string(),
+        )
+    } else if !provider_ready {
+        (
+            "Host missing providers".to_string(),
+            "warn",
+            "Omegon did not report any authenticated providers, so prompt execution is unavailable until the host regains a runnable model backend.".to_string(),
         )
     } else if !can_submit {
         (
@@ -2459,6 +2466,21 @@ mod tests {
         assert_eq!(blank.state, "ready");
         assert!(blank.items.iter().any(|item| item.label == "Send" && item.value == "Needs prompt text"));
         assert!(blank.items.iter().any(|item| item.label == "Who" && item.value == "Attached to local shell"));
+
+        let blocked_providers = build_dispatch_context_strip_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            &summary,
+            &crate::fixtures::SessionData {
+                providers: vec![],
+                ..session.clone()
+            },
+            "hello",
+            false,
+            false,
+        );
+        assert!(blocked_providers.items.iter().any(|item| item.label == "Send" && item.value == "Host missing providers"));
+        assert!(blocked_providers.send_detail.contains("authenticated providers"));
     }
 
     #[test]
