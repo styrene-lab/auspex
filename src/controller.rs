@@ -23,6 +23,14 @@ pub struct SettingsAuthState {
     pub last_action: Option<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct SlashCommandResult {
+    pub name: String,
+    pub args: String,
+    pub accepted: bool,
+    pub output: String,
+}
+
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
         "focused": {
@@ -657,6 +665,28 @@ impl AppController {
             SessionSource::Mock(_) => Ok(false),
         }
     }
+
+    pub fn parse_slash_command_result(json: &str) -> Option<SlashCommandResult> {
+        let value: serde_json::Value = serde_json::from_str(json).ok()?;
+        if value.get("type")?.as_str()? != "slash_command_result" {
+            return None;
+        }
+
+        Some(SlashCommandResult {
+            name: value.get("name")?.as_str()?.to_string(),
+            args: value
+                .get("args")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+            accepted: value.get("accepted")?.as_bool()?,
+            output: value
+                .get("output")
+                .and_then(|value| value.as_str())
+                .unwrap_or_default()
+                .to_string(),
+        })
+    }
 }
 
 #[cfg(test)]
@@ -738,6 +768,19 @@ mod tests {
         assert_eq!(session.providers.len(), 1);
         assert_eq!(session.providers[0].name, "OpenAI API");
         assert_eq!(session.providers[0].auth_method.as_deref(), Some("api-key"));
+    }
+
+    #[test]
+    fn parse_slash_command_result_extracts_structured_fields() {
+        let result = AppController::parse_slash_command_result(
+            r#"{"type":"slash_command_result","name":"login","args":"anthropic","accepted":true,"output":"done"}"#,
+        )
+        .expect("slash result");
+
+        assert_eq!(result.name, "login");
+        assert_eq!(result.args, "anthropic");
+        assert!(result.accepted);
+        assert_eq!(result.output, "done");
     }
 
     #[test]

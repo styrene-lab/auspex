@@ -269,6 +269,8 @@ pub fn App() -> Element {
         }
     });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
+    #[cfg(not(target_arch = "wasm32"))]
+    let settings_status_message = use_signal(|| None::<String>);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
             event_stream.set(bootstrap.event_stream);
@@ -283,6 +285,8 @@ pub fn App() -> Element {
     use_future(move || {
         let mut controller = controller;
         let event_stream = event_stream;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut settings_status_message = settings_status_message;
         async move {
             loop {
                 if let Some(handle) = event_stream.read().clone() {
@@ -290,6 +294,20 @@ pub fn App() -> Element {
                     if !events.is_empty() {
                         let mut controller = controller.write();
                         for event in events {
+                            #[cfg(not(target_arch = "wasm32"))]
+                            if let Some(result) = crate::controller::AppController::parse_slash_command_result(&event) {
+                                let message = if result.accepted {
+                                    format!("Slash {} {} succeeded: {}", result.name, result.args, result.output)
+                                } else {
+                                    format!("Slash {} {} failed: {}", result.name, result.args, result.output)
+                                };
+                                settings_status_message.set(Some(message));
+                                if result.accepted
+                                    && matches!(result.name.as_str(), "login" | "logout" | "auth")
+                                {
+                                    let _ = controller.refresh_settings_auth_status();
+                                }
+                            }
                             let _ = controller.apply_remote_event_json(&event);
                         }
                     }
@@ -339,8 +357,6 @@ pub fn App() -> Element {
 
     let mut workspace = use_signal(|| Workspace::Chat);
     let mut settings_open = use_signal(|| false);
-    #[cfg(not(target_arch = "wasm32"))]
-    let settings_status_message = use_signal(|| None::<String>);
     let mut audit_session_filter = use_signal(String::new);
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
