@@ -1108,7 +1108,7 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             snapshot.openspec.done_tasks, snapshot.openspec.total_tasks
         )
     } else {
-        "No focused work item reported by Omegon".into()
+        "No focused work item".into()
     };
 
     HostSessionSummary {

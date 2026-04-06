@@ -247,10 +247,10 @@ pub fn SessionScreen(
                     {kv_row("Branch",
                         data.git_branch.as_deref().unwrap_or("—")
                     )}
-                    {kv_row("Thinking",   &data.thinking_level)}
-                    {kv_row("Tier",       &data.capability_tier)}
-                    {kv_row("Memory",     if data.memory_available { "available" } else { "unavailable" })}
-                    {kv_row("Cleave",     if data.cleave_available { "available" } else { "unavailable" })}
+                    {kv_row("Thinking",   if data.thinking_level.trim().is_empty() { "not reported yet" } else { &data.thinking_level })}
+                    {kv_row("Tier",       if data.capability_tier.trim().is_empty() { "not reported yet" } else { &data.capability_tier })}
+                    {kv_row("Memory",     if data.memory_available { "available" } else { "not available" })}
+                    {kv_row("Cleave",     if data.cleave_available { "available" } else { "not available" })}
                     if let Some(warn) = &data.memory_warning {
                         div { class: "kv-row kv-row-warn",
                             span { class: "kv-key", "Warning" }

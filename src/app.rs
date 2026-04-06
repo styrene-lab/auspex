@@ -2034,7 +2034,7 @@ fn context_window_label(session: &crate::fixtures::SessionData) -> String {
             format!("{tokens} tokens")
         }
     } else {
-        "No context usage reported".to_string()
+        "Context usage not reported yet".to_string()
     }
 }
 
@@ -2096,16 +2096,16 @@ fn build_dispatch_context_strip_model(
                 .iter()
                 .find_map(|provider| provider.model.clone())
         })
-        .unwrap_or_else(|| "model not reported".into());
+        .unwrap_or_else(|| "model not reported yet".into());
 
     let thinking = if session.thinking_level.trim().is_empty() {
-        "not reported".into()
+        "not reported yet".into()
     } else {
         session.thinking_level.clone()
     };
 
     let tier = if session.capability_tier.trim().is_empty() {
-        "not reported".into()
+        "not reported yet".into()
     } else {
         session.capability_tier.clone()
     };
@@ -2460,7 +2460,7 @@ fn build_left_rail_inventory(
                 format!("workspace · branch {branch}")
             }
         })
-        .unwrap_or_else(|| "workspace identity unavailable".into());
+        .unwrap_or_else(|| "workspace not identified yet".into());
     let project_label = work
         .focused_title
         .clone()
@@ -2516,7 +2516,7 @@ fn build_left_rail_inventory(
     }
 
     if agent_rows.is_empty() {
-        agent_rows.push(("Dispatcher · unavailable".into(), "idle".into()));
+        agent_rows.push(("No dispatcher binding".into(), "idle".into()));
     }
 
     LeftRailInventory {
@@ -3311,7 +3311,7 @@ mod tests {
         assert_eq!(context_window_label(&no_window), "640 tokens");
         assert_eq!(
             context_window_label(&crate::fixtures::SessionData::default()),
-            "No context usage reported"
+            "Context usage not reported yet"
         );
     }
 
@@ -3678,7 +3678,7 @@ mod tests {
         assert_eq!(inventory.workspace_label, "main");
         assert_eq!(inventory.workspace_detail, "workspace · branch main");
         assert_eq!(inventory.session_label, "local-session");
-        assert_eq!(inventory.agent_rows[0].0, "Dispatcher · unavailable");
+        assert_eq!(inventory.agent_rows[0].0, "No dispatcher binding");
     }
 
     #[test]
