@@ -285,6 +285,7 @@ impl AppController {
         self.selected_command_route_id = Some(route_id.to_string());
     }
 
+    #[allow(dead_code)]
     pub fn attached_instances(&self) -> &[AttachedInstanceRecord] {
         &self.attached_instances
     }

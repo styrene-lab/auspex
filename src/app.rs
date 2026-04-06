@@ -783,8 +783,7 @@ pub fn App() -> Element {
                                                                     };
                                                                     let target = controller.read().current_command_target();
                                                                     let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                    let send = stream.send_command(command.command_json.clone());
-                                                                    let _ = send;
+                                                                    stream.send_command(command.command_json.clone());
                                                                     Ok(())
                                                                 } else {
                                                                     controller.write().run_settings_auth_action(
