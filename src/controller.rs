@@ -7,6 +7,14 @@ use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct CommandRouteOption {
+    pub route_id: String,
+    pub label: String,
+    pub detail: String,
+    pub target: CommandTarget,
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SettingsAuthState {
@@ -130,6 +138,7 @@ pub struct AppController {
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
     audit_timeline: AuditTimelineStore,
+    selected_command_route_id: Option<String>,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
 }
@@ -141,6 +150,7 @@ impl Default for AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
+            selected_command_route_id: None,
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![crate::fixtures::ProviderInfo {
@@ -164,6 +174,7 @@ impl AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
+            selected_command_route_id: None,
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -189,6 +200,90 @@ impl AppController {
 
     pub fn session_mode(&self) -> SessionMode {
         self.session.mode()
+    }
+
+    pub fn available_command_routes(&self) -> Vec<CommandRouteOption> {
+        let session_key = self.session_audit_key();
+        let session = self.session_data();
+        let mut routes = Vec::new();
+
+        if let Some(instance) = session.instance_descriptor.as_ref() {
+            let instance_id = if instance.identity.instance_id.is_empty() {
+                "host-control-plane".to_string()
+            } else {
+                instance.identity.instance_id.clone()
+            };
+            let detail = instance
+                .control_plane
+                .as_ref()
+                .and_then(|control_plane| control_plane.base_url.clone())
+                .unwrap_or_else(|| "Attached host control plane".into());
+            routes.push(CommandRouteOption {
+                route_id: "host-control-plane".into(),
+                label: format!("Host · {instance_id}"),
+                detail,
+                target: CommandTarget {
+                    session_key: session_key.clone(),
+                    dispatcher_instance_id: None,
+                },
+            });
+        }
+
+        if let Some(binding) = session.dispatcher_binding.as_ref() {
+            let label = if binding.dispatcher_instance_id.is_empty() {
+                "Session dispatcher".to_string()
+            } else {
+                format!("Dispatcher · {}", binding.dispatcher_instance_id)
+            };
+            let detail = binding
+                .expected_model
+                .clone()
+                .unwrap_or_else(|| binding.expected_profile.clone());
+            routes.push(CommandRouteOption {
+                route_id: "session-dispatcher".into(),
+                label,
+                detail,
+                target: CommandTarget {
+                    session_key: session_key.clone(),
+                    dispatcher_instance_id: Some(binding.dispatcher_instance_id.clone()),
+                },
+            });
+        }
+
+        if routes.is_empty() {
+            routes.push(CommandRouteOption {
+                route_id: "local-shell".into(),
+                label: "Local shell".into(),
+                detail: "No attached host instance reported".into(),
+                target: CommandTarget {
+                    session_key,
+                    dispatcher_instance_id: None,
+                },
+            });
+        }
+
+        routes
+    }
+
+    pub fn selected_command_route_id(&self) -> String {
+        let routes = self.available_command_routes();
+        if let Some(selected) = self.selected_command_route_id.as_ref()
+            && routes.iter().any(|route| &route.route_id == selected)
+        {
+            return selected.clone();
+        }
+        if routes.iter().any(|route| route.route_id == "session-dispatcher") {
+            "session-dispatcher".into()
+        } else {
+            routes
+                .first()
+                .map(|route| route.route_id.clone())
+                .unwrap_or_else(|| "local-shell".into())
+        }
+    }
+
+    pub fn select_command_route(&mut self, route_id: &str) {
+        self.selected_command_route_id = Some(route_id.to_string());
     }
 
     pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
@@ -248,6 +343,7 @@ impl AppController {
             )),
             _ => SessionSource::Mock(MockHostSession::default()),
         };
+        self.selected_command_route_id = None;
         self.bootstrap_note = None;
         self.refresh_audit_timeline();
     }
@@ -419,21 +515,15 @@ impl AppController {
     }
 
     fn command_target(&self) -> CommandTarget {
-        let session_key = self.session_audit_key();
-        let dispatcher_instance_id = match &self.session {
-            SessionSource::Remote(session) => session
-                .session_data()
-                .dispatcher_binding
-                .as_ref()
-                .map(|binding| binding.dispatcher_instance_id.clone())
-                .filter(|value| !value.is_empty()),
-            SessionSource::Mock(_) => None,
-        };
-
-        CommandTarget {
-            session_key,
-            dispatcher_instance_id,
-        }
+        let selected_route_id = self.selected_command_route_id();
+        self.available_command_routes()
+            .into_iter()
+            .find(|route| route.route_id == selected_route_id)
+            .map(|route| route.target)
+            .unwrap_or_else(|| CommandTarget {
+                session_key: self.session_audit_key(),
+                dispatcher_instance_id: None,
+            })
     }
 
     fn session_audit_key(&self) -> String {
@@ -605,6 +695,28 @@ mod tests {
         assert_eq!(dispatcher.available_options.len(), 2);
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().status, "idle");
         assert_eq!(dispatcher.switch_state.as_ref().unwrap().request_id, None);
+    }
+
+    #[test]
+    fn available_command_routes_prefer_dispatcher_by_default() {
+        let controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+
+        let routes = controller.available_command_routes();
+        assert_eq!(routes.len(), 2);
+        assert!(routes.iter().any(|route| route.route_id == "host-control-plane"));
+        assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
+        assert_eq!(controller.selected_command_route_id(), "session-dispatcher");
+    }
+
+    #[test]
+    fn selecting_host_control_plane_changes_command_target() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        controller.select_command_route("host-control-plane");
+        controller.update_draft("ship it");
+
+        let command = controller.submit_prompt_command().expect("targeted command");
+        assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
+        assert_eq!(command.target.dispatcher_instance_id, None);
     }
 
     #[cfg(not(target_arch = "wasm32"))]

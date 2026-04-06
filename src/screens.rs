@@ -1419,11 +1419,13 @@ mod tests {
                 crate::fixtures::ProviderInfo {
                     name: "github".into(),
                     authenticated: true,
+                    auth_method: Some("oauth".into()),
                     model: None,
                 },
                 crate::fixtures::ProviderInfo {
                     name: "openai".into(),
                     authenticated: false,
+                    auth_method: Some("api-key".into()),
                     model: Some("gpt-4.1".into()),
                 },
             ],

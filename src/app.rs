@@ -60,6 +60,8 @@ struct SettingsActionModel {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct SettingsPanelModel {
+    selected_route_id: String,
+    route_options: Vec<(String, String, String)>,
     target_label: String,
     target_detail: String,
     route_detail: String,
@@ -72,10 +74,17 @@ struct SettingsPanelModel {
 }
 
 fn build_settings_panel_model(
+    controller: &crate::controller::AppController,
     session: &crate::fixtures::SessionData,
     auth_state: Option<&crate::controller::SettingsAuthState>,
 ) -> SettingsPanelModel {
     let dispatcher_binding = session.dispatcher_binding.as_ref();
+    let route_options = controller.available_command_routes();
+    let selected_route_id = controller.selected_command_route_id();
+    let selected_route = route_options
+        .iter()
+        .find(|route| route.route_id == selected_route_id)
+        .or_else(|| route_options.first());
     let descriptor = dispatcher_binding
         .and_then(|binding| binding.instance_descriptor.as_ref())
         .or(session.instance_descriptor.as_ref());
@@ -118,7 +127,14 @@ fn build_settings_panel_model(
 
     let target_detail = format!("{target_role} · {target_profile} · session {target_session}");
 
-    let route_detail = if let Some(binding) = dispatcher_binding {
+    let route_detail = if let Some(route) = selected_route {
+        format!(
+            "Operator actions currently target {} ({}) via route {}. This will later bind to Omegon's canonical slash executor without changing the surface.",
+            route.label,
+            route.detail,
+            route.route_id
+        )
+    } else if let Some(binding) = dispatcher_binding {
         let schema = binding.control_plane_schema;
         let endpoint = binding
             .observed_base_url
@@ -198,6 +214,11 @@ fn build_settings_panel_model(
     };
 
     SettingsPanelModel {
+        selected_route_id,
+        route_options: route_options
+            .into_iter()
+            .map(|route| (route.route_id, route.label, route.detail))
+            .collect(),
         target_label,
         target_detail,
         route_detail,
@@ -319,7 +340,7 @@ pub fn App() -> Element {
     let mut workspace = use_signal(|| Workspace::Chat);
     let mut settings_open = use_signal(|| false);
     #[cfg(not(target_arch = "wasm32"))]
-    let mut settings_status_message = use_signal(|| None::<String>);
+    let settings_status_message = use_signal(|| None::<String>);
     let mut audit_session_filter = use_signal(String::new);
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
@@ -342,9 +363,9 @@ pub fn App() -> Element {
 
     let session = controller.read().session_data();
     #[cfg(not(target_arch = "wasm32"))]
-    let settings_model = build_settings_panel_model(&session, Some(controller.read().settings_auth_state()));
+    let settings_model = build_settings_panel_model(&controller.read(), &session, Some(controller.read().settings_auth_state()));
     #[cfg(target_arch = "wasm32")]
-    let settings_model = build_settings_panel_model(&session, None);
+    let settings_model = build_settings_panel_model(&controller.read(), &session, None);
     let bootstrap_surface = controller
         .read()
         .surface_notice()
@@ -672,6 +693,22 @@ pub fn App() -> Element {
                                 }
                                 p { class: "settings-panel-detail", "{settings_model.target_detail}" }
                                 p { class: "settings-panel-detail", "{settings_model.route_detail}" }
+                                div { class: "settings-provider-list",
+                                    for (route_id, label, detail) in &settings_model.route_options {
+                                        button {
+                                            class: "settings-action-button",
+                                            r#type: "button",
+                                            disabled: route_id == &settings_model.selected_route_id,
+                                            title: detail.clone(),
+                                            onclick: {
+                                                let mut controller = controller;
+                                                let route_id = route_id.clone();
+                                                move |_| controller.write().select_command_route(&route_id)
+                                            },
+                                            "{label}"
+                                        }
+                                    }
+                                }
                             }
 
                             section { class: "settings-panel-card",
@@ -2807,6 +2844,7 @@ mod tests {
             providers: vec![crate::fixtures::ProviderInfo {
                 name: "Anthropic".into(),
                 authenticated: true,
+                auth_method: Some("oauth".into()),
                 model: Some("claude-sonnet".into()),
             }],
             ..Default::default()
@@ -2856,11 +2894,12 @@ mod tests {
     #[test]
     fn settings_panel_model_prefers_dispatcher_targeting() {
         let controller = AppController::remote_demo();
-        let model = build_settings_panel_model(&controller.session_data(), Some(controller.settings_auth_state()));
+        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(controller.settings_auth_state()));
 
+        assert_eq!(model.selected_route_id, "session-dispatcher");
         assert_eq!(model.target_label, "omg_primary_01HVDEMO");
         assert!(model.target_detail.contains("primary-driver"));
-        assert!(model.route_detail.contains("control-plane schema 2"));
+        assert!(model.route_detail.contains("session-dispatcher"));
         assert!(model.auth_status_label.contains("0 authenticated provider") || model.auth_status_label.contains("No providers reported"));
         assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
         assert!(model.actions.iter().all(|action| action.enabled));
@@ -2869,10 +2908,10 @@ mod tests {
     #[test]
     fn settings_panel_model_falls_back_to_local_shell() {
         let controller = AppController::default();
-        let model = build_settings_panel_model(&controller.session_data(), Some(controller.settings_auth_state()));
+        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(controller.settings_auth_state()));
 
         assert_eq!(model.target_label, "local-shell");
-        assert!(model.route_detail.contains("target-aware command adapter"));
+        assert!(model.route_detail.contains("local-shell") || model.route_detail.contains("Local shell"));
         assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
         assert!(model.actions.iter().all(|action| action.enabled));
     }

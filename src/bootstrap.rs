@@ -33,7 +33,6 @@ pub struct DesktopAuthSnapshot {
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum DesktopAuthAction {
-    Refresh,
     Login,
     Logout,
     Unlock,
@@ -43,7 +42,6 @@ pub enum DesktopAuthAction {
 impl DesktopAuthAction {
     pub fn subcommand(self) -> &'static str {
         match self {
-            Self::Refresh => "status",
             Self::Login => "login",
             Self::Logout => "logout",
             Self::Unlock => "unlock",
