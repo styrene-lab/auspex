@@ -2,7 +2,7 @@ use dioxus::prelude::*;
 
 use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use crate::bootstrap::BootstrapResult;
-use crate::controller::AppController;
+use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{MessageRole, TranscriptData};
 use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
@@ -112,15 +112,16 @@ pub fn App() -> Element {
         .read()
         .surface_notice()
         .filter(|surface| surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote);
-    let context_status = if let Some(tokens) = session.context_tokens {
-        if let Some(window) = session.context_window {
-            format!("{tokens} / {window} tokens")
-        } else {
-            format!("{tokens} tokens")
-        }
-    } else {
-        "No context usage reported".to_string()
-    };
+    let context_status = context_window_label(&session);
+    let dispatch_context = build_dispatch_context_strip_model(
+        *workspace.read(),
+        controller.read().session_mode(),
+        controller.read().summary(),
+        &session,
+        controller.read().composer().draft(),
+        controller.read().is_run_active(),
+        controller.read().can_submit(),
+    );
 
     rsx! {
         document::Style { "{MAIN_CSS}" }
@@ -324,6 +325,7 @@ pub fn App() -> Element {
                                         stream.send_command(command);
                                     }
                                 },
+                                {render_dispatch_context_strip(&dispatch_context)}
                                 textarea {
                                     class: "composer-input",
                                     rows: "3",
@@ -368,6 +370,7 @@ pub fn App() -> Element {
                                         class: "composer-submit",
                                         r#type: "submit",
                                         disabled: !controller.read().can_submit(),
+                                        title: dispatch_context.send_detail.clone(),
                                         "Send"
                                     }
                                 }
@@ -1085,6 +1088,214 @@ fn chat_status_tone(is_run_active: bool, can_submit: bool) -> &'static str {
     }
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatchContextItem {
+    label: &'static str,
+    value: String,
+    tone: &'static str,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DispatchContextStripModel {
+    state: &'static str,
+    send_detail: String,
+    items: Vec<DispatchContextItem>,
+}
+
+fn context_window_label(session: &crate::fixtures::SessionData) -> String {
+    if let Some(tokens) = session.context_tokens {
+        if let Some(window) = session.context_window {
+            format!("{tokens} / {window} tokens")
+        } else {
+            format!("{tokens} tokens")
+        }
+    } else {
+        "No context usage reported".to_string()
+    }
+}
+
+fn build_dispatch_context_strip_model(
+    workspace: Workspace,
+    session_mode: SessionMode,
+    summary: &crate::fixtures::HostSessionSummary,
+    session: &crate::fixtures::SessionData,
+    draft: &str,
+    is_run_active: bool,
+    can_submit: bool,
+) -> DispatchContextStripModel {
+    let route = format!(
+        "{} · {}",
+        match workspace {
+            Workspace::Chat => "chat",
+            Workspace::Scribe => "scribe",
+            Workspace::Graph => "graph",
+            Workspace::Audit => "audit",
+        },
+        session_mode.label().to_ascii_lowercase()
+    );
+
+    let session_label = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.session_id.clone())
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| "local-session".into());
+
+    let who = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| {
+            if !binding.expected_role.is_empty() {
+                binding.expected_role.clone()
+            } else {
+                binding.expected_profile.clone()
+            }
+        })
+        .filter(|value| !value.is_empty())
+        .unwrap_or_else(|| summary.connection.clone());
+
+    let model = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.expected_model.clone())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|descriptor| descriptor.policy.as_ref())
+                .and_then(|policy| policy.model.clone())
+        })
+        .or_else(|| session.providers.iter().find_map(|provider| provider.model.clone()))
+        .unwrap_or_else(|| "unreported".into());
+
+    let thinking = if session.thinking_level.trim().is_empty() {
+        "unreported".into()
+    } else {
+        session.thinking_level.clone()
+    };
+
+    let tier = if session.capability_tier.trim().is_empty() {
+        "unreported".into()
+    } else {
+        session.capability_tier.clone()
+    };
+
+    let context = context_window_label(session);
+
+    let (state, state_label, state_tone) = if is_run_active {
+        ("running", "Run active".to_string(), "info")
+    } else if !can_submit {
+        ("blocked", "Input paused".to_string(), "warn")
+    } else {
+        (
+            "ready",
+            format!("{} · {}", summary.activity_kind.label(), summary.activity),
+            "success",
+        )
+    };
+
+    let trimmed_draft = draft.trim();
+    let (send_label, send_tone, send_detail) = if is_run_active {
+        (
+            "Blocked by active run".to_string(),
+            "info",
+            "Wait for the current run to finish or cancel it before sending another prompt."
+                .to_string(),
+        )
+    } else if !can_submit {
+        (
+            "Unavailable in current host state".to_string(),
+            "warn",
+            "Conversation input is unavailable until the host returns to a ready or degraded state."
+                .to_string(),
+        )
+    } else if trimmed_draft.is_empty() {
+        (
+            "Needs prompt text".to_string(),
+            "muted",
+            "Draft a prompt before sending so the dispatcher has work to route.".to_string(),
+        )
+    } else {
+        (
+            "Ready to send".to_string(),
+            "success",
+            format!("Prompt ready: {} character(s) queued for dispatch.", trimmed_draft.chars().count()),
+        )
+    };
+
+    DispatchContextStripModel {
+        state,
+        send_detail,
+        items: vec![
+            DispatchContextItem {
+                label: "Route",
+                value: route,
+                tone: "muted",
+            },
+            DispatchContextItem {
+                label: "Session",
+                value: session_label,
+                tone: "muted",
+            },
+            DispatchContextItem {
+                label: "Who",
+                value: who,
+                tone: "accent",
+            },
+            DispatchContextItem {
+                label: "Model",
+                value: model,
+                tone: "accent",
+            },
+            DispatchContextItem {
+                label: "Thinking",
+                value: thinking,
+                tone: "muted",
+            },
+            DispatchContextItem {
+                label: "Tier",
+                value: tier,
+                tone: "muted",
+            },
+            DispatchContextItem {
+                label: "State",
+                value: state_label,
+                tone: state_tone,
+            },
+            DispatchContextItem {
+                label: "Context",
+                value: context,
+                tone: "muted",
+            },
+            DispatchContextItem {
+                label: "Send",
+                value: send_label,
+                tone: send_tone,
+            },
+        ],
+    }
+}
+
+fn render_dispatch_context_strip(model: &DispatchContextStripModel) -> Element {
+    rsx! {
+        section {
+            class: "dispatch-context-strip",
+            "data-surface": "panel",
+            "data-state": model.state,
+            "data-tone": "muted",
+            "aria-label": "Dispatch context",
+            for item in &model.items {
+                div {
+                    class: "dispatch-context-chip",
+                    "data-tone": item.tone,
+                    span { class: "dispatch-context-label", "{item.label}" }
+                    span { class: "dispatch-context-value", title: if item.label == "Send" { model.send_detail.clone() } else { item.value.clone() }, "{item.value}" }
+                }
+            }
+        }
+    }
+}
+
 fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static str {
     match origin.map(|origin| &origin.kind) {
         Some(crate::fixtures::OriginKind::Dispatcher) => "block block-text",
@@ -1652,18 +1863,22 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuditFilters, app_surface_state, app_surface_tone, audit_entry_matches_filters,
-        audit_kind_key, block_origin_label, build_audit_panel_model,
-        build_chat_empty_state_model, build_left_rail_inventory, chat_status_tone,
-        find_transcript_anchor, looks_like_structured_payload, render_chat_status_banner, should_expand_system_notice, should_expand_tool_args,
-        should_expand_tool_output, system_block_class, system_block_tone,
-        system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
-        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
-        tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
+        AuditFilters, Workspace, app_surface_state, app_surface_tone,
+        audit_entry_matches_filters, audit_kind_key, block_origin_label,
+        build_audit_panel_model, build_chat_empty_state_model,
+        build_dispatch_context_strip_model, build_left_rail_inventory,
+        chat_status_tone, context_window_label, find_transcript_anchor,
+        looks_like_structured_payload, render_chat_status_banner,
+        render_dispatch_context_strip, should_expand_system_notice,
+        should_expand_tool_args, should_expand_tool_output, system_block_class,
+        system_block_tone, system_notice_summary_label, text_block_class,
+        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
+        tool_result_label, tool_status_label, tool_visual_state,
+        transcript_block_dom_id, transcript_disclosure_meta,
         transcript_disclosure_open,
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
-    use crate::controller::AppController;
+    use crate::controller::{AppController, SessionMode};
     use crate::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
         MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
@@ -2128,6 +2343,122 @@ mod tests {
         assert!(should_expand_system_notice(&long_failure.text));
         assert_eq!(system_notice_summary_label(&short_generic), "System notice");
         assert_eq!(system_notice_summary_label(&long_failure), "Failure notice");
+    }
+
+    #[test]
+    fn context_window_label_formats_reported_usage() {
+        let session = crate::fixtures::SessionData {
+            context_tokens: Some(640),
+            context_window: Some(200_000),
+            ..Default::default()
+        };
+        let no_window = crate::fixtures::SessionData {
+            context_tokens: Some(640),
+            context_window: None,
+            ..Default::default()
+        };
+
+        assert_eq!(context_window_label(&session), "640 / 200000 tokens");
+        assert_eq!(context_window_label(&no_window), "640 tokens");
+        assert_eq!(
+            context_window_label(&crate::fixtures::SessionData::default()),
+            "No context usage reported"
+        );
+    }
+
+    #[test]
+    fn dispatch_context_strip_prefers_dispatcher_identity_and_ready_send_state() {
+        let controller = AppController::remote_demo();
+        let model = build_dispatch_context_strip_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            controller.summary(),
+            &controller.session_data(),
+            "Inspect the current dispatcher posture.",
+            false,
+            true,
+        );
+
+        assert_eq!(model.state, "ready");
+        assert!(model.send_detail.contains("Prompt ready: 39 character(s)"));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Route",
+            value: "chat · live".into(),
+            tone: "muted",
+        }));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Session",
+            value: "session_01HVDEMO".into(),
+            tone: "muted",
+        }));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Who",
+            value: "primary-driver".into(),
+            tone: "accent",
+        }));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Model",
+            value: "anthropic:claude-sonnet-4-6".into(),
+            tone: "accent",
+        }));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Thinking",
+            value: "medium".into(),
+            tone: "muted",
+        }));
+        assert!(model.items.contains(&super::DispatchContextItem {
+            label: "Tier",
+            value: "victory".into(),
+            tone: "muted",
+        }));
+        assert!(model.items.iter().any(|item| item.label == "Send" && item.value == "Ready to send"));
+
+        let rendered = render_dispatch_context_strip(&model);
+        let debug = format!("{rendered:?}");
+        assert!(debug.contains("Dispatch context"));
+        assert!(debug.contains("primary-driver"));
+        assert!(debug.contains("Ready to send"));
+    }
+
+    #[test]
+    fn dispatch_context_strip_reports_blocked_and_blank_send_states() {
+        let summary = HostSessionSummary {
+            connection: "Attached to local shell".into(),
+            activity: "Waiting for input".into(),
+            activity_kind: ActivityKind::Idle,
+            work: "No focused work".into(),
+        };
+        let session = crate::fixtures::SessionData {
+            git_branch: Some("main".into()),
+            thinking_level: "low".into(),
+            capability_tier: "retribution".into(),
+            ..Default::default()
+        };
+
+        let active_run = build_dispatch_context_strip_model(
+            Workspace::Chat,
+            SessionMode::Mock,
+            &summary,
+            &session,
+            "hello",
+            true,
+            false,
+        );
+        assert_eq!(active_run.state, "running");
+        assert!(active_run.items.iter().any(|item| item.label == "Send" && item.value == "Blocked by active run"));
+
+        let blank = build_dispatch_context_strip_model(
+            Workspace::Chat,
+            SessionMode::Mock,
+            &summary,
+            &session,
+            "   ",
+            false,
+            true,
+        );
+        assert_eq!(blank.state, "ready");
+        assert!(blank.items.iter().any(|item| item.label == "Send" && item.value == "Needs prompt text"));
+        assert!(blank.items.iter().any(|item| item.label == "Who" && item.value == "Attached to local shell"));
     }
 
     #[test]

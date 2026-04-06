@@ -815,7 +815,9 @@ mod tests {
     fn failed_surface_uses_typed_failure_notice() {
         let mut controller = AppController::default();
         controller.set_scenario(DevScenario::CompatibilityFailure);
-        controller.set_bootstrap_note(Some("stale bootstrap note".into()));
+        controller.set_bootstrap_note(Some(
+            "Update Omegon to a compatible version and restart.".into(),
+        ));
 
         let surface = controller.surface_notice().expect("surface notice");
         assert_eq!(surface.kind, AppSurfaceKind::CompatibilityFailure);
