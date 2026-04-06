@@ -84,6 +84,7 @@ pub fn build_session_telemetry(
             .provider_telemetry
             .clone()
             .map(project_provider_telemetry),
+        provider_rollups: Vec::new(),
         latest_estimated_tokens: latest_turn.estimated_tokens,
         latest_actual_input_tokens: latest_turn.actual_input_tokens,
         latest_actual_output_tokens: latest_turn.actual_output_tokens,
@@ -97,6 +98,12 @@ pub fn build_session_telemetry(
             })
             .or_else(|| {
                 dispatcher.map(|binding| ControlPlaneTelemetryData {
+                    route_id: Some("session-dispatcher".into()),
+                    instance_id: (!binding.dispatcher_instance_id.is_empty())
+                        .then(|| binding.dispatcher_instance_id.clone()),
+                    role: (!binding.expected_role.is_empty()).then(|| binding.expected_role.clone()),
+                    profile: (!binding.expected_profile.is_empty())
+                        .then(|| binding.expected_profile.clone()),
                     startup_url: None,
                     health_url: None,
                     ready_url: None,
@@ -104,6 +111,7 @@ pub fn build_session_telemetry(
                     base_url: binding.observed_base_url.clone(),
                 })
             }),
+        control_plane_rollups: Vec::new(),
     }
 }
 
@@ -114,6 +122,122 @@ pub fn summarize_provider_inventory(providers: &[ProviderInfo]) -> String {
 
     let authenticated = providers.iter().filter(|provider| provider.authenticated).count();
     format!("{authenticated} / {} authenticated", providers.len())
+}
+
+pub fn aggregate_provider_rollups(
+    attached_instances: &[AttachedInstanceRecord],
+    providers: &[ProviderInfo],
+    selected_route_id: &str,
+    latest_provider_telemetry: Option<&ProviderTelemetryData>,
+) -> Vec<ProviderTelemetryData> {
+    attached_instances
+        .iter()
+        .map(|instance| ProviderTelemetryData {
+            provider: latest_provider_telemetry
+                .map(|telemetry| telemetry.provider.clone())
+                .unwrap_or_else(|| summarize_instance_provider_label(providers)),
+            source: if instance.route_id == selected_route_id {
+                latest_provider_telemetry
+                    .map(|telemetry| telemetry.source.clone())
+                    .unwrap_or_else(|| "inventory".into())
+            } else {
+                "inventory".into()
+            },
+            route_id: Some(instance.route_id.clone()),
+            instance_id: Some(instance.instance_id.clone()),
+            role: Some(instance.role.clone()),
+            profile: Some(instance.profile.clone()),
+            model: instance.model.clone(),
+            requests_remaining: if instance.route_id == selected_route_id {
+                latest_provider_telemetry.and_then(|telemetry| telemetry.requests_remaining)
+            } else {
+                None
+            },
+            tokens_remaining: if instance.route_id == selected_route_id {
+                latest_provider_telemetry.and_then(|telemetry| telemetry.tokens_remaining)
+            } else {
+                None
+            },
+            retry_after_secs: if instance.route_id == selected_route_id {
+                latest_provider_telemetry.and_then(|telemetry| telemetry.retry_after_secs)
+            } else {
+                None
+            },
+            request_id: if instance.route_id == selected_route_id {
+                latest_provider_telemetry.and_then(|telemetry| telemetry.request_id.clone())
+            } else {
+                None
+            },
+            unified_5h_utilization_pct: if instance.route_id == selected_route_id {
+                latest_provider_telemetry
+                    .and_then(|telemetry| telemetry.unified_5h_utilization_pct.clone())
+            } else {
+                None
+            },
+            unified_7d_utilization_pct: if instance.route_id == selected_route_id {
+                latest_provider_telemetry
+                    .and_then(|telemetry| telemetry.unified_7d_utilization_pct.clone())
+            } else {
+                None
+            },
+            codex_primary_pct: if instance.route_id == selected_route_id {
+                latest_provider_telemetry.and_then(|telemetry| telemetry.codex_primary_pct)
+            } else {
+                None
+            },
+        })
+        .collect()
+}
+
+fn summarize_instance_provider_label(providers: &[ProviderInfo]) -> String {
+    match providers {
+        [] => "unreported".into(),
+        [provider] => provider.name.clone(),
+        _ => format!("{} providers", providers.len()),
+    }
+}
+
+pub fn aggregate_control_plane_rollups(
+    attached_instances: &[AttachedInstanceRecord],
+    selected_route_id: &str,
+    selected_control_plane: Option<&ControlPlaneTelemetryData>,
+) -> Vec<ControlPlaneTelemetryData> {
+    attached_instances
+        .iter()
+        .map(|instance| ControlPlaneTelemetryData {
+            route_id: Some(instance.route_id.clone()),
+            instance_id: Some(instance.instance_id.clone()),
+            role: Some(instance.role.clone()),
+            profile: Some(instance.profile.clone()),
+            startup_url: if instance.route_id == selected_route_id {
+                selected_control_plane.and_then(|control| control.startup_url.clone())
+            } else {
+                None
+            },
+            health_url: if instance.route_id == selected_route_id {
+                selected_control_plane.and_then(|control| control.health_url.clone())
+            } else {
+                None
+            },
+            ready_url: if instance.route_id == selected_route_id {
+                selected_control_plane.and_then(|control| control.ready_url.clone())
+            } else {
+                None
+            },
+            auth_mode: if instance.route_id == selected_route_id {
+                selected_control_plane.and_then(|control| control.auth_mode.clone())
+            } else {
+                None
+            },
+            base_url: instance.base_url.clone().or_else(|| {
+                if instance.route_id == selected_route_id {
+                    selected_control_plane.and_then(|control| control.base_url.clone())
+                } else {
+                    None
+                }
+            }),
+        })
+        .collect()
 }
 
 pub fn aggregate_lifecycle_telemetry(
@@ -183,6 +307,11 @@ pub fn project_provider_telemetry(snapshot: ProviderTelemetrySnapshot) -> Provid
     ProviderTelemetryData {
         provider: snapshot.provider,
         source: snapshot.source,
+        route_id: None,
+        instance_id: None,
+        role: None,
+        profile: None,
+        model: None,
         requests_remaining: snapshot.requests_remaining,
         tokens_remaining: snapshot.tokens_remaining,
         retry_after_secs: snapshot.retry_after_secs,
@@ -201,6 +330,10 @@ pub fn project_control_plane_telemetry(
     control_plane: &OmegonControlPlaneDescriptor,
 ) -> ControlPlaneTelemetryData {
     ControlPlaneTelemetryData {
+        route_id: None,
+        instance_id: None,
+        role: None,
+        profile: None,
         startup_url: control_plane.startup_url.clone(),
         health_url: control_plane.health_url.clone(),
         ready_url: control_plane.ready_url.clone(),
@@ -341,6 +474,11 @@ mod tests {
             Some(ProviderTelemetryData {
                 provider: "Anthropic".into(),
                 source: "headers".into(),
+                route_id: None,
+                instance_id: None,
+                role: None,
+                profile: None,
+                model: None,
                 requests_remaining: Some(9),
                 tokens_remaining: Some(1234),
                 retry_after_secs: Some(3),
@@ -353,6 +491,10 @@ mod tests {
         assert_eq!(
             telemetry.control_plane,
             Some(ControlPlaneTelemetryData {
+                route_id: None,
+                instance_id: None,
+                role: None,
+                profile: None,
                 startup_url: Some("http://127.0.0.1:7842/startup".into()),
                 health_url: Some("http://127.0.0.1:7842/health".into()),
                 ready_url: Some("http://127.0.0.1:7842/ready".into()),
@@ -384,8 +526,15 @@ mod tests {
         assert_eq!(
             telemetry.control_plane,
             Some(ControlPlaneTelemetryData {
+                route_id: Some("session-dispatcher".into()),
+                instance_id: None,
+                role: None,
+                profile: None,
+                startup_url: None,
+                health_url: None,
+                ready_url: None,
+                auth_mode: None,
                 base_url: Some("http://127.0.0.1:9999".into()),
-                ..ControlPlaneTelemetryData::default()
             })
         );
     }

@@ -537,6 +537,30 @@ pub fn SessionScreen(
                             }
                         }
                     }
+                    if !data.telemetry.provider_rollups.is_empty() {
+                        h3 { class: "screen-section-title", "Provider rollups" }
+                        for provider in &data.telemetry.provider_rollups {
+                            div { class: "kv-grid",
+                                {kv_row("Provider", &provider.provider)}
+                                {kv_row("Source", &provider.source)}
+                                if let Some(route_id) = provider.route_id.as_deref() {
+                                    {kv_row("Route", route_id)}
+                                }
+                                if let Some(instance_id) = provider.instance_id.as_deref() {
+                                    {kv_row("Instance", instance_id)}
+                                }
+                                if let Some(role) = provider.role.as_deref() {
+                                    {kv_row("Role", role)}
+                                }
+                                if let Some(profile) = provider.profile.as_deref() {
+                                    {kv_row("Profile", profile)}
+                                }
+                                if let Some(model) = provider.model.as_deref() {
+                                    {kv_row("Model", model)}
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -593,6 +617,40 @@ pub fn SessionScreen(
                         }
                         if let Some(auth_mode) = control_plane.auth_mode.as_deref() {
                             {kv_row("Auth mode", auth_mode)}
+                        }
+                    }
+                    if !data.telemetry.control_plane_rollups.is_empty() {
+                        h3 { class: "screen-section-title", "Control-plane rollups" }
+                        for rollup in &data.telemetry.control_plane_rollups {
+                            div { class: "kv-grid",
+                                if let Some(route_id) = rollup.route_id.as_deref() {
+                                    {kv_row("Route", route_id)}
+                                }
+                                if let Some(instance_id) = rollup.instance_id.as_deref() {
+                                    {kv_row("Instance", instance_id)}
+                                }
+                                if let Some(role) = rollup.role.as_deref() {
+                                    {kv_row("Role", role)}
+                                }
+                                if let Some(profile) = rollup.profile.as_deref() {
+                                    {kv_row("Profile", profile)}
+                                }
+                                if let Some(base_url) = rollup.base_url.as_deref() {
+                                    {kv_row("Base URL", base_url)}
+                                }
+                                if let Some(startup_url) = rollup.startup_url.as_deref() {
+                                    {kv_row("Startup URL", startup_url)}
+                                }
+                                if let Some(health_url) = rollup.health_url.as_deref() {
+                                    {kv_row("Health URL", health_url)}
+                                }
+                                if let Some(ready_url) = rollup.ready_url.as_deref() {
+                                    {kv_row("Ready URL", ready_url)}
+                                }
+                                if let Some(auth_mode) = rollup.auth_mode.as_deref() {
+                                    {kv_row("Auth mode", auth_mode)}
+                                }
+                            }
                         }
                     }
                 }
@@ -1566,6 +1624,11 @@ mod tests {
                 latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {
                     provider: "anthropic".into(),
                     source: "headers".into(),
+                    route_id: Some("session-dispatcher".into()),
+                    instance_id: Some("omg_primary_01HVDEMO".into()),
+                    role: Some("primary-driver".into()),
+                    profile: Some("primary-interactive".into()),
+                    model: Some("anthropic:claude-sonnet-4-6".into()),
                     requests_remaining: Some(42),
                     tokens_remaining: Some(4096),
                     retry_after_secs: Some(3),
@@ -1574,17 +1637,23 @@ mod tests {
                     unified_7d_utilization_pct: Some("18.0".into()),
                     codex_primary_pct: None,
                 }),
+                provider_rollups: vec![],
                 latest_estimated_tokens: Some(1200),
                 latest_actual_input_tokens: Some(1000),
                 latest_actual_output_tokens: Some(200),
                 latest_cache_read_tokens: Some(50),
                 control_plane: Some(crate::fixtures::ControlPlaneTelemetryData {
+                    route_id: Some("host-control-plane".into()),
+                    instance_id: Some("omg_host_01HVDEMO".into()),
+                    role: Some("primary-driver".into()),
+                    profile: Some("control-plane".into()),
                     startup_url: Some("http://127.0.0.1:7842/api/startup".into()),
                     health_url: Some("http://127.0.0.1:7842/api/healthz".into()),
                     ready_url: Some("http://127.0.0.1:7842/api/readyz".into()),
                     auth_mode: Some("ephemeral-bearer".into()),
                     base_url: Some("http://127.0.0.1:7842".into()),
                 }),
+                control_plane_rollups: vec![],
             },
             active_delegate_count: 2,
             dispatcher_binding: Some(binding()),

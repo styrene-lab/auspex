@@ -600,6 +600,12 @@ impl AppController {
         let mut telemetry = model_data.telemetry.clone();
         let providers = self.effective_provider_inventory(&model_data);
         telemetry.provider_summary = crate::telemetry::summarize_provider_inventory(&providers);
+        telemetry.provider_rollups = crate::telemetry::aggregate_provider_rollups(
+            self.attached_instance_engine.attached_instances(),
+            &providers,
+            &self.attached_instance_engine.selected_command_route_id(),
+            telemetry.latest_provider_telemetry.as_ref(),
+        );
         let lifecycle = crate::telemetry::aggregate_lifecycle_telemetry(
             self.attached_instance_engine.attached_instances(),
             self.attached_instance_engine.registry_store(),
@@ -607,6 +613,11 @@ impl AppController {
         );
         telemetry.lifecycle_summary = lifecycle.summary.clone();
         telemetry.lifecycle = lifecycle;
+        telemetry.control_plane_rollups = crate::telemetry::aggregate_control_plane_rollups(
+            self.attached_instance_engine.attached_instances(),
+            &self.attached_instance_engine.selected_command_route_id(),
+            telemetry.control_plane.as_ref(),
+        );
         self.telemetry_snapshot = telemetry;
     }
 
