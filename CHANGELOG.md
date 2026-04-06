@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-rc.4] - 2026-04-06
+
+### Added
+- Controller-owned operator readiness model and global startup/convergence layer covering embedded Omegon startup, session snapshot readiness, auth inventory loading, and prompt execution readiness.
+- Dedicated Session workspace so generic session/control-plane inspection no longer lives under the Scribe tab.
+
+### Changed
+- Scribe workspace is now an honest placeholder for future cross-repo Scribe platform integration instead of a mislabeled session inspector.
+- Auth refresh now rehydrates the live remote prompt-execution gate, not just the visible Settings/provider UI.
+
+### Fixed
+- Provider auth refresh preserves existing provider model metadata instead of dropping it to `unreported` during auth-state updates.
+- Embedded-omegon chat readiness now converges through one synchronized auth/provider state path rather than split UI-vs-session truth.
+
 ## [0.1.0-rc.3] - 2026-04-06
 
 ### Changed
