@@ -7,6 +7,8 @@ use crate::runtime_types::{CommandTarget, InstanceRecord};
 pub const HOST_CONTROL_PLANE_ROUTE_ID: &str = "host-control-plane";
 pub const SESSION_DISPATCHER_ROUTE_ID: &str = "session-dispatcher";
 pub const LOCAL_SHELL_ROUTE_ID: &str = "local-shell";
+const STALE_AFTER_SECONDS: u64 = 300;
+const ABANDON_AFTER_SECONDS: u64 = 1800;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AttachedInstanceRecord {
@@ -150,6 +152,35 @@ impl AttachedInstanceStateEngine {
                 || active.contains(record.identity.instance_id.as_str())
                 || record.identity.role == crate::runtime_types::WorkerRole::DetachedService
         });
+    }
+
+    pub fn evaluate_lifecycle_policy(&mut self, now_epoch_seconds: u64) {
+        for record in &mut self.registry_store.instances {
+            let Some(last_seen_at) = record.observed.health.last_seen_at.as_deref() else {
+                continue;
+            };
+            let Ok(last_seen_epoch) = last_seen_at.parse::<u64>() else {
+                continue;
+            };
+            let age = now_epoch_seconds.saturating_sub(last_seen_epoch);
+
+            if age >= ABANDON_AFTER_SECONDS {
+                record.identity.status = crate::runtime_types::WorkerLifecycleState::Abandoned;
+                record.observed.health.ready = false;
+                record.observed.health.freshness =
+                    Some(crate::runtime_types::InstanceFreshness::Abandoned);
+            } else if age >= STALE_AFTER_SECONDS {
+                if record.identity.status == crate::runtime_types::WorkerLifecycleState::Ready {
+                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Lost;
+                }
+                record.observed.health.ready = false;
+                record.observed.health.freshness =
+                    Some(crate::runtime_types::InstanceFreshness::Stale);
+            } else {
+                record.observed.health.freshness =
+                    Some(crate::runtime_types::InstanceFreshness::Fresh);
+            }
+        }
     }
 
     pub fn selected_command_route_id(&self) -> String {
@@ -962,6 +993,70 @@ mod tests {
             Some(crate::runtime_types::InstanceFreshness::Stale)
         );
         assert_eq!(engine.registry_store().instances[1].identity.instance_id, "omg_dispatcher_01HVTEST");
+    }
+
+    #[test]
+    fn evaluate_lifecycle_policy_marks_stale_before_abandonment() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_service_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "detached-service".into(),
+            profile: "background-sync".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:9001".into()),
+            model: Some("anthropic:claude-haiku".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        engine.registry_store.instances[0].observed.health.last_seen_at = Some("100".into());
+
+        engine.evaluate_lifecycle_policy(100 + STALE_AFTER_SECONDS + 1);
+
+        assert_eq!(
+            engine.registry_store().instances[0].identity.status,
+            crate::runtime_types::WorkerLifecycleState::Lost
+        );
+        assert_eq!(
+            engine.registry_store().instances[0].observed.health.freshness,
+            Some(crate::runtime_types::InstanceFreshness::Stale)
+        );
+    }
+
+    #[test]
+    fn evaluate_lifecycle_policy_marks_abandoned_after_long_expiry() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_service_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "detached-service".into(),
+            profile: "background-sync".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:9001".into()),
+            model: Some("anthropic:claude-haiku".into()),
+            dispatcher_instance_id: None,
+            registry_record: None,
+        });
+        engine.registry_store.instances[0].observed.health.last_seen_at = Some("100".into());
+
+        engine.evaluate_lifecycle_policy(100 + ABANDON_AFTER_SECONDS + 1);
+
+        assert_eq!(
+            engine.registry_store().instances[0].identity.status,
+            crate::runtime_types::WorkerLifecycleState::Abandoned
+        );
+        assert_eq!(
+            engine.registry_store().instances[0].observed.health.freshness,
+            Some(crate::runtime_types::InstanceFreshness::Abandoned)
+        );
     }
 
     #[test]
