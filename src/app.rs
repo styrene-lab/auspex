@@ -11,6 +11,8 @@ use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 /// the stylesheet is always available in the bundled .app.
 const MAIN_CSS: &str = include_str!("../assets/main.css");
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+#[cfg(not(target_arch = "wasm32"))]
+const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
@@ -18,6 +20,191 @@ enum Workspace {
     Scribe,
     Graph,
     Audit,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum SettingsAuthAction {
+    Refresh,
+    Login,
+    Logout,
+    Unlock,
+}
+
+impl SettingsAuthAction {
+    fn label(self) -> &'static str {
+        match self {
+            Self::Refresh => "Refresh status",
+            Self::Login => "Login",
+            Self::Logout => "Logout",
+            Self::Unlock => "Unlock",
+        }
+    }
+
+    fn command_slug(self) -> &'static str {
+        match self {
+            Self::Refresh => "auth.refresh",
+            Self::Login => "auth.login",
+            Self::Logout => "auth.logout",
+            Self::Unlock => "auth.unlock",
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SettingsActionModel {
+    action: SettingsAuthAction,
+    detail: String,
+    enabled: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct SettingsPanelModel {
+    target_label: String,
+    target_detail: String,
+    route_detail: String,
+    auth_status_label: String,
+    auth_status_detail: String,
+    provider_rows: Vec<(String, String)>,
+    actions: Vec<SettingsActionModel>,
+}
+
+fn build_settings_panel_model(session: &crate::fixtures::SessionData) -> SettingsPanelModel {
+    let dispatcher_binding = session.dispatcher_binding.as_ref();
+    let descriptor = dispatcher_binding
+        .and_then(|binding| binding.instance_descriptor.as_ref())
+        .or(session.instance_descriptor.as_ref());
+
+    let target_label = dispatcher_binding
+        .map(|binding| binding.dispatcher_instance_id.as_str())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            descriptor
+                .map(|descriptor| descriptor.identity.instance_id.as_str())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("local-shell")
+        .to_string();
+
+    let target_role = dispatcher_binding
+        .map(|binding| binding.expected_role.as_str())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            descriptor
+                .map(|descriptor| descriptor.identity.role.as_str())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("operator");
+
+    let target_profile = dispatcher_binding
+        .map(|binding| binding.expected_profile.as_str())
+        .filter(|value| !value.is_empty())
+        .or_else(|| {
+            descriptor
+                .map(|descriptor| descriptor.identity.profile.as_str())
+                .filter(|value| !value.is_empty())
+        })
+        .unwrap_or("current-profile");
+
+    let target_session = dispatcher_binding
+        .map(|binding| binding.session_id.as_str())
+        .filter(|value| !value.is_empty())
+        .unwrap_or("local-session");
+
+    let target_detail = format!("{target_role} · {target_profile} · session {target_session}");
+
+    let route_detail = if let Some(binding) = dispatcher_binding {
+        let schema = binding.control_plane_schema;
+        let endpoint = binding
+            .observed_base_url
+            .as_deref()
+            .filter(|value| !value.is_empty())
+            .unwrap_or("unreported control plane");
+        format!(
+            "Prepared to route operator actions through command envelopes for target {target_label} over control-plane schema {schema} ({endpoint})."
+        )
+    } else {
+        format!(
+            "Prepared to route operator actions through a target-aware command adapter once Auspex is attached to a concrete Omegon instance. Current fallback target is {target_label}."
+        )
+    };
+
+    let authenticated = session.providers.iter().filter(|provider| provider.authenticated).count();
+    let provider_total = session.providers.len();
+    let auth_status_label = if authenticated > 0 {
+        format!("{authenticated} authenticated provider(s)")
+    } else if provider_total > 0 {
+        "Providers reported, authentication missing".to_string()
+    } else {
+        "No providers reported".to_string()
+    };
+
+    let auth_status_detail = if provider_total == 0 {
+        "No host providers are currently visible. Refresh through the command adapter before prompting for login or unlock work.".to_string()
+    } else {
+        format!(
+            "Auth bridge actions stay instance-scoped to {target_label}. UI wiring is ready to call the command adapter instead of a singleton event-stream path."
+        )
+    };
+
+    let provider_rows = if session.providers.is_empty() {
+        vec![(
+            "Providers".to_string(),
+            "No provider inventory reported by the attached host".to_string(),
+        )]
+    } else {
+        session
+            .providers
+            .iter()
+            .map(|provider| {
+                let state = if provider.authenticated {
+                    "authenticated"
+                } else {
+                    "requires auth"
+                };
+                let model = provider.model.as_deref().unwrap_or("model unreported");
+                (provider.name.clone(), format!("{state} · {model}"))
+            })
+            .collect()
+    };
+
+    let action_target_label = target_label.clone();
+    let action_detail = |verb: &str| {
+        format!(
+            "Will dispatch {verb} against target {} via the command adapter when the auth bridge is connected.",
+            action_target_label
+        )
+    };
+
+    SettingsPanelModel {
+        target_label,
+        target_detail,
+        route_detail,
+        auth_status_label,
+        auth_status_detail,
+        provider_rows,
+        actions: vec![
+            SettingsActionModel {
+                action: SettingsAuthAction::Refresh,
+                detail: action_detail("auth.refresh"),
+                enabled: false,
+            },
+            SettingsActionModel {
+                action: SettingsAuthAction::Login,
+                detail: action_detail("auth.login"),
+                enabled: false,
+            },
+            SettingsActionModel {
+                action: SettingsAuthAction::Logout,
+                detail: action_detail("auth.logout"),
+                enabled: false,
+            },
+            SettingsActionModel {
+                action: SettingsAuthAction::Unlock,
+                detail: action_detail("auth.unlock"),
+                enabled: false,
+            },
+        ],
+    }
 }
 
 #[component]
@@ -102,12 +289,29 @@ pub fn App() -> Element {
     });
 
     let mut workspace = use_signal(|| Workspace::Chat);
+    let mut settings_open = use_signal(|| false);
     let mut audit_session_filter = use_signal(String::new);
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
     let mut audit_text_filter = use_signal(String::new);
 
+    #[cfg(not(target_arch = "wasm32"))]
+    use_future(move || {
+        let mut settings_open = settings_open;
+        async move {
+            loop {
+                while let Ok(event) = dioxus::desktop::muda::MenuEvent::receiver().try_recv() {
+                    if event.id().as_ref() == SETTINGS_MENU_ID {
+                        settings_open.set(true);
+                    }
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(75)).await;
+            }
+        }
+    });
+
     let session = controller.read().session_data();
+    let settings_model = build_settings_panel_model(&session);
     let bootstrap_surface = controller
         .read()
         .surface_notice()
@@ -169,6 +373,13 @@ pub fn App() -> Element {
 
                     // Top-right — global state
                     div { class: "topbar-status",
+                        button {
+                            class: "topbar-settings-button",
+                            r#type: "button",
+                            onclick: move |_| settings_open.set(true),
+                            title: "Open operator settings",
+                            "Settings"
+                        }
                         if let Some(surface) = bootstrap_surface.as_ref() {
                             span {
                                 class: "topbar-meta",
@@ -392,6 +603,84 @@ pub fn App() -> Element {
                         on_transcript_focus: Some(EventHandler::new(move |target: String| {
                             focus_transcript_target(controller.read().transcript(), &target);
                         }))
+                    }
+                }
+            }
+
+            if *settings_open.read() {
+                div {
+                    class: "settings-modal-backdrop",
+                    onclick: move |_| settings_open.set(false),
+                    div {
+                        class: "settings-modal",
+                        "data-surface": "panel",
+                        "data-elevation": "1",
+                        onclick: move |event| event.stop_propagation(),
+                        header { class: "settings-modal-header",
+                            div { class: "settings-modal-heading",
+                                span { class: "settings-modal-kicker", "Operator controls" }
+                                h2 { class: "settings-modal-title", "Settings" }
+                                p { class: "settings-modal-detail", "Instance-aware operator controls are routed from this surface so Auspex can target the correct Omegon session as multi-instance support expands." }
+                            }
+                            button {
+                                class: "settings-modal-close",
+                                r#type: "button",
+                                onclick: move |_| settings_open.set(false),
+                                "Close"
+                            }
+                        }
+
+                        div { class: "settings-modal-grid",
+                            section { class: "settings-panel-card",
+                                h3 { class: "settings-panel-title", "Command target" }
+                                div { class: "settings-target-chip",
+                                    span { class: "settings-target-label", "Target" }
+                                    span { class: "settings-target-value", "{settings_model.target_label}" }
+                                }
+                                p { class: "settings-panel-detail", "{settings_model.target_detail}" }
+                                p { class: "settings-panel-detail", "{settings_model.route_detail}" }
+                            }
+
+                            section { class: "settings-panel-card",
+                                h3 { class: "settings-panel-title", "Auth status" }
+                                p { class: "settings-auth-status", "{settings_model.auth_status_label}" }
+                                p { class: "settings-panel-detail", "{settings_model.auth_status_detail}" }
+                                div { class: "settings-provider-list",
+                                    for (name, detail) in &settings_model.provider_rows {
+                                        div { class: "settings-provider-row",
+                                            strong { class: "settings-provider-name", "{name}" }
+                                            span { class: "settings-provider-detail", "{detail}" }
+                                        }
+                                    }
+                                }
+                            }
+
+                            section { class: "settings-panel-card settings-panel-card-actions",
+                                h3 { class: "settings-panel-title", "Operator actions" }
+                                p { class: "settings-panel-detail", "These controls are intentionally adapter-first. They stay disabled until the live auth bridge lands, but the UI already binds them to an instance-scoped command intent." }
+                                div { class: "settings-action-grid",
+                                    for action in &settings_model.actions {
+                                        button {
+                                            class: "settings-action-button",
+                                            r#type: "button",
+                                            disabled: !action.enabled,
+                                            title: action.detail.clone(),
+                                            "data-command": action.action.command_slug(),
+                                            "data-target": settings_model.target_label.clone(),
+                                            "{action.action.label()}"
+                                        }
+                                    }
+                                }
+                                ul { class: "settings-action-notes",
+                                    for action in &settings_model.actions {
+                                        li {
+                                            strong { "{action.action.label()}" }
+                                            span { " — {action.detail}" }
+                                        }
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
@@ -1874,6 +2163,7 @@ mod tests {
         audit_entry_matches_filters, audit_kind_key, block_origin_label,
         build_audit_panel_model, build_chat_empty_state_model,
         build_dispatch_context_strip_model, build_left_rail_inventory,
+        build_settings_panel_model,
         chat_status_tone, context_window_label, find_transcript_anchor,
         looks_like_structured_payload, render_chat_status_banner,
         render_dispatch_context_strip, should_expand_system_notice,
@@ -1882,7 +2172,7 @@ mod tests {
         text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
         tool_result_label, tool_status_label, tool_visual_state,
         transcript_block_dom_id, transcript_disclosure_meta,
-        transcript_disclosure_open,
+        transcript_disclosure_open, SettingsAuthAction,
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::{AppController, SessionMode};
@@ -2439,6 +2729,11 @@ mod tests {
             git_branch: Some("main".into()),
             thinking_level: "low".into(),
             capability_tier: "retribution".into(),
+            providers: vec![crate::fixtures::ProviderInfo {
+                name: "Anthropic".into(),
+                authenticated: true,
+                model: Some("claude-sonnet".into()),
+            }],
             ..Default::default()
         };
 
@@ -2481,6 +2776,42 @@ mod tests {
         );
         assert!(blocked_providers.items.iter().any(|item| item.label == "Send" && item.value == "Host missing providers"));
         assert!(blocked_providers.send_detail.contains("authenticated providers"));
+    }
+
+    #[test]
+    fn settings_panel_model_prefers_dispatcher_targeting() {
+        let controller = AppController::remote_demo();
+        let model = build_settings_panel_model(&controller.session_data());
+
+        assert_eq!(model.target_label, "omg_primary_01HVDEMO");
+        assert!(model.target_detail.contains("primary-driver"));
+        assert!(model.route_detail.contains("control-plane schema 2"));
+        assert!(model.auth_status_label.contains("1 authenticated provider"));
+        assert!(model
+            .provider_rows
+            .iter()
+            .any(|row| row.0 == "Anthropic" && row.1.contains("authenticated")));
+        assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
+    }
+
+    #[test]
+    fn settings_panel_model_falls_back_to_local_shell() {
+        let controller = AppController::default();
+        let model = build_settings_panel_model(&controller.session_data());
+
+        assert_eq!(model.target_label, "local-shell");
+        assert!(model.route_detail.contains("target-aware command adapter"));
+        assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
+        assert!(model.actions.iter().all(|action| !action.enabled));
+    }
+
+    #[test]
+    fn settings_auth_actions_expose_stable_labels_and_command_slugs() {
+        assert_eq!(SettingsAuthAction::Refresh.label(), "Refresh status");
+        assert_eq!(SettingsAuthAction::Refresh.command_slug(), "auth.refresh");
+        assert_eq!(SettingsAuthAction::Login.command_slug(), "auth.login");
+        assert_eq!(SettingsAuthAction::Logout.command_slug(), "auth.logout");
+        assert_eq!(SettingsAuthAction::Unlock.command_slug(), "auth.unlock");
     }
 
     #[test]
