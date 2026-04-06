@@ -139,6 +139,8 @@ mod tests {
                     ready: true,
                     degraded_reason: None,
                     last_heartbeat_at: Some("2026-04-03T12:03:42Z".into()),
+                    last_seen_at: Some("2026-04-03T12:03:42Z".into()),
+                    freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
                 },
                 exit: ObservedExit {
                     exited: false,

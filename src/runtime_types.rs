@@ -201,6 +201,21 @@ pub struct ObservedHealth {
     pub degraded_reason: Option<String>,
     #[serde(default)]
     pub last_heartbeat_at: Option<String>,
+    #[serde(default)]
+    pub last_seen_at: Option<String>,
+    #[serde(default)]
+    pub freshness: Option<InstanceFreshness>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum InstanceFreshness {
+    #[default]
+    Fresh,
+    Stale,
+    Lost,
+    Abandoned,
+    Reaped,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

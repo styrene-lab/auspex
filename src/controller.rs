@@ -823,6 +823,8 @@ mod tests {
                         ready: true,
                         degraded_reason: None,
                         last_heartbeat_at: Some("2026-04-06T00:00:03Z".into()),
+                        last_seen_at: Some("2026-04-06T00:00:03Z".into()),
+                        freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
                     },
                     exit: crate::runtime_types::ObservedExit {
                         exited: false,

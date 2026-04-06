@@ -132,10 +132,23 @@ impl AttachedInstanceStateEngine {
             active_instance_ids.iter().map(String::as_str).collect();
         self.attached_instances
             .retain(|instance| active.contains(instance.instance_id.as_str()));
+        for record in &mut self.registry_store.instances {
+            if record.ownership.owner_kind == crate::runtime_types::OwnerKind::AuspexSession
+                && record.ownership.owner_id == self.session_key.trim_start_matches("remote:")
+                && !active.contains(record.identity.instance_id.as_str())
+            {
+                if record.identity.role == crate::runtime_types::WorkerRole::DetachedService {
+                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Lost;
+                    record.observed.health.ready = false;
+                    record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Stale);
+                }
+            }
+        }
         self.registry_store.instances.retain(|record| {
             record.ownership.owner_kind != crate::runtime_types::OwnerKind::AuspexSession
                 || record.ownership.owner_id != self.session_key.trim_start_matches("remote:")
                 || active.contains(record.identity.instance_id.as_str())
+                || record.identity.role == crate::runtime_types::WorkerRole::DetachedService
         });
     }
 
@@ -359,6 +372,8 @@ fn merge_attached_instances_into_registry(
     mut registry_store: InstanceRegistryStore,
     attached_instances: &[AttachedInstanceRecord],
 ) -> InstanceRegistryStore {
+    let active_ids: std::collections::HashSet<&str> =
+        attached_instances.iter().map(|instance| instance.instance_id.as_str()).collect();
     for instance in attached_instances {
         let next_record = synthesize_instance_record(instance);
         if let Some(position) = registry_store
@@ -369,6 +384,15 @@ fn merge_attached_instances_into_registry(
             registry_store.instances[position] = next_record;
         } else {
             registry_store.instances.push(next_record);
+        }
+    }
+
+    for record in &mut registry_store.instances {
+        if active_ids.contains(record.identity.instance_id.as_str()) {
+            record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Fresh);
+            if record.observed.health.last_seen_at.is_none() {
+                record.observed.health.last_seen_at = record.observed.health.last_heartbeat_at.clone();
+            }
         }
     }
     registry_store
@@ -430,6 +454,8 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                 ready: true,
                 degraded_reason: None,
                 last_heartbeat_at: None,
+                last_seen_at: None,
+                freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
             },
             exit: crate::runtime_types::ObservedExit {
                 exited: false,
@@ -443,9 +469,15 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
     record.identity.instance_id = instance.instance_id.clone();
     record.identity.role = infer_worker_role(instance);
     record.identity.profile = instance.profile.clone();
+    record.identity.status = crate::runtime_types::WorkerLifecycleState::Ready;
     record.ownership.owner_kind = crate::runtime_types::OwnerKind::AuspexSession;
     record.ownership.owner_id = instance.session_key.trim_start_matches("remote:").to_string();
     record.desired.policy.model = instance.model.clone();
+    record.observed.health.ready = true;
+    record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Fresh);
+    if record.observed.health.last_seen_at.is_none() {
+        record.observed.health.last_seen_at = record.observed.health.last_heartbeat_at.clone();
+    }
     if let Some(base_url) = instance.base_url.clone() {
         record.observed.control_plane.base_url = base_url;
     }
@@ -719,6 +751,8 @@ mod tests {
                         ready: true,
                         degraded_reason: None,
                         last_heartbeat_at: Some("2026-04-06T00:00:03Z".into()),
+                        last_seen_at: Some("2026-04-06T00:00:03Z".into()),
+                        freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
                     },
                     exit: crate::runtime_types::ObservedExit {
                         exited: false,
@@ -922,5 +956,106 @@ mod tests {
         assert_eq!(engine.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
         assert_eq!(engine.registry_store().instances.len(), 1);
         assert_eq!(engine.registry_store().instances[0].identity.instance_id, "omg_dispatcher_01HVTEST");
+    }
+
+    #[test]
+    fn purge_stale_instances_marks_detached_service_stale_before_reap() {
+        let mut engine = AttachedInstanceStateEngine::from_registry_and_session(
+            InstanceRegistryStore::default(),
+            "remote:session_01HVTEST",
+            &SessionData::default(),
+        );
+        engine.attach_instance(AttachedInstanceRecord {
+            instance_id: "omg_service_01HVTEST".into(),
+            route_id: HOST_CONTROL_PLANE_ROUTE_ID.into(),
+            role: "detached-service".into(),
+            profile: "background-sync".into(),
+            session_key: "remote:session_01HVTEST".into(),
+            base_url: Some("http://127.0.0.1:9001".into()),
+            model: Some("anthropic:claude-haiku".into()),
+            dispatcher_instance_id: None,
+            registry_record: Some(InstanceRecord {
+                schema_version: 1,
+                identity: crate::runtime_types::WorkerIdentity {
+                    instance_id: "omg_service_01HVTEST".into(),
+                    role: crate::runtime_types::WorkerRole::DetachedService,
+                    profile: "background-sync".into(),
+                    status: crate::runtime_types::WorkerLifecycleState::Ready,
+                    created_at: String::new(),
+                    updated_at: String::new(),
+                },
+                ownership: crate::runtime_types::WorkerOwnership {
+                    owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                    owner_id: "session_01HVTEST".into(),
+                    parent_instance_id: None,
+                },
+                desired: crate::runtime_types::DesiredWorkerState {
+                    backend: crate::runtime_types::BackendConfig {
+                        kind: crate::runtime_types::BackendKind::LocalProcess,
+                        image: None,
+                        namespace: None,
+                        resources: None,
+                    },
+                    workspace: crate::runtime_types::WorkspaceBinding {
+                        cwd: String::new(),
+                        workspace_id: String::new(),
+                        branch: None,
+                    },
+                    task: None,
+                    policy: crate::runtime_types::PolicyOverrides {
+                        model: Some("anthropic:claude-haiku".into()),
+                        ..Default::default()
+                    },
+                },
+                observed: crate::runtime_types::ObservedWorkerState {
+                    placement: crate::runtime_types::ObservedPlacement {
+                        placement_id: String::new(),
+                        host: String::new(),
+                        pid: None,
+                        namespace: None,
+                        pod_name: None,
+                        container_name: None,
+                    },
+                    control_plane: crate::runtime_types::ObservedControlPlane {
+                        schema_version: 2,
+                        omegon_version: String::new(),
+                        base_url: "http://127.0.0.1:9001".into(),
+                        startup_url: String::new(),
+                        health_url: String::new(),
+                        ready_url: String::new(),
+                        ws_url: String::new(),
+                        auth_mode: String::new(),
+                        token_ref: None,
+                        last_ready_at: None,
+                    },
+                    health: crate::runtime_types::ObservedHealth {
+                        ready: true,
+                        degraded_reason: None,
+                        last_heartbeat_at: None,
+                        last_seen_at: None,
+                        freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
+                    },
+                    exit: crate::runtime_types::ObservedExit {
+                        exited: false,
+                        exit_code: None,
+                        exit_reason: None,
+                        exited_at: None,
+                    },
+                },
+            }),
+        });
+
+        engine.purge_stale_instances(&[]);
+
+        assert!(engine.attached_instances().is_empty());
+        assert_eq!(engine.registry_store().instances.len(), 1);
+        assert_eq!(
+            engine.registry_store().instances[0].identity.status,
+            crate::runtime_types::WorkerLifecycleState::Lost
+        );
+        assert_eq!(
+            engine.registry_store().instances[0].observed.health.freshness,
+            Some(crate::runtime_types::InstanceFreshness::Stale)
+        );
     }
 }
