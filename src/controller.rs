@@ -6,6 +6,7 @@ use crate::fixtures::{
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
+use crate::state_engine::{AttachedInstanceRecord, AttachedInstanceStateEngine};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandRouteOption {
@@ -13,18 +14,6 @@ pub struct CommandRouteOption {
     pub label: String,
     pub detail: String,
     pub target: CommandTarget,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-pub struct AttachedInstanceRecord {
-    pub instance_id: String,
-    pub route_id: String,
-    pub role: String,
-    pub profile: String,
-    pub session_key: String,
-    pub base_url: Option<String>,
-    pub model: Option<String>,
-    pub dispatcher_instance_id: Option<String>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -158,8 +147,7 @@ pub struct AppController {
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
     audit_timeline: AuditTimelineStore,
-    attached_instances: Vec<AttachedInstanceRecord>,
-    selected_command_route_id: Option<String>,
+    attached_instance_engine: AttachedInstanceStateEngine,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
 }
@@ -171,8 +159,7 @@ impl Default for AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
-            attached_instances: Vec::new(),
-            selected_command_route_id: None,
+            attached_instance_engine: AttachedInstanceStateEngine::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![crate::fixtures::ProviderInfo {
@@ -196,8 +183,7 @@ impl AppController {
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
-            attached_instances: Vec::new(),
-            selected_command_route_id: None,
+            attached_instance_engine: AttachedInstanceStateEngine::default(),
             #[cfg(not(target_arch = "wasm32"))]
             settings_auth_state: SettingsAuthState {
                 providers: vec![],
@@ -227,67 +213,29 @@ impl AppController {
     }
 
     pub fn available_command_routes(&self) -> Vec<CommandRouteOption> {
-        let mut routes: Vec<CommandRouteOption> = self
-            .attached_instances
-            .iter()
-            .map(|instance| CommandRouteOption {
-                route_id: instance.route_id.clone(),
-                label: if instance.role.is_empty() {
-                    instance.instance_id.clone()
-                } else {
-                    format!("{} · {}", instance.role, instance.instance_id)
-                },
-                detail: instance
-                    .model
-                    .clone()
-                    .or_else(|| instance.base_url.clone())
-                    .unwrap_or_else(|| instance.profile.clone()),
-                target: CommandTarget {
-                    session_key: instance.session_key.clone(),
-                    dispatcher_instance_id: instance.dispatcher_instance_id.clone(),
-                },
+        self.attached_instance_engine
+            .available_command_routes()
+            .into_iter()
+            .map(|route| CommandRouteOption {
+                route_id: route.route_id,
+                label: route.label,
+                detail: route.detail,
+                target: route.target,
             })
-            .collect();
-
-        if routes.is_empty() {
-            routes.push(CommandRouteOption {
-                route_id: "local-shell".into(),
-                label: "Local shell".into(),
-                detail: "No attached host instance reported".into(),
-                target: CommandTarget {
-                    session_key: self.session_audit_key(),
-                    dispatcher_instance_id: None,
-                },
-            });
-        }
-
-        routes
+            .collect()
     }
 
     pub fn selected_command_route_id(&self) -> String {
-        let routes = self.available_command_routes();
-        if let Some(selected) = self.selected_command_route_id.as_ref()
-            && routes.iter().any(|route| &route.route_id == selected)
-        {
-            return selected.clone();
-        }
-        if routes.iter().any(|route| route.route_id == "session-dispatcher") {
-            "session-dispatcher".into()
-        } else {
-            routes
-                .first()
-                .map(|route| route.route_id.clone())
-                .unwrap_or_else(|| "local-shell".into())
-        }
+        self.attached_instance_engine.selected_command_route_id()
     }
 
     pub fn select_command_route(&mut self, route_id: &str) {
-        self.selected_command_route_id = Some(route_id.to_string());
+        self.attached_instance_engine.select_command_route(route_id.to_string());
     }
 
     #[allow(dead_code)]
     pub fn attached_instances(&self) -> &[AttachedInstanceRecord] {
-        &self.attached_instances
+        self.attached_instance_engine.attached_instances()
     }
 
     pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
@@ -348,7 +296,6 @@ impl AppController {
             _ => SessionSource::Mock(MockHostSession::default()),
         };
         self.rebuild_attached_instances();
-        self.selected_command_route_id = None;
         self.bootstrap_note = None;
         self.refresh_audit_timeline();
     }
@@ -520,19 +467,11 @@ impl AppController {
     }
 
     pub fn current_command_target(&self) -> CommandTarget {
-        self.command_target()
+        self.attached_instance_engine.current_command_target()
     }
 
     fn command_target(&self) -> CommandTarget {
-        let selected_route_id = self.selected_command_route_id();
-        self.available_command_routes()
-            .into_iter()
-            .find(|route| route.route_id == selected_route_id)
-            .map(|route| route.target)
-            .unwrap_or_else(|| CommandTarget {
-                session_key: self.session_audit_key(),
-                dispatcher_instance_id: None,
-            })
+        self.current_command_target()
     }
 
     fn session_audit_key(&self) -> String {
@@ -561,57 +500,10 @@ impl AppController {
     fn rebuild_attached_instances(&mut self) {
         let session_key = self.session_audit_key();
         let session = self.session.model().session_data();
-        let mut attached_instances = Vec::new();
-
-        if let Some(instance) = session.instance_descriptor.as_ref() {
-            attached_instances.push(AttachedInstanceRecord {
-                instance_id: if instance.identity.instance_id.is_empty() {
-                    "host-control-plane".into()
-                } else {
-                    instance.identity.instance_id.clone()
-                },
-                route_id: "host-control-plane".into(),
-                role: if instance.identity.role.is_empty() {
-                    "host".into()
-                } else {
-                    instance.identity.role.clone()
-                },
-                profile: instance.identity.profile.clone(),
-                session_key: session_key.clone(),
-                base_url: instance
-                    .control_plane
-                    .as_ref()
-                    .and_then(|control_plane| control_plane.base_url.clone()),
-                model: instance
-                    .policy
-                    .as_ref()
-                    .and_then(|policy| policy.model.clone()),
-                dispatcher_instance_id: None,
-            });
-        }
-
-        if let Some(binding) = session.dispatcher_binding.as_ref() {
-            attached_instances.push(AttachedInstanceRecord {
-                instance_id: if binding.dispatcher_instance_id.is_empty() {
-                    "session-dispatcher".into()
-                } else {
-                    binding.dispatcher_instance_id.clone()
-                },
-                route_id: "session-dispatcher".into(),
-                role: if binding.expected_role.is_empty() {
-                    "dispatcher".into()
-                } else {
-                    binding.expected_role.clone()
-                },
-                profile: binding.expected_profile.clone(),
-                session_key,
-                base_url: binding.observed_base_url.clone(),
-                model: binding.expected_model.clone(),
-                dispatcher_instance_id: Some(binding.dispatcher_instance_id.clone()),
-            });
-        }
-
-        self.attached_instances = attached_instances;
+        let selected_route = self.attached_instance_engine.selected_command_route_id();
+        self.attached_instance_engine =
+            AttachedInstanceStateEngine::from_session_snapshot(session_key, &session);
+        self.attached_instance_engine.select_command_route(selected_route);
     }
 
     #[allow(dead_code)]
