@@ -9,6 +9,7 @@ mod remote_session;
 mod runtime_types;
 mod screens;
 mod session_model;
+mod state_engine;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
