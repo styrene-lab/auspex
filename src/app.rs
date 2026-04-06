@@ -477,6 +477,9 @@ pub fn App() -> Element {
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
     let settings_status_message = use_signal(|| None::<String>);
+    let composer_ready_notice = use_signal(|| None::<String>);
+    let mut workspace = use_signal(|| Workspace::Chat);
+    let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
             event_stream.set(bootstrap.event_stream);
@@ -493,6 +496,9 @@ pub fn App() -> Element {
         let event_stream = event_stream;
         #[cfg(not(target_arch = "wasm32"))]
         let mut settings_status_message = settings_status_message;
+        let mut composer_ready_notice = composer_ready_notice;
+        let mut settings_open = settings_open;
+        let mut workspace = workspace;
         async move {
             loop {
                 #[cfg(not(target_arch = "wasm32"))]
@@ -530,6 +536,13 @@ pub fn App() -> Element {
                                     && matches!(result.name.as_str(), "login" | "logout" | "auth")
                                 {
                                     let _ = controller.refresh_settings_auth_status();
+                                    if controller.can_submit() {
+                                        composer_ready_notice.set(Some(
+                                            "Provider ready — prompting is available again.".into(),
+                                        ));
+                                        settings_open.set(false);
+                                        workspace.set(Workspace::Chat);
+                                    }
                                 }
                             }
                             let _ = controller.apply_remote_event_json(&event);
@@ -579,8 +592,6 @@ pub fn App() -> Element {
         });
     });
 
-    let mut workspace = use_signal(|| Workspace::Chat);
-    let mut settings_open = use_signal(|| false);
     let mut audit_session_filter = use_signal(String::new);
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
@@ -837,6 +848,9 @@ pub fn App() -> Element {
                                     }
                                 },
                                 {render_dispatch_context_strip(&dispatch_context)}
+                                if let Some(message) = composer_ready_notice.read().as_deref() {
+                                    div { class: "composer-ready-notice", "{message}" }
+                                }
                                 if let Some(blocked) = &provider_blocked_composer {
                                     div { class: "composer-blocked-callout",
                                         h3 { class: "composer-blocked-title", "{blocked.title}" }

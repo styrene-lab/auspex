@@ -1385,6 +1385,16 @@ body > * {
   background: linear-gradient(180deg, rgba(60, 45, 25, 0.98), rgba(39, 29, 17, 0.98));
 }
 
+.composer-ready-notice {
+  padding: 0.55rem 0.7rem;
+  border: 1px solid rgba(44, 118, 72, 0.44);
+  border-radius: 9px;
+  background: linear-gradient(180deg, rgba(17, 45, 27, 0.96), rgba(12, 31, 20, 0.98));
+  color: #c8f0d2;
+  font-size: 0.78rem;
+  line-height: 1.4;
+}
+
 .composer-submit {
   align-self: flex-end;
   border: 0;
