@@ -93,6 +93,7 @@ struct SettingsPanelModel {
     general_actions: Vec<SettingsActionModel>,
     last_error: Option<String>,
     last_action: Option<String>,
+    provider_ready: bool,
 }
 
 fn provider_command_name(name: &str) -> Option<String> {
@@ -443,6 +444,7 @@ fn build_settings_panel_model(
         ],
         last_error: auth_state.and_then(|state| state.last_error.clone()),
         last_action: auth_state.and_then(|state| state.last_action.clone()),
+        provider_ready: authenticated > 0,
     }
 }
 
@@ -1010,6 +1012,21 @@ pub fn App() -> Element {
 
                             section { class: "settings-panel-card settings-panel-card-auth",
                                 h3 { class: "settings-panel-title", "Provider auth" }
+                                if settings_model.provider_ready {
+                                    div { class: "settings-ready-notice",
+                                        strong { class: "settings-ready-title", "Providers are ready" }
+                                        p { class: "settings-ready-detail", "At least one authenticated provider is available. You can return to Chat and start prompting now." }
+                                        button {
+                                            class: "settings-ready-action",
+                                            r#type: "button",
+                                            onclick: move |_| {
+                                                settings_open.set(false);
+                                                workspace.set(Workspace::Chat);
+                                            },
+                                            "Return to Chat"
+                                        }
+                                    }
+                                }
                                 p { class: "settings-auth-status", "{settings_model.auth_status_label}" }
                                 p { class: "settings-panel-detail", "{settings_model.auth_status_detail}" }
                                 p { class: "settings-panel-detail", "{settings_model.provider_guidance}" }
