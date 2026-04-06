@@ -26,6 +26,7 @@ pub struct SettingsAuthState {
     pub providers: Vec<crate::fixtures::ProviderInfo>,
     pub last_error: Option<String>,
     pub last_action: Option<String>,
+    pub inventory_refreshed: bool,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -182,6 +183,7 @@ impl Default for AppController {
                 }],
                 last_error: None,
                 last_action: None,
+                inventory_refreshed: true,
             },
         };
         controller.refresh_telemetry_snapshot();
@@ -214,6 +216,7 @@ impl AppController {
                 providers: vec![],
                 last_error: None,
                 last_action: None,
+                inventory_refreshed: false,
             },
         };
         controller.rebuild_attached_instances();
@@ -411,6 +414,151 @@ impl AppController {
             .any(|provider| provider.authenticated)
     }
 
+    pub fn operator_readiness(&self) -> crate::fixtures::OperatorReadinessData {
+        use crate::fixtures::{OperatorReadinessData, ReadinessStepData, ReadinessStepState};
+
+        let shell_state = self.shell_state();
+        let remote_attached = self.is_remote();
+        #[cfg(not(target_arch = "wasm32"))]
+        let auth_inventory_refreshed = self.settings_auth_state.inventory_refreshed;
+        #[cfg(target_arch = "wasm32")]
+        let auth_inventory_refreshed = true;
+        let session_data = self.session_data();
+        let authenticated_provider = session_data
+            .providers
+            .iter()
+            .any(|provider| provider.authenticated);
+
+        let host_step = match shell_state {
+            crate::fixtures::ShellState::StartingOmegon => ReadinessStepData {
+                label: "Embedded Omegon".into(),
+                detail: "Launching embedded Omegon process".into(),
+                state: ReadinessStepState::Active,
+            },
+            crate::fixtures::ShellState::CompatibilityChecking => ReadinessStepData {
+                label: "Embedded Omegon".into(),
+                detail: "Embedded host discovered; validating compatibility".into(),
+                state: ReadinessStepState::Active,
+            },
+            crate::fixtures::ShellState::Failed => ReadinessStepData {
+                label: "Embedded Omegon".into(),
+                detail: "Embedded host failed to reach an operational state".into(),
+                state: ReadinessStepState::Blocked,
+            },
+            _ => ReadinessStepData {
+                label: "Embedded Omegon".into(),
+                detail: "Embedded host is running".into(),
+                state: ReadinessStepState::Complete,
+            },
+        };
+
+        let session_step = if remote_attached {
+            ReadinessStepData {
+                label: "Session snapshot".into(),
+                detail: "Remote session state is attached".into(),
+                state: ReadinessStepState::Complete,
+            }
+        } else if matches!(
+            shell_state,
+            crate::fixtures::ShellState::StartingOmegon
+                | crate::fixtures::ShellState::CompatibilityChecking
+        ) {
+            ReadinessStepData {
+                label: "Session snapshot".into(),
+                detail: "Waiting for host control-plane session state".into(),
+                state: ReadinessStepState::Pending,
+            }
+        } else {
+            ReadinessStepData {
+                label: "Session snapshot".into(),
+                detail: "Using fallback local session state".into(),
+                state: ReadinessStepState::Complete,
+            }
+        };
+
+        let auth_step = if !auth_inventory_refreshed {
+            ReadinessStepData {
+                label: "Auth inventory".into(),
+                detail: "Loading provider auth inventory".into(),
+                state: ReadinessStepState::Active,
+            }
+        } else if self.settings_auth_state().last_error.as_deref().is_some() {
+            ReadinessStepData {
+                label: "Auth inventory".into(),
+                detail: self
+                    .settings_auth_state()
+                    .last_error
+                    .clone()
+                    .unwrap_or_else(|| "Auth inventory refresh failed".into()),
+                state: ReadinessStepState::Blocked,
+            }
+        } else {
+            ReadinessStepData {
+                label: "Auth inventory".into(),
+                detail: format!("{} provider record(s) loaded", session_data.providers.len()),
+                state: ReadinessStepState::Complete,
+            }
+        };
+
+        let prompt_step = if self.can_submit() {
+            ReadinessStepData {
+                label: "Prompt execution".into(),
+                detail: "At least one authenticated provider is available".into(),
+                state: ReadinessStepState::Complete,
+            }
+        } else if !auth_inventory_refreshed {
+            ReadinessStepData {
+                label: "Prompt execution".into(),
+                detail: "Waiting for provider auth inventory".into(),
+                state: ReadinessStepState::Pending,
+            }
+        } else if !authenticated_provider {
+            ReadinessStepData {
+                label: "Prompt execution".into(),
+                detail: "No authenticated providers are available yet".into(),
+                state: ReadinessStepState::Blocked,
+            }
+        } else {
+            ReadinessStepData {
+                label: "Prompt execution".into(),
+                detail: "Prompt execution is temporarily unavailable".into(),
+                state: ReadinessStepState::Blocked,
+            }
+        };
+
+        let ready = !matches!(
+            shell_state,
+            crate::fixtures::ShellState::StartingOmegon
+                | crate::fixtures::ShellState::CompatibilityChecking
+        ) && auth_inventory_refreshed;
+
+        let (title, detail) = if !ready {
+            if !auth_inventory_refreshed {
+                (
+                    "Preparing operator controls".into(),
+                    "Auspex is attached, but provider auth inventory is still loading so promptability and remediation paths can converge.".into(),
+                )
+            } else {
+                (
+                    "Starting embedded Omegon".into(),
+                    "Auspex is waiting for the embedded host and control plane to become operational.".into(),
+                )
+            }
+        } else {
+            (
+                "Ready".into(),
+                "Operator controls are fully converged.".into(),
+            )
+        };
+
+        OperatorReadinessData {
+            ready,
+            title,
+            detail,
+            steps: vec![host_step, session_step, auth_step, prompt_step],
+        }
+    }
+
     pub fn is_run_active(&self) -> bool {
         self.session.model().is_run_active()
     }
@@ -475,6 +623,13 @@ impl AppController {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
+    pub fn ensure_settings_auth_status(&mut self) {
+        if !self.settings_auth_state.inventory_refreshed {
+            let _ = self.refresh_settings_auth_status();
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn refresh_settings_auth_status(&mut self) -> Result<(), String> {
         match crate::bootstrap::load_desktop_auth_snapshot() {
             Ok(snapshot) => {
@@ -490,11 +645,13 @@ impl AppController {
                     .collect();
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some("auth.refresh".into());
+                self.settings_auth_state.inventory_refreshed = true;
                 self.refresh_telemetry_snapshot();
                 Ok(())
             }
             Err(error) => {
                 self.settings_auth_state.last_error = Some(error.clone());
+                self.settings_auth_state.inventory_refreshed = true;
                 Err(error)
             }
         }
@@ -520,11 +677,13 @@ impl AppController {
                     .collect();
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some(format!("auth.{}", action.subcommand()));
+                self.settings_auth_state.inventory_refreshed = true;
                 self.refresh_telemetry_snapshot();
                 Ok(())
             }
             Err(error) => {
                 self.settings_auth_state.last_error = Some(error.clone());
+                self.settings_auth_state.inventory_refreshed = true;
                 Err(error)
             }
         }
@@ -1483,6 +1642,35 @@ mod tests {
             surface.detail.as_deref(),
             Some("Starting Omegon at /tmp/omegon…")
         );
+    }
+
+    #[test]
+    fn operator_readiness_blocks_until_auth_inventory_is_loaded() {
+        let controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let readiness = controller.operator_readiness();
+
+        assert!(!readiness.ready);
+        assert_eq!(readiness.title, "Preparing operator controls");
+        assert!(readiness
+            .steps
+            .iter()
+            .any(|step| step.label == "Auth inventory"
+                && step.state == crate::fixtures::ReadinessStepState::Active));
+    }
+
+    #[test]
+    fn operator_readiness_becomes_ready_after_auth_inventory_refresh() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let _ = controller.refresh_settings_auth_status();
+        let readiness = controller.operator_readiness();
+
+        assert!(readiness.ready);
+        assert_eq!(readiness.title, "Ready");
+        assert!(readiness
+            .steps
+            .iter()
+            .any(|step| step.label == "Auth inventory"
+                && step.state == crate::fixtures::ReadinessStepState::Complete));
     }
 
     #[test]

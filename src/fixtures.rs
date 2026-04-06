@@ -446,6 +446,40 @@ impl ActivityKind {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum ReadinessStepState {
+    Pending,
+    Active,
+    Complete,
+    Blocked,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReadinessStepData {
+    pub label: String,
+    pub detail: String,
+    pub state: ReadinessStepState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct OperatorReadinessData {
+    pub ready: bool,
+    pub title: String,
+    pub detail: String,
+    pub steps: Vec<ReadinessStepData>,
+}
+
+impl Default for OperatorReadinessData {
+    fn default() -> Self {
+        Self {
+            ready: true,
+            title: "Ready".into(),
+            detail: "Operator controls are ready.".into(),
+            steps: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum AppSurfaceKind {
     BootstrapNote,
     Startup,

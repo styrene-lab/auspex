@@ -516,9 +516,9 @@ pub fn App() -> Element {
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|duration| duration.as_secs())
                         .unwrap_or(0);
-                    controller
-                        .write()
-                        .evaluate_instance_lifecycle(now_epoch_seconds);
+                    let mut controller = controller.write();
+                    controller.evaluate_instance_lifecycle(now_epoch_seconds);
+                    controller.ensure_settings_auth_status();
                 }
                 if let Some(handle) = event_stream.read().clone() {
                     let events = handle.inbox.drain();
@@ -623,6 +623,7 @@ pub fn App() -> Element {
         }
     });
 
+    let readiness = controller.read().operator_readiness();
     let session = controller.read().session_data();
     #[cfg(not(target_arch = "wasm32"))]
     let settings_model = build_settings_panel_model(
@@ -771,6 +772,32 @@ pub fn App() -> Element {
                 }
             }
 
+            // ── Main area: left rail / center / right rail ─────────────
+            if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
+                div { class: "main-area main-area-readiness",
+                    section {
+                        class: "state-screen state-screen-starting",
+                        div { class: "state-screen-icon", "⏳" }
+                        h2 { "{readiness.title}" }
+                        p { class: "state-screen-detail", "{readiness.detail}" }
+                        div { class: "startup-step-list",
+                            for step in &readiness.steps {
+                                div {
+                                    class: "startup-step-row",
+                                    "data-state": match step.state {
+                                        crate::fixtures::ReadinessStepState::Pending => "pending",
+                                        crate::fixtures::ReadinessStepState::Active => "active",
+                                        crate::fixtures::ReadinessStepState::Complete => "complete",
+                                        crate::fixtures::ReadinessStepState::Blocked => "blocked",
+                                    },
+                                    strong { class: "startup-step-label", "{step.label}" }
+                                    span { class: "startup-step-detail", "{step.detail}" }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else {
             // ── Main area: left rail / center / right rail ─────────────
             div { class: "main-area",
 
@@ -956,6 +983,8 @@ pub fn App() -> Element {
                         }))
                     }
                 }
+            }
+
             }
 
             if *settings_open.read() {
