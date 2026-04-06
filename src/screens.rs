@@ -1492,6 +1492,7 @@ mod tests {
             telemetry: SessionTelemetryData {
                 provider_summary: "1 / 2 authenticated".into(),
                 lifecycle_summary: "2 active delegate(s)".into(),
+                lifecycle: crate::fixtures::LifecycleTelemetryData::default(),
                 route_summary: "dispatcher omg_primary_01HVDEMO · anthropic:claude-sonnet-4-6".into(),
                 latest_turn_summary: "turns 12 · tool calls 34".into(),
                 latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {

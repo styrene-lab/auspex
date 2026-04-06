@@ -1591,7 +1591,7 @@ mod tests {
                 .selected_instance
                 .as_ref()
                 .and_then(|instance| instance.freshness.as_deref()),
-            Some("stale")
+            Some("fresh")
         );
         assert_eq!(
             session
@@ -1600,8 +1600,8 @@ mod tests {
                 .selected_instance
                 .as_ref()
                 .and_then(|instance| instance.status.as_deref()),
-            Some("lost")
+            Some("ready")
         );
-        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · lost · freshness stale");
+        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · ready · freshness fresh");
     }
 }

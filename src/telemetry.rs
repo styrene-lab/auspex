@@ -371,7 +371,14 @@ mod tests {
             dispatcher_instance_id: None,
             registry_record: None,
         });
-        engine.registry_store().instances[0].observed.health.last_seen_at = Some("100".into());
+        engine.replace_registry_store(
+            {
+                let mut store = engine.registry_store().clone();
+                store.instances[0].observed.health.last_seen_at = Some("100".into());
+                store
+            },
+            &SessionData::default(),
+        );
         engine.evaluate_lifecycle_policy(100);
 
         let lifecycle = aggregate_lifecycle_telemetry(
