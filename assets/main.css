@@ -322,7 +322,7 @@ body > * {
   padding: 0.55rem 0.6rem;
   background: linear-gradient(180deg, rgba(24, 31, 43, 0.98), rgba(18, 24, 35, 0.98));
   border: 1px solid rgba(58, 74, 96, 0.34);
-  border-radius: var(--radius-card);
+  border-radius: 10px;
   box-shadow: var(--shadow-lift-1), var(--shadow-depth-highlight), var(--shadow-depth-lowlight);
 }
 
@@ -2144,7 +2144,7 @@ body > * {
   min-width: 0;
   padding: 0.8rem 0.85rem;
   border: 1px solid rgba(58, 74, 96, 0.36);
-  border-radius: var(--radius-card);
+  border-radius: 10px;
   background: linear-gradient(180deg, rgba(24, 31, 43, 0.98), rgba(18, 24, 35, 0.98));
   box-shadow: var(--shadow-lift-1), var(--shadow-depth-highlight), var(--shadow-depth-lowlight);
 }
@@ -2181,7 +2181,7 @@ body > * {
   width: fit-content;
   padding: 0.3rem 0.55rem;
   border: 1px solid rgba(73, 101, 137, 0.44);
-  border-radius: var(--radius-pill);
+  border-radius: 10px;
   background: rgba(15, 23, 34, 0.88);
 }
 
@@ -2219,7 +2219,7 @@ body > * {
   flex-direction: column;
   gap: 0.15rem;
   padding: 0.5rem 0.55rem;
-  border-radius: var(--radius-control);
+  border-radius: 8px;
   border: 1px solid rgba(58, 74, 96, 0.26);
   background: rgba(13, 19, 28, 0.72);
 }
@@ -2229,7 +2229,7 @@ body > * {
   flex-direction: column;
   gap: 0.45rem;
   padding: 0.75rem;
-  border-radius: var(--radius-card);
+  border-radius: 10px;
   border: 1px solid rgba(68, 92, 126, 0.34);
   background: linear-gradient(180deg, rgba(17, 24, 36, 0.96), rgba(11, 16, 24, 0.96));
 }
