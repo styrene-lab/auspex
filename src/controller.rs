@@ -329,6 +329,13 @@ impl AppController {
     }
 
     pub fn switch_session_mode(&mut self, raw: &str) {
+        let previous_session_key = self.session_audit_key();
+        let previous_instance_ids: Vec<String> = self
+            .attached_instances()
+            .iter()
+            .filter(|instance| instance.session_key == previous_session_key)
+            .map(|instance| instance.instance_id.clone())
+            .collect();
         self.session = match raw {
             "live" => SessionSource::Remote(Box::new(
                 RemoteHostSession::from_snapshot_json(DEMO_REMOTE_SNAPSHOT_JSON)
@@ -336,6 +343,11 @@ impl AppController {
             )),
             _ => SessionSource::Mock(MockHostSession::default()),
         };
+        if raw != "live" {
+            for instance_id in &previous_instance_ids {
+                self.detach_instance_record(instance_id);
+            }
+        }
         self.rebuild_attached_instances();
         self.bootstrap_note = None;
         self.refresh_audit_timeline();
@@ -656,6 +668,13 @@ impl AppController {
                 let applied = session.apply_event_json(json)?;
                 if applied {
                     self.rebuild_attached_instances();
+                    let active_instance_ids: Vec<String> = self
+                        .attached_instances()
+                        .iter()
+                        .filter(|instance| instance.session_key == self.session_audit_key())
+                        .map(|instance| instance.instance_id.clone())
+                        .collect();
+                    self.purge_stale_instance_records(&active_instance_ids);
                     self.persist_instance_registry();
                     self.refresh_audit_timeline();
                 }
@@ -1031,6 +1050,19 @@ mod tests {
             controller.summary().connection,
             "Connected to local host session"
         );
+        assert!(controller.attached_instances().iter().all(|instance| instance.session_key == "mock:ready"));
+        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
+    }
+
+    #[test]
+    fn leaving_live_mode_detaches_live_session_owned_instances() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        assert!(!controller.attached_instances().is_empty());
+
+        controller.switch_session_mode("mock");
+
+        assert!(controller.attached_instances().iter().all(|instance| instance.session_key == "mock:ready"));
+        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
     }
 
     #[test]
@@ -1180,6 +1212,21 @@ mod tests {
             .apply_remote_event_json(r#"{"type":"session_reset"}"#)
             .unwrap();
         assert!(!controller.is_run_active());
+    }
+
+    #[test]
+    fn state_snapshot_without_live_instances_purges_session_registry_entries() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        assert!(!controller.attached_instances().is_empty());
+
+        controller
+            .apply_remote_event_json(
+                r#"{"type":"state_snapshot","data":{"design":{"focused":null,"implementing":[],"actionable":[],"all_nodes":[],"counts":{}},"openspec":{"total_tasks":0,"done_tasks":0},"cleave":{"active":false,"total_children":0,"completed":0,"failed":0},"session":{"turns":0,"tool_calls":0,"compactions":0},"harness":{"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[{"name":"Anthropic","authenticated":true,"auth_method":"api-key","model":"claude-sonnet"}],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}}}"#,
+            )
+            .unwrap();
+
+        assert!(controller.attached_instances().is_empty());
+        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
     }
 
     #[test]
