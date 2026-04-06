@@ -11,9 +11,6 @@ use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_model::HostSessionModel;
 use crate::state_engine::{AttachedInstanceRecord, AttachedInstanceStateEngine};
 
-#[path = "telemetry.rs"]
-mod telemetry;
-
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct CommandRouteOption {
     pub route_id: String,
@@ -401,7 +398,7 @@ impl AppController {
             data.providers = self.settings_auth_state.providers.clone();
         }
 
-        let lifecycle = telemetry::aggregate_lifecycle_telemetry(
+        let lifecycle = crate::telemetry::aggregate_lifecycle_telemetry(
             self.attached_instance_engine.attached_instances(),
             self.attached_instance_engine.registry_store(),
             &self.attached_instance_engine.selected_command_route_id(),
