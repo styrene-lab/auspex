@@ -216,6 +216,19 @@ impl RemoteHostSession {
         Some(DispatcherSwitchCommandOutcome::Issued { request_id })
     }
 
+    pub fn refresh_provider_auth(
+        &mut self,
+        providers: Vec<crate::omegon_control::ProviderStatusSnapshot>,
+    ) {
+        let mut harness = self.harness_snapshot.clone().unwrap_or_default();
+        harness.providers = providers;
+        let (shell_state, scenario) = status_from_harness(Some(&harness));
+        self.shell_state = shell_state;
+        self.scenario = scenario;
+        apply_harness_summary(&mut self.summary, &harness);
+        self.harness_snapshot = Some(harness);
+    }
+
     fn allocate_dispatcher_request_id(&mut self) -> String {
         let request_id = format!("dispatcher-switch-{}", self.next_dispatcher_request_id);
         self.next_dispatcher_request_id += 1;

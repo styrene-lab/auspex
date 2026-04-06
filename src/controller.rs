@@ -633,16 +633,31 @@ impl AppController {
     pub fn refresh_settings_auth_status(&mut self) -> Result<(), String> {
         match crate::bootstrap::load_desktop_auth_snapshot() {
             Ok(snapshot) => {
-                self.settings_auth_state.providers = snapshot
+                let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
-                    .into_iter()
+                    .iter()
                     .map(|provider| crate::fixtures::ProviderInfo {
-                        name: provider.name,
+                        name: provider.name.clone(),
                         authenticated: provider.authenticated,
-                        auth_method: provider.auth_method,
+                        auth_method: provider.auth_method.clone(),
                         model: None,
                     })
                     .collect();
+                self.settings_auth_state.providers = providers;
+                if let SessionSource::Remote(session) = &mut self.session {
+                    session.refresh_provider_auth(
+                        snapshot
+                            .providers
+                            .into_iter()
+                            .map(|provider| crate::omegon_control::ProviderStatusSnapshot {
+                                name: provider.name,
+                                authenticated: provider.authenticated,
+                                auth_method: provider.auth_method,
+                                model: None,
+                            })
+                            .collect(),
+                    );
+                }
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some("auth.refresh".into());
                 self.settings_auth_state.inventory_refreshed = true;
@@ -665,16 +680,31 @@ impl AppController {
     ) -> Result<(), String> {
         match crate::bootstrap::run_desktop_auth_action(action, provider) {
             Ok(snapshot) => {
-                self.settings_auth_state.providers = snapshot
+                let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
-                    .into_iter()
+                    .iter()
                     .map(|provider| crate::fixtures::ProviderInfo {
-                        name: provider.name,
+                        name: provider.name.clone(),
                         authenticated: provider.authenticated,
-                        auth_method: provider.auth_method,
+                        auth_method: provider.auth_method.clone(),
                         model: None,
                     })
                     .collect();
+                self.settings_auth_state.providers = providers;
+                if let SessionSource::Remote(session) = &mut self.session {
+                    session.refresh_provider_auth(
+                        snapshot
+                            .providers
+                            .into_iter()
+                            .map(|provider| crate::omegon_control::ProviderStatusSnapshot {
+                                name: provider.name,
+                                authenticated: provider.authenticated,
+                                auth_method: provider.auth_method,
+                                model: None,
+                            })
+                            .collect(),
+                    );
+                }
                 self.settings_auth_state.last_error = None;
                 self.settings_auth_state.last_action = Some(format!("auth.{}", action.subcommand()));
                 self.settings_auth_state.inventory_refreshed = true;
@@ -1245,6 +1275,37 @@ mod tests {
         assert_eq!(session.providers[0].name, "OpenAI API");
         assert_eq!(session.providers[0].auth_method.as_deref(), Some("api-key"));
         assert!(!controller.can_submit());
+    }
+
+    #[test]
+    fn remote_auth_refresh_rehydrates_prompt_execution_state() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        assert!(controller.can_submit());
+
+        if let SessionSource::Remote(session) = &mut controller.session {
+            session.refresh_provider_auth(Vec::new());
+        }
+        controller.settings_auth_state.providers = vec![];
+        controller.settings_auth_state.inventory_refreshed = true;
+        controller.refresh_telemetry_snapshot();
+        assert!(!controller.can_submit());
+
+        if let SessionSource::Remote(session) = &mut controller.session {
+            session.refresh_provider_auth(vec![crate::omegon_control::ProviderStatusSnapshot {
+                name: "OpenAI/Codex".into(),
+                authenticated: true,
+                auth_method: Some("oauth".into()),
+                model: None,
+            }]);
+        }
+        controller.settings_auth_state.providers = vec![crate::fixtures::ProviderInfo {
+            name: "OpenAI/Codex".into(),
+            authenticated: true,
+            auth_method: Some("oauth".into()),
+            model: None,
+        }];
+        controller.refresh_telemetry_snapshot();
+        assert!(controller.can_submit());
     }
 
     #[test]
