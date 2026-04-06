@@ -3,8 +3,8 @@ use crate::fixtures::{
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
     InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData,
-    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
-    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
+    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData,
+    SessionTelemetryData, ShellState, SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
@@ -609,6 +609,13 @@ impl HostSessionModel for RemoteHostSession {
             session_compactions: self.session_stats.compactions,
             context_tokens: self.context_tokens,
             context_window: self.context_window,
+            telemetry: build_session_telemetry(
+                h,
+                self.session_stats.turns,
+                self.session_stats.tool_calls,
+                self.dispatcher_binding.as_ref(),
+                self.instance_descriptor.as_ref(),
+            ),
             instance_descriptor: self.instance_descriptor.as_ref().map(project_instance_descriptor),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
                 DispatcherBindingData {
@@ -1086,6 +1093,69 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             ActivityKind::Idle
         },
         work,
+    }
+}
+
+fn build_session_telemetry(
+    harness: Option<&HarnessStatusSnapshot>,
+    turns: u32,
+    tool_calls: u32,
+    dispatcher: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
+    instance_descriptor: Option<&OmegonInstanceDescriptor>,
+) -> SessionTelemetryData {
+    let authenticated = harness
+        .map(|h| h.providers.iter().filter(|provider| provider.authenticated).count())
+        .unwrap_or(0);
+    let total = harness.map(|h| h.providers.len()).unwrap_or(0);
+    let provider_summary = if total == 0 {
+        "providers unavailable".into()
+    } else {
+        format!("{authenticated} / {total} authenticated")
+    };
+
+    let route_summary = dispatcher
+        .map(|binding| {
+            format!(
+                "dispatcher {} · {}",
+                if binding.dispatcher_instance_id.is_empty() {
+                    "unreported"
+                } else {
+                    binding.dispatcher_instance_id.as_str()
+                },
+                binding.expected_model.as_deref().unwrap_or("model unreported")
+            )
+        })
+        .or_else(|| {
+            instance_descriptor.map(|instance| {
+                format!(
+                    "host {}",
+                    if instance.identity.instance_id.is_empty() {
+                        "unreported"
+                    } else {
+                        instance.identity.instance_id.as_str()
+                    }
+                )
+            })
+        })
+        .unwrap_or_else(|| "route unavailable".into());
+
+    let lifecycle_summary = harness
+        .map(|h| {
+            if h.active_delegates.is_empty() {
+                "no active delegates".into()
+            } else {
+                format!("{} active delegate(s)", h.active_delegates.len())
+            }
+        })
+        .unwrap_or_else(|| "lifecycle unavailable".into());
+
+    let latest_turn_summary = format!("turns {turns} · tool calls {tool_calls}");
+
+    SessionTelemetryData {
+        provider_summary,
+        lifecycle_summary,
+        route_summary,
+        latest_turn_summary,
     }
 }
 

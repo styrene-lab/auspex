@@ -677,12 +677,20 @@ fn session_control_summary(data: &SessionData) -> Vec<SessionControlSummaryItem>
         },
         SessionControlSummaryItem {
             label: "Providers",
-            value: format_authenticated_provider_summary(&data.providers),
+            value: if data.telemetry.provider_summary.is_empty() {
+                format_authenticated_provider_summary(&data.providers)
+            } else {
+                data.telemetry.provider_summary.clone()
+            },
             compact: true,
         },
         SessionControlSummaryItem {
             label: "Delegates",
-            value: format!("{} active", data.active_delegate_count),
+            value: if data.telemetry.lifecycle_summary.is_empty() {
+                format!("{} active", data.active_delegate_count)
+            } else {
+                data.telemetry.lifecycle_summary.clone()
+            },
             compact: false,
         },
     ];
@@ -690,10 +698,14 @@ fn session_control_summary(data: &SessionData) -> Vec<SessionControlSummaryItem>
     if let Some(dispatcher) = &data.dispatcher_binding {
         items.push(SessionControlSummaryItem {
             label: "Dispatcher",
-            value: switch_target_label(
-                Some(dispatcher.expected_profile.as_str()),
-                dispatcher.expected_model.as_deref(),
-            ),
+            value: if data.telemetry.route_summary.is_empty() {
+                switch_target_label(
+                    Some(dispatcher.expected_profile.as_str()),
+                    dispatcher.expected_model.as_deref(),
+                )
+            } else {
+                data.telemetry.route_summary.clone()
+            },
             compact: true,
         });
     }
@@ -1429,6 +1441,12 @@ mod tests {
                     model: Some("gpt-4.1".into()),
                 },
             ],
+            telemetry: SessionTelemetryData {
+                provider_summary: "1 / 2 authenticated".into(),
+                lifecycle_summary: "2 active delegate(s)".into(),
+                route_summary: "dispatcher omg_primary_01HVDEMO · anthropic:claude-sonnet-4-6".into(),
+                latest_turn_summary: "turns 12 · tool calls 34".into(),
+            },
             active_delegate_count: 2,
             dispatcher_binding: Some(binding()),
             ..SessionData::default()

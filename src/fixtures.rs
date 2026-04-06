@@ -230,6 +230,14 @@ pub struct DispatcherBindingData {
     pub switch_state: Option<DispatcherSwitchStateData>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct SessionTelemetryData {
+    pub provider_summary: String,
+    pub lifecycle_summary: String,
+    pub route_summary: String,
+    pub latest_turn_summary: String,
+}
+
 /// Snapshot of harness and session state for the Session power-mode screen.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct SessionData {
@@ -248,6 +256,7 @@ pub struct SessionData {
     pub session_compactions: u32,
     pub context_tokens: Option<u64>,
     pub context_window: Option<u64>,
+    pub telemetry: SessionTelemetryData,
     pub instance_descriptor: Option<InstanceDescriptorData>,
     pub dispatcher_binding: Option<DispatcherBindingData>,
 }
@@ -648,6 +657,12 @@ impl HostSessionModel for MockHostSession {
             cleave_available: true,
             session_turns: 4,
             session_tool_calls: 12,
+            telemetry: SessionTelemetryData {
+                provider_summary: "1 / 1 authenticated".into(),
+                lifecycle_summary: "no active delegates".into(),
+                route_summary: "local shell".into(),
+                latest_turn_summary: "turns 4 · tool calls 12".into(),
+            },
             ..Default::default()
         }
     }
