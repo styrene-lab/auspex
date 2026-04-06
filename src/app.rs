@@ -819,6 +819,14 @@ pub fn App() -> Element {
                                     disabled: !controller.read().can_submit(),
                                     placeholder: if controller.read().can_submit() {
                                         "Start with the smallest useful prompt…"
+                                    } else if controller
+                                        .read()
+                                        .session_data()
+                                        .providers
+                                        .iter()
+                                        .all(|provider| !provider.authenticated)
+                                    {
+                                        "Prompt execution is blocked until a provider is authenticated in Settings."
                                     } else {
                                         "Conversation input is unavailable in the current host state."
                                     },

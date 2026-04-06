@@ -400,7 +400,15 @@ impl AppController {
     }
 
     pub fn can_submit(&self) -> bool {
-        self.session.model().can_submit()
+        if !self.session.model().can_submit() {
+            return false;
+        }
+
+        let session_data = self.session_data();
+        session_data
+            .providers
+            .iter()
+            .any(|provider| provider.authenticated)
     }
 
     pub fn is_run_active(&self) -> bool {
@@ -1077,6 +1085,7 @@ mod tests {
         assert_eq!(session.providers.len(), 1);
         assert_eq!(session.providers[0].name, "OpenAI API");
         assert_eq!(session.providers[0].auth_method.as_deref(), Some("api-key"));
+        assert!(!controller.can_submit());
     }
 
     #[test]
