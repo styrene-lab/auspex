@@ -2965,7 +2965,7 @@ mod tests {
         assert_eq!(model.target_label, "omg_primary_01HVDEMO");
         assert!(model.target_detail.contains("primary-driver"));
         assert!(model.route_detail.contains("session-dispatcher"));
-        assert!(model.auth_status_label.contains("0 authenticated provider") || model.auth_status_label.contains("No providers reported"));
+        assert_eq!(model.auth_status_label, "1 authenticated provider(s)");
         assert_eq!(model.actions[0].action.command_slug(), "auth.refresh");
         assert!(model.actions.iter().all(|action| action.enabled));
     }

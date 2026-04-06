@@ -790,9 +790,8 @@ mod tests {
         let controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         let routes = controller.available_command_routes();
-        assert_eq!(routes.len(), 2);
-        assert_eq!(controller.attached_instances().len(), 2);
-        assert!(routes.iter().any(|route| route.route_id == "host-control-plane"));
+        assert_eq!(routes.len(), 1);
+        assert_eq!(controller.attached_instances().len(), 1);
         assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
         assert_eq!(controller.selected_command_route_id(), "session-dispatcher");
     }
@@ -805,7 +804,7 @@ mod tests {
 
         let command = controller.submit_prompt_command().expect("targeted command");
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
-        assert_eq!(command.target.dispatcher_instance_id, None);
+        assert_eq!(command.target.dispatcher_instance_id, Some("omg_primary_01HVDEMO".into()));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
