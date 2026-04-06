@@ -1253,7 +1253,7 @@ mod tests {
             .entries
             .iter()
             .any(|entry| entry.kind == AuditEntryKind::Telemetry
-                && entry.label.starts_with("Telemetry · Provider rollup")));
+                && entry.label == "Telemetry · Route summary"));
     }
 
     #[test]
