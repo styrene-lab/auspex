@@ -1,16 +1,15 @@
 use crate::fixtures::{
-    ActivityKind, BlockOrigin, ChatMessage, ComposerState, ControlPlaneTelemetryData,
-    DelegateSummaryData, DevScenario, DispatcherBindingData, DispatcherOptionData,
-    DispatcherSwitchStateData, GraphData, HostSessionSummary, InstanceControlPlaneData,
-    InstanceDescriptorData, InstanceIdentityData, InstancePolicyData, InstanceRuntimeData,
-    InstanceSessionDescriptorData, InstanceWorkspaceData, MessageRole, OriginKind,
-    ProviderInfo, SessionData, SessionTelemetryData, ShellState, SystemNoticeKind,
-    TranscriptData, WorkData, WorkNode,
+    ActivityKind, BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
+    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
+    HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
+    InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData,
+    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
+    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
-    ProviderTelemetrySnapshot,
 };
+use crate::telemetry::{build_session_telemetry, LatestTurnTelemetry};
 use crate::session_model::HostSessionModel;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -18,15 +17,6 @@ use crate::session_model::HostSessionModel;
 pub enum DispatcherSwitchCommandOutcome {
     Issued { request_id: String },
     Noop,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
-struct LatestTurnTelemetry {
-    provider_telemetry: Option<ProviderTelemetrySnapshot>,
-    estimated_tokens: Option<u64>,
-    actual_input_tokens: Option<u64>,
-    actual_output_tokens: Option<u64>,
-    cache_read_tokens: Option<u64>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -1121,126 +1111,6 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             ActivityKind::Idle
         },
         work,
-    }
-}
-
-fn build_session_telemetry(
-    harness: Option<&HarnessStatusSnapshot>,
-    turns: u32,
-    tool_calls: u32,
-    dispatcher: Option<&crate::omegon_control::DispatcherBindingSnapshot>,
-    instance_descriptor: Option<&OmegonInstanceDescriptor>,
-    latest_turn: &LatestTurnTelemetry,
-) -> SessionTelemetryData {
-    let authenticated = harness
-        .map(|h| h.providers.iter().filter(|provider| provider.authenticated).count())
-        .unwrap_or(0);
-    let total = harness.map(|h| h.providers.len()).unwrap_or(0);
-    let provider_summary = if total == 0 {
-        "providers unavailable".into()
-    } else {
-        format!("{authenticated} / {total} authenticated")
-    };
-
-    let route_summary = dispatcher
-        .map(|binding| {
-            format!(
-                "dispatcher {} · {}",
-                if binding.dispatcher_instance_id.is_empty() {
-                    "unreported"
-                } else {
-                    binding.dispatcher_instance_id.as_str()
-                },
-                binding.expected_model.as_deref().unwrap_or("model unreported")
-            )
-        })
-        .or_else(|| {
-            instance_descriptor.map(|instance| {
-                format!(
-                    "host {}",
-                    if instance.identity.instance_id.is_empty() {
-                        "unreported"
-                    } else {
-                        instance.identity.instance_id.as_str()
-                    }
-                )
-            })
-        })
-        .unwrap_or_else(|| "route unavailable".into());
-
-    let lifecycle_summary = harness
-        .map(|h| {
-            if h.active_delegates.is_empty() {
-                "no active delegates".into()
-            } else {
-                format!("{} active delegate(s)", h.active_delegates.len())
-            }
-        })
-        .unwrap_or_else(|| "lifecycle unavailable".into());
-
-    let latest_turn_summary = format!("turns {turns} · tool calls {tool_calls}");
-
-    SessionTelemetryData {
-        provider_summary,
-        lifecycle_summary,
-        route_summary,
-        latest_turn_summary,
-        latest_provider_telemetry: latest_turn
-            .provider_telemetry
-            .clone()
-            .map(project_provider_telemetry),
-        latest_estimated_tokens: latest_turn.estimated_tokens,
-        latest_actual_input_tokens: latest_turn.actual_input_tokens,
-        latest_actual_output_tokens: latest_turn.actual_output_tokens,
-        latest_cache_read_tokens: latest_turn.cache_read_tokens,
-        control_plane: instance_descriptor
-            .and_then(|instance| {
-                instance
-                    .control_plane
-                    .as_ref()
-                    .map(SessionTelemetryDataControlPlaneAdapter::from_control_plane)
-            })
-            .or_else(|| {
-                dispatcher.map(|binding| ControlPlaneTelemetryData {
-                    startup_url: None,
-                    health_url: None,
-                    ready_url: None,
-                    auth_mode: None,
-                    base_url: binding.observed_base_url.clone(),
-                })
-            }),
-    }
-}
-
-fn project_provider_telemetry(snapshot: ProviderTelemetrySnapshot) -> crate::fixtures::ProviderTelemetryData {
-    crate::fixtures::ProviderTelemetryData {
-        provider: snapshot.provider,
-        source: snapshot.source,
-        requests_remaining: snapshot.requests_remaining,
-        tokens_remaining: snapshot.tokens_remaining,
-        retry_after_secs: snapshot.retry_after_secs,
-        request_id: snapshot.request_id,
-        unified_5h_utilization_pct: snapshot
-            .unified_5h_utilization_pct
-            .map(|value| format!("{value:.1}")),
-        unified_7d_utilization_pct: snapshot
-            .unified_7d_utilization_pct
-            .map(|value| format!("{value:.1}")),
-        codex_primary_pct: snapshot.codex_primary_pct,
-    }
-}
-
-struct SessionTelemetryDataControlPlaneAdapter;
-
-impl SessionTelemetryDataControlPlaneAdapter {
-    fn from_control_plane(control_plane: &crate::omegon_control::OmegonControlPlaneDescriptor) -> ControlPlaneTelemetryData {
-        ControlPlaneTelemetryData {
-            startup_url: control_plane.startup_url.clone(),
-            health_url: control_plane.health_url.clone(),
-            ready_url: control_plane.ready_url.clone(),
-            auth_mode: control_plane.auth_mode.clone(),
-            base_url: control_plane.base_url.clone(),
-        }
     }
 }
 

@@ -8,6 +8,7 @@ mod instance_registry;
 mod omegon_control;
 mod remote_session;
 mod runtime_types;
+mod telemetry;
 mod screens;
 mod session_model;
 mod state_engine;
