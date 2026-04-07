@@ -243,133 +243,10 @@ pub fn SessionScreen(
             {render_provider_status_widget(&data)}
             {render_lifecycle_rollup_widget(&data)}
             {render_control_plane_widget(&data)}
-
-            if let Some(instance) = &data.instance_descriptor {
-                section { class: "screen-section",
-                    h2 { class: "screen-section-title", "Instance" }
-                    {render_instance_descriptor(instance)}
-                }
-            }
-
-            if let Some(dispatcher) = &data.dispatcher_binding {
-                section { class: "screen-section",
-                    h2 { class: "screen-section-title", "Dispatcher" }
-                    div { class: "kv-grid",
-                        {kv_row("Canonical session", &dispatcher.session_id)}
-                        {kv_row("Canonical instance", &dispatcher.dispatcher_instance_id)}
-                        {kv_row("Control-plane role", &dispatcher.expected_role)}
-                        {kv_row("Workspace target", &dispatcher.expected_profile)}
-                        if let Some(model) = &dispatcher.expected_model {
-                            {kv_row("Runtime target", model)}
-                        }
-                        {kv_row("Control-plane schema", &dispatcher.control_plane_schema.to_string())}
-                        if let Some(base_url) = &dispatcher.observed_base_url {
-                            {kv_row("Observed endpoint", base_url)}
-                        }
-                        if let Some(last_verified_at) = &dispatcher.last_verified_at {
-                            {kv_row("Last verified", last_verified_at)}
-                        }
-                    }
-
-                    if !dispatcher.available_options.is_empty() {
-                        section { class: "screen-subsection",
-                            h3 { class: "screen-section-title", "Available dispatcher options" }
-                            if let Some(handler) = on_dispatcher_switch {
-                                div { class: "dispatcher-option-list",
-                                    for option in &dispatcher.available_options {
-                                        button {
-                                            class: dispatcher_option_button_class(dispatcher, option),
-                                            r#type: "button",
-                                            disabled: dispatcher_option_disabled(dispatcher, option),
-                                            onclick: {
-                                                let profile = option.profile.clone();
-                                                let model = option.model.clone();
-                                                move |_| handler.call((profile.clone(), model.clone()))
-                                            },
-                                            strong { "{option.label}" }
-                                            span {
-                                                class: "dispatcher-option-meta",
-                                                "{option.profile}"
-                                                if let Some(model) = &option.model {
-                                                    " · {model}"
-                                                }
-                                            }
-                                            if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
-                                                span { class: "dispatcher-option-status", "{status}" }
-                                            }
-                                        }
-                                    }
-                                }
-                            } else {
-                                div { class: "kv-grid",
-                                    for option in &dispatcher.available_options {
-                                        div { class: "kv-row",
-                                            span { class: "kv-key", "{option.label}" }
-                                            span { class: "kv-value",
-                                                "{option.profile}"
-                                                if let Some(model) = &option.model {
-                                                    " · {model}"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    if let Some(state) = &dispatcher.switch_state {
-                        {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus)}
-                    }
-                }
-            }
-
-            // Active delegates
-            if !data.active_delegates.is_empty() {
-                section { class: "screen-section",
-                    h2 { class: "screen-section-title", "Active delegates" }
-                    div { class: "kv-grid",
-                        for delegate in &data.active_delegates {
-                            button {
-                                class: "kv-row kv-row-button",
-                                r#type: "button",
-                                onclick: {
-                                    let task_id = delegate.task_id.clone();
-                                    let handler = on_transcript_focus;
-                                    move |_| {
-                                        if let Some(handler) = &handler {
-                                            handler.call(format!("delegate:{task_id}"));
-                                        }
-                                    }
-                                },
-                                span { class: "kv-key", "{delegate.agent_name}" }
-                                span { class: "kv-value",
-                                    "{delegate.status} · {delegate.task_id} · {delegate.elapsed_ms} ms"
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            // Session stats
-            section { class: "screen-section",
-                h2 { class: "screen-section-title", "Session stats" }
-                div { class: "kv-grid",
-                    {kv_row("Turns",       &data.session_turns.to_string())}
-                    {kv_row("Tool calls",  &data.session_tool_calls.to_string())}
-                    {kv_row("Compactions", &data.session_compactions.to_string())}
-                    if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
-                        {kv_row("Context", &context_usage)}
-                    }
-                    if data.active_delegate_count > 0 {
-                        {kv_row(
-                            "Active delegates",
-                            &data.active_delegate_count.to_string(),
-                        )}
-                    }
-                }
-            }
+            {render_attached_omegon_status_widget(&data)}
+            {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
+            {render_temporary_dispatches_widget(&data, on_transcript_focus)}
+            {render_session_stats_widget(&data)}
         }
     }
 }
@@ -571,11 +448,149 @@ fn render_control_plane_widget(data: &SessionData) -> Element {
     )
 }
 
+fn render_attached_omegon_status_widget(data: &SessionData) -> Element {
+    let Some(instance) = &data.instance_descriptor else {
+        return rsx! { Fragment {} };
+    };
+    render_widget_section(
+        "Attached Omegon status",
+        rsx! { {render_instance_descriptor(instance)} },
+    )
+}
+
+fn render_dispatcher_binding_widget(
+    data: &SessionData,
+    on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+    on_transcript_focus: Option<EventHandler<String>>,
+) -> Element {
+    let Some(dispatcher) = &data.dispatcher_binding else {
+        return rsx! { Fragment {} };
+    };
+
+    render_widget_section(
+        "Dispatcher binding",
+        rsx! {
+            div { class: "kv-grid widget-kv-grid",
+                {kv_row("Canonical session", &dispatcher.session_id)}
+                {kv_row("Canonical instance", &dispatcher.dispatcher_instance_id)}
+                {kv_row("Control-plane role", &dispatcher.expected_role)}
+                {kv_row("Workspace target", &dispatcher.expected_profile)}
+                if let Some(model) = &dispatcher.expected_model {
+                    {kv_row("Runtime target", model)}
+                }
+                {kv_row("Control-plane schema", &dispatcher.control_plane_schema.to_string())}
+                if let Some(base_url) = &dispatcher.observed_base_url {
+                    {kv_row("Observed endpoint", base_url)}
+                }
+                if let Some(last_verified_at) = &dispatcher.last_verified_at {
+                    {kv_row("Last verified", last_verified_at)}
+                }
+            }
+            if !dispatcher.available_options.is_empty() {
+                section { class: "screen-subsection widget-subsection",
+                    h3 { class: "screen-section-title widget-subsection-title", "Available dispatcher options" }
+                    if let Some(handler) = on_dispatcher_switch {
+                        div { class: "dispatcher-option-list",
+                            for option in &dispatcher.available_options {
+                                button {
+                                    class: dispatcher_option_button_class(dispatcher, option),
+                                    r#type: "button",
+                                    disabled: dispatcher_option_disabled(dispatcher, option),
+                                    onclick: {
+                                        let profile = option.profile.clone();
+                                        let model = option.model.clone();
+                                        move |_| handler.call((profile.clone(), model.clone()))
+                                    },
+                                    strong { "{option.label}" }
+                                    span { class: "dispatcher-option-meta",
+                                        "{option.profile}"
+                                        if let Some(model) = &option.model { " · {model}" }
+                                    }
+                                    if let Some(status) = dispatcher_option_status_text(dispatcher, option) {
+                                        span { class: "dispatcher-option-status", "{status}" }
+                                    }
+                                }
+                            }
+                        }
+                    } else {
+                        div { class: "kv-grid widget-kv-grid",
+                            for option in &dispatcher.available_options {
+                                div { class: "kv-row",
+                                    span { class: "kv-key", "{option.label}" }
+                                    span { class: "kv-value",
+                                        "{option.profile}"
+                                        if let Some(model) = &option.model { " · {model}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if let Some(state) = &dispatcher.switch_state {
+                {render_dispatcher_switch_state(dispatcher, state, on_transcript_focus)}
+            }
+        },
+    )
+}
+
+fn render_temporary_dispatches_widget(
+    data: &SessionData,
+    on_transcript_focus: Option<EventHandler<String>>,
+) -> Element {
+    if data.active_delegates.is_empty() {
+        return rsx! { Fragment {} };
+    }
+    render_widget_section(
+        "Temporary dispatches",
+        rsx! {
+            div { class: "kv-grid widget-kv-grid",
+                for delegate in &data.active_delegates {
+                    button {
+                        class: "kv-row kv-row-button",
+                        r#type: "button",
+                        onclick: {
+                            let task_id = delegate.task_id.clone();
+                            let handler = on_transcript_focus;
+                            move |_| {
+                                if let Some(handler) = &handler {
+                                    handler.call(format!("delegate:{task_id}"));
+                                }
+                            }
+                        },
+                        span { class: "kv-key", "{delegate.agent_name}" }
+                        span { class: "kv-value", "{delegate_summary(delegate)}" }
+                    }
+                }
+            }
+        },
+    )
+}
+
+fn render_session_stats_widget(data: &SessionData) -> Element {
+    render_widget_section(
+        "Session stats",
+        rsx! {
+            div { class: "kv-grid widget-kv-grid",
+                {kv_row("Turns", &data.session_turns.to_string())}
+                {kv_row("Tool calls", &data.session_tool_calls.to_string())}
+                {kv_row("Compactions", &data.session_compactions.to_string())}
+                if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
+                    {kv_row("Context", &context_usage)}
+                }
+                if data.active_delegate_count > 0 {
+                    {kv_row("Active delegates", &data.active_delegate_count.to_string())}
+                }
+            }
+        },
+    )
+}
+
 fn render_widget_section(title: &str, body: Element) -> Element {
     rsx! {
         section {
             class: "screen-section widget-section",
-            "data-widget": title.to_ascii_lowercase().replace(' ', "-") ,
+            "data-widget": title.to_ascii_lowercase().replace(' ', "-"),
             "data-surface": "panel",
             "data-elevation": "1",
             h2 { class: "screen-section-title widget-section-title", "{title}" }
@@ -596,6 +611,13 @@ fn provider_inventory_value(provider: &crate::fixtures::ProviderInfo) -> String 
         value.push_str(" ⚠");
     }
     value
+}
+
+fn delegate_summary(delegate: &crate::fixtures::DelegateSummaryData) -> String {
+    format!(
+        "{} · {} · {} ms",
+        delegate.status, delegate.task_id, delegate.elapsed_ms
+    )
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -1213,6 +1235,17 @@ mod tests {
         assert!(debug.contains("Harness"));
         assert!(debug.contains("Memory"));
         assert!(debug.contains("available"));
+    }
+
+    #[test]
+    fn delegate_summary_formats_status_task_and_elapsed() {
+        let delegate = crate::fixtures::DelegateSummaryData {
+            agent_name: "subtask-1".into(),
+            status: "busy".into(),
+            task_id: "task-42".into(),
+            elapsed_ms: 321,
+        };
+        assert_eq!(delegate_summary(&delegate), "busy · task-42 · 321 ms");
     }
 
     #[test]
