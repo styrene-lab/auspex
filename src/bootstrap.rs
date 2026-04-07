@@ -171,7 +171,7 @@ pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 const CARGO_MANIFEST: &str = include_str!("../Cargo.toml");
 
 #[cfg(not(target_arch = "wasm32"))]
-const OWNED_OMEGON_PID_FILE: &str = "auspex-embedded-omegon.pid";
+const OWNED_OMEGON_PID_FILE: &str = "auspex-owned-omegon.pid";
 
 #[cfg(not(target_arch = "wasm32"))]
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -328,7 +328,7 @@ impl BootstrapResult {
             controller = controller.with_instance_registry(load_registry_or_default(&path));
         }
         controller.set_scenario(crate::fixtures::DevScenario::Booting);
-        controller.set_bootstrap_note(Some(format!("Starting Omegon at {label}\u{2026}")));
+        controller.set_bootstrap_note(Some(format!("Starting owned Omegon at {label}\u{2026}")));
         Self {
             controller,
             source: BootstrapSource::SpawningOmegon { binary: label },
@@ -379,7 +379,7 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
 
     // No explicit URL, no running instance, no binary found.
     BootstrapResult::startup_failure(
-        "Auspex could not locate its embedded Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
+        "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
     )
 }
 
@@ -728,7 +728,7 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
     None
 }
 
-/// Spawn the embedded Omegon backend, wait for its stdout startup line,
+/// Spawn the owned Omegon backend, verify the launcher contract,
 /// then bootstrap from the control plane.
 ///
 /// This function blocks on process I/O and should be called from
@@ -762,7 +762,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
             Ok(result) => return result,
             Err(error) => {
                 eprintln!(
-                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); reaping conflicting embedded instances and spawning fresh one"
+                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); reaping conflicting owned instances and spawning fresh one"
                 );
                 reap_conflicting_omegon_children();
             }
@@ -774,16 +774,17 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     let label = binary.display().to_string();
 
     let mut child = match tokio::process::Command::new(binary)
-        .arg("embedded")
+        .arg("serve")
         .arg("--control-port")
         .arg("7842")
+        .arg("--strict-port")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
     {
         Err(error) => {
             return BootstrapResult::startup_failure(format!(
-                "Could not spawn embedded Omegon backend at {label}: {error}."
+                "Could not spawn owned Omegon backend at {label}: {error}."
             ));
         }
         Ok(child) => child,
@@ -795,7 +796,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         Some(stdout) => stdout,
         None => {
             return BootstrapResult::startup_failure(
-                "Embedded Omegon backend spawned but stdout was not captured.".into(),
+                "Owned Omegon backend spawned but stdout was not captured.".into(),
             );
         }
     };
@@ -823,7 +824,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
                             break;
                         }
                     }
-                    Ok(None) => break, // EOF
+                    Ok(None) => break,
                     Err(_) => break,
                 }
             }
@@ -833,50 +834,100 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
 
     let Some(info) = startup_info else {
         return BootstrapResult::startup_failure(format!(
-            "Embedded Omegon backend at {label} did not emit a startup JSON line within {}s.",
+            "Owned Omegon backend at {label} did not emit a startup JSON line within {}s.",
             SPAWN_TIMEOUT.as_secs()
         ));
     };
 
     let state_url = startup_state_url(&info).unwrap_or_else(|| DEFAULT_STATE_URL.to_string());
+    let startup_url = if !info.startup_url.is_empty() {
+        info.startup_url.clone()
+    } else {
+        startup_url_from_state_url(&state_url)
+    };
+    let ready_url = if !info.ready_url.is_empty() {
+        info.ready_url.clone()
+    } else {
+        state_url.replace("/api/state", "/api/readyz")
+    };
 
-    // Poll briefly for the HTTP endpoint to accept connections.
-    let client = reqwest::Client::builder()
+    let client = match reqwest::Client::builder()
         .timeout(Duration::from_secs(1))
         .build()
-        .ok();
+    {
+        Ok(client) => client,
+        Err(error) => {
+            return BootstrapResult::startup_failure(format!(
+                "Owned Omegon backend at {label} started but Auspex could not build an HTTP client: {error}"
+            ));
+        }
+    };
 
+    let mut startup_ok = false;
+    let mut startup_error = None;
     for _ in 0..20 {
-        let ready = if let Some(ref client) = client {
-            client
-                .get(&state_url)
-                .send()
-                .await
-                .map(|r| r.status().is_success())
-                .unwrap_or(false)
-        } else {
-            false
-        };
-
-        if ready {
-            return bootstrap_from_http_state_async(&state_url, &ConnectHints::from_env())
-                .await
-                .unwrap_or_else(|error| {
-                    if error.contains("control-plane schema") {
-                        BootstrapResult::compatibility_failure(error)
-                    } else {
-                        BootstrapResult::startup_failure(format!(
-                            "Embedded Omegon backend started at {label} but bootstrap failed: {error}"
-                        ))
-                    }
-                });
+        match client.get(&startup_url).send().await {
+            Ok(response) if response.status().is_success() => {
+                startup_ok = true;
+                break;
+            }
+            Ok(response) => startup_error = Some(format!("HTTP {}", response.status())),
+            Err(error) => startup_error = Some(error.to_string()),
         }
         tokio::time::sleep(SPAWN_POLL).await;
     }
+    if !startup_ok {
+        return BootstrapResult::startup_failure(format!(
+            "Owned Omegon backend at {label} emitted startup info but /api/startup at {startup_url} did not become reachable within 5s{}.",
+            startup_error
+                .as_deref()
+                .map(|e| format!(": {e}"))
+                .unwrap_or_default()
+        ));
+    }
 
-    BootstrapResult::startup_failure(format!(
-        "Embedded Omegon backend at {label} emitted startup info but HTTP endpoint at {state_url} did not become ready within 5s.",
-    ))
+    let mut ready_ok = false;
+    let mut ready_error = None;
+    for _ in 0..20 {
+        match client.get(&ready_url).send().await {
+            Ok(response) if response.status().is_success() => {
+                let body = response.text().await.unwrap_or_default();
+                let payload_ok = serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|value| value.get("ok").and_then(|ok| ok.as_bool()))
+                    .unwrap_or(false);
+                if payload_ok {
+                    ready_ok = true;
+                    break;
+                }
+                ready_error = Some(format!("payload {body}"));
+            }
+            Ok(response) => ready_error = Some(format!("HTTP {}", response.status())),
+            Err(error) => ready_error = Some(error.to_string()),
+        }
+        tokio::time::sleep(SPAWN_POLL).await;
+    }
+    if !ready_ok {
+        return BootstrapResult::startup_failure(format!(
+            "Owned Omegon backend at {label} satisfied startup discovery but /api/readyz at {ready_url} did not report ready within 5s{}.",
+            ready_error
+                .as_deref()
+                .map(|e| format!(": {e}"))
+                .unwrap_or_default()
+        ));
+    }
+
+    bootstrap_from_http_state_async(&state_url, &ConnectHints::from_env())
+        .await
+        .unwrap_or_else(|error| {
+            if error.contains("control-plane schema") {
+                BootstrapResult::compatibility_failure(error)
+            } else {
+                BootstrapResult::startup_failure(format!(
+                    "Owned Omegon backend started at {label} but bootstrap failed: {error}"
+                ))
+            }
+        })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -905,7 +956,7 @@ fn clear_owned_omegon_pid() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn embedded_omegon_pids() -> Vec<u32> {
+fn owned_omegon_pids() -> Vec<u32> {
     let output = match std::process::Command::new("ps")
         .args(["ax", "-o", "pid=,command="])
         .output()
@@ -923,7 +974,9 @@ fn embedded_omegon_pids() -> Vec<u32> {
         .filter_map(|line| {
             let trimmed = line.trim();
             let (pid, command) = trimmed.split_once(' ')?;
-            if !command.contains("omegon embedded --control-port 7842") {
+            if !(command.contains("omegon serve --control-port 7842 --strict-port")
+                || command.contains("omegon serve --strict-port --control-port 7842"))
+            {
                 return None;
             }
             pid.parse::<u32>().ok()
@@ -933,7 +986,7 @@ fn embedded_omegon_pids() -> Vec<u32> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn pid_is_owned_omegon(pid: u32) -> bool {
-    embedded_omegon_pids()
+    owned_omegon_pids()
         .into_iter()
         .any(|candidate| candidate == pid)
 }
@@ -953,7 +1006,7 @@ fn reap_owned_omegon_child() {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_conflicting_omegon_children() {
-    for pid in embedded_omegon_pids() {
+    for pid in owned_omegon_pids() {
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
             .status();
@@ -1215,7 +1268,7 @@ mod tests {
 
     #[test]
     fn embedded_omegon_pid_scan_ignores_unrelated_processes() {
-        assert!(embedded_omegon_pids().iter().all(|pid| *pid > 0));
+        assert!(owned_omegon_pids().iter().all(|pid| *pid > 0));
     }
 
     #[test]
