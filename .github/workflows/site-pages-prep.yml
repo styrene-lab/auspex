@@ -1,0 +1,53 @@
+name: Site Pages Prep
+
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: 'Git ref to build (branch, tag, or SHA). Defaults to current ref.'
+        required: false
+        type: string
+
+permissions:
+  contents: read
+
+env:
+  NODE_VERSION: '22'
+
+jobs:
+  build-site:
+    name: Build dormant Astro Pages artifact
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref || github.ref }}
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Build static site
+        working-directory: site
+        run: npm run build
+
+      - name: Assert dormant-only policy
+        run: |
+          set -euo pipefail
+          echo "This workflow prepares a Cloudflare Pages-compatible artifact only."
+          echo "It does not deploy, publish, or create a Pages project."
+
+      - name: Upload site artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: auspex-site-pages-artifact
+          path: site/dist/
+          if-no-files-found: error
