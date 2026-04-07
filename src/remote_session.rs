@@ -12,6 +12,7 @@ use crate::omegon_control::{
 use crate::session_event::SessionEvent;
 use crate::session_model::HostSessionModel;
 use crate::telemetry::{LatestTurnTelemetry, build_session_telemetry};
+use omegon_traits::IpcStateSnapshot;
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -251,6 +252,21 @@ impl RemoteHostSession {
     }
 
     #[allow(dead_code)]
+    pub fn apply_snapshot(&mut self, snapshot: OmegonStateSnapshot) -> bool {
+        self.apply_session_event(SessionEvent::StateSnapshot {
+            data: Box::new(snapshot),
+        })
+    }
+
+    #[allow(dead_code)]
+    pub fn refresh_from_ipc_state(&mut self, snapshot: &IpcStateSnapshot) -> bool {
+        self.apply_snapshot(project_ipc_state_snapshot(
+            snapshot,
+            self.dispatcher_binding.clone(),
+        ))
+    }
+
+    #[allow(dead_code)]
     pub fn apply_ipc_event(&mut self, event: omegon_traits::IpcEventPayload) -> bool {
         self.apply_session_event(event.into())
     }
@@ -269,6 +285,8 @@ impl RemoteHostSession {
                 self.openspec = data.openspec;
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
+                self.harness_snapshot = data.harness.clone();
+                self.instance_descriptor = data.instance_descriptor.clone();
                 let previous_dispatcher = self.dispatcher_binding.take();
                 self.dispatcher_binding =
                     reconcile_dispatcher_binding(previous_dispatcher.clone(), data.dispatcher);
@@ -700,7 +718,12 @@ impl HostSessionModel for RemoteHostSession {
             memory_available: h.map(|h| h.memory_available).unwrap_or(true),
             cleave_available: h.map(|h| h.cleave_available).unwrap_or(true),
             memory_warning: h.and_then(|h| h.memory_warning.clone()),
-            active_delegate_count: h.map(|h| h.active_delegates.len()).unwrap_or(0),
+            active_delegate_count: h
+                .and_then(|h| {
+                    h.reported_active_delegate_count
+                        .or(Some(h.active_delegates.len()))
+                })
+                .unwrap_or(0),
             active_delegates: h
                 .map(|h| {
                     h.active_delegates
@@ -873,6 +896,235 @@ impl HostSessionModel for RemoteHostSession {
         self.composer.clear();
         true
     }
+}
+
+#[allow(dead_code)]
+fn project_ipc_state_snapshot(
+    snapshot: &IpcStateSnapshot,
+    dispatcher: Option<crate::omegon_control::DispatcherBindingSnapshot>,
+) -> OmegonStateSnapshot {
+    OmegonStateSnapshot {
+        design: crate::omegon_control::DesignSnapshot {
+            focused: snapshot.design_tree.focused.as_ref().map(|focused| {
+                crate::omegon_control::FocusedNode {
+                    id: focused.id.clone(),
+                    title: focused.title.clone(),
+                    status: focused.status.clone(),
+                    open_questions: focused.open_questions.clone(),
+                    decisions: focused.decisions,
+                    children: focused.children,
+                }
+            }),
+            implementing: snapshot
+                .design_tree
+                .implementing
+                .iter()
+                .map(|node| crate::omegon_control::NodeBrief {
+                    id: node.id.clone(),
+                    title: node.title.clone(),
+                    status: node.status.clone(),
+                })
+                .collect(),
+            actionable: snapshot
+                .design_tree
+                .actionable
+                .iter()
+                .map(|node| crate::omegon_control::NodeBrief {
+                    id: node.id.clone(),
+                    title: node.title.clone(),
+                    status: node.status.clone(),
+                })
+                .collect(),
+            all_nodes: snapshot
+                .design_tree
+                .nodes
+                .iter()
+                .map(|node| crate::omegon_control::NodeBrief {
+                    id: node.id.clone(),
+                    title: node.title.clone(),
+                    status: node.status.clone(),
+                })
+                .collect(),
+            counts: std::collections::HashMap::from([
+                ("total".into(), snapshot.design_tree.counts.total),
+                ("seed".into(), snapshot.design_tree.counts.seed),
+                ("exploring".into(), snapshot.design_tree.counts.exploring),
+                ("resolved".into(), snapshot.design_tree.counts.resolved),
+                ("decided".into(), snapshot.design_tree.counts.decided),
+                (
+                    "implementing".into(),
+                    snapshot.design_tree.counts.implementing,
+                ),
+                (
+                    "implemented".into(),
+                    snapshot.design_tree.counts.implemented,
+                ),
+                ("blocked".into(), snapshot.design_tree.counts.blocked),
+                ("deferred".into(), snapshot.design_tree.counts.deferred),
+                (
+                    "open_questions".into(),
+                    snapshot.design_tree.counts.open_questions,
+                ),
+            ]),
+        },
+        openspec: crate::omegon_control::OpenSpecSnapshot {
+            total_tasks: snapshot.openspec.total_tasks,
+            done_tasks: snapshot.openspec.done_tasks,
+        },
+        cleave: crate::omegon_control::CleaveSnapshot {
+            active: snapshot.cleave.active,
+            total_children: snapshot.cleave.total_children,
+            completed: snapshot.cleave.completed,
+            failed: snapshot.cleave.failed,
+        },
+        session: crate::omegon_control::SessionSnapshot {
+            turns: snapshot.session.turns,
+            tool_calls: snapshot.session.tool_calls,
+            compactions: snapshot.session.compactions,
+        },
+        harness: Some(project_ipc_harness_snapshot(snapshot)),
+        dispatcher,
+        instance_descriptor: Some(project_ipc_instance_descriptor(snapshot)),
+    }
+}
+
+#[allow(dead_code)]
+fn project_ipc_harness_snapshot(
+    snapshot: &IpcStateSnapshot,
+) -> crate::omegon_control::HarnessStatusSnapshot {
+    crate::omegon_control::HarnessStatusSnapshot {
+        git_branch: snapshot.session.git_branch.clone(),
+        git_detached: snapshot.session.git_detached,
+        thinking_level: snapshot.harness.thinking_level.clone(),
+        capability_tier: snapshot.harness.capability_tier.clone(),
+        providers: snapshot
+            .harness
+            .providers
+            .iter()
+            .map(|provider| crate::omegon_control::ProviderStatusSnapshot {
+                name: provider.name.clone(),
+                authenticated: provider.authenticated,
+                auth_method: None,
+                model: provider.model.clone(),
+            })
+            .collect(),
+        memory_available: snapshot.harness.memory_available,
+        cleave_available: snapshot.harness.cleave_available,
+        memory_warning: snapshot.harness.memory_warning.clone(),
+        active_delegates: Vec::new(),
+        reported_active_delegate_count: Some(snapshot.harness.active_delegate_count),
+    }
+}
+
+#[allow(dead_code)]
+fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanceDescriptor {
+    let instance = &snapshot.instance;
+    let workspace_id = (!instance.identity.workspace_id.is_empty())
+        .then(|| instance.identity.workspace_id.clone());
+    let session_id =
+        (!instance.identity.session_id.is_empty()).then(|| instance.identity.session_id.clone());
+    OmegonInstanceDescriptor {
+        identity: crate::omegon_control::OmegonInstanceIdentity {
+            instance_id: instance.identity.instance_id.clone(),
+            role: format_ipc_role(&instance.identity.role),
+            profile: instance.identity.profile.clone(),
+            status: format_ipc_health(&snapshot.health.state),
+        },
+        workspace: Some(crate::omegon_control::OmegonWorkspaceDescriptor {
+            cwd: Some(instance.placement.cwd.clone()),
+            workspace_id,
+            branch: snapshot.session.git_branch.clone(),
+        }),
+        control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
+            schema_version: instance.control_plane.schema_version as u32,
+            omegon_version: Some(instance.control_plane.omegon_version.clone()),
+            base_url: instance.control_plane.http_base.clone(),
+            startup_url: instance.control_plane.startup_url.clone(),
+            state_url: instance.control_plane.state_url.clone(),
+            health_url: None,
+            ready_url: None,
+            ws_url: instance.control_plane.ws_url.clone(),
+            auth_mode: instance.control_plane.auth_mode.clone(),
+            token_ref: None,
+            last_ready_at: None,
+            last_verified_at: None,
+            ipc_socket_path: instance.control_plane.ipc_socket_path.clone(),
+            capabilities: instance.control_plane.capabilities.clone(),
+        }),
+        runtime: Some(crate::omegon_control::OmegonRuntimeDescriptor {
+            backend: Some(format_ipc_deployment_kind(
+                &instance.runtime.deployment_kind,
+            )),
+            host: instance.placement.host.clone(),
+            pid: instance.placement.pid,
+            placement_id: None,
+            namespace: instance.placement.namespace.clone(),
+            pod_name: instance.placement.pod_name.clone(),
+            container_name: instance.placement.container_name.clone(),
+            health: Some(format_ipc_runtime_health(&instance.runtime.health)),
+            provider_ok: instance.runtime.provider_ok,
+            memory_ok: instance.runtime.memory_ok,
+            cleave_available: instance.runtime.cleave_available,
+            context_class: instance.runtime.context_class.clone(),
+            thinking_level: instance.runtime.thinking_level.clone(),
+            capability_tier: instance.runtime.capability_tier.clone(),
+        }),
+        session: Some(crate::omegon_control::OmegonSessionDescriptor { session_id }),
+        policy: Some(crate::omegon_control::OmegonPolicyDescriptor {
+            model: None,
+            thinking_level: instance.runtime.thinking_level.clone(),
+            capability_tier: instance.runtime.capability_tier.clone(),
+        }),
+    }
+}
+
+#[allow(dead_code)]
+fn format_ipc_role(role: &omegon_traits::OmegonRole) -> String {
+    match role {
+        omegon_traits::OmegonRole::PrimaryDriver => "primary-driver",
+        omegon_traits::OmegonRole::EmbeddedBackend => "embedded-backend",
+        omegon_traits::OmegonRole::Delegate => "delegate",
+        omegon_traits::OmegonRole::Worker => "worker",
+        omegon_traits::OmegonRole::RemoteAgent => "remote-agent",
+        omegon_traits::OmegonRole::Unknown => "unknown",
+    }
+    .into()
+}
+
+#[allow(dead_code)]
+fn format_ipc_health(health: &omegon_traits::IpcHealthState) -> String {
+    match health {
+        omegon_traits::IpcHealthState::Ready => "ready",
+        omegon_traits::IpcHealthState::Degraded => "degraded",
+        omegon_traits::IpcHealthState::Starting => "starting",
+        omegon_traits::IpcHealthState::Failed => "failed",
+    }
+    .into()
+}
+
+#[allow(dead_code)]
+fn format_ipc_runtime_health(health: &omegon_traits::OmegonRuntimeHealth) -> String {
+    match health {
+        omegon_traits::OmegonRuntimeHealth::Ready => "ready",
+        omegon_traits::OmegonRuntimeHealth::Degraded => "degraded",
+        omegon_traits::OmegonRuntimeHealth::Starting => "starting",
+        omegon_traits::OmegonRuntimeHealth::Failed => "failed",
+    }
+    .into()
+}
+
+#[allow(dead_code)]
+fn format_ipc_deployment_kind(kind: &omegon_traits::OmegonDeploymentKind) -> String {
+    match kind {
+        omegon_traits::OmegonDeploymentKind::InteractiveTui => "interactive-tui",
+        omegon_traits::OmegonDeploymentKind::EmbeddedBackend => "embedded-backend",
+        omegon_traits::OmegonDeploymentKind::HomelabService => "homelab-service",
+        omegon_traits::OmegonDeploymentKind::KubernetesWorker => "kubernetes-worker",
+        omegon_traits::OmegonDeploymentKind::CleaveChild => "cleave-child",
+        omegon_traits::OmegonDeploymentKind::RemoteAgent => "remote-agent",
+        omegon_traits::OmegonDeploymentKind::Unknown => "unknown",
+    }
+    .into()
 }
 
 fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> InstanceDescriptorData {
@@ -1440,6 +1692,7 @@ mod tests {
                 cleave_available: true,
                 memory_warning: None,
                 active_delegates: vec![],
+                reported_active_delegate_count: None,
             }),
             dispatcher: Some(DispatcherBindingSnapshot {
                 expected_role: "primary-driver".into(),
@@ -1655,6 +1908,178 @@ mod tests {
             }
             other => panic!("expected tool block, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn ipc_state_refresh_updates_authoritative_sections_in_place() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        let ipc_state = omegon_traits::IpcStateSnapshot {
+            schema_version: 1,
+            omegon_version: "0.16.0".into(),
+            instance: omegon_traits::OmegonInstanceDescriptor {
+                schema_version: 2,
+                identity: omegon_traits::OmegonIdentity {
+                    instance_id: "omg_primary_01HVTEST".into(),
+                    workspace_id: "repo:main".into(),
+                    session_id: "session_01HVTEST".into(),
+                    role: omegon_traits::OmegonRole::PrimaryDriver,
+                    profile: "primary-interactive".into(),
+                },
+                ownership: omegon_traits::OmegonOwnership {
+                    owner_kind: omegon_traits::OmegonOwnerKind::Auspex,
+                    owner_id: "auspex".into(),
+                    parent_instance_id: None,
+                },
+                placement: omegon_traits::OmegonPlacement {
+                    kind: omegon_traits::OmegonPlacementKind::LocalProcess,
+                    host: Some("desktop:local".into()),
+                    pid: Some(9001),
+                    cwd: "/repo/main".into(),
+                    namespace: None,
+                    pod_name: None,
+                    container_name: None,
+                },
+                control_plane: omegon_traits::OmegonControlPlane {
+                    server_instance_id: "server-1".into(),
+                    protocol_version: omegon_traits::IPC_PROTOCOL_VERSION,
+                    schema_version: 2,
+                    omegon_version: "0.16.0".into(),
+                    capabilities: vec!["state.snapshot".into(), "events.stream".into()],
+                    ipc_socket_path: Some("/tmp/omegon.sock".into()),
+                    http_base: Some("http://127.0.0.1:7842".into()),
+                    startup_url: Some("http://127.0.0.1:7842/api/startup".into()),
+                    state_url: Some("http://127.0.0.1:7842/api/state".into()),
+                    ws_url: Some("ws://127.0.0.1:7842/ws?token=test".into()),
+                    auth_mode: Some("ephemeral-bearer".into()),
+                    auth_source: Some("generated".into()),
+                },
+                runtime: omegon_traits::OmegonRuntime {
+                    deployment_kind: omegon_traits::OmegonDeploymentKind::EmbeddedBackend,
+                    health: omegon_traits::OmegonRuntimeHealth::Ready,
+                    provider_ok: true,
+                    memory_ok: true,
+                    cleave_available: true,
+                    context_class: Some("Squad".into()),
+                    thinking_level: Some("high".into()),
+                    capability_tier: Some("gloriana".into()),
+                },
+            },
+            session: omegon_traits::IpcSessionSnapshot {
+                cwd: "/repo/main".into(),
+                pid: 9001,
+                started_at: "2026-04-07T00:00:00Z".into(),
+                turns: 22,
+                tool_calls: 55,
+                compactions: 3,
+                busy: false,
+                git_branch: Some("main".into()),
+                git_detached: false,
+                session_id: Some("session_01HVTEST".into()),
+            },
+            design_tree: omegon_traits::IpcDesignTreeSnapshot {
+                counts: omegon_traits::IpcDesignCounts {
+                    total: 4,
+                    seed: 0,
+                    exploring: 1,
+                    resolved: 0,
+                    decided: 1,
+                    implementing: 1,
+                    implemented: 1,
+                    blocked: 0,
+                    deferred: 0,
+                    open_questions: 2,
+                },
+                focused: Some(omegon_traits::IpcFocusedNode {
+                    id: "auspex-remote".into(),
+                    title: "Remote session adapter".into(),
+                    status: "implementing".into(),
+                    open_questions: vec!["How should reconnect work?".into()],
+                    decisions: 1,
+                    children: 2,
+                }),
+                implementing: vec![omegon_traits::IpcNodeBrief {
+                    id: "auspex-remote".into(),
+                    title: "Remote session adapter".into(),
+                    status: "implementing".into(),
+                    parent: None,
+                    open_questions: 1,
+                    tags: vec![],
+                }],
+                actionable: vec![],
+                nodes: vec![omegon_traits::IpcNodeBrief {
+                    id: "auspex-remote".into(),
+                    title: "Remote session adapter".into(),
+                    status: "implementing".into(),
+                    parent: None,
+                    open_questions: 1,
+                    tags: vec![],
+                }],
+            },
+            openspec: omegon_traits::IpcOpenSpecSnapshot {
+                changes: vec![],
+                total_tasks: 9,
+                done_tasks: 4,
+            },
+            cleave: omegon_traits::IpcCleaveSnapshot {
+                active: false,
+                total_children: 2,
+                completed: 2,
+                failed: 0,
+                children: vec![],
+            },
+            harness: omegon_traits::IpcHarnessSnapshot {
+                context_class: "Squad".into(),
+                thinking_level: "high".into(),
+                capability_tier: "gloriana".into(),
+                memory_available: true,
+                cleave_available: true,
+                memory_warning: None,
+                memory: omegon_traits::IpcMemorySnapshot {
+                    active_facts: 0,
+                    project_facts: 0,
+                    working_facts: 0,
+                    episodes: 0,
+                },
+                providers: vec![omegon_traits::IpcProviderSnapshot {
+                    name: "Anthropic".into(),
+                    authenticated: true,
+                    model: Some("claude-opus".into()),
+                    runtime_status: None,
+                    recent_failure_count: None,
+                    last_failure_kind: None,
+                }],
+                mcp_server_count: 0,
+                mcp_tool_count: 0,
+                active_persona: None,
+                active_tone: None,
+                active_delegate_count: 3,
+            },
+            health: omegon_traits::IpcHealthSnapshot {
+                state: omegon_traits::IpcHealthState::Ready,
+                memory_ok: true,
+                provider_ok: true,
+                checked_at: "2026-04-07T00:00:10Z".into(),
+            },
+        };
+
+        assert!(session.refresh_from_ipc_state(&ipc_state));
+
+        let data = session.session_data();
+        assert_eq!(data.session_turns, 22);
+        assert_eq!(data.session_tool_calls, 55);
+        assert_eq!(data.thinking_level, "high");
+        assert_eq!(data.capability_tier, "gloriana");
+        assert_eq!(data.active_delegate_count, 3);
+        assert_eq!(data.providers[0].model.as_deref(), Some("claude-opus"));
+        assert_eq!(
+            data.dispatcher_binding
+                .as_ref()
+                .unwrap()
+                .expected_model
+                .as_deref(),
+            Some("anthropic:claude-sonnet-4-6")
+        );
     }
 
     #[test]

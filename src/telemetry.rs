@@ -27,7 +27,12 @@ pub fn build_session_telemetry(
     latest_turn: &LatestTurnTelemetry,
 ) -> SessionTelemetryData {
     let authenticated = harness
-        .map(|h| h.providers.iter().filter(|provider| provider.authenticated).count())
+        .map(|h| {
+            h.providers
+                .iter()
+                .filter(|provider| provider.authenticated)
+                .count()
+        })
         .unwrap_or(0);
     let total = harness.map(|h| h.providers.len()).unwrap_or(0);
     let provider_summary = if total == 0 {
@@ -45,7 +50,10 @@ pub fn build_session_telemetry(
                 } else {
                     binding.dispatcher_instance_id.as_str()
                 },
-                binding.expected_model.as_deref().unwrap_or("model unreported")
+                binding
+                    .expected_model
+                    .as_deref()
+                    .unwrap_or("model unreported")
             )
         })
         .or_else(|| {
@@ -101,7 +109,8 @@ pub fn build_session_telemetry(
                     route_id: Some("session-dispatcher".into()),
                     instance_id: (!binding.dispatcher_instance_id.is_empty())
                         .then(|| binding.dispatcher_instance_id.clone()),
-                    role: (!binding.expected_role.is_empty()).then(|| binding.expected_role.clone()),
+                    role: (!binding.expected_role.is_empty())
+                        .then(|| binding.expected_role.clone()),
                     profile: (!binding.expected_profile.is_empty())
                         .then(|| binding.expected_profile.clone()),
                     startup_url: None,
@@ -120,7 +129,10 @@ pub fn summarize_provider_inventory(providers: &[ProviderInfo]) -> String {
         return "providers unavailable".into();
     }
 
-    let authenticated = providers.iter().filter(|provider| provider.authenticated).count();
+    let authenticated = providers
+        .iter()
+        .filter(|provider| provider.authenticated)
+        .count();
     format!("{authenticated} / {} authenticated", providers.len())
 }
 
@@ -265,10 +277,17 @@ pub fn aggregate_lifecycle_telemetry(
                 status,
                 freshness
             ),
-            None => format!("{} attached instance(s) · {}", attached_instances.len(), status),
+            None => format!(
+                "{} attached instance(s) · {}",
+                attached_instances.len(),
+                status
+            ),
         }
     } else {
-        format!("{} attached instance(s) · route unavailable", attached_instances.len())
+        format!(
+            "{} attached instance(s) · route unavailable",
+            attached_instances.len()
+        )
     };
 
     LifecycleTelemetryData {
@@ -369,7 +388,8 @@ fn project_lifecycle_instance(
                 .as_ref()
                 .map(|freshness| format!("{:?}", freshness).to_ascii_lowercase())
         }),
-        last_seen_at: registry_record.and_then(|record| record.observed.health.last_seen_at.clone()),
+        last_seen_at: registry_record
+            .and_then(|record| record.observed.health.last_seen_at.clone()),
     }
 }
 
@@ -463,7 +483,10 @@ mod tests {
 
         assert_eq!(telemetry.provider_summary, "1 / 2 authenticated");
         assert_eq!(telemetry.lifecycle_summary, "1 active delegate(s)");
-        assert_eq!(telemetry.route_summary, "dispatcher dispatcher-01 · anthropic:claude-sonnet-4-6");
+        assert_eq!(
+            telemetry.route_summary,
+            "dispatcher dispatcher-01 · anthropic:claude-sonnet-4-6"
+        );
         assert_eq!(telemetry.latest_turn_summary, "turns 7 · tool calls 11");
         assert_eq!(telemetry.latest_estimated_tokens, Some(100));
         assert_eq!(telemetry.latest_actual_input_tokens, Some(80));
@@ -574,7 +597,18 @@ mod tests {
         );
 
         assert_eq!(lifecycle.attached_count, 1);
-        assert_eq!(lifecycle.selected_route_id.as_deref(), Some(HOST_CONTROL_PLANE_ROUTE_ID));
-        assert_eq!(lifecycle.selected_instance.as_ref().unwrap().freshness.as_deref(), Some("fresh"));
+        assert_eq!(
+            lifecycle.selected_route_id.as_deref(),
+            Some(HOST_CONTROL_PLANE_ROUTE_ID)
+        );
+        assert_eq!(
+            lifecycle
+                .selected_instance
+                .as_ref()
+                .unwrap()
+                .freshness
+                .as_deref(),
+            Some("fresh")
+        );
     }
 }

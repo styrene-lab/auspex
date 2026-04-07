@@ -1,14 +1,14 @@
 use crate::audit_timeline::{AuditTimelineQuery, AuditTimelineStore, AuditTimelineView};
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
-    HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState,
-    WorkData,
+    HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
 };
 use crate::instance_registry::{
     InstanceRegistryStore, default_instance_registry_path, persist as persist_instance_registry,
 };
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
+use crate::session_event::SessionEvent;
 use crate::session_model::HostSessionModel;
 use crate::state_engine::{AttachedInstanceRecord, AttachedInstanceStateEngine};
 
@@ -317,7 +317,8 @@ impl AppController {
     }
 
     pub fn select_command_route(&mut self, route_id: &str) {
-        self.attached_instance_engine.select_command_route(route_id.to_string());
+        self.attached_instance_engine
+            .select_command_route(route_id.to_string());
         self.refresh_telemetry_snapshot();
     }
 
@@ -327,7 +328,8 @@ impl AppController {
     }
 
     pub fn evaluate_instance_lifecycle(&mut self, now_epoch_seconds: u64) {
-        self.attached_instance_engine.evaluate_lifecycle_policy(now_epoch_seconds);
+        self.attached_instance_engine
+            .evaluate_lifecycle_policy(now_epoch_seconds);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
@@ -351,7 +353,8 @@ impl AppController {
 
     #[allow(dead_code)]
     pub fn purge_stale_instance_records(&mut self, active_instance_ids: &[String]) {
-        self.attached_instance_engine.purge_stale_instances(active_instance_ids);
+        self.attached_instance_engine
+            .purge_stale_instances(active_instance_ids);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
@@ -614,9 +617,11 @@ impl AppController {
         #[cfg(not(target_arch = "wasm32"))]
         if !self.settings_auth_state.providers.is_empty() {
             for provider in &mut data.providers {
-                if let Some(settings_provider) = self.settings_auth_state.providers.iter().find(|candidate| {
-                    provider_status_key(&candidate.name) == provider_status_key(&provider.name)
-                }) {
+                if let Some(settings_provider) =
+                    self.settings_auth_state.providers.iter().find(|candidate| {
+                        provider_status_key(&candidate.name) == provider_status_key(&provider.name)
+                    })
+                {
                     provider.auth_method = settings_provider.auth_method.clone();
                     if provider.model.is_none() {
                         provider.model = settings_provider.model.clone();
@@ -692,12 +697,10 @@ impl AppController {
                     .providers
                     .iter()
                     .map(|provider| {
-                        let existing = existing_providers
-                            .iter()
-                            .find(|existing| {
-                                provider_status_key(&existing.name)
-                                    == provider_status_key(&provider.name)
-                            });
+                        let existing = existing_providers.iter().find(|existing| {
+                            provider_status_key(&existing.name)
+                                == provider_status_key(&provider.name)
+                        });
                         crate::fixtures::ProviderInfo {
                             name: provider.name.clone(),
                             authenticated: provider.authenticated,
@@ -757,12 +760,10 @@ impl AppController {
                     .providers
                     .iter()
                     .map(|provider| {
-                        let existing = existing_providers
-                            .iter()
-                            .find(|existing| {
-                                provider_status_key(&existing.name)
-                                    == provider_status_key(&provider.name)
-                            });
+                        let existing = existing_providers.iter().find(|existing| {
+                            provider_status_key(&existing.name)
+                                == provider_status_key(&provider.name)
+                        });
                         crate::fixtures::ProviderInfo {
                             name: provider.name.clone(),
                             authenticated: provider.authenticated,
@@ -793,7 +794,8 @@ impl AppController {
                     );
                 }
                 self.settings_auth_state.last_error = None;
-                self.settings_auth_state.last_action = Some(format!("auth.{}", action.subcommand()));
+                self.settings_auth_state.last_action =
+                    Some(format!("auth.{}", action.subcommand()));
                 self.settings_auth_state.inventory_refreshed = true;
                 self.refresh_telemetry_snapshot();
                 Ok(())
@@ -930,7 +932,10 @@ impl AppController {
                 ),
                 format!(
                     "instance: {}\nrole: {}\nprofile: {}\nbase_url: {}\nauth_mode: {}",
-                    control_plane.instance_id.as_deref().unwrap_or("not reported"),
+                    control_plane
+                        .instance_id
+                        .as_deref()
+                        .unwrap_or("not reported"),
                     control_plane.role.as_deref().unwrap_or("not reported"),
                     control_plane.profile.as_deref().unwrap_or("not reported"),
                     control_plane.base_url.as_deref().unwrap_or("not reported"),
@@ -955,14 +960,21 @@ impl AppController {
             session_key,
             &session,
         );
-        self.attached_instance_engine.select_command_route(selected_route);
+        self.attached_instance_engine
+            .select_command_route(selected_route);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
     }
 
-    fn effective_provider_inventory(&self, model_data: &SessionData) -> Vec<crate::fixtures::ProviderInfo> {
+    fn effective_provider_inventory(
+        &self,
+        model_data: &SessionData,
+    ) -> Vec<crate::fixtures::ProviderInfo> {
         #[cfg(not(target_arch = "wasm32"))]
         if !self.settings_auth_state.providers.is_empty() {
-            return merge_provider_inventory(&model_data.providers, &self.settings_auth_state.providers);
+            return merge_provider_inventory(
+                &model_data.providers,
+                &self.settings_auth_state.providers,
+            );
         }
         model_data.providers.clone()
     }
@@ -1043,12 +1055,12 @@ impl AppController {
 
     pub fn cancel_command(&self) -> Option<TargetedCommand> {
         match &self.session {
-            SessionSource::Remote(session) if session.is_run_active() => Some(
-                TargetedCommand::legacy_json(
+            SessionSource::Remote(session) if session.is_run_active() => {
+                Some(TargetedCommand::legacy_json(
                     self.command_target(),
                     serde_json::json!({ "type": "cancel" }).to_string(),
-                ),
-            ),
+                ))
+            }
             _ => None,
         }
     }
@@ -1097,22 +1109,55 @@ impl AppController {
             SessionSource::Remote(session) => {
                 let applied = session.apply_event_json(json)?;
                 if applied {
-                    self.rebuild_attached_instances();
-                    let active_instance_ids: Vec<String> = self
-                        .attached_instances()
-                        .iter()
-                        .filter(|instance| instance.session_key == self.session_audit_key())
-                        .map(|instance| instance.instance_id.clone())
-                        .collect();
-                    self.purge_stale_instance_records(&active_instance_ids);
-                    self.refresh_telemetry_snapshot();
-                    self.persist_instance_registry();
-                    self.refresh_audit_timeline();
+                    self.handle_session_mutation();
                 }
                 Ok(applied)
             }
             SessionSource::Mock(_) => Ok(false),
         }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[allow(dead_code)]
+    pub fn apply_ipc_event(
+        &mut self,
+        client: &crate::ipc_client::IpcCommandClient,
+        event: omegon_traits::IpcEventPayload,
+    ) -> Result<bool, String> {
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let normalized: SessionEvent = event.into();
+                let applied = match &normalized {
+                    SessionEvent::HarnessChanged | SessionEvent::StateChanged { .. } => {
+                        let runtime = tokio::runtime::Handle::try_current().map_err(|error| {
+                            format!("tokio runtime unavailable for IPC state refresh: {error}")
+                        })?;
+                        let snapshot = runtime.block_on(client.get_state())?;
+                        session.refresh_from_ipc_state(&snapshot)
+                    }
+                    _ => session.apply_session_event(normalized),
+                };
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
+    }
+
+    fn handle_session_mutation(&mut self) {
+        self.rebuild_attached_instances();
+        let active_instance_ids: Vec<String> = self
+            .attached_instances()
+            .iter()
+            .filter(|instance| instance.session_key == self.session_audit_key())
+            .map(|instance| instance.instance_id.clone())
+            .collect();
+        self.purge_stale_instance_records(&active_instance_ids);
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
+        self.refresh_audit_timeline();
     }
 
     pub fn parse_slash_command_result(json: &str) -> Option<SlashCommandResult> {
@@ -1188,7 +1233,11 @@ mod tests {
         let routes = controller.available_command_routes();
         assert_eq!(routes.len(), 1);
         assert_eq!(controller.attached_instances().len(), 1);
-        assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
+        assert!(
+            routes
+                .iter()
+                .any(|route| route.route_id == "session-dispatcher")
+        );
         assert_eq!(controller.selected_command_route_id(), "session-dispatcher");
     }
 
@@ -1267,26 +1316,38 @@ mod tests {
             }],
         };
 
-        let controller = AppController::from_remote_snapshot_json_with_registry(
-            REMOTE_SNAPSHOT_JSON,
-            registry,
-        )
-        .unwrap();
+        let controller =
+            AppController::from_remote_snapshot_json_with_registry(REMOTE_SNAPSHOT_JSON, registry)
+                .unwrap();
 
         let routes = controller.available_command_routes();
-        assert!(routes.iter().any(|route| route.route_id == "host-control-plane"));
-        assert!(routes.iter().any(|route| route.route_id == "session-dispatcher"));
+        assert!(
+            routes
+                .iter()
+                .any(|route| route.route_id == "host-control-plane")
+        );
+        assert!(
+            routes
+                .iter()
+                .any(|route| route.route_id == "session-dispatcher")
+        );
     }
 
     #[test]
     fn selecting_host_control_plane_changes_command_target() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.select_command_route("host-control-plane");
         controller.update_draft("ship it");
 
-        let command = controller.submit_prompt_command().expect("targeted command");
+        let command = controller
+            .submit_prompt_command()
+            .expect("targeted command");
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
-        assert_eq!(command.target.dispatcher_instance_id, Some("omg_primary_01HVDEMO".into()));
+        assert_eq!(
+            command.target.dispatcher_instance_id,
+            Some("omg_primary_01HVDEMO".into())
+        );
     }
 
     #[test]
@@ -1303,16 +1364,20 @@ mod tests {
             dispatcher_instance_id: None,
             registry_record: None,
         });
-        assert!(controller
-            .attached_instances()
-            .iter()
-            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .any(|instance| instance.instance_id == "omg_host_01HVTEST")
+        );
 
         controller.detach_instance_record("omg_host_01HVTEST");
-        assert!(!controller
-            .attached_instances()
-            .iter()
-            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
+        assert!(
+            !controller
+                .attached_instances()
+                .iter()
+                .any(|instance| instance.instance_id == "omg_host_01HVTEST")
+        );
     }
 
     #[test]
@@ -1343,13 +1408,17 @@ mod tests {
 
         controller.purge_stale_instance_records(&["omg_dispatcher_01HVTEST".into()]);
         assert_eq!(controller.attached_instances().len(), 1);
-        assert_eq!(controller.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(
+            controller.attached_instances()[0].instance_id,
+            "omg_dispatcher_01HVTEST"
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn session_data_merges_settings_auth_metadata_without_overriding_runtime_auth() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.settings_auth_state.providers = vec![crate::fixtures::ProviderInfo {
             name: "Anthropic/Claude".into(),
             authenticated: false,
@@ -1398,7 +1467,8 @@ mod tests {
 
     #[test]
     fn remote_auth_refresh_rehydrates_prompt_execution_state() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         assert!(controller.can_submit());
 
         if let SessionSource::Remote(session) = &mut controller.session {
@@ -1430,7 +1500,8 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
     fn effective_provider_inventory_preserves_runtime_models_and_appends_settings_only_providers() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.settings_auth_state.providers = vec![
             crate::fixtures::ProviderInfo {
                 name: "Anthropic/Claude".into(),
@@ -1446,7 +1517,8 @@ mod tests {
             },
         ];
 
-        let providers = controller.effective_provider_inventory(&controller.session.model().session_data());
+        let providers =
+            controller.effective_provider_inventory(&controller.session.model().session_data());
 
         assert_eq!(providers.len(), 2);
         assert_eq!(providers[0].name, "Anthropic");
@@ -1519,7 +1591,10 @@ mod tests {
             Some("omg_primary_01HVDEMO")
         );
         assert_eq!(controller.messages().len(), 1);
-        assert_eq!(controller.summary().activity, "Submitting prompt to Omegon remote session");
+        assert_eq!(
+            controller.summary().activity,
+            "Submitting prompt to Omegon remote session"
+        );
         assert_eq!(controller.summary().activity_kind, ActivityKind::Waiting);
         assert_eq!(controller.composer().draft(), "");
         assert_eq!(
@@ -1558,6 +1633,68 @@ mod tests {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn ipc_invalidation_events_require_runtime_refresh() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let client = crate::ipc_client::IpcCommandClient::new("/definitely/not/here.sock");
+
+        let error = controller
+            .apply_ipc_event(&client, omegon_traits::IpcEventPayload::HarnessChanged)
+            .expect_err("missing IPC socket should fail refresh");
+        assert!(
+            error.contains("IPC")
+                || error.contains("ipc")
+                || error.contains("socket")
+                || error.contains("No such file")
+                || error.contains("os error")
+                || error.contains("tokio runtime unavailable")
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn ipc_non_invalidation_events_apply_without_refresh_client() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let client = crate::ipc_client::IpcCommandClient::new("/definitely/not/here.sock");
+
+        assert!(
+            controller
+                .apply_ipc_event(
+                    &client,
+                    omegon_traits::IpcEventPayload::TurnStarted { turn: 9 }
+                )
+                .unwrap()
+        );
+        if let SessionSource::Remote(session) = &mut controller.session {
+            assert!(session.apply_session_event(SessionEvent::MessageStart {
+                role: "assistant".into(),
+            }));
+        } else {
+            panic!("expected remote session source");
+        }
+        assert!(
+            controller
+                .apply_ipc_event(
+                    &client,
+                    omegon_traits::IpcEventPayload::MessageDelta {
+                        text: "hello".into()
+                    }
+                )
+                .unwrap()
+        );
+        assert!(
+            controller
+                .apply_ipc_event(&client, omegon_traits::IpcEventPayload::MessageCompleted)
+                .unwrap()
+        );
+
+        assert_eq!(controller.transcript().active_turn, Some(9));
+        assert_eq!(controller.messages().last().unwrap().text, "hello");
+    }
+
     #[test]
     fn switch_session_mode_swaps_between_mock_and_remote_demo() {
         let mut controller = AppController::default();
@@ -1579,19 +1716,40 @@ mod tests {
             controller.summary().connection,
             "Connected to local host session"
         );
-        assert!(controller.attached_instances().iter().all(|instance| instance.session_key == "mock:ready"));
-        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .all(|instance| instance.session_key == "mock:ready")
+        );
+        assert!(
+            controller
+                .available_command_routes()
+                .iter()
+                .all(|route| route.route_id == "local-shell")
+        );
     }
 
     #[test]
     fn leaving_live_mode_detaches_live_session_owned_instances() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         assert!(!controller.attached_instances().is_empty());
 
         controller.switch_session_mode("mock");
 
-        assert!(controller.attached_instances().iter().all(|instance| instance.session_key == "mock:ready"));
-        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .all(|instance| instance.session_key == "mock:ready")
+        );
+        assert!(
+            controller
+                .available_command_routes()
+                .iter()
+                .all(|route| route.route_id == "local-shell")
+        );
     }
 
     #[test]
@@ -1622,18 +1780,22 @@ mod tests {
                 .content
                 .contains("scaffold only proves")
         );
-        assert!(controller
-            .audit_timeline()
-            .entries
-            .iter()
-            .any(|entry| entry.kind == AuditEntryKind::Telemetry
-                && entry.label == "Telemetry · Provider summary"));
-        assert!(controller
-            .audit_timeline()
-            .entries
-            .iter()
-            .any(|entry| entry.kind == AuditEntryKind::Telemetry
-                && entry.label == "Telemetry · Route summary"));
+        assert!(
+            controller
+                .audit_timeline()
+                .entries
+                .iter()
+                .any(|entry| entry.kind == AuditEntryKind::Telemetry
+                    && entry.label == "Telemetry · Provider summary")
+        );
+        assert!(
+            controller
+                .audit_timeline()
+                .entries
+                .iter()
+                .any(|entry| entry.kind == AuditEntryKind::Telemetry
+                    && entry.label == "Telemetry · Route summary")
+        );
     }
 
     #[test]
@@ -1757,7 +1919,8 @@ mod tests {
 
     #[test]
     fn state_snapshot_without_live_instances_purges_session_registry_entries() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         assert!(!controller.attached_instances().is_empty());
 
         controller
@@ -1767,7 +1930,12 @@ mod tests {
             .unwrap();
 
         assert!(controller.attached_instances().is_empty());
-        assert!(controller.available_command_routes().iter().all(|route| route.route_id == "local-shell"));
+        assert!(
+            controller
+                .available_command_routes()
+                .iter()
+                .all(|route| route.route_id == "local-shell")
+        );
     }
 
     #[test]
@@ -1863,26 +2031,31 @@ mod tests {
 
         assert!(!readiness.ready);
         assert_eq!(readiness.title, "Preparing operator controls");
-        assert!(readiness
-            .steps
-            .iter()
-            .any(|step| step.label == "Auth inventory"
-                && step.state == crate::fixtures::ReadinessStepState::Active));
+        assert!(
+            readiness
+                .steps
+                .iter()
+                .any(|step| step.label == "Auth inventory"
+                    && step.state == crate::fixtures::ReadinessStepState::Active)
+        );
     }
 
     #[test]
     fn operator_readiness_becomes_ready_after_auth_inventory_refresh() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         let _ = controller.refresh_settings_auth_status();
         let readiness = controller.operator_readiness();
 
         assert!(readiness.ready);
         assert_eq!(readiness.title, "Ready");
-        assert!(readiness
-            .steps
-            .iter()
-            .any(|step| step.label == "Auth inventory"
-                && step.state == crate::fixtures::ReadinessStepState::Complete));
+        assert!(
+            readiness
+                .steps
+                .iter()
+                .any(|step| step.label == "Auth inventory"
+                    && step.state == crate::fixtures::ReadinessStepState::Complete)
+        );
     }
 
     #[test]
@@ -2062,7 +2235,8 @@ mod tests {
 
     #[test]
     fn session_data_telemetry_includes_selected_route_lifecycle_freshness() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         controller.evaluate_instance_lifecycle(100);
 
@@ -2086,12 +2260,16 @@ mod tests {
                 .and_then(|instance| instance.freshness.as_deref()),
             Some("fresh")
         );
-        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · ready · freshness fresh");
+        assert_eq!(
+            session.telemetry.lifecycle_summary,
+            "1 attached instance(s) · ready · freshness fresh"
+        );
     }
 
     #[test]
     fn session_data_telemetry_updates_when_selected_route_becomes_stale() {
-        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
 
         let instance_id = controller.attached_instances()[0].instance_id.clone();
         controller.attach_instance_record(AttachedInstanceRecord {
@@ -2153,6 +2331,9 @@ mod tests {
                 .and_then(|instance| instance.status.as_deref()),
             Some("ready")
         );
-        assert_eq!(session.telemetry.lifecycle_summary, "1 attached instance(s) · ready · freshness fresh");
+        assert_eq!(
+            session.telemetry.lifecycle_summary,
+            "1 attached instance(s) · ready · freshness fresh"
+        );
     }
 }

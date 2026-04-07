@@ -5,7 +5,7 @@ use std::time::Duration;
 
 use omegon_traits::{
     AcceptedResponse, HelloRequest, IPC_PROTOCOL_VERSION, IpcEnvelope, IpcEnvelopeKind,
-    SlashCommandResponse, SubmitPromptRequest,
+    IpcStateSnapshot, SlashCommandResponse, SubmitPromptRequest,
 };
 use serde_json::Value;
 use tokio::net::UnixStream;
@@ -49,7 +49,18 @@ impl IpcCommandClient {
         Ok(accepted.accepted)
     }
 
-    pub async fn run_slash_command(&self, name: &str, args: &str) -> Result<SlashCommandResponse, String> {
+    #[allow(dead_code)]
+    pub async fn get_state(&self) -> Result<IpcStateSnapshot, String> {
+        let response = self.request("get_state", None).await?;
+        serde_json::from_value::<IpcStateSnapshot>(response)
+            .map_err(|error| format!("decode get_state response: {error}"))
+    }
+
+    pub async fn run_slash_command(
+        &self,
+        name: &str,
+        args: &str,
+    ) -> Result<SlashCommandResponse, String> {
         let payload = serde_json::json!({
             "name": name,
             "args": args,
@@ -60,10 +71,13 @@ impl IpcCommandClient {
     }
 
     async fn request(&self, method: &str, payload: Option<Value>) -> Result<Value, String> {
-        let mut stream = timeout(Duration::from_secs(2), UnixStream::connect(&self.socket_path))
-            .await
-            .map_err(|_| format!("IPC connect timed out for {}", self.socket_path))?
-            .map_err(|error| format!("IPC connect failed for {}: {error}", self.socket_path))?;
+        let mut stream = timeout(
+            Duration::from_secs(2),
+            UnixStream::connect(&self.socket_path),
+        )
+        .await
+        .map_err(|_| format!("IPC connect timed out for {}", self.socket_path))?
+        .map_err(|error| format!("IPC connect failed for {}: {error}", self.socket_path))?;
 
         let hello = IpcEnvelope {
             protocol_version: IPC_PROTOCOL_VERSION,
@@ -75,7 +89,11 @@ impl IpcCommandClient {
                     client_name: AUSPEX_IPC_CLIENT_NAME.into(),
                     client_version: AUSPEX_IPC_CLIENT_VERSION.into(),
                     supported_protocol_versions: vec![IPC_PROTOCOL_VERSION],
-                    capabilities: vec!["submit_prompt".into(), "cancel".into(), "run_slash_command".into()],
+                    capabilities: vec![
+                        "submit_prompt".into(),
+                        "cancel".into(),
+                        "run_slash_command".into(),
+                    ],
                 })
                 .map_err(|error| format!("encode hello payload: {error}"))?,
             ),

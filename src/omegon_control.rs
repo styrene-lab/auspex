@@ -219,6 +219,8 @@ pub struct HarnessStatusSnapshot {
     pub memory_warning: Option<String>,
     #[serde(default)]
     pub active_delegates: Vec<DelegateSummarySnapshot>,
+    #[serde(default)]
+    pub reported_active_delegate_count: Option<usize>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -501,11 +503,25 @@ mod tests {
         let descriptor = info.instance_descriptor.as_ref().unwrap();
         assert_eq!(descriptor.identity.instance_id, "omg_primary_01HVK6");
         assert_eq!(descriptor.identity.role, "primary-driver");
-        assert_eq!(descriptor.workspace.as_ref().unwrap().workspace_id.as_deref(), Some("repo:8f2f4c1"));
+        assert_eq!(
+            descriptor
+                .workspace
+                .as_ref()
+                .unwrap()
+                .workspace_id
+                .as_deref(),
+            Some("repo:8f2f4c1")
+        );
         assert_eq!(descriptor.control_plane.as_ref().unwrap().schema_version, 2);
         assert_eq!(descriptor.runtime.as_ref().unwrap().pid, Some(7842));
-        assert_eq!(descriptor.session.as_ref().unwrap().session_id.as_deref(), Some("session_01HVK6"));
-        assert_eq!(descriptor.policy.as_ref().unwrap().model.as_deref(), Some("openai:gpt-4.1"));
+        assert_eq!(
+            descriptor.session.as_ref().unwrap().session_id.as_deref(),
+            Some("session_01HVK6")
+        );
+        assert_eq!(
+            descriptor.policy.as_ref().unwrap().model.as_deref(),
+            Some("openai:gpt-4.1")
+        );
     }
 
     #[test]
@@ -599,10 +615,45 @@ mod tests {
         let snapshot: OmegonStateSnapshot = serde_json::from_str(json).unwrap();
         let descriptor = snapshot.instance_descriptor.as_ref().unwrap();
         assert_eq!(descriptor.identity.instance_id, "omg_primary_01HVSTATE");
-        assert_eq!(descriptor.workspace.as_ref().unwrap().branch.as_deref(), Some("feature/instance"));
-        assert_eq!(descriptor.control_plane.as_ref().unwrap().token_ref.as_deref(), Some("secret://auspex/instances/omg_primary_01HVSTATE/token"));
-        assert_eq!(snapshot.dispatcher.as_ref().unwrap().instance_descriptor.as_ref().unwrap().identity.instance_id, "omg_dispatcher_01HVSTATE");
-        assert_eq!(snapshot.dispatcher.as_ref().unwrap().instance_descriptor.as_ref().unwrap().control_plane.as_ref().unwrap().schema_version, 2);
+        assert_eq!(
+            descriptor.workspace.as_ref().unwrap().branch.as_deref(),
+            Some("feature/instance")
+        );
+        assert_eq!(
+            descriptor
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .token_ref
+                .as_deref(),
+            Some("secret://auspex/instances/omg_primary_01HVSTATE/token")
+        );
+        assert_eq!(
+            snapshot
+                .dispatcher
+                .as_ref()
+                .unwrap()
+                .instance_descriptor
+                .as_ref()
+                .unwrap()
+                .identity
+                .instance_id,
+            "omg_dispatcher_01HVSTATE"
+        );
+        assert_eq!(
+            snapshot
+                .dispatcher
+                .as_ref()
+                .unwrap()
+                .instance_descriptor
+                .as_ref()
+                .unwrap()
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .schema_version,
+            2
+        );
     }
 
     #[test]
