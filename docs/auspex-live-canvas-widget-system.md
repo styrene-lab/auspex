@@ -1170,6 +1170,91 @@ Design rule:
 - chat should not monopolize it by layout doctrine
 - the center of the shell belongs to operator focus, not to one feature family
 
+### Focus-host occupant contracts
+
+Before final page formatting, Auspex should define **what belongs in the focus host** for each major operator context.
+
+The focus host should generally be understood as having four possible layers:
+- context header
+- primary body
+- supporting body rail
+- action footer
+
+Not every occupant needs every layer, but each occupant should have an explicit content contract.
+
+#### 1. Chat COP
+
+Role: default focus-host occupant.
+
+**Must contain:**
+- context header identifying chat/live conversation stance
+- transcript as the primary body
+- docked composer as the action footer
+- dispatch context near or inside the footer
+- blocking/setup interruption when prompting is unavailable
+
+**May contain:**
+- compact chat-status banner
+- selected conversation/focus metadata
+
+**Must not contain:**
+- full deployment inventory
+- deep provider auth cards
+- generic session inspector dump
+
+#### 2. Audit COP
+
+Role: investigative focus host for "what happened?"
+
+**Must contain:**
+- context header for current audit scope
+- audit result set as the primary body
+- filter summary and selected-detail support rail
+- actions for focus / jump / filter refinement
+
+**Must not contain:**
+- generic chat composer
+- deployment summary duplication
+
+#### 3. Deployment Drilldown COP
+
+Role: selected-instance or selected-deployment focus host.
+
+**Must contain:**
+- context header naming the selected instance or deployment target
+- selected instance/deployment detail as the primary body
+- supporting rail for related instances, authority chain, bindings, or lifecycle context
+- action footer for route / focus / inspect / reconnect-style actions where allowed
+
+**Must not contain:**
+- global deployment counts as the main body
+- transcript spam by default
+
+#### 4. Activity Drilldown COP
+
+Role: per-actor/task focus host.
+
+**Must contain:**
+- context header naming the selected actor/task
+- current task/activity detail body
+- supporting metadata rail for owning instance, urgency, freshness, or work binding
+- action footer for focus / cancel / jump-to-related-surface actions where allowed
+
+**Must not contain:**
+- raw fleet inventory
+- generic shell metadata
+
+#### 5. Graph / Work COP
+
+Role: structure-oriented or progress-oriented focus host.
+
+This occupant family remains valid but is lower priority than Chat, Audit, Deployment Drilldown, and Activity Drilldown for the current cockpit migration.
+
+#### Occupant rule
+
+The focus host should always answer:
+**What is the operator currently focused on, and what is the minimum context + control set needed to act on it?**
+
 #### 6. Contextual detail region
 Secondary detail and action surfaces tied to the current focus or selected entity.
 
