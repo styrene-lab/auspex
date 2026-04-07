@@ -40,6 +40,7 @@ pub struct OmegonControlPlaneDescriptor {
     #[serde(default)]
     pub schema_version: u32,
     pub omegon_version: Option<String>,
+    #[serde(alias = "http_base")]
     pub base_url: Option<String>,
     pub startup_url: Option<String>,
     pub state_url: Option<String>,
@@ -131,7 +132,7 @@ pub struct OmegonStateSnapshot {
     pub harness: Option<HarnessStatusSnapshot>,
     #[serde(default)]
     pub dispatcher: Option<DispatcherBindingSnapshot>,
-    #[serde(default)]
+    #[serde(default, alias = "instance")]
     pub instance_descriptor: Option<OmegonInstanceDescriptor>,
 }
 
