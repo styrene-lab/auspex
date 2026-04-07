@@ -2371,34 +2371,40 @@ fn build_cockpit_summary_model(
     let active_count = temporary_count;
     let activity_tag = if active_count > 0 {
         "RUNNING"
-    } else if matches!(
-        summary.activity_kind,
-        crate::fixtures::ActivityKind::Degraded
-    ) {
-        "ALERT"
-    } else if matches!(
-        summary.activity_kind,
-        crate::fixtures::ActivityKind::Waiting
-    ) {
-        "WAITING"
     } else {
-        "IDLE"
+        match summary.activity_kind {
+            crate::fixtures::ActivityKind::Degraded => "ALERT",
+            crate::fixtures::ActivityKind::Waiting => "WAITING",
+            crate::fixtures::ActivityKind::Completed => "COMPLETED",
+            crate::fixtures::ActivityKind::Failure => "FAILED",
+            crate::fixtures::ActivityKind::Running => "RUNNING",
+            crate::fixtures::ActivityKind::Idle => "IDLE",
+        }
     };
     let activity_primary = if let Some(delegate) = session.active_delegates.first() {
         format!("{} · {}", delegate.agent_name, delegate.status)
     } else {
-        summary
-            .activity_kind
-            .label()
-            .to_ascii_uppercase()
-            .to_string()
+        match summary.activity_kind {
+            crate::fixtures::ActivityKind::Completed | crate::fixtures::ActivityKind::Failure => {
+                summary.activity.clone()
+            }
+            _ => summary
+                .activity_kind
+                .label()
+                .to_ascii_uppercase()
+                .to_string(),
+        }
     };
     let activity_secondary_1 = if active_count > 0 {
         format!("{active_count} dispatches in flight")
     } else {
-        summary.activity.clone()
+        cockpit_work_hint(summary)
     };
-    let activity_secondary_2 = cockpit_work_hint(summary);
+    let activity_secondary_2 = if active_count > 0 {
+        summary.activity.clone()
+    } else {
+        summary.connection.clone()
+    };
     let activity_preview = session
         .active_delegates
         .iter()
@@ -2785,7 +2791,9 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
 
     let body = rsx! {
         div { class: "cockpit-cop-body",
-            {render_chat_status_banner(summary, session, is_run_active, can_submit)}
+            if provider_blocked_composer.is_none() {
+                {render_chat_status_banner(summary, session, is_run_active, can_submit)}
+            }
             main { class: "transcript cockpit-transcript cockpit-cop-focus",
                 {render_transcript(summary, work, session, transcript, messages, auto_expand)}
                 div { id: "transcript-end" }
@@ -4053,6 +4061,26 @@ mod tests {
         assert_eq!(model.draft, "hello");
         assert!(model.can_submit);
         assert!(!model.is_run_active);
+    }
+
+    #[test]
+    fn cockpit_summary_model_uses_coherent_completed_activity_state() {
+        let summary = HostSessionSummary {
+            connection: "primary_driver attached to workspace unknown".into(),
+            activity: "Agent turn finished".into(),
+            activity_kind: ActivityKind::Completed,
+            work: "No focused work".into(),
+        };
+        let model = super::build_cockpit_summary_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            &summary,
+            &crate::fixtures::SessionData::default(),
+        );
+
+        assert_eq!(model.activity.tag, "COMPLETED");
+        assert_eq!(model.activity.primary, "Agent turn finished");
+        assert_eq!(model.activity.secondary[0], "No focused work");
     }
 
     #[test]
