@@ -1095,7 +1095,7 @@ impl AppController {
 mod tests {
     use super::*;
     use crate::audit_timeline::AuditEntryKind;
-    use crate::fixtures::MessageRole;
+    use crate::fixtures::ActivityKind;
     use crate::runtime_types::{InstanceFreshness, InstanceRecord};
 
     const REMOTE_SNAPSHOT_JSON: &str = DEMO_REMOTE_SNAPSHOT_JSON;

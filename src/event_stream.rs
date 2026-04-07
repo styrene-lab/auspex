@@ -1,7 +1,6 @@
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
-use crate::runtime_types::{TargetedCommand, TargetedCommandEnvelope};
 use reqwest::Url;
 
 #[derive(Clone, Debug, Default)]
@@ -25,36 +24,6 @@ impl EventInbox {
     }
 }
 
-#[derive(Clone, Debug, Default)]
-pub struct CommandOutbox {
-    queue: Arc<Mutex<Vec<String>>>,
-}
-
-impl CommandOutbox {
-    pub fn push_raw(&self, command_json: impl Into<String>) {
-        if let Ok(mut queue) = self.queue.lock() {
-            queue.push(command_json.into());
-        }
-    }
-
-    #[allow(dead_code)]
-    pub fn push_envelope(
-        &self,
-        envelope: &TargetedCommandEnvelope,
-    ) -> Result<(), serde_json::Error> {
-        let command_json = serde_json::to_string(envelope)?;
-        self.push_raw(command_json);
-        Ok(())
-    }
-
-    pub fn drain(&self) -> Vec<String> {
-        if let Ok(mut queue) = self.queue.lock() {
-            return std::mem::take(&mut *queue);
-        }
-        Vec::new()
-    }
-}
-
 #[derive(Clone, Debug)]
 pub enum EventStreamSource {
     WebSocket { url: String },
@@ -64,7 +33,6 @@ pub enum EventStreamSource {
 pub struct EventStreamHandle {
     pub inbox: EventInbox,
     pub source: EventStreamSource,
-    outbox: CommandOutbox,
 }
 
 impl EventStreamHandle {
@@ -72,7 +40,6 @@ impl EventStreamHandle {
         Self {
             inbox: EventInbox::default(),
             source: EventStreamSource::WebSocket { url: url.into() },
-            outbox: CommandOutbox::default(),
         }
     }
 
@@ -80,26 +47,6 @@ impl EventStreamHandle {
         match &self.source {
             EventStreamSource::WebSocket { url } => url,
         }
-    }
-
-    /// Queue a command to be sent over the existing WebSocket connection.
-    /// The background reader task picks these up and sends them on the
-    /// same socket that receives events.
-    pub fn send_command(&self, command_json: String) {
-        self.outbox.push_raw(command_json);
-    }
-
-    #[allow(dead_code)]
-    pub fn send_targeted_command(
-        &self,
-        command: &TargetedCommand,
-    ) -> Result<(), serde_json::Error> {
-        self.outbox.push_envelope(&command.transport_envelope())
-    }
-
-    #[cfg(test)]
-    pub fn debug_drain_outbox(&self) -> Vec<String> {
-        self.outbox.drain()
     }
 
     fn push_system_notice(&self, message: impl Into<String>) {
@@ -157,7 +104,7 @@ pub fn derive_authenticated_ws_url(
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
-    use futures_util::{SinkExt, StreamExt};
+    use futures_util::StreamExt;
     use tungstenite::Message;
 
     let handle = EventStreamHandle::websocket(url);
@@ -196,17 +143,9 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                         worker_handle.url()
                     ));
 
-                    let (mut sink, mut stream) = ws_stream.split();
+                    let (_sink, mut stream) = ws_stream.split();
 
                     loop {
-                        for cmd in worker_handle.outbox.drain() {
-                            if let Err(error) = sink.send(Message::Text(cmd.into())).await {
-                                worker_handle.push_system_notice(format!(
-                                    "Failed to send command to Omegon: {error}"
-                                ));
-                            }
-                        }
-
                         let read_result =
                             tokio::time::timeout(Duration::from_millis(50), stream.next()).await;
 
@@ -241,7 +180,7 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                                 break;
                             }
                             Err(_) => {
-                                // Timeout — no data ready, loop back to check outbox.
+                                // Timeout — no data ready, continue polling for events.
                             }
                         }
                     }
@@ -291,18 +230,6 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
     });
     ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
     onerror.forget();
-
-    // Command sender — poll outbox on an interval and send via the WebSocket.
-    let outbox = worker_handle.outbox.clone();
-    let ws_clone = ws.clone();
-    wasm_bindgen_futures::spawn_local(async move {
-        loop {
-            gloo_timers::future::TimeoutFuture::new(50).await;
-            for cmd in outbox.drain() {
-                let _ = ws_clone.send_with_str(&cmd);
-            }
-        }
-    });
 
     handle
 }
@@ -362,34 +289,4 @@ mod tests {
         assert!(inbox.drain().is_empty());
     }
 
-    #[test]
-    fn send_command_queues_to_outbox() {
-        let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
-        handle.send_command(r#"{"type":"user_prompt","text":"hello"}"#.to_string());
-
-        let commands = handle.outbox.drain();
-        assert_eq!(commands.len(), 1);
-        assert!(commands[0].contains("user_prompt"));
-    }
-
-    #[test]
-    fn send_targeted_command_wraps_transport_envelope() {
-        let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
-        let command = TargetedCommand::legacy_json(
-            crate::runtime_types::CommandTarget {
-                session_key: "remote:session_01HVDEMO".into(),
-                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
-            },
-            r#"{"type":"user_prompt","text":"hello"}"#,
-        );
-
-        handle.send_targeted_command(&command).unwrap();
-
-        let commands = handle.outbox.drain();
-        assert_eq!(commands.len(), 1);
-        assert_eq!(
-            commands[0],
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"user_prompt\",\"text\":\"hello\"}"}}"#
-        );
-    }
 }

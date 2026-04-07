@@ -13,6 +13,8 @@ use crate::event_stream::{
     EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
     spawn_websocket_event_stream,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::{command_transport::CommandTransport, ipc_client::IpcCommandClient};
 use crate::instance_registry::{
     default_instance_registry_path, load_or_default as load_registry_or_default,
 };
@@ -247,6 +249,8 @@ pub struct BootstrapResult {
     pub source: BootstrapSource,
     pub note: Option<String>,
     pub event_stream: Option<EventStreamHandle>,
+    #[cfg(not(target_arch = "wasm32"))]
+    pub command_transport: Option<CommandTransport>,
 }
 
 impl BootstrapResult {
@@ -267,6 +271,8 @@ impl BootstrapResult {
             source: BootstrapSource::MockDefault,
             note: Some(note),
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            command_transport: None,
         }
     }
 
@@ -287,6 +293,8 @@ impl BootstrapResult {
             source: BootstrapSource::MockDefault,
             note: Some(note),
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            command_transport: None,
         }
     }
 
@@ -311,6 +319,8 @@ impl BootstrapResult {
             source: BootstrapSource::SpawningOmegon { binary: label },
             note: None,
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            command_transport: None,
         }
     }
 }
@@ -338,6 +348,8 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
             },
             note: None,
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            command_transport: None,
         };
     }
 
@@ -416,6 +428,16 @@ pub async fn bootstrap_from_http_state_async(
                 .replace("/api/state", "/ws")
         });
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
+    #[cfg(not(target_arch = "wasm32"))]
+    let command_transport = startup
+        .as_ref()
+        .and_then(|startup| startup.instance_descriptor.as_ref())
+        .and_then(|instance| instance.control_plane.as_ref())
+        .and_then(|control_plane| control_plane.ipc_socket_path.clone())
+        .filter(|path| !path.is_empty())
+        .map(IpcCommandClient::new)
+        .filter(|client| client.is_available())
+        .map(CommandTransport::Ipc);
     let note = startup
         .as_ref()
         .map(|startup| {
@@ -450,6 +472,8 @@ pub async fn bootstrap_from_http_state_async(
         },
         note: Some(note),
         event_stream,
+        #[cfg(not(target_arch = "wasm32"))]
+        command_transport,
     })
 }
 
@@ -558,6 +582,8 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
         },
         note: Some(format!("Loaded Omegon snapshot from {path}")),
         event_stream: None,
+        #[cfg(not(target_arch = "wasm32"))]
+        command_transport: None,
     })
 }
 

@@ -1,6 +1,7 @@
 mod app;
 mod audit_timeline;
 mod bootstrap;
+mod command_transport;
 mod controller;
 mod event_stream;
 mod fixtures;
@@ -12,6 +13,8 @@ mod telemetry;
 mod screens;
 mod session_model;
 mod state_engine;
+#[cfg(not(target_arch = "wasm32"))]
+mod ipc_client;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
