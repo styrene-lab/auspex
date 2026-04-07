@@ -108,6 +108,132 @@ Initial zones should be conservative and map to the current shell:
 
 These are **zones**, not absolute screens.
 
+## Coordinate systems and background field
+
+The live canvas must not use raw screen pixels as its canonical layout coordinate system.
+
+### Canonical rule
+
+Persist placement semantically:
+- `zone`
+- snapped grid origin
+- snapped grid span
+
+Do **not** persist canonical widget placement as absolute pixel `x/y` coordinates.
+
+### Three coordinate layers
+
+#### 1. Shell-space coordinates
+
+Shell space defines the usable application frame after accounting for:
+- top chrome
+- bottom/global bars
+- reserved shell apertures
+- platform safe areas
+- current viewport/window bounds
+
+This produces the effective shell rect within which zones are laid out.
+
+#### 2. Zone-grid coordinates
+
+Each zone owns its own snapped logical grid.
+
+Widget layout must be stored relative to the zone grid, not the raw viewport. This is what allows the same layout to survive:
+- desktop resize
+- web split-pane widths
+- tablet/narrow layouts
+- square aspect ratios
+- future mobile projections
+
+Representative placement model:
+
+```rust
+struct WidgetPlacement {
+    zone: WidgetZone,
+    col: u16,
+    row: u16,
+    col_span: u16,
+    row_span: u16,
+}
+```
+
+#### 3. Widget-local coordinates
+
+Geometry inside a widget uses widget-local normalized coordinates.
+
+Examples:
+- SVG `viewBox`
+- normalized sparkline coordinates
+- compact chart domains
+- local layout padding boxes
+
+This keeps instruments portable and independent from shell-level aspect changes.
+
+### Background field rule
+
+The global canvas background is a **structural field**, not a fixed hero illustration.
+
+Allowed background responsibilities:
+- subtle grid/seam structure
+- zone framing and alignment lines
+- ambient field markers
+- restrained instrument-wall linework derived from shell/zone geometry
+
+Disallowed background responsibilities:
+- one giant central reticle whose meaning depends on a fixed aspect ratio
+- decorative full-screen HUD art tied to a specific monitor shape
+- background geometry that carries primary operational meaning
+
+If a large radial or complex geometric figure conveys meaning, it should be a **widget**, not the canvas background.
+
+### Coordinate derivation rule
+
+Background geometry must derive from:
+- shell rect
+- zone rects
+- breakpoint/aspect policy
+
+It must **not** derive from hard-coded desktop artboard coordinates.
+
+### Aspect-ratio policy
+
+The canvas model must support at least these layout classes:
+- `wide`
+- `medium`
+- `square`
+- `narrow`
+- `portrait`
+
+These classes should not merely scale the same placement. They may:
+- change visible zones
+- remap zone column counts
+- collapse widgets into compact/summary mode
+- move side zones into trays/drawers/sheets
+- simplify or suppress background field detail
+
+### Reflow over scale
+
+When aspect ratio or viewport class changes, the system should prefer **recomposition** over naive geometric scaling.
+
+Meaning:
+- widgets keep semantic placement within a zone
+- zones may reorder or collapse
+- widget internals may switch to compact mode
+- the background field may simplify
+
+The system should avoid shrinking a desktop wall uniformly until it becomes unreadable.
+
+### Persistence rule
+
+Saved layouts should persist:
+- widget identity
+- zone assignment
+- snapped placement
+- span
+- collapsed/pinned state where applicable
+
+Saved layouts should not persist viewport-specific absolute pixel positions as the canonical source of truth.
+
 ## Layout behavior
 
 ### Canonical default layout
