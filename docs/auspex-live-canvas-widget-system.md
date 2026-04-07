@@ -64,15 +64,15 @@ The canvas system therefore **extends** the current shell instead of replacing i
 
 ### Migration rule
 
-Treat the current rails and panels as **seeded widget zones**.
+Migration should preserve **semantic surfaces and state wiring**, not inherited screen geography.
 
 That means:
-- left rail content becomes left-zone widgets
-- right inspection surfaces become right-zone widgets
-- bottom/global instrumentation becomes bottom-zone widgets
-- center workspace content becomes center-zone widgets or routed workspace hosts
+- keep controller/state/event truth
+- keep existing surface components where useful
+- keep widget-ready semantic boundaries as they emerge
+- do **not** assume current left/right/center placement is the correct long-term cockpit composition
 
-The rails are not deleted first. They are gradually reinterpreted as widget containers.
+The redesign should therefore recompose existing wired surfaces into a new cockpit grammar from first principles rather than renaming today's rails and calling it done.
 
 ## Core model
 
@@ -1091,6 +1091,98 @@ Every surface definition should be valid before deciding:
 - whether it becomes a compact card, full panel, drawer, or overlay
 
 In other words: define the semantic surface first, then decide how it is rendered.
+
+## Standard-display cockpit composition
+
+The standard-display cockpit layout should be defined from first principles rather than from the current shell geography.
+
+### Composition rule
+
+Do not begin with:
+- left rail
+- right rail
+- center pane
+- bottom bar
+
+Begin instead with:
+- what truths must always remain visible
+- what is focal vs ambient
+- what is interruptive vs contextual
+- what surfaces are globally persistent vs task-hosted
+
+### Intended standard-display composition
+
+A standard display should compose around these semantic regions:
+
+#### 1. Identity spine
+Persistent shell identity and mode truth.
+
+Feeds primarily from:
+- `AuspexPanel`
+- global mode/version/build context
+
+#### 2. Primary attachment truth region
+The main operator-facing truth for the currently attached/embedded/serve Omegon.
+
+Feeds primarily from:
+- `AttachedOmegonPanel`
+- route/dispatcher truth
+- verified control-plane state
+
+#### 3. Deployment overview region
+The broader view of known Omegon instances and their roles/lifecycle states.
+
+Feeds primarily from:
+- `DeploymentPanel`
+- lifecycle and serve/temporary classification surfaces
+
+#### 4. Activity region
+The current distributed operational picture.
+
+Feeds primarily from:
+- `ActivityPanel`
+- temporary dispatches
+- active task and stream summaries
+
+#### 5. Focus host region
+The currently selected detailed workspace or investigation host.
+
+Examples:
+- transcript
+- audit
+- work
+- graph
+- telemetry drilldown
+
+#### 6. Contextual detail region
+Secondary detail and action surfaces tied to the current focus or selected entity.
+
+Examples:
+- dispatcher options
+- instance detail
+- route actions
+- selected audit detail
+- selected telemetry detail
+
+### Surface contribution matrix
+
+Existing surfaces should be mapped into this new composition by **responsibility**, not by old region.
+
+Representative mapping:
+- `render_attached_omegon_status_widget` → `AttachedOmegonPanel`
+- dispatcher binding surfaces → `AttachedOmegonPanel` + contextual detail region
+- lifecycle rollup → `DeploymentPanel`
+- temporary dispatches → `ActivityPanel`
+- transcript surfaces → focus host region
+- audit surfaces → focus host region + contextual detail region
+- graph/work surfaces → focus host region
+- telemetry summaries → `DeploymentPanel` or contextual detail depending on scope
+
+### Implementation consequence
+
+During implementation, some of these compositions may temporarily reuse current shell containers. That is acceptable as an implementation stage.
+
+But the design model itself should remain based on the new semantic composition, not on preserving legacy region names as first-class layout doctrine.
 
 ## Top-level UX panels and supervisory maps
 
