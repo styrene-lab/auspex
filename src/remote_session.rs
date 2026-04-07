@@ -440,9 +440,17 @@ impl RemoteHostSession {
                 }
                 true
             }
-            OmegonEvent::ContextUpdated { tokens } => {
+            OmegonEvent::ContextUpdated {
+                tokens,
+                context_window,
+                context_class: _,
+                thinking_level: _,
+            } => {
                 self.transcript.context_tokens = Some(tokens);
                 self.context_tokens = Some(tokens);
+                if let Some(context_window) = context_window {
+                    self.context_window = Some(context_window);
+                }
                 true
             }
             OmegonEvent::AgentEnd => {
@@ -1504,6 +1512,21 @@ mod tests {
                 label: "anthropic:claude-sonnet-4-6".into(),
             }
         );
+    }
+
+    #[test]
+    fn context_updated_event_captures_context_window_metadata() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        assert!(session
+            .apply_event_json(
+                r#"{"type":"context_updated","tokens":640,"context_window":200000,"context_class":"Squad","thinking_level":"Medium"}"#,
+            )
+            .unwrap());
+
+        let data = session.session_data();
+        assert_eq!(data.context_tokens, Some(640));
+        assert_eq!(data.context_window, Some(200000));
     }
 
     #[test]

@@ -51,6 +51,7 @@ pub struct OmegonControlPlaneDescriptor {
     pub token_ref: Option<String>,
     pub last_ready_at: Option<String>,
     pub last_verified_at: Option<String>,
+    pub ipc_socket_path: Option<String>,
     #[serde(default)]
     pub capabilities: Vec<String>,
 }
@@ -362,6 +363,12 @@ pub enum OmegonEvent {
     },
     ContextUpdated {
         tokens: u64,
+        #[serde(default)]
+        context_window: Option<u64>,
+        #[serde(default)]
+        context_class: Option<String>,
+        #[serde(default)]
+        thinking_level: Option<String>,
     },
     DecompositionStarted {
         children: Vec<String>,
