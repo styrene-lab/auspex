@@ -1017,6 +1017,156 @@ Every surface definition should be valid before deciding:
 
 In other words: define the semantic surface first, then decide how it is rendered.
 
+## Top-level UX panels and supervisory maps
+
+Before deciding final visual treatment, the shell should define the top-level UX panels that establish operator orientation and the internal supervisory maps that feed them.
+
+### Top-level UX panel stack
+
+These are the first persistent global truth panels from a UX perspective.
+
+#### 1. `AuspexPanel`
+
+Answers: **what this shell is**.
+
+Responsibilities:
+- Auspex identity
+- version / release channel / build lineage
+- current UI mode / density class
+- shell runtime context
+- current workspace/repo/session framing where appropriate
+
+#### 2. `AttachedOmegonPanel`
+
+Answers: **what our primary Omegon is right now**.
+
+Responsibilities:
+- primary attached/embedded/serve Omegon identity
+- route/dispatcher truth
+- verified control-plane state
+- effective role/profile/model/thinking tier
+- health, degraded, stale, or detached state
+
+This is the default focal operator truth panel.
+
+#### 3. `DeploymentPanel`
+
+Answers: **what other Omegons this Auspex can see**.
+
+Responsibilities:
+- visible instance inventory
+- live vs stale/lost/detached counts
+- serve-mode vs temporary classification
+- role and ownership context
+- backend/placement context where useful
+
+This is the broader deployment picture surrounding the primary attached Omegon.
+
+#### 4. `ActivityPanel`
+
+Answers: **who is where doing what**.
+
+Responsibilities:
+- current distributed actor roster
+- active task or stream binding per actor
+- blocked/running/idle/completed state
+- urgency and freshness
+- recent activity relevant to operator attention
+
+This panel should become the shell's primary sense of liveness without degenerating into raw log spam.
+
+### Relationship between panels
+
+The intended reading order is:
+1. `AuspexPanel` — what this shell is
+2. `AttachedOmegonPanel` — what the operator is primarily attached to
+3. `DeploymentPanel` — what else exists around that primary target
+4. `ActivityPanel` — what is happening now across the visible system
+
+Secondary surfaces such as transcript, audit, graph, work, and deep telemetry should compose underneath or beside this truth stack rather than replacing it.
+
+## Supervisory state maps
+
+These top-level panels should be projections over explicit internal supervisory maps.
+
+### 1. Shell state map
+
+Owns Auspex-local truth.
+
+Examples:
+- Auspex version/build/channel
+- current workspace and mode
+- current density class / layout class
+- active layout preset
+- shell/runtime placement context
+
+Primary consumer:
+- `AuspexPanel`
+
+### 2. Deployment state map
+
+Owns logical Omegon instance truth across the visible system.
+
+Keyed by logical `instance_id` rather than transport binding.
+
+Examples:
+- identity
+- role
+- profile
+- owner/session
+- lifecycle state
+- freshness / last seen
+- backend placement
+- verified control-plane binding
+- available transport bindings
+- serve-mode vs temporary classification
+- selected/primary relationship
+
+Primary consumers:
+- `AttachedOmegonPanel`
+- `DeploymentPanel`
+- parts of `RouteSelectionSurface`, `DispatcherBindingSurface`, and `LifecycleRollupSurface`
+
+### 3. Activity state map
+
+Owns current work and stream activity across instances.
+
+This is distinct from deployment identity. It answers what is happening now.
+
+Examples:
+- actor instance id
+- actor role
+- task/work binding
+- current state
+- source stream/channel
+- last update time
+- urgency
+- operator visibility classification
+- transcript/audit linkage where applicable
+
+Primary consumer:
+- `ActivityPanel`
+
+### 4. Event ingestion / projection layer
+
+The maps above should be fed by a normalized event/projection layer rather than letting widgets consume transport-specific events directly.
+
+Expected source families include:
+- transcript events
+- tool events
+- dispatch/delegate events
+- lifecycle updates
+- control-plane verification changes
+- telemetry deltas
+- route/authority changes
+- future Styrene RPC updates
+
+### Map rule
+
+Widgets should consume these supervisory maps as projections. They should not invent parallel state caches or bind directly to one transport's ephemeral event vocabulary.
+
+This keeps the live canvas truthful and compatible with future transport evolution.
+
 ## Immediate implementation guidance
 
 ### Files to touch first
