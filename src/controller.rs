@@ -112,15 +112,6 @@ pub enum SessionMode {
 }
 
 impl SessionMode {
-    pub const ALL: [Self; 2] = [Self::Live, Self::Mock];
-
-    pub fn key(self) -> &'static str {
-        match self {
-            Self::Mock => "mock",
-            Self::Live => "live",
-        }
-    }
-
     pub fn label(self) -> &'static str {
         match self {
             Self::Mock => "Mock (offline)",

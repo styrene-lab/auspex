@@ -390,15 +390,6 @@ pub enum DevScenario {
 }
 
 impl DevScenario {
-    pub const ALL: [Self; 6] = [
-        Self::Ready,
-        Self::Booting,
-        Self::Degraded,
-        Self::StartupFailure,
-        Self::CompatibilityFailure,
-        Self::Reconnecting,
-    ];
-
     pub fn key(self) -> &'static str {
         match self {
             Self::Ready => "ready",
@@ -407,17 +398,6 @@ impl DevScenario {
             Self::StartupFailure => "startup-failure",
             Self::CompatibilityFailure => "compat-failure",
             Self::Reconnecting => "reconnecting",
-        }
-    }
-
-    pub fn label(self) -> &'static str {
-        match self {
-            Self::Ready => "Ready",
-            Self::Booting => "Booting",
-            Self::Degraded => "Degraded",
-            Self::StartupFailure => "Startup failure",
-            Self::CompatibilityFailure => "Compat failure",
-            Self::Reconnecting => "Reconnecting",
         }
     }
 }
