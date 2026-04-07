@@ -644,6 +644,152 @@ Possible future presets:
 - telemetry-heavy
 - routing/dispatcher-heavy
 
+## Surface inventory before visual treatment
+
+Before deciding final widget visuals or canvas ornamentation, Auspex needs a complete surface taxonomy.
+
+The purpose of this section is to define **what surfaces exist** and **what operator question each surface answers**, independent of final layout styling.
+
+### Surface families
+
+The live canvas should think in surface families rather than only in current routed screens.
+
+#### 1. Deployment surfaces
+
+These answer: **what Omegon instances exist, which one am I attached to, and what authority do they have?**
+
+Core deployment surfaces:
+- `AttachedOmegonStatusSurface`
+- `RouteSelectionSurface`
+- `DispatcherBindingSurface`
+- `DeploymentInventorySurface`
+- `LifecycleRollupSurface`
+- `ServeModeWorkersSurface`
+- `TemporaryDispatchesSurface`
+- `RuntimeBackendPlacementSurface`
+
+#### 2. Investigation surfaces
+
+These answer: **what happened, what is happening, and how do I inspect it?**
+
+Core investigation surfaces:
+- `TranscriptSurface`
+- `ToolActivitySurface`
+- `AuditSummarySurface`
+- `AuditFiltersSurface`
+- `AuditResultsSurface`
+- `AuditDetailSurface`
+- `TelemetryDrilldownSurface`
+
+#### 3. Workspace / reasoning surfaces
+
+These answer: **what work is active, what structure is known, and what progress is blocked?**
+
+Core workspace surfaces:
+- `WorkContextSurface`
+- `FocusedNodeSurface`
+- `ImplementingNodesSurface`
+- `ActionableNodesSurface`
+- `GraphOverviewSurface`
+- `OpenSpecSummarySurface`
+- `CleaveSummarySurface`
+
+#### 4. Operator control surfaces
+
+These answer: **what can the operator do right now, and where will that action go?**
+
+Core control surfaces:
+- `ComposerSurface`
+- `DispatchContextSurface`
+- `ProviderAuthSurface`
+- `RouteActionSurface`
+- `InstanceActionSurface`
+- `LayoutEditSurface` (future, explicit mode only)
+
+#### 5. Ambient shell surfaces
+
+These answer: **where am I, what mode am I in, and what global state must remain persistent?**
+
+Core ambient shell surfaces:
+- `TopChromeSurface`
+- `IdentityAnchorSurface`
+- `WorkspaceTabsSurface`
+- `GlobalStatusSurface`
+- `BottomInstrumentationSurface`
+- `ReservedGlobalApertureSurface`
+
+### Canonical operator questions per family
+
+#### Deployment
+- Which Omegon instance am I speaking to right now?
+- Is it reachable, verified, and healthy?
+- How many other instances are out there?
+- Which ones are durable serve-mode workers versus temporary task workers?
+- Which backend/placement is each one running on?
+
+#### Investigation
+- What just happened?
+- What is streaming right now?
+- Which event/tool/telemetry change matters?
+- How do I focus related transcript or audit evidence?
+
+#### Workspace / reasoning
+- What work item is active?
+- What design/spec/progress state is currently relevant?
+- What is blocked, implementing, or actionable?
+
+#### Operator control
+- What action can I take now?
+- Which instance or route will receive it?
+- Is the action blocked by transport, provider, or lifecycle state?
+
+#### Ambient shell
+- What repo/session/workspace am I in?
+- What UI mode am I in?
+- What global status needs to remain visible without drilling in?
+
+### Screen-model reconciliation
+
+The canvas taxonomy should coexist with the existing routed workspace model.
+
+Current routed workspaces still exist:
+- Chat
+- Session
+- Audit
+- Scribe
+- Graph
+- Work
+
+But those routed workspaces should increasingly be understood as **surface hosts** rather than monolithic screens.
+
+Examples:
+- `Session` currently hosts deployment and inspection surfaces
+- `Audit` currently hosts investigation surfaces
+- `Chat` hosts transcript, composer, dispatch, and selected ambient deployment truth
+- `Graph` hosts structure-oriented workspace surfaces
+- `Work` hosts progress-oriented workspace surfaces
+
+### Priority order for surface definition
+
+The order for defining surfaces should be:
+1. deployment surfaces
+2. operator control surfaces
+3. investigation surfaces
+4. workspace / reasoning surfaces
+5. ambient shell refinements
+
+This preserves the product rule that Auspex is first an operator shell for real Omegon deployments, not a generic dashboard.
+
+### Display-independence rule
+
+Every surface definition should be valid before deciding:
+- exact zone placement
+- exact widget size
+- exact styling treatment
+- whether it becomes a compact card, full panel, drawer, or overlay
+
+In other words: define the semantic surface first, then decide how it is rendered.
+
 ## Immediate implementation guidance
 
 ### Files to touch first
