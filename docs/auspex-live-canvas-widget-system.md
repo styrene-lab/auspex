@@ -1067,7 +1067,7 @@ But those routed workspaces should increasingly be understood as **surface hosts
 Examples:
 - `Session` currently hosts deployment and inspection surfaces
 - `Audit` currently hosts investigation surfaces
-- `Chat` hosts transcript, composer, dispatch, and selected ambient deployment truth
+- `Chat` hosts transcript, composer, dispatch, and selected ambient deployment truth, but it remains only one possible occupant of the universal focus host
 - `Graph` hosts structure-oriented workspace surfaces
 - `Work` hosts progress-oriented workspace surfaces
 
@@ -1147,12 +1147,28 @@ Feeds primarily from:
 #### 5. Focus host region
 The currently selected detailed workspace or investigation host.
 
-Examples:
-- transcript
-- audit
-- work
-- graph
+This region should be understood as the shell's **operator focus host** and, in practice, the application's shifting **common operating picture (COP)** surface.
+
+It must not be permanently defined as "the chat area." Chat is only the default occupant.
+
+Required behavior:
+- default occupant may be the chat/transcript surface
+- the composer may live beneath the focus host in its compact/default form
+- active conversation can expand upward and temporarily dominate the focus host when the operator is in an active dialogue loop
+- non-chat contexts may take over the focus host when they become the current operator priority
+
+Examples of valid focus-host occupants:
+- transcript / chat conversation
+- audit investigation workspace
+- graph / structure view
+- work / progress view
 - telemetry drilldown
+- selected deployment or activity drilldown when that becomes the operator's main task
+
+Design rule:
+- the focus host is the universal COP display for the application, shaped by current operator context
+- chat should not monopolize it by layout doctrine
+- the center of the shell belongs to operator focus, not to one feature family
 
 #### 6. Contextual detail region
 Secondary detail and action surfaces tied to the current focus or selected entity.
