@@ -599,11 +599,47 @@ impl HostSessionModel for RemoteHostSession {
 
     fn session_data(&self) -> SessionData {
         let h = self.harness_snapshot.as_ref();
+        let instance_descriptor = self.instance_descriptor.as_ref();
+        let dispatcher = self.dispatcher_binding.as_ref();
         SessionData {
-            git_branch: h.and_then(|h| h.git_branch.clone()),
+            git_branch: h
+                .and_then(|h| h.git_branch.clone())
+                .or_else(|| {
+                    instance_descriptor
+                        .and_then(|descriptor| descriptor.workspace.as_ref())
+                        .and_then(|workspace| workspace.branch.clone())
+                }),
             git_detached: h.map(|h| h.git_detached).unwrap_or(false),
-            thinking_level: h.map(|h| h.thinking_level.clone()).unwrap_or_default(),
-            capability_tier: h.map(|h| h.capability_tier.clone()).unwrap_or_default(),
+            thinking_level: h
+                .map(|h| h.thinking_level.clone())
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    dispatcher
+                        .and_then(|binding| binding.instance_descriptor.as_ref())
+                        .and_then(|descriptor| descriptor.policy.as_ref())
+                        .and_then(|policy| policy.thinking_level.clone())
+                })
+                .or_else(|| {
+                    instance_descriptor
+                        .and_then(|descriptor| descriptor.policy.as_ref())
+                        .and_then(|policy| policy.thinking_level.clone())
+                })
+                .unwrap_or_default(),
+            capability_tier: h
+                .map(|h| h.capability_tier.clone())
+                .filter(|value| !value.trim().is_empty())
+                .or_else(|| {
+                    dispatcher
+                        .and_then(|binding| binding.instance_descriptor.as_ref())
+                        .and_then(|descriptor| descriptor.policy.as_ref())
+                        .and_then(|policy| policy.capability_tier.clone())
+                })
+                .or_else(|| {
+                    instance_descriptor
+                        .and_then(|descriptor| descriptor.policy.as_ref())
+                        .and_then(|policy| policy.capability_tier.clone())
+                })
+                .unwrap_or_default(),
             providers: h
                 .map(|h| {
                     h.providers
@@ -1276,6 +1312,77 @@ mod tests {
             "active_delegates": []
         }
     }"#;
+
+    #[test]
+    fn session_projection_falls_back_to_descriptor_policy_and_workspace_fields() {
+        let session = RemoteHostSession::from_snapshot(OmegonStateSnapshot {
+            design: DesignSnapshot::default(),
+            openspec: OpenSpecSnapshot::default(),
+            cleave: CleaveSnapshot::default(),
+            session: SessionSnapshot::default(),
+            harness: Some(HarnessStatusSnapshot {
+                git_branch: None,
+                git_detached: false,
+                thinking_level: String::new(),
+                capability_tier: String::new(),
+                providers: vec![],
+                memory_available: true,
+                cleave_available: true,
+                memory_warning: None,
+                active_delegates: vec![],
+            }),
+            dispatcher: Some(DispatcherBindingSnapshot {
+                expected_role: "primary-driver".into(),
+                expected_profile: "primary-interactive".into(),
+                expected_model: Some("anthropic:claude-sonnet-4-6".into()),
+                instance_descriptor: Some(OmegonInstanceDescriptor {
+                    identity: OmegonInstanceIdentity {
+                        instance_id: "omg_primary_01HVDEMO".into(),
+                        role: "primary-driver".into(),
+                        profile: "primary-interactive".into(),
+                        status: "ready".into(),
+                    },
+                    policy: Some(OmegonPolicyDescriptor {
+                        model: Some("anthropic:claude-sonnet-4-6".into()),
+                        thinking_level: Some("high".into()),
+                        capability_tier: Some("gloriana".into()),
+                    }),
+                    ..OmegonInstanceDescriptor::default()
+                }),
+                ..DispatcherBindingSnapshot::default()
+            }),
+            instance_descriptor: Some(OmegonInstanceDescriptor {
+                identity: OmegonInstanceIdentity {
+                    instance_id: "omg_host_01HVDEMO".into(),
+                    role: "primary-driver".into(),
+                    profile: "control-plane".into(),
+                    status: "ready".into(),
+                },
+                workspace: Some(OmegonWorkspaceDescriptor {
+                    cwd: Some("/repo".into()),
+                    workspace_id: Some("repo:demo".into()),
+                    branch: Some("main".into()),
+                }),
+                policy: Some(OmegonPolicyDescriptor {
+                    model: Some("openai:gpt-4.1".into()),
+                    thinking_level: Some("medium".into()),
+                    capability_tier: Some("victory".into()),
+                }),
+                ..OmegonInstanceDescriptor::default()
+            }),
+        });
+
+        let data = session.session_data();
+        assert_eq!(data.git_branch.as_deref(), Some("main"));
+        assert_eq!(data.thinking_level, "high");
+        assert_eq!(data.capability_tier, "gloriana");
+        assert_eq!(
+            data.dispatcher_binding
+                .as_ref()
+                .and_then(|binding| binding.expected_model.as_deref()),
+            Some("anthropic:claude-sonnet-4-6")
+        );
+    }
 
     #[test]
     fn snapshot_projection_builds_remote_summary() {
