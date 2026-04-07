@@ -2876,3 +2876,13 @@ body > * {
 .focus-host-footer {
   margin-top: 0.75rem;
 }
+
+.cockpit-panel-preview-chip {
+  cursor: pointer;
+}
+
+.cockpit-panel-preview-chip-selected {
+  border-color: rgba(42, 180, 200, 0.72);
+  color: var(--text-primary);
+  background: rgba(21, 44, 58, 0.92);
+}

@@ -705,6 +705,7 @@ pub fn App() -> Element {
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
     let mut audit_text_filter = use_signal(String::new);
+    let mut selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
 
     #[cfg(not(target_arch = "wasm32"))]
     use_future(move || {
@@ -791,7 +792,15 @@ pub fn App() -> Element {
                     if !cockpit.deployment.preview.is_empty() {
                         div { class: "cockpit-panel-preview-rail",
                             for item in &cockpit.deployment.preview {
-                                span { class: "cockpit-panel-preview-chip", "{item}" }
+                                button {
+                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    r#type: "button",
+                                    onclick: {
+                                        let key = item.key.clone();
+                                        move |_| selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())))
+                                    },
+                                    "{item.label}"
+                                }
                             }
                         }
                     }
@@ -808,7 +817,15 @@ pub fn App() -> Element {
                     if !cockpit.activity.preview.is_empty() {
                         div { class: "cockpit-panel-preview-rail",
                             for item in &cockpit.activity.preview {
-                                span { class: "cockpit-panel-preview-chip", "{item}" }
+                                button {
+                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    r#type: "button",
+                                    onclick: {
+                                        let key = item.key.clone();
+                                        move |_| selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())))
+                                    },
+                                    "{item.label}"
+                                }
                             }
                         }
                     }
@@ -970,6 +987,7 @@ pub fn App() -> Element {
                     aside { class: "cockpit-contextual-detail",
                         SessionScreen {
                             data: controller.read().session_data(),
+                            selected_entity: selected_cockpit_entity.read().clone(),
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 #[cfg(not(target_arch = "wasm32"))]
@@ -2108,12 +2126,18 @@ struct FocusHostShell<'a> {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum SelectedCockpitEntity {
+    DeploymentInstance(String),
+    ActivityActor(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TruthPanelModel {
     label: &'static str,
     tag: &'static str,
     primary: String,
     secondary: Vec<String>,
-    preview: Vec<String>,
+    preview: Vec<CockpitPreviewChip>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2122,6 +2146,12 @@ struct CockpitSummaryModel {
     attached: TruthPanelModel,
     deployment: TruthPanelModel,
     activity: TruthPanelModel,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CockpitPreviewChip {
+    key: String,
+    label: String,
 }
 
 fn build_cockpit_summary_model(
@@ -2277,7 +2307,10 @@ fn build_cockpit_summary_model(
         .take(4)
         .map(|instance| {
             let freshness = instance.freshness.as_deref().unwrap_or("unknown");
-            format!("{} · {}", instance.instance_id, freshness)
+            CockpitPreviewChip {
+                key: instance.instance_id.clone(),
+                label: format!("{} · {}", instance.instance_id, freshness),
+            }
         })
         .collect::<Vec<_>>();
     let deployment_tag = if session.telemetry.lifecycle.counts.stale > 0
@@ -2324,7 +2357,10 @@ fn build_cockpit_summary_model(
         .active_delegates
         .iter()
         .take(4)
-        .map(|delegate| format!("{} · {}", delegate.agent_name, delegate.status))
+        .map(|delegate| CockpitPreviewChip {
+            key: delegate.task_id.clone(),
+            label: format!("{} · {}", delegate.agent_name, delegate.status),
+        })
         .collect::<Vec<_>>();
 
     CockpitSummaryModel {
@@ -3858,7 +3894,7 @@ mod tests {
         assert!(model.deployment.preview.len() <= 4);
         assert!(model.activity.preview.len() <= 4);
         if !model.activity.preview.is_empty() {
-            assert!(model.activity.preview[0].contains("·"));
+            assert!(model.activity.preview[0].label.contains("·"));
         }
     }
 

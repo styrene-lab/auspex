@@ -234,10 +234,12 @@ pub fn ScribeScreen(
 #[component]
 pub fn SessionScreen(
     data: SessionData,
+    selected_entity: Option<crate::app::SelectedCockpitEntity>,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
     on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
-    let control_plane_expanded = should_expand_control_plane_widget(&data);
+    let control_plane_expanded =
+        should_expand_control_plane_widget(&data, selected_entity.as_ref());
     let provider_expanded = should_expand_provider_status_widget(&data);
     let session_detail_expanded = should_expand_session_stats_widget(&data);
     let shell_expanded = should_expand_session_harness_widget(&data);
@@ -248,6 +250,7 @@ pub fn SessionScreen(
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_control_plane_widget(&data, control_plane_expanded)}
             {render_provider_status_widget(&data, provider_expanded)}
+            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus)}
             {render_session_stats_widget(&data, session_detail_expanded)}
             {render_session_harness_widget(&data, shell_expanded)}
         }
@@ -523,6 +526,77 @@ fn render_temporary_dispatches_widget(
     )
 }
 
+fn render_selected_entity_widget(
+    data: &SessionData,
+    selected_entity: Option<&crate::app::SelectedCockpitEntity>,
+    on_transcript_focus: Option<EventHandler<String>>,
+) -> Element {
+    let Some(selected_entity) = selected_entity else {
+        return rsx! { Fragment {} };
+    };
+
+    match selected_entity {
+        crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => {
+            let instance = data
+                .telemetry
+                .lifecycle
+                .instances
+                .iter()
+                .find(|instance| instance.instance_id == *instance_id);
+            let Some(instance) = instance else {
+                return rsx! { Fragment {} };
+            };
+            render_widget_section(
+                "Selected deployment",
+                true,
+                rsx! {
+                    div { class: "kv-grid widget-kv-grid",
+                        {kv_row("Instance", &instance.instance_id)}
+                        {kv_row("Route", &instance.route_id)}
+                        {kv_row("Role", &instance.role)}
+                        {kv_row("Profile", &instance.profile)}
+                        if let Some(status) = instance.status.as_deref() { {kv_row("Status", status)} }
+                        if let Some(freshness) = instance.freshness.as_deref() { {kv_row("Freshness", freshness)} }
+                        if let Some(base_url) = instance.base_url.as_deref() { {kv_row("Base URL", base_url)} }
+                    }
+                },
+            )
+        }
+        crate::app::SelectedCockpitEntity::ActivityActor(task_id) => {
+            let delegate = data
+                .active_delegates
+                .iter()
+                .find(|delegate| delegate.task_id == *task_id);
+            let Some(delegate) = delegate else {
+                return rsx! { Fragment {} };
+            };
+            render_widget_section(
+                "Selected activity",
+                true,
+                rsx! {
+                    div { class: "kv-grid widget-kv-grid",
+                        {kv_row("Actor", &delegate.agent_name)}
+                        {kv_row("Task", &delegate.task_id)}
+                        {kv_row("Status", &delegate.status)}
+                        {kv_row("Elapsed", &format!("{} ms", delegate.elapsed_ms))}
+                    }
+                    if let Some(handler) = on_transcript_focus {
+                        button {
+                            class: "transcript-focus-link",
+                            r#type: "button",
+                            onclick: {
+                                let task_id = delegate.task_id.clone();
+                                move |_| handler.call(format!("delegate:{task_id}"))
+                            },
+                            "Focus related transcript events"
+                        }
+                    }
+                },
+            )
+        }
+    }
+}
+
 fn render_session_stats_widget(data: &SessionData, expanded: bool) -> Element {
     render_widget_section(
         "Session detail",
@@ -571,12 +645,20 @@ fn should_expand_provider_status_widget(data: &SessionData) -> bool {
         })
 }
 
-fn should_expand_control_plane_widget(data: &SessionData) -> bool {
+fn should_expand_control_plane_widget(
+    data: &SessionData,
+    selected_entity: Option<&crate::app::SelectedCockpitEntity>,
+) -> bool {
     let Some(control_plane) = &data.telemetry.control_plane else {
         return false;
     };
 
-    control_plane
+    selected_entity.is_some_and(|entity| {
+        matches!(
+            entity,
+            crate::app::SelectedCockpitEntity::DeploymentInstance(_)
+        )
+    }) || control_plane
         .base_url
         .as_deref()
         .unwrap_or_default()
@@ -1321,7 +1403,7 @@ mod tests {
         };
 
         assert!(should_expand_provider_status_widget(&degraded));
-        assert!(should_expand_control_plane_widget(&degraded));
+        assert!(should_expand_control_plane_widget(&degraded, None));
         assert!(should_expand_session_stats_widget(&degraded));
         assert!(!should_expand_session_harness_widget(&degraded));
 
@@ -1330,6 +1412,55 @@ mod tests {
             ..Default::default()
         };
         assert!(should_expand_session_harness_widget(&warning));
+    }
+
+    #[test]
+    fn selected_entity_widget_renders_activity_and_deployment_detail() {
+        let data = crate::fixtures::SessionData {
+            active_delegates: vec![crate::fixtures::DelegateSummaryData {
+                agent_name: "worker-a".into(),
+                status: "running".into(),
+                task_id: "task-1".into(),
+                elapsed_ms: 42,
+            }],
+            telemetry: crate::fixtures::SessionTelemetryData {
+                lifecycle: crate::fixtures::LifecycleTelemetryData {
+                    instances: vec![crate::fixtures::LifecycleInstanceTelemetryData {
+                        route_id: "session-dispatcher".into(),
+                        instance_id: "omg_primary".into(),
+                        role: "primary-driver".into(),
+                        profile: "primary-interactive".into(),
+                        status: Some("ready".into()),
+                        freshness: Some("fresh".into()),
+                        base_url: Some("http://127.0.0.1:7842".into()),
+                        last_seen_at: None,
+                    }],
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+        let deployment = render_selected_entity_widget(
+            &data,
+            Some(&crate::app::SelectedCockpitEntity::DeploymentInstance(
+                "omg_primary".into(),
+            )),
+            None,
+        );
+        let activity = render_selected_entity_widget(
+            &data,
+            Some(&crate::app::SelectedCockpitEntity::ActivityActor(
+                "task-1".into(),
+            )),
+            None,
+        );
+        let deployment_debug = format!("{deployment:?}");
+        let activity_debug = format!("{activity:?}");
+        assert!(deployment_debug.contains("Selected deployment"));
+        assert!(deployment_debug.contains("omg_primary"));
+        assert!(activity_debug.contains("Selected activity"));
+        assert!(activity_debug.contains("worker-a"));
     }
 
     #[test]
