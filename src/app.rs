@@ -2064,7 +2064,13 @@ fn build_dispatch_context_strip_model(
         .as_ref()
         .map(|binding| binding.session_id.clone())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "local-session".into());
+        .unwrap_or_else(|| {
+            if session_mode == SessionMode::Live {
+                "host-session".into()
+            } else {
+                "local-session".into()
+            }
+        });
 
     let who = session
         .dispatcher_binding
@@ -2095,20 +2101,13 @@ fn build_dispatch_context_strip_model(
                 .providers
                 .iter()
                 .find_map(|provider| provider.model.clone())
-        })
-        .unwrap_or_else(|| "model not reported yet".into());
+        });
 
-    let thinking = if session.thinking_level.trim().is_empty() {
-        "not reported yet".into()
-    } else {
-        session.thinking_level.clone()
-    };
+    let thinking = (!session.thinking_level.trim().is_empty())
+        .then(|| session.thinking_level.clone());
 
-    let tier = if session.capability_tier.trim().is_empty() {
-        "not reported yet".into()
-    } else {
-        session.capability_tier.clone()
-    };
+    let tier = (!session.capability_tier.trim().is_empty())
+        .then(|| session.capability_tier.clone());
 
     let context = context_window_label(session);
 
@@ -2169,53 +2168,62 @@ fn build_dispatch_context_strip_model(
     DispatchContextStripModel {
         state,
         send_detail,
-        items: vec![
-            DispatchContextItem {
-                label: "Route",
-                value: route,
-                tone: "muted",
-            },
-            DispatchContextItem {
-                label: "Session",
-                value: session_label,
-                tone: "muted",
-            },
-            DispatchContextItem {
-                label: "Who",
-                value: who,
-                tone: "accent",
-            },
-            DispatchContextItem {
-                label: "Model",
-                value: model,
-                tone: "accent",
-            },
-            DispatchContextItem {
-                label: "Thinking",
-                value: thinking,
-                tone: "muted",
-            },
-            DispatchContextItem {
-                label: "Tier",
-                value: tier,
-                tone: "muted",
-            },
-            DispatchContextItem {
+        items: {
+            let mut items = vec![
+                DispatchContextItem {
+                    label: "Route",
+                    value: route,
+                    tone: "muted",
+                },
+                DispatchContextItem {
+                    label: "Session",
+                    value: session_label,
+                    tone: "muted",
+                },
+                DispatchContextItem {
+                    label: "Who",
+                    value: who,
+                    tone: "accent",
+                },
+            ];
+            if let Some(model) = model {
+                items.push(DispatchContextItem {
+                    label: "Model",
+                    value: model,
+                    tone: "accent",
+                });
+            }
+            if let Some(thinking) = thinking {
+                items.push(DispatchContextItem {
+                    label: "Thinking",
+                    value: thinking,
+                    tone: "muted",
+                });
+            }
+            if let Some(tier) = tier {
+                items.push(DispatchContextItem {
+                    label: "Tier",
+                    value: tier,
+                    tone: "muted",
+                });
+            }
+            items.push(DispatchContextItem {
                 label: "State",
                 value: state_label,
                 tone: state_tone,
-            },
-            DispatchContextItem {
+            });
+            items.push(DispatchContextItem {
                 label: "Context",
                 value: context,
                 tone: "muted",
-            },
-            DispatchContextItem {
+            });
+            items.push(DispatchContextItem {
                 label: "Send",
                 value: send_label,
                 tone: send_tone,
-            },
-        ],
+            });
+            items
+        },
     }
 }
 
@@ -2460,7 +2468,13 @@ fn build_left_rail_inventory(
                 format!("workspace · branch {branch}")
             }
         })
-        .unwrap_or_else(|| "workspace not identified yet".into());
+        .unwrap_or_else(|| {
+            if summary.connection.contains("Omegon host") {
+                "attached host workspace not identified yet".into()
+            } else {
+                "workspace not identified yet".into()
+            }
+        });
     let project_label = work
         .focused_title
         .clone()
@@ -2472,7 +2486,13 @@ fn build_left_rail_inventory(
         .as_ref()
         .map(|binding| binding.session_id.clone())
         .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| "local-session".into());
+        .unwrap_or_else(|| {
+            if summary.connection.contains("Omegon host") {
+                "host-session".into()
+            } else {
+                "local-session".into()
+            }
+        });
 
     let session_detail = session
         .dispatcher_binding
@@ -2516,7 +2536,12 @@ fn build_left_rail_inventory(
     }
 
     if agent_rows.is_empty() {
-        agent_rows.push(("No dispatcher binding".into(), "idle".into()));
+        let label = if summary.connection.contains("Omegon host") {
+            "Host attached · no dispatcher binding"
+        } else {
+            "No dispatcher binding"
+        };
+        agent_rows.push((label.into(), "idle".into()));
     }
 
     LeftRailInventory {
@@ -3678,7 +3703,7 @@ mod tests {
         assert_eq!(inventory.workspace_label, "main");
         assert_eq!(inventory.workspace_detail, "workspace · branch main");
         assert_eq!(inventory.session_label, "local-session");
-        assert_eq!(inventory.agent_rows[0].0, "No dispatcher binding");
+        assert_eq!(inventory.agent_rows[0].0, "Host attached · no dispatcher binding");
     }
 
     #[test]
