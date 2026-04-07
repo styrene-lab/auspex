@@ -2820,3 +2820,22 @@ body > * {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.cockpit-cop-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+  gap: 0.65rem;
+}
+
+.cockpit-cop-focus {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.cockpit-composer-docked {
+  margin-top: 0.75rem;
+  border-top: 1px solid rgba(42, 57, 74, 0.58);
+  padding-top: 0.75rem;
+}

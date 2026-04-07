@@ -916,27 +916,23 @@ pub fn App() -> Element {
                                 }))
                             }
                         } else {
-                            div { class: "cockpit-chat-host",
-                                {render_chat_status_banner(
-                                    controller.read().summary(),
-                                    &controller.read().session_data(),
-                                    controller.read().is_run_active(),
-                                    controller.read().can_submit(),
-                                )}
-                                main { class: "transcript cockpit-transcript",
-                                    {render_transcript(
-                                        controller.read().summary(),
-                                        &controller.read().work_data(),
-                                        &controller.read().session_data(),
-                                        controller.read().transcript(),
-                                        controller.read().messages(),
-                                        controller.read().transcript_auto_expand(),
-                                    )}
-                                    div { id: "transcript-end" }
-                                }
-                                form {
-                                    class: "composer cockpit-composer",
-                                    onsubmit: move |event| {
+                            {render_chat_cop_host(
+                                ChatCopHostModel {
+                                    summary: controller.read().summary(),
+                                    work: &controller.read().work_data(),
+                                    session: &controller.read().session_data(),
+                                    transcript: controller.read().transcript(),
+                                    messages: controller.read().messages(),
+                                    auto_expand: controller.read().transcript_auto_expand(),
+                                    is_run_active: controller.read().is_run_active(),
+                                    can_submit: controller.read().can_submit(),
+                                    draft: controller.read().composer().draft(),
+                                    dispatch_context: &dispatch_context,
+                                    provider_blocked_composer: provider_blocked_composer.as_ref(),
+                                    composer_ready_notice: composer_ready_notice.read().as_deref(),
+                                },
+                                ChatCopHostActions {
+                                    on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
                                         event.prevent_default();
                                         let command = controller.write().submit_prompt_command();
                                         #[cfg(not(target_arch = "wasm32"))]
@@ -947,44 +943,27 @@ pub fn App() -> Element {
                                         if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
                                             dispatch_targeted_command(&stream, &command);
                                         }
-                                    },
-                                    {render_dispatch_context_strip(&dispatch_context)}
-                                    if let Some(message) = composer_ready_notice.read().as_deref() {
-                                        div { class: "composer-ready-notice", "{message}" }
-                                    }
-                                    if let Some(blocked) = &provider_blocked_composer {
-                                        div { class: "composer-blocked-callout",
-                                            h3 { class: "composer-blocked-title", "{blocked.title}" }
-                                            p { class: "composer-blocked-detail", "{blocked.detail}" }
-                                            button { class: "composer-blocked-action", r#type: "button", onclick: move |_| settings_open.set(true), "{blocked.action_label}" }
+                                    }),
+                                    on_update_draft: EventHandler::new(move |value: String| controller.write().update_draft(value)),
+                                    on_open_settings: EventHandler::new(move |_| {
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        {
+                                            let _ = controller.write().refresh_settings_auth_status();
                                         }
-                                    } else {
-                                        textarea {
-                                            class: "composer-input",
-                                            rows: "3",
-                                            value: controller.read().composer().draft().to_string(),
-                                            disabled: !controller.read().can_submit(),
-                                            placeholder: if controller.read().can_submit() { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
-                                            oninput: move |event| controller.write().update_draft(event.value()),
+                                        settings_open.set(true)
+                                    }),
+                                    on_cancel: EventHandler::new(move |_| {
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
+                                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                         }
-                                    }
-                                    div { class: "composer-actions",
-                                        if controller.read().is_run_active() {
-                                            button { class: "composer-cancel", r#type: "button", onclick: move |_| {
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
-                                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                                }
-                                                #[cfg(target_arch = "wasm32")]
-                                                if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
-                                                    dispatch_targeted_command(&stream, &command);
-                                                }
-                                            }, "Cancel" }
+                                        #[cfg(target_arch = "wasm32")]
+                                        if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
+                                            dispatch_targeted_command(&stream, &command);
                                         }
-                                        button { class: "composer-submit", r#type: "submit", disabled: !controller.read().can_submit(), title: dispatch_context.send_detail.clone(), "Send" }
-                                    }
-                                }
-                            }
+                                    }),
+                                },
+                            )}
                         }
                     }
 
@@ -2099,6 +2078,29 @@ struct DispatchContextStripModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct ChatCopHostModel<'a> {
+    summary: &'a crate::fixtures::HostSessionSummary,
+    work: &'a crate::fixtures::WorkData,
+    session: &'a crate::fixtures::SessionData,
+    transcript: &'a TranscriptData,
+    messages: &'a [crate::fixtures::ChatMessage],
+    auto_expand: bool,
+    is_run_active: bool,
+    can_submit: bool,
+    draft: &'a str,
+    dispatch_context: &'a DispatchContextStripModel,
+    provider_blocked_composer: Option<&'a ProviderBlockedComposerModel>,
+    composer_ready_notice: Option<&'a str>,
+}
+
+struct ChatCopHostActions {
+    on_submit: EventHandler<dioxus::events::FormEvent>,
+    on_update_draft: EventHandler<String>,
+    on_open_settings: EventHandler<()>,
+    on_cancel: EventHandler<()>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TruthPanelModel {
     label: &'static str,
     tag: &'static str,
@@ -2566,6 +2568,71 @@ fn build_dispatch_context_strip_model(
             });
             items
         },
+    }
+}
+
+fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions) -> Element {
+    let ChatCopHostModel {
+        summary,
+        work,
+        session,
+        transcript,
+        messages,
+        auto_expand,
+        is_run_active,
+        can_submit,
+        draft,
+        dispatch_context,
+        provider_blocked_composer,
+        composer_ready_notice,
+    } = model;
+    let ChatCopHostActions {
+        on_submit,
+        on_update_draft,
+        on_open_settings,
+        on_cancel,
+    } = actions;
+
+    rsx! {
+        div { class: "cockpit-chat-host",
+            div { class: "cockpit-cop-body",
+                {render_chat_status_banner(summary, session, is_run_active, can_submit)}
+                main { class: "transcript cockpit-transcript cockpit-cop-focus",
+                    {render_transcript(summary, work, session, transcript, messages, auto_expand)}
+                    div { id: "transcript-end" }
+                }
+            }
+            form {
+                class: "composer cockpit-composer cockpit-composer-docked",
+                onsubmit: move |event| on_submit.call(event),
+                {render_dispatch_context_strip(dispatch_context)}
+                if let Some(message) = composer_ready_notice {
+                    div { class: "composer-ready-notice", "{message}" }
+                }
+                if let Some(blocked) = provider_blocked_composer {
+                    div { class: "composer-blocked-callout",
+                        h3 { class: "composer-blocked-title", "{blocked.title}" }
+                        p { class: "composer-blocked-detail", "{blocked.detail}" }
+                        button { class: "composer-blocked-action", r#type: "button", onclick: move |_| on_open_settings.call(()), "{blocked.action_label}" }
+                    }
+                } else {
+                    textarea {
+                        class: "composer-input",
+                        rows: "3",
+                        value: draft.to_string(),
+                        disabled: !can_submit,
+                        placeholder: if can_submit { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
+                        oninput: move |event| on_update_draft.call(event.value()),
+                    }
+                }
+                div { class: "composer-actions",
+                    if is_run_active {
+                        button { class: "composer-cancel", r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
+                    }
+                    button { class: "composer-submit", r#type: "submit", disabled: !can_submit, title: dispatch_context.send_detail.clone(), "Send" }
+                }
+            }
+        }
     }
 }
 
@@ -3739,6 +3806,23 @@ mod tests {
         assert!(model.attached.secondary[1].contains("booting/attaching"));
         assert!(model.deployment.preview.is_empty());
         assert!(model.activity.preview.is_empty());
+    }
+
+    #[test]
+    fn cockpit_summary_model_exposes_preview_rails_for_field_overview() {
+        let controller = AppController::remote_demo();
+        let model = super::build_cockpit_summary_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            controller.summary(),
+            &controller.session_data(),
+        );
+
+        assert!(model.deployment.preview.len() <= 4);
+        assert!(model.activity.preview.len() <= 4);
+        if !model.activity.preview.is_empty() {
+            assert!(model.activity.preview[0].contains("·"));
+        }
     }
 
     #[test]
