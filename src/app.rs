@@ -759,26 +759,45 @@ pub fn App() -> Element {
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
             header { class: "cockpit-spine" ,
-                div { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
-                    h1 { class: "cockpit-panel-title", "Auspex" }
-                    p { class: "cockpit-panel-kicker", "v{APP_VERSION}" }
-                    p { class: "cockpit-panel-detail", "{cockpit.auspex_mode_label}" }
-                    p { class: "cockpit-panel-detail", "{cockpit.auspex_status_label}" }
+                article { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
+                    for line in &cockpit.auspex.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
                 }
-                div { class: "cockpit-panel cockpit-panel-attached", "data-surface": "panel", "data-elevation": "1",
-                    h2 { class: "cockpit-panel-title", "Attached Omegon" }
-                    p { class: "cockpit-panel-kicker", "{cockpit.attached_title}" }
-                    p { class: "cockpit-panel-detail", "{cockpit.attached_detail}" }
+                article { class: "cockpit-panel cockpit-panel-attached", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.attached.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.attached.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.attached.primary}" }
+                    for line in &cockpit.attached.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
                 }
-                div { class: "cockpit-panel cockpit-panel-deployment", "data-surface": "panel", "data-elevation": "1",
-                    h2 { class: "cockpit-panel-title", "Deployment" }
-                    p { class: "cockpit-panel-kicker", "{cockpit.deployment_title}" }
-                    p { class: "cockpit-panel-detail", "{cockpit.deployment_detail}" }
+                article { class: "cockpit-panel cockpit-panel-deployment", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
+                    for line in &cockpit.deployment.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
                 }
-                div { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
-                    h2 { class: "cockpit-panel-title", "Activity" }
-                    p { class: "cockpit-panel-kicker", "{cockpit.activity_title}" }
-                    p { class: "cockpit-panel-detail", "{cockpit.activity_detail}" }
+                article { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.activity.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.activity.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.activity.primary}" }
+                    for line in &cockpit.activity.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
                 }
             }
 
@@ -2066,15 +2085,19 @@ struct DispatchContextStripModel {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+struct TruthPanelModel {
+    label: &'static str,
+    tag: &'static str,
+    primary: String,
+    secondary: Vec<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct CockpitSummaryModel {
-    auspex_mode_label: String,
-    auspex_status_label: String,
-    attached_title: String,
-    attached_detail: String,
-    deployment_title: String,
-    deployment_detail: String,
-    activity_title: String,
-    activity_detail: String,
+    auspex: TruthPanelModel,
+    attached: TruthPanelModel,
+    deployment: TruthPanelModel,
+    activity: TruthPanelModel,
 }
 
 fn build_cockpit_summary_model(
@@ -2083,10 +2106,16 @@ fn build_cockpit_summary_model(
     summary: &crate::fixtures::HostSessionSummary,
     session: &crate::fixtures::SessionData,
 ) -> CockpitSummaryModel {
-    let auspex_mode_label = format!("{} · {}", workspace_label(workspace), session_mode.label());
-    let auspex_status_label = summary.connection.clone();
+    let shell_tag = match summary.activity_kind {
+        crate::fixtures::ActivityKind::Idle => "OK",
+        crate::fixtures::ActivityKind::Running => "LIVE",
+        crate::fixtures::ActivityKind::Waiting => "WAIT",
+        crate::fixtures::ActivityKind::Degraded => "DEGRADED",
+        crate::fixtures::ActivityKind::Completed => "OK",
+        crate::fixtures::ActivityKind::Failure => "FAILED",
+    };
 
-    let attached_title = session
+    let attached_primary = session
         .dispatcher_binding
         .as_ref()
         .map(|binding| {
@@ -2123,7 +2152,7 @@ fn build_cockpit_summary_model(
         })
         .unwrap_or_else(|| "Detached host session".into());
 
-    let attached_detail = session
+    let attached_secondary_1 = session
         .dispatcher_binding
         .as_ref()
         .map(|binding| {
@@ -2136,11 +2165,7 @@ fn build_cockpit_summary_model(
                 .expected_model
                 .as_deref()
                 .unwrap_or("model unreported");
-            let endpoint = binding
-                .observed_base_url
-                .as_deref()
-                .unwrap_or("endpoint unreported");
-            format!("{profile} · {model} · {endpoint}")
+            format!("{profile} · {model}")
         })
         .or_else(|| {
             session.instance_descriptor.as_ref().map(|instance| {
@@ -2154,23 +2179,72 @@ fn build_cockpit_summary_model(
                     .as_ref()
                     .and_then(|policy| policy.model.as_deref())
                     .unwrap_or("model unreported");
+                format!("{profile} · {model}")
+            })
+        })
+        .unwrap_or_else(|| "No attached host instance reported".into());
+
+    let attached_secondary_2 = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| {
+            let endpoint = binding
+                .observed_base_url
+                .as_deref()
+                .unwrap_or("endpoint unreported");
+            let freshness = if session.telemetry.lifecycle.counts.stale > 0 {
+                "stale"
+            } else {
+                "verified"
+            };
+            format!("{freshness} · {endpoint}")
+        })
+        .or_else(|| {
+            session.instance_descriptor.as_ref().map(|instance| {
                 let endpoint = instance
                     .control_plane
                     .as_ref()
                     .and_then(|cp| cp.base_url.as_deref())
                     .unwrap_or("endpoint unreported");
-                format!("{profile} · {model} · {endpoint}")
+                let status = if instance.identity.status.is_empty() {
+                    "status unreported"
+                } else {
+                    instance.identity.status.as_str()
+                };
+                format!("{status} · {endpoint}")
             })
         })
-        .unwrap_or_else(|| "No attached host instance reported".into());
+        .unwrap_or_else(|| "detached · no verified endpoint".into());
 
-    let deployment_title = format!(
+    let attached_tag = if attached_primary == "Detached host session" {
+        "DETACHED"
+    } else if session.telemetry.lifecycle.counts.stale > 0 {
+        "STALE"
+    } else {
+        "LIVE"
+    };
+
+    let deployment_primary = format!(
         "{} known · {} fresh · {} stale",
         session.telemetry.lifecycle.counts.total_attached,
         session.telemetry.lifecycle.counts.fresh,
         session.telemetry.lifecycle.counts.stale
     );
-    let deployment_detail = if session.telemetry.lifecycle.instances.is_empty() {
+    let serve_count = session
+        .telemetry
+        .lifecycle
+        .instances
+        .iter()
+        .filter(|instance| instance.role == "detached-service")
+        .count();
+    let temporary_count = session
+        .active_delegate_count
+        .max(session.active_delegates.len());
+    let deployment_secondary_1 = format!(
+        "{} attached · {} serve · {} temporary",
+        session.telemetry.lifecycle.attached_count, serve_count, temporary_count
+    );
+    let deployment_secondary_2 = if session.telemetry.lifecycle.instances.is_empty() {
         session.telemetry.lifecycle.summary.clone()
     } else {
         let roles = session
@@ -2181,45 +2255,81 @@ fn build_cockpit_summary_model(
             .map(|instance| instance.role.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        format!("{} · roles {roles}", session.telemetry.lifecycle.summary)
+        format!("roles: {roles}")
+    };
+    let deployment_tag = if session.telemetry.lifecycle.counts.stale > 0
+        || session.telemetry.lifecycle.counts.lost > 0
+        || session.telemetry.lifecycle.counts.abandoned > 0
+    {
+        "DRIFT"
+    } else {
+        "STABLE"
     };
 
-    let activity_title = format!(
-        "{} · {}",
-        summary.activity_kind.label().to_ascii_uppercase(),
-        summary.activity
-    );
-    let activity_detail = if !session.active_delegates.is_empty() {
-        let actors = session
+    let active_count = session
+        .active_delegate_count
+        .max(session.active_delegates.len());
+    let activity_tag = if active_count > 0 {
+        "RUNNING"
+    } else if matches!(
+        summary.activity_kind,
+        crate::fixtures::ActivityKind::Degraded
+    ) {
+        "ALERT"
+    } else if matches!(
+        summary.activity_kind,
+        crate::fixtures::ActivityKind::Waiting
+    ) {
+        "WAITING"
+    } else {
+        "IDLE"
+    };
+    let activity_primary = if active_count > 0 {
+        format!("{active_count} active dispatches")
+    } else {
+        summary
+            .activity_kind
+            .label()
+            .to_ascii_uppercase()
+            .to_string()
+    };
+    let activity_secondary_1 = if !session.active_delegates.is_empty() {
+        session
             .active_delegates
             .iter()
             .map(|delegate| format!("{} ({})", delegate.agent_name, delegate.status))
             .collect::<Vec<_>>()
-            .join(", ");
-        format!(
-            "{} active dispatch(es) · {actors}",
-            session
-                .active_delegate_count
-                .max(session.active_delegates.len())
-        )
+            .join(", ")
     } else {
-        format!(
-            "{} turn(s) · {} tool call(s) · {}",
-            session.session_turns,
-            session.session_tool_calls,
-            cockpit_work_hint(summary)
-        )
+        summary.activity.clone()
     };
+    let activity_secondary_2 = cockpit_work_hint(summary);
 
     CockpitSummaryModel {
-        auspex_mode_label,
-        auspex_status_label,
-        attached_title,
-        attached_detail,
-        deployment_title,
-        deployment_detail,
-        activity_title,
-        activity_detail,
+        auspex: TruthPanelModel {
+            label: "Auspex",
+            tag: shell_tag,
+            primary: format!("{} · {}", workspace_label(workspace), session_mode.label()),
+            secondary: vec![format!("v{APP_VERSION}"), summary.connection.clone()],
+        },
+        attached: TruthPanelModel {
+            label: "Attached Omegon",
+            tag: attached_tag,
+            primary: attached_primary,
+            secondary: vec![attached_secondary_1, attached_secondary_2],
+        },
+        deployment: TruthPanelModel {
+            label: "Deployment",
+            tag: deployment_tag,
+            primary: deployment_primary,
+            secondary: vec![deployment_secondary_1, deployment_secondary_2],
+        },
+        activity: TruthPanelModel {
+            label: "Activity",
+            tag: activity_tag,
+            primary: activity_primary,
+            secondary: vec![activity_secondary_1, activity_secondary_2],
+        },
     }
 }
 
@@ -3559,6 +3669,24 @@ mod tests {
             context_window_label(&crate::fixtures::SessionData::default()),
             "Context usage not reported yet"
         );
+    }
+
+    #[test]
+    fn cockpit_summary_model_prioritizes_attached_identity_and_activity_semantics() {
+        let controller = AppController::remote_demo();
+        let model = super::build_cockpit_summary_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            controller.summary(),
+            &controller.session_data(),
+        );
+
+        assert_eq!(model.auspex.label, "Auspex");
+        assert_eq!(model.attached.tag, "LIVE");
+        assert!(model.attached.primary.contains("primary-driver"));
+        assert!(model.deployment.primary.contains("known"));
+        assert!(!model.activity.primary.is_empty());
+        assert_eq!(model.activity.label, "Activity");
     }
 
     #[test]
