@@ -5,9 +5,9 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use omegon_traits::{
-    AcceptedResponse, HelloRequest, IpcEnvelope, IpcEnvelopeKind, IpcEventPayload,
-    IpcStateSnapshot, SlashCommandResponse, SubmitPromptRequest, SubscriptionRequest,
-    SubscriptionResponse, IPC_MAX_FRAME_BYTES, IPC_PROTOCOL_VERSION,
+    AcceptedResponse, HelloRequest, IPC_MAX_FRAME_BYTES, IPC_PROTOCOL_VERSION, IpcEnvelope,
+    IpcEnvelopeKind, IpcEventPayload, IpcStateSnapshot, SlashCommandResponse, SubmitPromptRequest,
+    SubscriptionRequest, SubscriptionResponse,
 };
 use serde_json::Value;
 use tokio::net::UnixStream;
@@ -117,6 +117,10 @@ impl IpcCommandClient {
 
     pub fn is_available(&self) -> bool {
         Path::new(&self.socket_path).exists()
+    }
+
+    pub fn socket_path(&self) -> &str {
+        &self.socket_path
     }
 
     pub async fn submit_prompt(&self, prompt: &str) -> Result<bool, String> {

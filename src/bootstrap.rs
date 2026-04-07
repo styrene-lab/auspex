@@ -1,23 +1,25 @@
+use semver::Version;
 #[cfg(not(target_arch = "wasm32"))]
 use std::env;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
-use semver::Version;
 use std::time::Duration;
 
 use crate::audit_timeline::{default_audit_timeline_path, load_or_default};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::command_transport::CommandTransport;
 use crate::controller::AppController;
 use crate::event_stream::{
     EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
     spawn_websocket_event_stream,
 };
-#[cfg(not(target_arch = "wasm32"))]
-use crate::{command_transport::CommandTransport, ipc_client::IpcCommandClient};
 use crate::instance_registry::{
     default_instance_registry_path, load_or_default as load_registry_or_default,
 };
+#[cfg(not(target_arch = "wasm32"))]
+use crate::ipc_client::{IpcCommandClient, IpcEventStreamHandle, spawn_ipc_event_stream};
 use crate::omegon_control::OmegonStartupInfo;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -101,7 +103,11 @@ pub fn run_desktop_auth_action(
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
         return Err(if stderr.is_empty() {
-            format!("omegon auth {} failed with {}", action.subcommand(), output.status)
+            format!(
+                "omegon auth {} failed with {}",
+                action.subcommand(),
+                output.status
+            )
         } else {
             stderr
         });
@@ -129,7 +135,10 @@ fn parse_desktop_auth_status(stdout: &str) -> Result<DesktopAuthSnapshot, String
         if parts.is_empty() {
             continue;
         }
-        let auth_method = parts.last().map(|value| value.trim_matches(['(', ')'])).map(str::to_string);
+        let auth_method = parts
+            .last()
+            .map(|value| value.trim_matches(['(', ')']))
+            .map(str::to_string);
         let name = if parts.len() > 1 {
             parts[..parts.len() - 1].join(" ")
         } else {
@@ -250,6 +259,8 @@ pub struct BootstrapResult {
     pub note: Option<String>,
     pub event_stream: Option<EventStreamHandle>,
     #[cfg(not(target_arch = "wasm32"))]
+    pub ipc_event_stream: Option<IpcEventStreamHandle>,
+    #[cfg(not(target_arch = "wasm32"))]
     pub command_transport: Option<CommandTransport>,
 }
 
@@ -272,6 +283,8 @@ impl BootstrapResult {
             note: Some(note),
             event_stream: None,
             #[cfg(not(target_arch = "wasm32"))]
+            ipc_event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
             command_transport: None,
         }
     }
@@ -293,6 +306,8 @@ impl BootstrapResult {
             source: BootstrapSource::MockDefault,
             note: Some(note),
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            ipc_event_stream: None,
             #[cfg(not(target_arch = "wasm32"))]
             command_transport: None,
         }
@@ -319,6 +334,8 @@ impl BootstrapResult {
             source: BootstrapSource::SpawningOmegon { binary: label },
             note: None,
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            ipc_event_stream: None,
             #[cfg(not(target_arch = "wasm32"))]
             command_transport: None,
         }
@@ -348,6 +365,8 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
             },
             note: None,
             event_stream: None,
+            #[cfg(not(target_arch = "wasm32"))]
+            ipc_event_stream: None,
             #[cfg(not(target_arch = "wasm32"))]
             command_transport: None,
         };
@@ -401,8 +420,9 @@ pub async fn bootstrap_from_http_state_async(
     let registry_store = default_instance_registry_path()
         .map(|path| load_registry_or_default(&path))
         .unwrap_or_default();
-    let mut controller = AppController::from_remote_snapshot_json_with_registry(&body, registry_store)
-        .map_err(|error| format!("invalid state payload: {error}"))?;
+    let mut controller =
+        AppController::from_remote_snapshot_json_with_registry(&body, registry_store)
+            .map_err(|error| format!("invalid state payload: {error}"))?;
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = default_audit_timeline_path() {
         controller = controller.with_audit_timeline(load_or_default(&path));
@@ -429,14 +449,20 @@ pub async fn bootstrap_from_http_state_async(
         });
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
     #[cfg(not(target_arch = "wasm32"))]
-    let command_transport = startup
+    let ipc_client = startup
         .as_ref()
         .and_then(|startup| startup.instance_descriptor.as_ref())
         .and_then(|instance| instance.control_plane.as_ref())
         .and_then(|control_plane| control_plane.ipc_socket_path.clone())
         .filter(|path| !path.is_empty())
         .map(IpcCommandClient::new)
-        .filter(|client| client.is_available())
+        .filter(|client| client.is_available());
+    #[cfg(not(target_arch = "wasm32"))]
+    let ipc_event_stream = ipc_client
+        .as_ref()
+        .map(|client| spawn_ipc_event_stream(client.socket_path().to_string()));
+    #[cfg(not(target_arch = "wasm32"))]
+    let command_transport = ipc_client
         .map(CommandTransport::Ipc)
         .or(Some(CommandTransport::EventStream));
     let note = startup
@@ -483,6 +509,8 @@ pub async fn bootstrap_from_http_state_async(
         note: Some(note),
         event_stream,
         #[cfg(not(target_arch = "wasm32"))]
+        ipc_event_stream,
+        #[cfg(not(target_arch = "wasm32"))]
         command_transport,
     })
 }
@@ -521,9 +549,7 @@ pub async fn complete_http_bootstrap(url: &str, hints: &ConnectHints) -> Bootstr
             if error.contains("control-plane schema") {
                 return BootstrapResult::compatibility_failure(error);
             }
-            BootstrapResult::startup_failure(format!(
-                "Remote attach failed for {url}: {error}."
-            ))
+            BootstrapResult::startup_failure(format!("Remote attach failed for {url}: {error}."))
         })
 }
 
@@ -578,8 +604,9 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
     let registry_store = default_instance_registry_path()
         .map(|registry_path| load_registry_or_default(&registry_path))
         .unwrap_or_default();
-    let mut controller = AppController::from_remote_snapshot_json_with_registry(&contents, registry_store)
-        .map_err(|error| format!("invalid snapshot JSON: {error}"))?;
+    let mut controller =
+        AppController::from_remote_snapshot_json_with_registry(&contents, registry_store)
+            .map_err(|error| format!("invalid snapshot JSON: {error}"))?;
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(audit_path) = default_audit_timeline_path() {
         controller = controller.with_audit_timeline(load_or_default(&audit_path));
@@ -592,6 +619,8 @@ pub fn bootstrap_from_snapshot_file(path: &str) -> Result<BootstrapResult, Strin
         },
         note: Some(format!("Loaded Omegon snapshot from {path}")),
         event_stream: None,
+        #[cfg(not(target_arch = "wasm32"))]
+        ipc_event_stream: None,
         #[cfg(not(target_arch = "wasm32"))]
         command_transport: None,
     })
@@ -714,7 +743,10 @@ fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
     }
 
     if !startup.http_base.is_empty() {
-        return Some(format!("{}/api/state", startup.http_base.trim_end_matches('/')));
+        return Some(format!(
+            "{}/api/state",
+            startup.http_base.trim_end_matches('/')
+        ));
     }
 
     None
@@ -752,7 +784,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         Err(error) => {
             return BootstrapResult::startup_failure(format!(
                 "Could not spawn embedded Omegon backend at {label}: {error}."
-            ))
+            ));
         }
         Ok(child) => child,
     };
@@ -764,7 +796,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         None => {
             return BootstrapResult::startup_failure(
                 "Embedded Omegon backend spawned but stdout was not captured.".into(),
-            )
+            );
         }
     };
 
@@ -901,12 +933,16 @@ fn embedded_omegon_pids() -> Vec<u32> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn pid_is_owned_omegon(pid: u32) -> bool {
-    embedded_omegon_pids().into_iter().any(|candidate| candidate == pid)
+    embedded_omegon_pids()
+        .into_iter()
+        .any(|candidate| candidate == pid)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_owned_omegon_child() {
-    let Some(pid) = read_owned_omegon_pid() else { return };
+    let Some(pid) = read_owned_omegon_pid() else {
+        return;
+    };
     if pid_is_owned_omegon(pid) {
         let _ = std::process::Command::new("kill")
             .args(["-TERM", &pid.to_string()])
@@ -1028,7 +1064,10 @@ mod tests {
         let result =
             bootstrap_from_snapshot_file(path.to_str().unwrap()).expect("bootstrap should succeed");
         assert!(result.controller.is_remote());
-        assert!(matches!(result.source, BootstrapSource::SnapshotFile { .. }));
+        assert!(matches!(
+            result.source,
+            BootstrapSource::SnapshotFile { .. }
+        ));
         std::fs::remove_dir_all(&dir).ok();
     }
 
@@ -1065,10 +1104,12 @@ mod tests {
             .expect("fixture control plane")
             .omegon_version = Some("0.15.10-rc.18".into());
         let warning = validate_startup_info(&info).unwrap();
-        assert!(warning
-            .as_deref()
-            .unwrap_or_default()
-            .contains("newer than Auspex's maximum tested version 0.15.10-rc.17"));
+        assert!(
+            warning
+                .as_deref()
+                .unwrap_or_default()
+                .contains("newer than Auspex's maximum tested version 0.15.10-rc.17")
+        );
     }
 
     #[test]
@@ -1116,11 +1157,11 @@ mod tests {
     #[test]
     fn startup_discovery_note_mentions_transport_mode() {
         let mut note = String::from(
-            "Attached via Omegon startup discovery at http://127.0.0.1:7842/api/startup (auth: ephemeral-bearer via generated). Control via IPC; websocket event stream active. Streaming events from ws://127.0.0.1:7842/ws?token=test"
+            "Attached via Omegon startup discovery at http://127.0.0.1:7842/api/startup (auth: ephemeral-bearer via generated). Control via IPC; websocket event stream active. Streaming events from ws://127.0.0.1:7842/ws?token=test",
         );
         assert!(note.contains("Control via IPC"));
         note = String::from(
-            "Attached to Omegon state endpoint at http://127.0.0.1:7842/api/state. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from ws://127.0.0.1:7842/ws?token=test"
+            "Attached to Omegon state endpoint at http://127.0.0.1:7842/api/state. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from ws://127.0.0.1:7842/ws?token=test",
         );
         assert!(note.contains("degraded websocket bridge until Styrene RPC is established"));
     }

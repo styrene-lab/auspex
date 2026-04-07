@@ -7,6 +7,8 @@ use crate::command_transport::CommandTransport;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{MessageRole, TranscriptData};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::ipc_client::IpcEventStreamHandle;
 use crate::runtime_types::TargetedCommand;
 use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
@@ -136,7 +138,8 @@ fn merged_provider_inventory(
     runtime_providers: &[crate::fixtures::ProviderInfo],
     settings_providers: Option<&[crate::fixtures::ProviderInfo]>,
 ) -> Vec<crate::fixtures::ProviderInfo> {
-    let Some(settings_providers) = settings_providers.filter(|providers| !providers.is_empty()) else {
+    let Some(settings_providers) = settings_providers.filter(|providers| !providers.is_empty())
+    else {
         return runtime_providers.to_vec();
     };
 
@@ -547,6 +550,8 @@ pub fn App() -> Element {
     });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
+    let mut ipc_event_stream = use_signal(|| None::<IpcEventStreamHandle>);
+    #[cfg(not(target_arch = "wasm32"))]
     let mut command_transport = use_signal(|| None::<CommandTransport>);
     #[cfg(not(target_arch = "wasm32"))]
     let settings_status_message = use_signal(|| None::<String>);
@@ -556,6 +561,8 @@ pub fn App() -> Element {
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
             event_stream.set(bootstrap.event_stream);
+            #[cfg(not(target_arch = "wasm32"))]
+            ipc_event_stream.set(bootstrap.ipc_event_stream);
             #[cfg(not(target_arch = "wasm32"))]
             command_transport.set(bootstrap.command_transport);
             let mut controller = bootstrap.controller;
@@ -569,6 +576,8 @@ pub fn App() -> Element {
     use_future(move || {
         let mut controller = controller;
         let event_stream = event_stream;
+        #[cfg(not(target_arch = "wasm32"))]
+        let ipc_event_stream = ipc_event_stream;
         #[cfg(not(target_arch = "wasm32"))]
         let mut settings_status_message = settings_status_message;
         let mut composer_ready_notice = composer_ready_notice;
@@ -585,6 +594,22 @@ pub fn App() -> Element {
                     let mut controller = controller.write();
                     controller.evaluate_instance_lifecycle(now_epoch_seconds);
                     controller.ensure_settings_auth_status();
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                if let (
+                    Some(ipc_handle),
+                    Some(crate::command_transport::CommandTransport::Ipc(client)),
+                ) = (
+                    ipc_event_stream.read().clone(),
+                    command_transport.read().clone(),
+                ) {
+                    let ipc_events = ipc_handle.inbox.drain();
+                    if !ipc_events.is_empty() {
+                        let mut controller = controller.write();
+                        for event in ipc_events {
+                            let _ = controller.apply_ipc_event(&client, event);
+                        }
+                    }
                 }
                 if let Some(handle) = event_stream.read().clone() {
                     let events = handle.inbox.drain();
@@ -639,6 +664,8 @@ pub fn App() -> Element {
         let mut controller = controller;
         let mut event_stream = event_stream;
         #[cfg(not(target_arch = "wasm32"))]
+        let mut ipc_event_stream = ipc_event_stream;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut command_transport = command_transport;
         async move {
             let Some(binary_str) = binary else { return };
@@ -646,6 +673,10 @@ pub fn App() -> Element {
             let result = crate::bootstrap::spawn_and_attach_omegon(&binary_path).await;
             if let Some(stream) = result.event_stream {
                 event_stream.set(Some(stream));
+            }
+            #[cfg(not(target_arch = "wasm32"))]
+            if let Some(stream) = result.ipc_event_stream {
+                ipc_event_stream.set(Some(stream));
             }
             command_transport.set(result.command_transport);
             let mut c = result.controller;
@@ -2028,7 +2059,10 @@ fn render_chat_status_banner(
     is_run_active: bool,
     can_submit: bool,
 ) -> Element {
-    let provider_ready = session.providers.iter().any(|provider| provider.authenticated);
+    let provider_ready = session
+        .providers
+        .iter()
+        .any(|provider| provider.authenticated);
     let no_work_yet = summary.work.trim() == "No focused work item";
     let (banner_class, banner_state, label, detail) = if is_run_active {
         (
@@ -2271,11 +2305,11 @@ fn build_dispatch_context_strip_model(
                 .find_map(|provider| provider.model.clone())
         });
 
-    let thinking = (!session.thinking_level.trim().is_empty())
-        .then(|| session.thinking_level.clone());
+    let thinking =
+        (!session.thinking_level.trim().is_empty()).then(|| session.thinking_level.clone());
 
-    let tier = (!session.capability_tier.trim().is_empty())
-        .then(|| session.capability_tier.clone());
+    let tier =
+        (!session.capability_tier.trim().is_empty()).then(|| session.capability_tier.clone());
 
     let context = context_window_label(session);
 
@@ -3018,11 +3052,12 @@ mod tests {
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::{AppController, SessionMode};
     use crate::event_stream::EventStreamHandle;
-    use crate::runtime_types::TargetedCommand;
     use crate::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
         MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
     };
+    #[cfg(not(target_arch = "wasm32"))]
+    use crate::runtime_types::TargetedCommand;
     use crate::session_model::HostSessionModel;
 
     #[test]
@@ -3666,7 +3701,11 @@ mod tests {
         )
         .expect("blocked state should render a setup callout");
         assert_eq!(blocked.title, "Prompt execution blocked");
-        assert!(blocked.detail.contains("Authenticate a provider in Settings"));
+        assert!(
+            blocked
+                .detail
+                .contains("Authenticate a provider in Settings")
+        );
         assert_eq!(blocked.action_label, "Open Settings");
 
         let still_blocked = build_provider_blocked_composer_model(
@@ -3684,19 +3723,21 @@ mod tests {
         .expect("authenticated inventory alone must not unblock prompting");
         assert_eq!(still_blocked.title, "Prompt execution blocked");
 
-        assert!(build_provider_blocked_composer_model(
-            &crate::fixtures::SessionData {
-                providers: vec![crate::fixtures::ProviderInfo {
-                    name: "Anthropic".into(),
-                    authenticated: true,
-                    auth_method: Some("oauth".into()),
-                    model: Some("claude-sonnet".into()),
-                }],
-                ..Default::default()
-            },
-            true,
-        )
-        .is_none());
+        assert!(
+            build_provider_blocked_composer_model(
+                &crate::fixtures::SessionData {
+                    providers: vec![crate::fixtures::ProviderInfo {
+                        name: "Anthropic".into(),
+                        authenticated: true,
+                        auth_method: Some("oauth".into()),
+                        model: Some("claude-sonnet".into()),
+                    }],
+                    ..Default::default()
+                },
+                true,
+            )
+            .is_none()
+        );
     }
 
     #[test]
@@ -3773,7 +3814,11 @@ mod tests {
         );
 
         assert_eq!(model.target_label, "Detached host session");
-        assert!(model.target_detail.contains("No attached host instance reported"));
+        assert!(
+            model
+                .target_detail
+                .contains("No attached host instance reported")
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -3799,14 +3844,23 @@ mod tests {
             last_action: None,
             inventory_refreshed: true,
         };
-        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(&auth_state));
+        let model =
+            build_settings_panel_model(&controller, &controller.session_data(), Some(&auth_state));
 
         assert_eq!(model.auth_status_label, "2 authenticated provider(s)");
         assert_eq!(model.provider_cards.len(), 2);
         assert_eq!(model.provider_cards[0].name, "Anthropic");
-        assert!(model.provider_cards[0].capability_detail.contains("claude-sonnet"));
+        assert!(
+            model.provider_cards[0]
+                .capability_detail
+                .contains("claude-sonnet")
+        );
         assert_eq!(model.provider_cards[1].name, "OpenAI/Codex");
-        assert!(model.provider_cards[1].capability_detail.contains("gpt-4.1"));
+        assert!(
+            model.provider_cards[1]
+                .capability_detail
+                .contains("gpt-4.1")
+        );
     }
 
     #[test]
