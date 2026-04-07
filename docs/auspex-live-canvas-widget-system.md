@@ -1302,25 +1302,42 @@ Same-box long-lived agents are valid deployment members. Locality does not exemp
 
 ### ActivityPanel
 
-**Primary question:** Who is where doing what right now?
+**Primary question:** Who is where doing what right now, and what needs operator attention first?
+
+This panel is the compact **activity field overview** for work happening across the visible Omegon estate.
+
+It should unify liveness across:
+- the primary Omegon
+- long-lived serve-mode workers
+- temporary task-bound dispatches
+- external/remote visible workers when they are within operator scope
+
+This is not a generic status line and not a raw event feed.
 
 **Required fields:**
 - current activity state (idle/running/waiting/degraded/dispatching)
 - active delegate / dispatch count
+- compact actor roster, activity preview rail, or equivalent per-actor visibility
 
 **Optional fields:**
-- actor list
 - task/work summary
 - urgency/freshness signal
-- scope hint (attached vs external worker activity)
+- scope hint (primary vs external worker activity)
+- serve-mode vs temporary activity breakdown
+- blocked / waiting / failed actor counts
 
 **Must not contain:**
 - fleet inventory detail
 - control-plane endpoints
 - shell identity metadata
 - provider auth/setup noise
+- raw transcript or audit logs inline by default
 
-**Compact mode:** headline + active count only
+**Drill-down rule:**
+- this panel must allow the operator to inspect specific active or recently-active actors in more detail
+- it is an overview-with-drill-down surface, not merely a headline status strip
+
+**Compact mode:** headline state plus active count and minimal actor preview, not text status alone
 
 ### Future fifth panel: RouteAuthorityPanel
 
@@ -1403,7 +1420,7 @@ Responsibilities:
 - urgency and freshness
 - recent activity relevant to operator attention
 
-This panel should become the shell's primary sense of liveness without degenerating into raw log spam.
+This panel should become the shell's primary sense of liveness without degenerating into raw log spam. It is the field overview for active work, with drill-down into specific actors or tasks when needed.
 
 ### Relationship between panels
 
