@@ -142,3 +142,41 @@ This is compatibility behavior, not the long-term contract.
 1. Add an IPC event client in Auspex and map `IpcEventPayload` directly
 2. Maintain websocket compatibility only for remote transitional control
 3. Replace degraded remote websocket control with Styrene RPC once the contract stabilizes
+
+## Migration checklist
+
+### Phase 1 — keep current split truthful
+
+- [ ] Keep embedded/local Auspex control routed through IPC methods (`submit_prompt`, `cancel`, `run_slash_command`)
+- [ ] Keep remote websocket control explicitly marked degraded/transitional in operator-facing copy
+- [ ] Keep bootstrap notes reporting the active control mode (IPC vs degraded websocket bridge)
+- [ ] Recheck Omegon `main` before each RC cut that changes transport semantics
+
+### Phase 2 — prepare Auspex for typed IPC events
+
+- [ ] Add an Auspex-native IPC event client that can subscribe to typed `IpcEventPayload` frames
+- [ ] Introduce an internal Auspex event adapter that maps both websocket JSON events and IPC typed events into one normalized UI/event model
+- [ ] Add fixture coverage for every currently projected IPC event: `turn.started`, `turn.ended`, `message.delta`, `thinking.delta`, `message.completed`, `tool.started`, `tool.updated`, `tool.ended`, `agent.completed`, `phase.changed`, decomposition events, `harness.changed`, `state.changed`, `system.notification`, `session.reset`
+- [ ] Verify slash-command results still surface coherently when command dispatch path is IPC rather than websocket
+
+### Phase 3 — handle current IPC/websocket asymmetries explicitly
+
+- [ ] Decide what Auspex should do about websocket-only `message_start` semantics when consuming IPC `message.delta` without a start marker
+- [ ] Decide what Auspex should do about websocket-only `message_abort` when consuming IPC, which currently omits it
+- [ ] Decide whether Auspex should derive context status from `state.changed` / snapshots when IPC continues omitting `ContextUpdated`
+- [ ] Treat `WebDashboardStarted` as Omegon-local bridge metadata unless a concrete Auspex consumer emerges
+- [ ] Open upstream Omegon follow-up(s) if Auspex needs IPC equivalents for any websocket-only events to preserve operator-visible behavior
+
+### Phase 4 — Styrene RPC transition
+
+- [ ] Define the remote Styrene RPC command contract in semantic terms rather than reusing websocket JSON envelopes blindly
+- [ ] Map current degraded remote websocket commands (`user_prompt`, `slash_command`, `cancel`, `request_snapshot`) onto the future Styrene RPC surface
+- [ ] Keep canonical slash execution semantics shared across IPC, websocket bridge, and Styrene RPC transports
+- [ ] Remove degraded websocket remote control only after Styrene RPC covers the required remote management operations and Auspex has passing parity tests
+
+### Verification gates
+
+- [ ] Add a transport-parity test matrix that asserts which behaviors are expected on IPC, websocket bridge, and future Styrene RPC
+- [ ] Add a contract-drift review step to the release checklist whenever Omegon changes `omegon-traits`, IPC projection, websocket command handling, or startup/control descriptors
+- [ ] Update this document whenever Omegon commits change the authoritative IPC payloads, canonical slash executor, or remote compatibility bridge semantics
+
