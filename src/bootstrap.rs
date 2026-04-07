@@ -442,11 +442,20 @@ pub async fn bootstrap_from_http_state_async(
     let note = startup
         .as_ref()
         .map(|startup| {
+            let control_mode = if command_transport
+                .as_ref()
+                .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
+            {
+                "Control via IPC; websocket event stream active"
+            } else {
+                "Control via degraded websocket bridge until Styrene RPC is established"
+            };
             let mut note = format!(
-                "Attached via Omegon startup discovery at {} (auth: {} via {}). Streaming events from {}",
+                "Attached via Omegon startup discovery at {} (auth: {} via {}). {}. Streaming events from {}",
                 startup_url_from_state_url(url),
                 startup.auth_mode,
                 startup.auth_source,
+                control_mode,
                 ws_url
             );
             if let Some(warning) = compatibility_warning.as_deref() {
@@ -457,7 +466,7 @@ pub async fn bootstrap_from_http_state_async(
         })
         .unwrap_or_else(|| {
             let mut note = format!(
-                "Attached to Omegon state endpoint at {state_url}. Streaming events from {ws_url}"
+                "Attached to Omegon state endpoint at {state_url}. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from {ws_url}"
             );
             if let Some(warning) = compatibility_warning.as_deref() {
                 note.push_str(" Warning: ");
@@ -1102,6 +1111,18 @@ mod tests {
             startup_state_url(&info).as_deref(),
             Some("http://127.0.0.1:7850/api/state")
         );
+    }
+
+    #[test]
+    fn startup_discovery_note_mentions_transport_mode() {
+        let mut note = String::from(
+            "Attached via Omegon startup discovery at http://127.0.0.1:7842/api/startup (auth: ephemeral-bearer via generated). Control via IPC; websocket event stream active. Streaming events from ws://127.0.0.1:7842/ws?token=test"
+        );
+        assert!(note.contains("Control via IPC"));
+        note = String::from(
+            "Attached to Omegon state endpoint at http://127.0.0.1:7842/api/state. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from ws://127.0.0.1:7842/ws?token=test"
+        );
+        assert!(note.contains("degraded websocket bridge until Styrene RPC is established"));
     }
 
     #[test]
