@@ -733,6 +733,144 @@ Possible future presets:
 - telemetry-heavy
 - routing/dispatcher-heavy
 
+## Global truth surface stack
+
+Before routed workspaces and secondary investigation panels, Auspex should establish a stable global truth stack that remains conceptually persistent across the shell.
+
+### Layer 0 — canvas substrate
+
+The substrate is the stable instrument-wall field:
+- dark structural background
+- subtle grid/seam language
+- bounded depth cues
+- no primary operational meaning encoded in decorative art
+
+This layer provides stability, not explanation.
+
+### Layer 1 — Auspex surface
+
+This answers: **what this shell is**.
+
+It should establish:
+- Auspex identity
+- version / channel / build lineage
+- current UI mode / density class
+- shell runtime context
+
+### Layer 2 — Attached Omegon surface
+
+This answers: **what our primary Omegon is right now**.
+
+It should establish:
+- currently attached/embedded/serve Omegon identity
+- route/dispatcher truth
+- verified control-plane state
+- effective runtime role/profile/model/thinking tier
+- health / degraded / stale status
+
+### Layer 3 — Deployment surface
+
+This answers: **what other Omegon instances this Auspex can see**.
+
+It should establish:
+- known deployment inventory
+- serve-mode vs temporary worker classification
+- live vs stale/lost/detached visibility
+- ownership and placement context
+
+### Layer 4 — Activity surface
+
+This answers: **who is where doing what**.
+
+It should establish the current distributed operational picture:
+- which instances are active
+- what task or stream each actor is bound to
+- current lifecycle/urgency state
+- what is blocked, running, idle, or recently completed
+
+### Stack rule
+
+These global truth surfaces should be considered semantically prior to secondary routed workspace content like graph, audit, and deeper work inspection.
+
+They are not necessarily always rendered as one visible column, but they should remain the first conceptual layer the operator can recover when orienting inside the shell.
+
+## UI surface to `auspex` tool-surface rule
+
+Auspex must not become a presentation-only dashboard over Omegon.
+
+### Canonical rule
+
+Every operator-meaningful UI surface should have a corresponding machine-usable `auspex` tool/capability surface for the internal embedded/serve Omegon, subject to explicit policy gates.
+
+If the human can meaningfully inspect or act on a supervisory surface, the internal Omegon should be able to inspect or request action through the same supervisory reality.
+
+### Consequence
+
+The internal embedded/serve Omegon should treat Auspex as a supervisory tool surface rather than only as a passive frontend.
+
+This lets the internal Omegon:
+- understand the current deployment picture
+- understand route/dispatcher truth
+- inspect activity and lifecycle state
+- request or initiate supervised actions on behalf of the operator where policy allows
+
+### Capability families
+
+The top-level surface taxonomy should eventually correspond to `auspex` capability families such as:
+- `auspex.identity.*`
+- `auspex.attached.*`
+- `auspex.deployment.*`
+- `auspex.activity.*`
+- `auspex.dispatch.*`
+- `auspex.audit.*`
+- `auspex.work.*`
+- `auspex.telemetry.*`
+
+This is not a requirement for one tool per widget. It is a requirement that the semantic UI surfaces map to semantic machine-usable surfaces.
+
+### Access classes
+
+Not every `auspex` surface implies unconstrained automation.
+
+The model should distinguish at least:
+
+#### 1. Read surfaces
+Safe inspection of supervisory truth.
+
+Examples:
+- current attached Omegon summary
+- deployment inventory
+- lifecycle/freshness state
+- current route truth
+- activity summaries
+
+#### 2. Request-action surfaces
+The internal Omegon may request an action, but Auspex still validates and enforces policy.
+
+Examples:
+- route selection changes
+- dispatcher profile/model switch requests
+- temporary worker requests
+- serve-mode worker requests
+- focus/inspect transcript or audit targets
+
+#### 3. Auspex-enforced surfaces
+Actions or state transitions that remain shell-owned and are not delegated as unconstrained tool execution.
+
+Examples:
+- destructive cleanup/reap policy
+- sensitive credential or binding transitions
+- final lifecycle enforcement
+- transport/binding integrity decisions
+
+### Design implication
+
+The global truth surfaces should be designed as dual-purpose supervisory surfaces:
+- legible to the human operator
+- queryable/actionable to the internal Omegon via the `auspex` tool surface
+
+That shared semantic contract is what prevents Auspex from collapsing into “just another dashboard app.”
+
 ## Surface inventory before visual treatment
 
 Before deciding final widget visuals or canvas ornamentation, Auspex needs a complete surface taxonomy.
