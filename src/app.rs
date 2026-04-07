@@ -788,6 +788,13 @@ pub fn App() -> Element {
                     for line in &cockpit.deployment.secondary {
                         p { class: "cockpit-panel-secondary", "{line}" }
                     }
+                    if !cockpit.deployment.preview.is_empty() {
+                        div { class: "cockpit-panel-preview-rail",
+                            for item in &cockpit.deployment.preview {
+                                span { class: "cockpit-panel-preview-chip", "{item}" }
+                            }
+                        }
+                    }
                 }
                 article { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
                     div { class: "cockpit-panel-toprail",
@@ -797,6 +804,13 @@ pub fn App() -> Element {
                     p { class: "cockpit-panel-primary", "{cockpit.activity.primary}" }
                     for line in &cockpit.activity.secondary {
                         p { class: "cockpit-panel-secondary", "{line}" }
+                    }
+                    if !cockpit.activity.preview.is_empty() {
+                        div { class: "cockpit-panel-preview-rail",
+                            for item in &cockpit.activity.preview {
+                                span { class: "cockpit-panel-preview-chip", "{item}" }
+                            }
+                        }
                     }
                 }
             }
@@ -2090,6 +2104,7 @@ struct TruthPanelModel {
     tag: &'static str,
     primary: String,
     secondary: Vec<String>,
+    preview: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -2245,6 +2260,17 @@ fn build_cockpit_summary_model(
             .join(", ");
         format!("seen: {seen}")
     };
+    let deployment_preview = session
+        .telemetry
+        .lifecycle
+        .instances
+        .iter()
+        .take(4)
+        .map(|instance| {
+            let freshness = instance.freshness.as_deref().unwrap_or("unknown");
+            format!("{} · {}", instance.instance_id, freshness)
+        })
+        .collect::<Vec<_>>();
     let deployment_tag = if session.telemetry.lifecycle.counts.stale > 0
         || session.telemetry.lifecycle.counts.lost > 0
         || session.telemetry.lifecycle.counts.abandoned > 0
@@ -2285,6 +2311,12 @@ fn build_cockpit_summary_model(
         summary.activity.clone()
     };
     let activity_secondary_2 = cockpit_work_hint(summary);
+    let activity_preview = session
+        .active_delegates
+        .iter()
+        .take(4)
+        .map(|delegate| format!("{} · {}", delegate.agent_name, delegate.status))
+        .collect::<Vec<_>>();
 
     CockpitSummaryModel {
         auspex: TruthPanelModel {
@@ -2292,24 +2324,28 @@ fn build_cockpit_summary_model(
             tag: shell_tag,
             primary: format!("{} · {}", workspace_label(workspace), session_mode.label()),
             secondary: vec![format!("v{APP_VERSION}"), context_window_label(session)],
+            preview: vec![],
         },
         attached: TruthPanelModel {
             label: "Primary Omegon",
             tag: attached_tag,
             primary: attached_primary,
             secondary: vec![attached_secondary_1, attached_secondary_2],
+            preview: vec![],
         },
         deployment: TruthPanelModel {
             label: "Deployment",
             tag: deployment_tag,
             primary: deployment_primary,
             secondary: vec![deployment_secondary_1, deployment_secondary_2],
+            preview: deployment_preview,
         },
         activity: TruthPanelModel {
             label: "Activity",
             tag: activity_tag,
             primary: activity_primary,
             secondary: vec![activity_secondary_1, activity_secondary_2],
+            preview: activity_preview,
         },
     }
 }
@@ -3701,6 +3737,8 @@ mod tests {
         assert_eq!(model.attached.tag, "ATTACHING");
         assert_eq!(model.attached.primary, "Primary runtime unbound");
         assert!(model.attached.secondary[1].contains("booting/attaching"));
+        assert!(model.deployment.preview.is_empty());
+        assert!(model.activity.preview.is_empty());
     }
 
     #[test]

@@ -2797,3 +2797,26 @@ body > * {
   gap: 0.55rem;
   padding: 0 0.9rem 0.9rem;
 }
+
+.cockpit-panel-preview-rail {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.cockpit-panel-preview-chip {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  padding: 0.2rem 0.45rem;
+  border: 1px solid rgba(52, 72, 88, 0.55);
+  border-radius: 999px;
+  background: rgba(14, 24, 36, 0.72);
+  color: var(--text-secondary);
+  font-size: 0.68rem;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
