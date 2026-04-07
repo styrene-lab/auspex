@@ -1,6 +1,6 @@
 :root {
   color-scheme: dark;
-  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
   background: #0b0f14;
   color: #e6edf3;
 
@@ -87,6 +87,10 @@
   --shadow-surface-rest: 0 1px 0 rgba(255, 255, 255, 0.02), 0 8px 20px rgba(0, 0, 0, 0.22);
   --shadow-surface-soft: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   --shadow-inset-soft: inset 0 1px 1px rgba(255, 255, 255, 0.03), inset 0 -1px 2px rgba(0, 0, 0, 0.32);
+
+  --font-ui: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", "SFMono-Regular", ui-monospace, monospace;
+
 }
 
 html, body {
@@ -100,6 +104,7 @@ html, body {
 
 body {
   display: flex;
+  font-family: var(--font-ui);
   min-width: 0;
   width: 100%;
   min-height: 100%;
@@ -219,6 +224,7 @@ body > * {
 }
 
 .topbar-meta {
+  font-family: var(--font-mono);
   font-size: 0.72rem;
   color: var(--text-dim);
   overflow: hidden;
@@ -631,6 +637,7 @@ body > * {
 }
 
 .chat-status-label {
+  font-family: var(--font-mono);
   font-size: 0.8rem;
   font-weight: 700;
   text-transform: uppercase;
@@ -720,6 +727,7 @@ body > * {
 }
 
 .version-chip {
+  font-family: var(--font-mono);
   border: 1px solid var(--border-default);
   border-radius: var(--radius-pill);
   padding: 0.18rem 0.55rem;
@@ -1175,6 +1183,7 @@ body > * {
 }
 
 .transcript-copy-button {
+  font-family: var(--font-mono);
   border: 1px solid var(--border-default);
   border-radius: 7px;
   background: var(--surface-1);
@@ -1256,6 +1265,8 @@ body > * {
 }
 
 .dispatch-context-strip {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   display: flex;
   flex-wrap: wrap;
   align-items: stretch;
@@ -2010,11 +2021,13 @@ body > * {
 }
 
 .dispatcher-option-meta {
+  font-family: var(--font-mono);
   font-size: 0.82rem;
   color: var(--text-muted);
 }
 
 .dispatcher-option-status {
+  font-family: var(--font-mono);
   font-size: 0.78rem;
   font-weight: 600;
   color: #c9d1d9;
@@ -2297,6 +2310,7 @@ body > * {
 }
 
 .settings-target-value {
+  font-family: var(--font-mono);
   font-size: 0.76rem;
   font-weight: 600;
 }
@@ -2607,6 +2621,8 @@ body > * {
 }
 
 .cockpit-panel-primary {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   margin: 0.6rem 0 0;
   font-size: 1.02rem;
   line-height: 1.22;
@@ -2806,6 +2822,8 @@ body > * {
 }
 
 .cockpit-panel-preview-chip {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
   display: inline-flex;
   align-items: center;
   max-width: 100%;
@@ -2854,6 +2872,7 @@ body > * {
 }
 
 .focus-host-kicker {
+  font-family: var(--font-mono);
   color: var(--text-dim);
   font-size: 0.72rem;
   text-transform: uppercase;
@@ -2891,4 +2910,11 @@ body > * {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+}
+
+
+[data-font="mono"],
+.font-mono-ui {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
