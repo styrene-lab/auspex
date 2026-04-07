@@ -1255,6 +1255,89 @@ This occupant family remains valid but is lower priority than Chat, Audit, Deplo
 The focus host should always answer:
 **What is the operator currently focused on, and what is the minimum context + control set needed to act on it?**
 
+### Focus-host occupant priority and anti-rugpull rule
+
+The focus host needs an explicit shift policy so it can behave like a live COP without stealing control from the operator.
+
+#### Priority classes
+
+1. **Default occupant**
+   - what appears when no stronger context is active
+   - currently: `Chat COP`
+
+2. **Operator-selected occupant**
+   - chosen directly by the operator
+   - examples: `Audit COP`, `Graph / Work COP`, explicit deployment or activity drilldown
+
+3. **Action-follow occupant**
+   - entered as the natural consequence of an operator action
+   - examples: clicking a deployment preview chip, selecting an activity actor, focusing an audit event
+
+4. **Escalation occupant**
+   - may request attention because the system detects a materially important condition
+   - examples: bootstrap failure, primary runtime failure, selected actor failure, blocking auth/control condition
+
+#### Anti-rugpull rule
+
+Auspex must **not rugpull the focus host away from the operator** during normal work.
+
+That means:
+- no automatic focus-host switch just because a new event arrives
+- no automatic chat → audit / deployment / activity takeover for routine updates
+- no replacing an operator-selected occupant with a different occupant unless the condition is truly interruptive
+
+#### Allowed automatic focus changes
+
+Automatic takeover is allowed only for clearly interruptive conditions, such as:
+- bootstrap or attach failure
+- primary runtime failure
+- fatal incompatibility or control-plane loss
+- an operator-triggered action whose whole purpose is to open a specific drilldown
+
+Even then, the takeover should prefer:
+- clear reason
+- explicit source of the escalation
+- obvious return path
+
+#### Preferred escalation behavior
+
+Before replacing the current focus host, prefer in this order:
+1. top-spine state change
+2. contextual-detail auto-expand
+3. badge/notice requesting attention
+4. explicit operator click-through into the new occupant
+5. automatic focus-host takeover only if the condition is truly blocking or catastrophic
+
+#### Restoration rule
+
+If Auspex does take over the focus host automatically, it should preserve enough context to allow returning to the prior occupant when the interruptive condition is resolved or dismissed.
+
+#### Occupant matrix (initial)
+
+- `Chat COP`
+  - default occupant: yes
+  - operator-selectable: yes
+  - automatic takeover: no
+- `Audit COP`
+  - default occupant: no
+  - operator-selectable: yes
+  - action-follow: yes
+  - automatic takeover: no
+- `Deployment Drilldown COP`
+  - default occupant: no
+  - operator-selectable: yes
+  - action-follow: yes
+  - automatic takeover: only for severe deployment/runtime failure
+- `Activity Drilldown COP`
+  - default occupant: no
+  - operator-selectable: yes
+  - action-follow: yes
+  - automatic takeover: only for severe actor/task failure when operator intervention is urgently required
+- `Graph / Work COP`
+  - default occupant: no
+  - operator-selectable: yes
+  - automatic takeover: no
+
 #### 6. Contextual detail region
 Secondary detail and action surfaces tied to the current focus or selected entity.
 
