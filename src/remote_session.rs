@@ -1250,11 +1250,10 @@ fn role_from_wire(role: &str) -> MessageRole {
 mod tests {
     use super::*;
     use crate::omegon_control::{
-        CleaveSnapshot, DelegateSummarySnapshot, DesignSnapshot,
-        DispatcherBindingSnapshot, HarnessStatusSnapshot, OmegonControlPlaneDescriptor,
-        OmegonInstanceDescriptor, OmegonInstanceIdentity, OmegonPolicyDescriptor,
-        OmegonRuntimeDescriptor, OmegonSessionDescriptor, OmegonStateSnapshot,
-        OmegonWorkspaceDescriptor, OpenSpecSnapshot, ProviderStatusSnapshot,
+        CleaveSnapshot, DesignSnapshot, DispatcherBindingSnapshot,
+        HarnessStatusSnapshot, OmegonControlPlaneDescriptor, OmegonInstanceDescriptor,
+        OmegonInstanceIdentity, OmegonPolicyDescriptor, OmegonRuntimeDescriptor,
+        OmegonStateSnapshot, OmegonWorkspaceDescriptor, OpenSpecSnapshot,
         SessionSnapshot,
     };
 

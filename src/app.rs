@@ -3593,7 +3593,7 @@ mod tests {
         );
 
         assert_eq!(model.selected_route_id, "session-dispatcher");
-        assert_eq!(model.target_label, "omg_primary_01HVDEMO");
+        assert_eq!(model.target_label, "primary-driver · omg_primary_01HVDEMO");
         assert!(model.target_detail.contains("primary-driver"));
         assert!(model.route_detail.contains("session-dispatcher"));
         assert!(model.lifecycle_summary.contains("Lifecycle:"));
@@ -3622,7 +3622,7 @@ mod tests {
             Some(controller.settings_auth_state()),
         );
 
-        assert_eq!(model.target_label, "local-shell");
+        assert_eq!(model.target_label, "Local shell");
         assert!(
             model.route_detail.contains("local-shell")
                 || model.route_detail.contains("Local shell")
@@ -3772,7 +3772,7 @@ mod tests {
         assert_eq!(inventory.workspace_label, "main");
         assert_eq!(inventory.workspace_detail, "workspace · branch main");
         assert_eq!(inventory.session_label, "local-session");
-        assert_eq!(inventory.agent_rows[0].0, "Host attached · no dispatcher binding");
+        assert_eq!(inventory.agent_rows[0].0, "No dispatcher binding");
     }
 
     #[test]
