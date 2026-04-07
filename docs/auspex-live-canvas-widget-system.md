@@ -1190,6 +1190,154 @@ Before deciding final visual treatment, the shell should define the top-level UX
 
 ### Top-level UX panel stack
 
+## Truth-panel specification
+
+The standard-display cockpit uses a persistent top truth spine. These panels are not generic cards; they are global operator instruments.
+
+### Global rule
+
+Each truth panel must answer exactly one primary operator question. If a panel starts answering multiple questions, it should be split or demoted into a secondary/detail surface.
+
+### Panel priority
+
+1. `AttachedOmegonPanel` — strongest visual priority
+2. `ActivityPanel` — second priority
+3. `DeploymentPanel` — compact fleet overview
+4. `AuspexPanel` — calm shell identity anchor
+
+Visual equality between all four panels is acceptable for scaffolding, but not the intended long-term hierarchy.
+
+### AuspexPanel
+
+**Primary question:** What shell am I in, and what stance is it currently in?
+
+**Required fields:**
+- app identity (`Auspex`)
+- version / release channel
+- current workspace + mode summary
+- shell health / stance summary
+
+**Optional fields:**
+- environment label
+- operator profile / persona later
+- reduced bootstrap notice if it becomes durable shell truth
+
+**Must not contain:**
+- deployment counts
+- delegate activity detail
+- attached-instance authority detail
+- inventory/transport detail beyond shell posture
+
+**Compact mode:** name + version + health only
+
+### AttachedOmegonPanel
+
+**Primary question:** What is my currently attached or primary Omegon authority?
+
+**Required fields:**
+- logical instance identity
+- role
+- profile
+- freshness / verified-state summary
+
+**Optional fields:**
+- effective model
+- endpoint / verified control-plane URL
+- tier / thinking level if authoritative
+- selected authority nuance if distinct from attachment
+
+**Must not contain:**
+- fleet counts
+- multi-instance inventory
+- broad activity feed
+- generic shell metadata
+
+**Ordering rule:**
+1. logical identity
+2. authority
+3. freshness
+4. binding metadata
+
+Transport/route labels are secondary metadata, not the first line.
+
+**Compact mode:** identity + freshness only
+
+### DeploymentPanel
+
+**Primary question:** What does the visible Omegon estate look like right now?
+
+**Required fields:**
+- total known count
+- fresh/stale count summary
+
+**Optional fields:**
+- attached count
+- serve-mode count
+- temporary-dispatch count
+- lost / abandoned count
+- role-mix summary
+
+**Must not contain:**
+- attached primary detail
+- task/delegate lists
+- transcript/audit activity
+- deep control-plane fields
+
+**Compact mode:** headline counts only
+
+### ActivityPanel
+
+**Primary question:** Who is where doing what right now?
+
+**Required fields:**
+- current activity state (idle/running/waiting/degraded/dispatching)
+- active delegate / dispatch count
+
+**Optional fields:**
+- actor list
+- task/work summary
+- urgency/freshness signal
+- scope hint (attached vs external worker activity)
+
+**Must not contain:**
+- fleet inventory detail
+- control-plane endpoints
+- shell identity metadata
+- provider auth/setup noise
+
+**Compact mode:** headline + active count only
+
+### Future fifth panel: RouteAuthorityPanel
+
+This panel is not required in the first cockpit scaffold, but it is likely to become necessary.
+
+**Primary question:** Where will my next command go, and why?
+
+Rationale:
+- attached identity and command authority are not always the same thing
+- multi-Omegon + serve-mode operation will eventually make authority selection more explicit than simple attachment state
+
+This panel should only be promoted when the `AttachedOmegonPanel` starts carrying too much route/authority logic and becomes semantically muddy.
+
+### Escalation rules
+
+Truth panels may escalate visually when:
+- the attached Omegon becomes stale/degraded/lost
+- deployment freshness changes materially
+- an authority change or route switch is pending/confirmed
+- activity shifts from idle to active or degraded
+
+Escalation should increase salience, not add decorative chrome.
+
+### Reduced-surface policy
+
+On narrow/square/mobile projections:
+- `AttachedOmegonPanel` remains highest priority
+- `ActivityPanel` remains visible or quickly accessible
+- `DeploymentPanel` may collapse to a one-line summary
+- `AuspexPanel` may compress to identity + version + shell health
+
+
 These are the first persistent global truth panels from a UX perspective.
 
 #### 1. `AuspexPanel`
