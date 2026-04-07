@@ -448,6 +448,93 @@ Use SVG for widgets whose meaning depends on exact geometry:
 
 Reject SVG when it becomes decorative sci-fi garnish.
 
+## Identity and transport planning
+
+The live canvas must plan for future Styrene RPC without letting transport details become the primary UI identity.
+
+### Canonical identity rule
+
+Widget identity and deployment rendering must anchor on **logical Omegon instance identity**, not on whichever transport is currently used to attach.
+
+Primary identity should be derived from:
+- `instance_id`
+- `session_id` where applicable
+- role (`primary-driver`, `supervised-child`, `detached-service`)
+- profile
+- workspace/project binding
+- ownership/supervision state
+- lifecycle freshness / last-seen state
+
+### Transport is binding metadata, not identity
+
+IPC, websocket, and future Styrene RPC are attachment/binding mechanisms.
+
+They should be rendered as properties of a verified control-plane binding, not as the source of truth for who the instance is.
+
+That means the UI should avoid treating these as canonical identity:
+- websocket URL
+- IPC socket path
+- local port
+- RPC endpoint address
+
+These matter operationally, but only as binding metadata.
+
+### Three identity layers for deployment widgets
+
+#### 1. Logical instance identity
+
+Stable across transport changes and reattachment:
+- durable instance id
+- role
+- profile
+- workspace ownership
+- parent/child/session relationship
+
+#### 2. Verified control-plane identity
+
+The currently trusted authority proof for that logical instance:
+- schema version
+- Omegon version
+- auth/token reference
+- last verified time
+- security mode
+- verification freshness
+
+#### 3. Transport binding set
+
+The set of available concrete attach surfaces for the same logical instance.
+
+Near-term examples:
+- IPC binding
+- websocket binding
+
+Planned future example:
+- Styrene RPC binding
+
+A single instance may expose multiple bindings over time or simultaneously. The canvas should still render it as **one logical instance**.
+
+### Styrene RPC planning rule
+
+Future Styrene RPC adoption should slot into the transport binding layer without forcing a rename of deployment widgets or a rewrite of instance identity semantics.
+
+Consequences:
+- route selection should target logical authority first, transport second
+- attached/deployment widgets should show transport as a verified binding property
+- switching a binding from websocket or IPC to Styrene RPC should not change the rendered logical identity of the worker
+- saved layouts and widget identity should not depend on transport-local endpoint strings
+
+### Deployment-first rendering implication
+
+For the primary deployment widgets, the information order should be:
+1. who this instance is
+2. what authority/role it has
+3. what lifecycle state it is in
+4. how it is currently bound
+
+Not the reverse.
+
+This keeps the canvas truthful even as the transport layer evolves.
+
 ## State and data ownership
 
 The live canvas layout is a **presentation system**, not a new state owner.
