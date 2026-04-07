@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-rc.5] - 2026-04-07
+
+### Changed
+- Embedded Auspex-to-Omegon desktop control now routes commands over IPC instead of treating the websocket event stream as a fallback command path.
+- Detached remote sessions now surface an honest "Detached host session" route label instead of pretending the operator is targeting a local shell.
+
+### Fixed
+- Settings/provider inventory now merges desktop auth-bridge metadata with runtime provider metadata without dropping model identity during refresh or auth actions.
+- Release candidate now includes the IPC transport dependencies required for the embedded control path to build from HEAD.
+
 ## [0.1.0-rc.4] - 2026-04-06
 
 ### Added

@@ -1,6 +1,6 @@
 [package]
 name = "auspex"
-version = "0.1.0-rc.4"
+version = "0.1.0-rc.5"
 edition = "2024"
 
 [package.metadata.omegon]
@@ -15,6 +15,7 @@ desktop = [
     "dep:tokio-tungstenite",
     "tokio/process",
     "tokio/io-util",
+    "tokio/net",
 ]
 web = [
     "dioxus/web",
@@ -34,6 +35,8 @@ toml = "0.8"
 tokio = { version = "1", features = ["time", "rt", "sync"] }
 futures-util = "0.3"
 tungstenite = { version = "0.28", default-features = false }
+rmp-serde = "1"
+omegon-traits = { path = "../omegon/core/crates/omegon-traits" }
 
 # Desktop-only: async WebSocket via tokio
 tokio-tungstenite = { version = "0.28", optional = true, default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }

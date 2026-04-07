@@ -131,6 +131,50 @@ fn provider_command_name(name: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn merged_provider_inventory(
+    runtime_providers: &[crate::fixtures::ProviderInfo],
+    settings_providers: Option<&[crate::fixtures::ProviderInfo]>,
+) -> Vec<crate::fixtures::ProviderInfo> {
+    let Some(settings_providers) = settings_providers.filter(|providers| !providers.is_empty()) else {
+        return runtime_providers.to_vec();
+    };
+
+    let mut merged = Vec::with_capacity(runtime_providers.len().max(settings_providers.len()));
+    let mut seen = std::collections::HashSet::new();
+
+    for runtime in runtime_providers {
+        let key = provider_command_name(&runtime.name)
+            .unwrap_or_else(|| runtime.name.trim().to_ascii_lowercase());
+        let settings = settings_providers.iter().find(|candidate| {
+            provider_command_name(&candidate.name)
+                .unwrap_or_else(|| candidate.name.trim().to_ascii_lowercase())
+                == key
+        });
+        merged.push(crate::fixtures::ProviderInfo {
+            name: runtime.name.clone(),
+            authenticated: runtime.authenticated,
+            auth_method: settings
+                .and_then(|provider| provider.auth_method.clone())
+                .or_else(|| runtime.auth_method.clone()),
+            model: runtime
+                .model
+                .clone()
+                .or_else(|| settings.and_then(|provider| provider.model.clone())),
+        });
+        seen.insert(key);
+    }
+
+    for settings in settings_providers {
+        let key = provider_command_name(&settings.name)
+            .unwrap_or_else(|| settings.name.trim().to_ascii_lowercase());
+        if seen.insert(key) {
+            merged.push(settings.clone());
+        }
+    }
+
+    merged
+}
+
 fn build_settings_panel_model(
     controller: &crate::controller::AppController,
     session: &crate::fixtures::SessionData,
@@ -159,7 +203,7 @@ fn build_settings_panel_model(
                 .map(|descriptor| descriptor.identity.instance_id.clone())
                 .filter(|value| !value.is_empty())
         })
-        .unwrap_or_else(|| "local-shell".to_string());
+        .unwrap_or_else(|| "No attached target".to_string());
 
     let target_role = dispatcher_binding
         .map(|binding| binding.expected_role.as_str())
@@ -209,7 +253,7 @@ fn build_settings_panel_model(
         )
     } else {
         format!(
-            "Prepared to route operator actions through a target-aware command adapter once Auspex is attached to a concrete Omegon instance. Current fallback target is {target_label}."
+            "Prepared to route operator actions through a target-aware command adapter once Auspex is attached to a concrete Omegon instance. No concrete target is attached yet; current UI label is {target_label}."
         )
     };
 
@@ -233,10 +277,10 @@ fn build_settings_panel_model(
         })
         .unwrap_or_else(|| "Lifecycle: unavailable".into());
 
-    let provider_inventory = auth_state
-        .filter(|state| !state.providers.is_empty())
-        .map(|state| state.providers.as_slice())
-        .unwrap_or(session.providers.as_slice());
+    let provider_inventory = merged_provider_inventory(
+        session.providers.as_slice(),
+        auth_state.map(|state| state.providers.as_slice()),
+    );
     let authenticated = provider_inventory
         .iter()
         .filter(|provider| provider.authenticated)
@@ -3705,6 +3749,62 @@ mod tests {
                 .provider_guidance
                 .contains("Authenticated providers can execute")
         );
+    }
+
+    #[test]
+    fn settings_panel_model_uses_detached_host_label_for_remote_fallback() {
+        let controller = AppController::from_remote_snapshot_json_with_registry(
+            r#"{
+              "design": {"focused": null, "implementing": [], "actionable": [], "all_nodes": [], "counts": {}},
+              "openspec": {"total_tasks": 0, "done_tasks": 0},
+              "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+              "session": {"turns": 0, "tool_calls": 0, "compactions": 0},
+              "harness": {"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}
+            }"#,
+            crate::instance_registry::InstanceRegistryStore::default(),
+        )
+        .unwrap();
+        let model = build_settings_panel_model(
+            &controller,
+            &controller.session_data(),
+            Some(controller.settings_auth_state()),
+        );
+
+        assert_eq!(model.target_label, "Detached host session");
+        assert!(model.target_detail.contains("No attached host instance reported"));
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn settings_panel_model_merges_runtime_and_settings_provider_metadata() {
+        let controller = AppController::remote_demo();
+        let auth_state = crate::controller::SettingsAuthState {
+            providers: vec![
+                crate::fixtures::ProviderInfo {
+                    name: "Anthropic/Claude".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: None,
+                },
+                crate::fixtures::ProviderInfo {
+                    name: "OpenAI/Codex".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("gpt-4.1".into()),
+                },
+            ],
+            last_error: None,
+            last_action: None,
+            inventory_refreshed: true,
+        };
+        let model = build_settings_panel_model(&controller, &controller.session_data(), Some(&auth_state));
+
+        assert_eq!(model.auth_status_label, "2 authenticated provider(s)");
+        assert_eq!(model.provider_cards.len(), 2);
+        assert_eq!(model.provider_cards[0].name, "Anthropic");
+        assert!(model.provider_cards[0].capability_detail.contains("claude-sonnet"));
+        assert_eq!(model.provider_cards[1].name, "OpenAI/Codex");
+        assert!(model.provider_cards[1].capability_detail.contains("gpt-4.1"));
     }
 
     #[test]

@@ -212,10 +212,18 @@ impl AttachedInstanceStateEngine {
             .collect();
 
         if routes.is_empty() {
+            let (label, detail) = if self.session_key.starts_with("remote:") {
+                (
+                    "Detached host session",
+                    "No attached host instance reported",
+                )
+            } else {
+                ("Local shell", "No attached host instance reported")
+            };
             routes.push(CommandRouteProjection {
                 route_id: LOCAL_SHELL_ROUTE_ID.into(),
-                label: "Local shell".into(),
-                detail: "No attached host instance reported".into(),
+                label: label.into(),
+                detail: detail.into(),
                 target: CommandTarget {
                     session_key: self.session_key.clone(),
                     dispatcher_instance_id: None,
@@ -677,7 +685,7 @@ mod tests {
     }
 
     #[test]
-    fn falls_back_to_local_shell_when_no_instances_are_attached() {
+    fn falls_back_to_detached_host_session_when_no_instances_are_attached() {
         let engine = AttachedInstanceStateEngine::from_session_snapshot("remote:unused", &SessionData::default());
 
         assert_eq!(engine.selected_command_route_id(), LOCAL_SHELL_ROUTE_ID);
@@ -685,7 +693,7 @@ mod tests {
             engine.available_command_routes(),
             vec![CommandRouteProjection {
                 route_id: LOCAL_SHELL_ROUTE_ID.into(),
-                label: "Local shell".into(),
+                label: "Detached host session".into(),
                 detail: "No attached host instance reported".into(),
                 target: CommandTarget {
                     session_key: "remote:unused".into(),

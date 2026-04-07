@@ -55,6 +55,47 @@ fn provider_status_key(name: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+fn provider_inventory_key(name: &str) -> String {
+    provider_status_key(name).unwrap_or_else(|| name.trim().to_ascii_lowercase())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn merge_provider_inventory(
+    runtime_providers: &[crate::fixtures::ProviderInfo],
+    settings_providers: &[crate::fixtures::ProviderInfo],
+) -> Vec<crate::fixtures::ProviderInfo> {
+    let mut merged = Vec::with_capacity(runtime_providers.len().max(settings_providers.len()));
+    let mut seen = std::collections::HashSet::new();
+
+    for runtime in runtime_providers {
+        let key = provider_inventory_key(&runtime.name);
+        let settings = settings_providers
+            .iter()
+            .find(|candidate| provider_inventory_key(&candidate.name) == key);
+        merged.push(crate::fixtures::ProviderInfo {
+            name: runtime.name.clone(),
+            authenticated: runtime.authenticated,
+            auth_method: settings
+                .and_then(|provider| provider.auth_method.clone())
+                .or_else(|| runtime.auth_method.clone()),
+            model: runtime
+                .model
+                .clone()
+                .or_else(|| settings.and_then(|provider| provider.model.clone())),
+        });
+        seen.insert(key);
+    }
+
+    for settings in settings_providers {
+        let key = provider_inventory_key(&settings.name);
+        if seen.insert(key) {
+            merged.push(settings.clone());
+        }
+    }
+
+    merged
+}
+
 const DEMO_REMOTE_SNAPSHOT_JSON: &str = r#"{
     "design": {
         "focused": {
@@ -643,7 +684,10 @@ impl AppController {
     pub fn refresh_settings_auth_status(&mut self) -> Result<(), String> {
         match crate::bootstrap::load_desktop_auth_snapshot() {
             Ok(snapshot) => {
-                let existing_providers = self.session.model().session_data().providers;
+                let existing_providers = merge_provider_inventory(
+                    &self.session.model().session_data().providers,
+                    &self.settings_auth_state.providers,
+                );
                 let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
                     .iter()
@@ -705,7 +749,10 @@ impl AppController {
     ) -> Result<(), String> {
         match crate::bootstrap::run_desktop_auth_action(action, provider) {
             Ok(snapshot) => {
-                let existing_providers = self.session.model().session_data().providers;
+                let existing_providers = merge_provider_inventory(
+                    &self.session.model().session_data().providers,
+                    &self.settings_auth_state.providers,
+                );
                 let providers: Vec<crate::fixtures::ProviderInfo> = snapshot
                     .providers
                     .iter()
@@ -915,7 +962,7 @@ impl AppController {
     fn effective_provider_inventory(&self, model_data: &SessionData) -> Vec<crate::fixtures::ProviderInfo> {
         #[cfg(not(target_arch = "wasm32"))]
         if !self.settings_auth_state.providers.is_empty() {
-            return self.settings_auth_state.providers.clone();
+            return merge_provider_inventory(&model_data.providers, &self.settings_auth_state.providers);
         }
         model_data.providers.clone()
     }
@@ -1378,6 +1425,35 @@ mod tests {
         }];
         controller.refresh_telemetry_snapshot();
         assert!(controller.can_submit());
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn effective_provider_inventory_preserves_runtime_models_and_appends_settings_only_providers() {
+        let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        controller.settings_auth_state.providers = vec![
+            crate::fixtures::ProviderInfo {
+                name: "Anthropic/Claude".into(),
+                authenticated: true,
+                auth_method: Some("oauth".into()),
+                model: None,
+            },
+            crate::fixtures::ProviderInfo {
+                name: "OpenAI/Codex".into(),
+                authenticated: true,
+                auth_method: Some("oauth".into()),
+                model: Some("gpt-4.1".into()),
+            },
+        ];
+
+        let providers = controller.effective_provider_inventory(&controller.session.model().session_data());
+
+        assert_eq!(providers.len(), 2);
+        assert_eq!(providers[0].name, "Anthropic");
+        assert_eq!(providers[0].model.as_deref(), Some("claude-sonnet"));
+        assert_eq!(providers[0].auth_method.as_deref(), Some("oauth"));
+        assert_eq!(providers[1].name, "OpenAI/Codex");
+        assert_eq!(providers[1].model.as_deref(), Some("gpt-4.1"));
     }
 
     #[test]
