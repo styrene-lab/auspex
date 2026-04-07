@@ -237,23 +237,28 @@ pub fn SessionScreen(
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
     on_transcript_focus: Option<EventHandler<String>>,
 ) -> Element {
+    let control_plane_expanded = should_expand_control_plane_widget(&data);
+    let provider_expanded = should_expand_provider_status_widget(&data);
+    let session_detail_expanded = should_expand_session_stats_widget(&data);
+    let shell_expanded = should_expand_session_harness_widget(&data);
+
     rsx! {
         div { class: "screen screen-session",
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
-            {render_control_plane_widget(&data)}
-            {render_provider_status_widget(&data)}
-            {render_session_stats_widget(&data)}
-            {render_session_harness_widget(&data)}
+            {render_control_plane_widget(&data, control_plane_expanded)}
+            {render_provider_status_widget(&data, provider_expanded)}
+            {render_session_stats_widget(&data, session_detail_expanded)}
+            {render_session_harness_widget(&data, shell_expanded)}
         }
     }
 }
 
 #[allow(dead_code)]
-fn render_session_harness_widget(data: &SessionData) -> Element {
+fn render_session_harness_widget(data: &SessionData, expanded: bool) -> Element {
     render_widget_section(
         "Auspex shell",
-        false,
+        expanded,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Branch", data.git_branch.as_deref().unwrap_or("—"))}
@@ -273,10 +278,10 @@ fn render_session_harness_widget(data: &SessionData) -> Element {
 }
 
 #[allow(dead_code)]
-fn render_provider_status_widget(data: &SessionData) -> Element {
+fn render_provider_status_widget(data: &SessionData, expanded: bool) -> Element {
     render_widget_section(
         "Provider detail",
-        false,
+        expanded,
         rsx! {
             if data.providers.is_empty() {
                 p { class: "screen-empty", "No provider data." }
@@ -343,14 +348,14 @@ fn render_provider_status_widget(data: &SessionData) -> Element {
 }
 
 #[allow(dead_code)]
-fn render_control_plane_widget(data: &SessionData) -> Element {
+fn render_control_plane_widget(data: &SessionData, expanded: bool) -> Element {
     let Some(control_plane) = &data.telemetry.control_plane else {
         return rsx! { Fragment {} };
     };
 
     render_widget_section(
         "Control-plane detail",
-        false,
+        expanded,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 if let Some(base_url) = control_plane.base_url.as_deref() {
@@ -418,7 +423,7 @@ fn render_dispatcher_binding_widget(
 
     render_widget_section(
         "Dispatcher authority",
-        true,
+        !data.active_delegates.is_empty(),
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Canonical session", &dispatcher.session_id)}
@@ -518,10 +523,10 @@ fn render_temporary_dispatches_widget(
     )
 }
 
-fn render_session_stats_widget(data: &SessionData) -> Element {
+fn render_session_stats_widget(data: &SessionData, expanded: bool) -> Element {
     render_widget_section(
         "Session detail",
-        false,
+        expanded,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Turns", &data.session_turns.to_string())}
@@ -536,6 +541,70 @@ fn render_session_stats_widget(data: &SessionData) -> Element {
             }
         },
     )
+}
+
+fn should_expand_session_harness_widget(data: &SessionData) -> bool {
+    data.memory_warning.is_some()
+}
+
+fn should_expand_provider_status_widget(data: &SessionData) -> bool {
+    if data.providers.is_empty()
+        || data
+            .providers
+            .iter()
+            .any(|provider| !provider.authenticated)
+    {
+        return true;
+    }
+
+    data.telemetry
+        .latest_provider_telemetry
+        .as_ref()
+        .is_some_and(|telemetry| {
+            telemetry.retry_after_secs.is_some()
+                || telemetry
+                    .requests_remaining
+                    .is_some_and(|remaining| remaining == 0)
+                || telemetry
+                    .tokens_remaining
+                    .is_some_and(|remaining| remaining == 0)
+        })
+}
+
+fn should_expand_control_plane_widget(data: &SessionData) -> bool {
+    let Some(control_plane) = &data.telemetry.control_plane else {
+        return false;
+    };
+
+    control_plane
+        .base_url
+        .as_deref()
+        .unwrap_or_default()
+        .is_empty()
+        || control_plane
+            .startup_url
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+        || control_plane
+            .ready_url
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
+        || data.telemetry.lifecycle.counts.stale > 0
+        || data.telemetry.lifecycle.counts.lost > 0
+        || data.telemetry.lifecycle.counts.abandoned > 0
+}
+
+fn should_expand_session_stats_widget(data: &SessionData) -> bool {
+    data.active_delegates.is_empty()
+        && (data
+            .context_tokens
+            .zip(data.context_window)
+            .is_some_and(|(tokens, window)| {
+                window > 0 && tokens.saturating_mul(100) / window >= 70
+            })
+            || data.session_tool_calls > 0)
 }
 
 fn render_widget_section(title: &str, expanded: bool, body: Element) -> Element {
@@ -1194,9 +1263,11 @@ mod tests {
 
     #[test]
     fn session_detail_widget_titles_reflect_contextual_role() {
-        let shell = render_session_harness_widget(&crate::fixtures::SessionData::default());
-        let provider = render_provider_status_widget(&crate::fixtures::SessionData::default());
-        let session_detail = render_session_stats_widget(&crate::fixtures::SessionData::default());
+        let shell = render_session_harness_widget(&crate::fixtures::SessionData::default(), false);
+        let provider =
+            render_provider_status_widget(&crate::fixtures::SessionData::default(), false);
+        let session_detail =
+            render_session_stats_widget(&crate::fixtures::SessionData::default(), false);
 
         let shell_debug = format!("{shell:?}");
         let provider_debug = format!("{provider:?}");
@@ -1208,6 +1279,57 @@ mod tests {
         assert!(shell_debug.contains("details"));
         assert!(!shell_debug.contains("Lifecycle rollup"));
         assert!(!session_debug.contains("Attached Omegon status"));
+    }
+
+    #[test]
+    fn session_detail_expansion_policy_responds_to_real_state() {
+        let degraded = crate::fixtures::SessionData {
+            providers: vec![crate::fixtures::ProviderInfo {
+                name: "Anthropic".into(),
+                authenticated: false,
+                auth_method: None,
+                model: None,
+            }],
+            telemetry: crate::fixtures::SessionTelemetryData {
+                control_plane: Some(crate::fixtures::ControlPlaneTelemetryData {
+                    base_url: Some("http://127.0.0.1:7842".into()),
+                    startup_url: None,
+                    health_url: Some("http://127.0.0.1:7842/api/healthz".into()),
+                    ready_url: None,
+                    auth_mode: Some("ephemeral-bearer".into()),
+                    ..Default::default()
+                }),
+                lifecycle: crate::fixtures::LifecycleTelemetryData {
+                    counts: crate::fixtures::LifecycleRollupCountsData {
+                        stale: 1,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {
+                    provider: "anthropic".into(),
+                    source: "turn_end".into(),
+                    retry_after_secs: Some(12),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            session_tool_calls: 8,
+            context_tokens: Some(80),
+            context_window: Some(100),
+            ..Default::default()
+        };
+
+        assert!(should_expand_provider_status_widget(&degraded));
+        assert!(should_expand_control_plane_widget(&degraded));
+        assert!(should_expand_session_stats_widget(&degraded));
+        assert!(!should_expand_session_harness_widget(&degraded));
+
+        let warning = crate::fixtures::SessionData {
+            memory_warning: Some("Vault locked".into()),
+            ..Default::default()
+        };
+        assert!(should_expand_session_harness_widget(&warning));
     }
 
     #[test]
