@@ -1249,6 +1249,14 @@ fn role_from_wire(role: &str) -> MessageRole {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::omegon_control::{
+        CleaveSnapshot, DelegateSummarySnapshot, DesignSnapshot,
+        DispatcherBindingSnapshot, HarnessStatusSnapshot, OmegonControlPlaneDescriptor,
+        OmegonInstanceDescriptor, OmegonInstanceIdentity, OmegonPolicyDescriptor,
+        OmegonRuntimeDescriptor, OmegonSessionDescriptor, OmegonStateSnapshot,
+        OmegonWorkspaceDescriptor, OpenSpecSnapshot, ProviderStatusSnapshot,
+        SessionSnapshot,
+    };
 
     const SNAPSHOT_JSON: &str = r#"{
         "design": {
