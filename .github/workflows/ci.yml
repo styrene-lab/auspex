@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  validate:
+    name: Validate Rust app and site scaffold
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Omegon sibling for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/omegon
+          path: omegon
+
+      - name: Link Omegon at expected sibling path
+        run: ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: site/package-lock.json
+
+      - name: Install site dependencies
+        working-directory: site
+        run: npm ci
+
+      - name: Check formatting
+        run: cargo fmt --check
+
+      - name: Lint
+        run: cargo clippy --all-targets -- -D warnings
+
+      - name: Test
+        run: cargo test
+
+      - name: Build Astro site
+        working-directory: site
+        run: npm run build

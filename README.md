@@ -1,79 +1,94 @@
 # Auspex
 
-Dioxus desktop and mobile interface for Omegon.
+Auspex is the first-party operator shell for Omegon and Styrene: a Dioxus-based desktop-first control surface for attached sessions, embedded runtimes, transport-aware command routing, and operator-facing telemetry.
 
-## Current purpose
+## Current status
 
-This directory is the start of the Auspex repo path inside the Black Meridian workspace. The initial focus is to turn the product/design thinking into implementation-ready artifacts before code exists.
+Auspex is an active Rust application repo, not a design-only placeholder.
 
-## Initial structure
+Current reality:
+- desktop-first Dioxus app in `src/`
+- release-candidate line currently at `0.1.0-rc.6` in `Cargo.toml`
+- explicit RC/stable release workflow with changelog + release manifest
+- remote/bootstrap compatibility checks against Omegon schema + semver metadata
+- embedded/local IPC-first control path with remote/transitional websocket compatibility still present where required
+- design and OpenSpec artifacts retained in `docs/` and `openspec/` so implementation stays traceable
 
-- `docs/vision.md` — product positioning, mode model, MVP scope
-- `docs/control-plane.md` — proposed Omegon backend contract for Auspex
-- `docs/mvp-plan.md` — phased path from design to implementation
-- `docs/omegon-release-dependency.md` — policy for tracking versioned Omegon releases
-- `docs/compatibility-handshake.md` — runtime verification model for Omegon compatibility
-- `docs/release-coordination.md` — release coupling model between Auspex and Omegon
-- `docs/error-empty-states.md` — operator-facing loading, degraded, and empty-state behavior
-- `docs/app-skeleton-readiness.md` — criteria for when a Dioxus app skeleton is justified
-- `docs/mock-fixture-strategy.md` — path from scenario scaffolding to reusable host-session fixtures
-- `docs/controller-architecture.md` — role and evolution path for the app controller layer
-- `docs/session-source-model.md` — next abstraction step for swapping mock and runtime session sources
-- `docs/session-source-implementation-notes.md` — implementation note for introducing SessionSource in code
-- `docs/session-source-transition-note.md` — note that SessionSource is now the highest-value next refactor
-- `docs/embedded-runtime-model.md` — bundled subsystem model for Omegon and Styrene under Auspex
-- `docs/supervision-startup-states.md` — host lifecycle and supervision states for embedded subsystems
-- `docs/remote-connection-model.md` — desktop-hosted remote phone connection strategy using Styrene
-- `docs/styrene-relay-session-model.md` — desktop-hosted session abstraction for phone clients
-- `docs/phone-command-event-surface.md` — initial semantic relay surface for phone commands and events
-- `docs/host-projection-model.md` — how the desktop host reduces Omegon state for phone clients
-- `docs/phone-simple-mode-projection.md` — minimum phone Simple mode state projection
-- `docs/relay-state-machine.md` — lifecycle and transitions for the desktop relay host
-- `docs/host-event-projection-rules.md` — when host/backend changes produce phone-facing updates
-- `docs/auspex-in-the-stack.md` — Auspex-specific role within the broader Black Meridian stack doctrine
+## Repository layout
 
-## v1 product direction
+- `src/` — application code
+- `docs/` — long-lived design docs and architecture notes
+- `openspec/changes/` — change proposals and delta specs
+- `scripts/` — release-manifest and preflight helpers
+- `.github/workflows/` — CI and release automation
+- `site/` — preliminary Astro marketing/docs site scaffold for future Cloudflare Pages hosting
 
-- **Default:** simple chat-first interface
-- **Toggle:** power-user mode exposing the full Omegon surface
-- **Backend:** local Omegon control-plane (`/api/state`, `/api/graph`, `/ws`)
-- **Frontend target:** Dioxus across desktop and mobile (desktop-first MVP, mobile-targeted architecture)
+## Development
 
-## Release cadence
+Prerequisites:
+- Rust stable
+- Node.js 22+ for the site scaffold
+- sibling Omegon checkout at `../omegon` because `omegon-traits` is a path dependency
 
-Auspex now aims to follow a small but explicit RC/stable release framework.
+Typical commands:
+```bash
+just check
+just test
+just validate
+cargo run
+```
 
-Current release discipline is:
-- maintain `CHANGELOG.md`
-- cut RCs via semver prerelease tags such as `v0.1.0-rc.1`
-- promote to stable with plain semver tags such as `v0.1.0`
-- run `python3 scripts/release_preflight.py` before stable promotion
-- let CI build release archives, checksums, and `release-manifest.json`
+## CI and path dependency note
 
-The initial release surface is intentionally narrow:
-- macOS arm64 raw archive artifacts only
-- unsigned release artifacts
+Auspex depends on:
+```toml
+omegon-traits = { path = "../omegon/core/crates/omegon-traits" }
+```
 
-## Notes
-
-This started documentation-first, but now includes a minimal Dioxus scaffold proving the basic conversation shell. The backend contract and remote-runtime layers still need to settle before a real Omegon/Styrene integration should harden.
+That means local development and CI both need a sibling `omegon` checkout. GitHub Actions handles this by checking out `styrene-lab/omegon` and symlinking it into the expected sibling path before running Cargo.
 
 ## Bootstrap paths
 
-Auspex now supports two early remote bootstrap seams before full live transport hardens:
+Auspex currently supports these early bootstrap seams while live transport hardens:
 
 - `AUSPEX_REMOTE_SNAPSHOT_PATH=/path/to/state.json` — load an Omegon-shaped snapshot from disk
-- `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch Omegon over HTTP at startup
-- `AUSPEX_OMEGON_STARTUP_URL=http://127.0.0.1:7842/api/startup` — optional explicit startup discovery override
-- `AUSPEX_OMEGON_WS_URL=ws://127.0.0.1:7842/ws` — optional explicit event-stream override when discovery is unavailable
-- `AUSPEX_OMEGON_WS_TOKEN=...` — optional fallback WebSocket auth token appended as `?token=` when missing
+- `AUSPEX_OMEGON_STATE_URL=http://127.0.0.1:7842/api/state` — fetch Omegon state over HTTP at startup
+- `AUSPEX_OMEGON_STARTUP_URL=http://127.0.0.1:7842/api/startup` — optional startup discovery override
+- `AUSPEX_OMEGON_WS_URL=ws://127.0.0.1:7842/ws` — optional websocket event-stream override when discovery is unavailable
+- `AUSPEX_OMEGON_WS_TOKEN=...` — optional fallback websocket auth token appended as `?token=` when missing
 
-Behavior is intentionally simple:
-- snapshot file wins if both are set
-- HTTP bootstrap is opt-in
-- when available, Auspex prefers Omegon startup discovery at `/api/startup`
-- startup discovery supplies the canonical state URL, WS URL, token, and auth mode/source
-- Auspex currently requires control-plane schema `2` and treats other schema versions as a visible compatibility failure
-- if discovery is unavailable, Auspex falls back to the configured state URL and derived `/ws`
-- if `AUSPEX_OMEGON_WS_TOKEN` is set, Auspex appends it to the fallback WebSocket URL unless a `token` query is already present
+Behavior summary:
+- snapshot file wins if both snapshot and HTTP bootstrap are set
+- startup discovery is preferred when available
+- Auspex enforces control-plane schema compatibility and Omegon version policy at runtime
 - if bootstrap fails, Auspex falls back to the mock local session and surfaces the failure in the UI
+
+## Release workflow
+
+Auspex follows an explicit RC/stable process:
+- maintain `CHANGELOG.md`
+- cut RC tags like `v0.1.0-rc.7`
+- promote stable tags like `v0.1.0`
+- run `python3 scripts/release_preflight.py` before stable promotion
+- let GitHub Actions build archives, checksums, and `release-manifest.json`
+
+Useful local commands:
+```bash
+just rc
+just release
+just next
+```
+
+## Preliminary site scaffold
+
+`site/` contains a basic Astro project intended for future Cloudflare Pages hosting. It is deliberately dormant right now:
+- no Pages project has been launched from this repo by this change
+- the scaffold exists so repo structure, CI, and future docs/marketing hosting can converge cleanly
+
+Build it locally with:
+```bash
+cd site
+npm install
+npm run dev
+npm run build
+```

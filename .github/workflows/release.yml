@@ -27,6 +27,15 @@ jobs:
         with:
           ref: ${{ inputs.tag_name || github.ref }}
 
+      - name: Check out Omegon sibling for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/omegon
+          path: omegon
+
+      - name: Link Omegon at expected sibling path
+        run: ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
+
       - uses: dtolnay/rust-toolchain@stable
 
       - name: Build release binary

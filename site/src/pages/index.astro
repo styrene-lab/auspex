@@ -1,0 +1,47 @@
+---
+import BaseLayout from '../layouts/BaseLayout.astro';
+---
+<BaseLayout
+  title="Auspex"
+  description="Auspex is the desktop-first operator shell for Omegon and Styrene."
+>
+  <section class="hero">
+    <div class="eyebrow">Preliminary site scaffold</div>
+    <h1>Auspex is the operator shell for Omegon and Styrene.</h1>
+    <p class="lede">
+      This Astro site is intentionally minimal and not launched yet. It exists to establish
+      repository structure, Cloudflare Pages build conventions, and a future place for product and
+      documentation-facing content.
+    </p>
+  </section>
+
+  <section class="grid">
+    <article class="card">
+      <h2>Desktop-first</h2>
+      <p>Auspex is a Dioxus application focused on attached-session control, transport-aware routing, and operator telemetry.</p>
+    </article>
+    <article class="card">
+      <h2>IPC-first embedded control</h2>
+      <p>Embedded and local control paths prioritize IPC while remote and transitional attach paths still preserve websocket compatibility where needed.</p>
+    </article>
+    <article class="card">
+      <h2>Docs stay close to code</h2>
+      <p>Long-lived design docs and OpenSpec changes remain in-repo so implementation, release policy, and architecture can drift less.</p>
+    </article>
+  </section>
+
+  <section>
+    <h2>Not launched yet</h2>
+    <p class="lede">
+      Planned target host: <code>auspex.styrene.io</code>. This repository change scaffolds the site and Cloudflare Pages build metadata only; it does not create or deploy a Pages project.
+    </p>
+    <pre>cd site
+npm install
+npm run dev
+npm run build</pre>
+  </section>
+
+  <footer>
+    Auspex site scaffold — dormant until launch sequencing, content, and Cloudflare Pages project setup are intentionally approved.
+  </footer>
+</BaseLayout>
