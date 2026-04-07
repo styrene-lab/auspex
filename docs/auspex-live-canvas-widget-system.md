@@ -964,7 +964,7 @@ Core deployment surfaces:
 - `AttachedOmegonStatusSurface`
 - `RouteSelectionSurface`
 - `DispatcherBindingSurface`
-- `DeploymentInventorySurface`
+- `DeploymentInventorySurface` — overview-with-drill-down over all visible Omegon instances, including same-box long-lived serve workers
 - `LifecycleRollupSurface`
 - `ServeModeWorkersSurface`
 - `TemporaryDispatchesSurface`
@@ -1264,11 +1264,22 @@ Transport/route labels are secondary metadata, not the first line.
 
 ### DeploymentPanel
 
-**Primary question:** What does the visible Omegon estate look like right now?
+**Primary question:** What Omegon instances exist in my field of view, what kind are they, and which ones need attention?
+
+This panel is not just a count badge. It is the compact **deployment field overview** for everything Auspex can currently see and reason about.
+
+That field may include:
+- remote or separately deployed Omegon instances
+- long-lived serve-mode workers launched on the same box as Auspex
+- long-lived detached services supervised by the same authority domain
+- temporary task-bound dispatches when they materially affect field state
+
+Same-box long-lived agents are valid deployment members. Locality does not exempt them from deployment visibility.
 
 **Required fields:**
 - total known count
 - fresh/stale count summary
+- compact instance roster, preview rail, or equivalent per-instance visibility
 
 **Optional fields:**
 - attached count
@@ -1276,14 +1287,18 @@ Transport/route labels are secondary metadata, not the first line.
 - temporary-dispatch count
 - lost / abandoned count
 - role-mix summary
+- same-box vs remote placement hints when materially useful
 
 **Must not contain:**
 - attached primary detail
-- task/delegate lists
 - transcript/audit activity
-- deep control-plane fields
+- deep per-instance control-plane fields inline by default
 
-**Compact mode:** headline counts only
+**Drill-down rule:**
+- this panel must allow the operator to inspect specific instances in more detail
+- it is an overview-with-drill-down surface, not merely a headline metric strip
+
+**Compact mode:** headline counts plus minimal per-instance preview, not counts alone
 
 ### ActivityPanel
 
