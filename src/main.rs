@@ -6,21 +6,22 @@ mod controller;
 mod event_stream;
 mod fixtures;
 mod instance_registry;
+#[cfg(not(target_arch = "wasm32"))]
+mod ipc_client;
 mod omegon_control;
 mod remote_session;
 mod runtime_types;
-mod telemetry;
 mod screens;
+mod session_event;
 mod session_model;
 mod state_engine;
-#[cfg(not(target_arch = "wasm32"))]
-mod ipc_client;
+mod telemetry;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
     use dioxus::desktop::muda::{
-        accelerator::{Accelerator, Code, Modifiers},
         Menu, MenuItem, PredefinedMenuItem, Submenu,
+        accelerator::{Accelerator, Code, Modifiers},
     };
 
     let bootstrap = bootstrap::bootstrap_controller_from_env();
@@ -57,15 +58,13 @@ fn main() {
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
-            dioxus::desktop::Config::new()
-                .with_menu(menu)
-                .with_window(
-                    dioxus::desktop::WindowBuilder::new()
-                        .with_title("Auspex")
-                        .with_resizable(true)
-                        .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 920.0))
-                        .with_min_inner_size(dioxus::desktop::LogicalSize::new(1100.0, 760.0)),
-                ),
+            dioxus::desktop::Config::new().with_menu(menu).with_window(
+                dioxus::desktop::WindowBuilder::new()
+                    .with_title("Auspex")
+                    .with_resizable(true)
+                    .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 920.0))
+                    .with_min_inner_size(dioxus::desktop::LogicalSize::new(1100.0, 760.0)),
+            ),
         )
         .with_context(bootstrap)
         .launch(app::App);
@@ -76,6 +75,5 @@ fn main() {
     // Web mode: Omegon is running in a container / remote host.
     // The app bootstraps by connecting to the state endpoint served
     // alongside this page, or from a URL provided via query string.
-    dioxus::LaunchBuilder::web()
-        .launch(app::App);
+    dioxus::LaunchBuilder::web().launch(app::App);
 }

@@ -2,15 +2,16 @@ use crate::fixtures::{
     ActivityKind, BlockOrigin, ChatMessage, ComposerState, DelegateSummaryData, DevScenario,
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
-    InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData,
-    InstanceWorkspaceData, MessageRole, OriginKind, ProviderInfo, SessionData, ShellState,
-    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
+    InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData, InstanceWorkspaceData,
+    MessageRole, OriginKind, ProviderInfo, SessionData, ShellState, SystemNoticeKind,
+    TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
 };
-use crate::telemetry::{build_session_telemetry, LatestTurnTelemetry};
+use crate::session_event::SessionEvent;
 use crate::session_model::HostSessionModel;
+use crate::telemetry::{LatestTurnTelemetry, build_session_telemetry};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 #[allow(dead_code)]
@@ -89,8 +90,10 @@ impl RemoteHostSession {
     }
 
     pub fn from_snapshot(snapshot: OmegonStateSnapshot) -> Self {
-        let (shell_state, scenario) =
-            status_from_runtime_or_harness(snapshot.instance_descriptor.as_ref(), snapshot.harness.as_ref());
+        let (shell_state, scenario) = status_from_runtime_or_harness(
+            snapshot.instance_descriptor.as_ref(),
+            snapshot.harness.as_ref(),
+        );
         let summary = summary_from_snapshot(&snapshot);
 
         Self {
@@ -155,14 +158,15 @@ impl RemoteHostSession {
 
             if already_active {
                 let note = format!("Dispatcher already active: {profile}");
-                dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
-                    request_id: None,
-                    requested_profile: Some(profile.to_string()),
-                    requested_model: model.map(str::to_string),
-                    status: "active".into(),
-                    failure_code: None,
-                    note: Some(note.clone()),
-                });
+                dispatcher.switch_state =
+                    Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                        request_id: None,
+                        requested_profile: Some(profile.to_string()),
+                        requested_model: model.map(str::to_string),
+                        status: "active".into(),
+                        failure_code: None,
+                        note: Some(note.clone()),
+                    });
                 self.summary.activity = note.clone();
                 self.summary.activity_kind = ActivityKind::Completed;
                 Some(note)
@@ -181,14 +185,15 @@ impl RemoteHostSession {
                 let request_id = request_id
                     .as_ref()
                     .expect("request_id must exist for non-noop dispatcher switches");
-                dispatcher.switch_state = Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
-                    request_id: Some(request_id.clone()),
-                    requested_profile: Some(profile.to_string()),
-                    requested_model: model.map(str::to_string),
-                    status: "pending".into(),
-                    failure_code: None,
-                    note: Some("Awaiting backend dispatcher switch confirmation".into()),
-                });
+                dispatcher.switch_state =
+                    Some(crate::omegon_control::DispatcherSwitchStateSnapshot {
+                        request_id: Some(request_id.clone()),
+                        requested_profile: Some(profile.to_string()),
+                        requested_model: model.map(str::to_string),
+                        status: "pending".into(),
+                        failure_code: None,
+                        note: Some("Awaiting backend dispatcher switch confirmation".into()),
+                    });
                 None
             }
         };
@@ -206,14 +211,19 @@ impl RemoteHostSession {
             );
         }
 
-        let request_id = request_id.expect("request_id must exist for non-noop dispatcher switches");
+        let request_id =
+            request_id.expect("request_id must exist for non-noop dispatcher switches");
         self.summary.activity = format!("Requesting dispatcher switch to {profile}");
         self.summary.activity_kind = ActivityKind::Waiting;
         let request_message = format!(
             "Dispatcher switch requested: {}",
             switch_target_label(Some(profile), model)
         );
-        self.push_system_notice(request_message, Some(origin), SystemNoticeKind::DispatcherSwitch);
+        self.push_system_notice(
+            request_message,
+            Some(origin),
+            SystemNoticeKind::DispatcherSwitch,
+        );
         Some(DispatcherSwitchCommandOutcome::Issued { request_id })
     }
 
@@ -237,10 +247,21 @@ impl RemoteHostSession {
     }
 
     pub fn apply_event(&mut self, event: OmegonEvent) -> bool {
+        self.apply_session_event(event.into())
+    }
+
+    #[allow(dead_code)]
+    pub fn apply_ipc_event(&mut self, event: omegon_traits::IpcEventPayload) -> bool {
+        self.apply_session_event(event.into())
+    }
+
+    pub fn apply_session_event(&mut self, event: SessionEvent) -> bool {
         match event {
-            OmegonEvent::StateSnapshot { data } => {
-                let (shell_state, scenario) =
-                    status_from_runtime_or_harness(data.instance_descriptor.as_ref(), data.harness.as_ref());
+            SessionEvent::StateSnapshot { data } => {
+                let (shell_state, scenario) = status_from_runtime_or_harness(
+                    data.instance_descriptor.as_ref(),
+                    data.harness.as_ref(),
+                );
                 self.shell_state = shell_state;
                 self.scenario = scenario;
                 self.summary = summary_from_snapshot(&data);
@@ -249,10 +270,8 @@ impl RemoteHostSession {
                 self.cleave = data.cleave;
                 self.session_stats = data.session;
                 let previous_dispatcher = self.dispatcher_binding.take();
-                self.dispatcher_binding = reconcile_dispatcher_binding(
-                    previous_dispatcher.clone(),
-                    data.dispatcher,
-                );
+                self.dispatcher_binding =
+                    reconcile_dispatcher_binding(previous_dispatcher.clone(), data.dispatcher);
                 append_dispatcher_switch_transition_notice(
                     &mut self.messages,
                     &mut self.transcript,
@@ -262,12 +281,12 @@ impl RemoteHostSession {
                 self.transcript.context_tokens = self.context_tokens;
                 true
             }
-            OmegonEvent::MessageStart { role } => {
+            SessionEvent::MessageStart { role } => {
                 self.pending_role = Some(role_from_wire(&role));
                 self.pending_text.clear();
                 true
             }
-            OmegonEvent::MessageChunk { text } => {
+            SessionEvent::MessageDelta { text } => {
                 if self.pending_role.is_some() {
                     self.pending_text.push_str(&text);
                     true
@@ -275,7 +294,7 @@ impl RemoteHostSession {
                     false
                 }
             }
-            OmegonEvent::ThinkingChunk { text } => {
+            SessionEvent::ThinkingDelta { text } => {
                 if let Some(turn) = self.transcript.turns.last_mut() {
                     match turn.blocks.last_mut() {
                         Some(crate::fixtures::TurnBlock::Thinking(thinking)) => {
@@ -293,7 +312,7 @@ impl RemoteHostSession {
                     false
                 }
             }
-            OmegonEvent::MessageEnd => {
+            SessionEvent::MessageCompleted => {
                 let Some(role) = self.pending_role.take() else {
                     return false;
                 };
@@ -303,7 +322,7 @@ impl RemoteHostSession {
                 self.pending_text.clear();
                 true
             }
-            OmegonEvent::MessageAbort => {
+            SessionEvent::MessageAbort => {
                 let aborted = self.pending_text.trim().to_string();
                 if let Some(role) = self.pending_role.take()
                     && matches!(role, MessageRole::Assistant)
@@ -314,13 +333,14 @@ impl RemoteHostSession {
                     );
                 }
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::Aborted(aborted));
+                    turn.blocks
+                        .push(crate::fixtures::TurnBlock::Aborted(aborted));
                 }
                 self.pending_text.clear();
                 self.run_active = false;
                 true
             }
-            OmegonEvent::SystemNotification { message } => {
+            SessionEvent::SystemNotification { message } => {
                 self.push_system_notice(
                     message,
                     Some(BlockOrigin {
@@ -331,7 +351,7 @@ impl RemoteHostSession {
                 );
                 true
             }
-            OmegonEvent::HarnessStatusChanged { status } => {
+            SessionEvent::HarnessStatusChanged { status } => {
                 let (shell_state, scenario) = status_from_harness(Some(&status));
                 self.shell_state = shell_state;
                 self.scenario = scenario;
@@ -339,7 +359,7 @@ impl RemoteHostSession {
                 self.harness_snapshot = Some(status);
                 true
             }
-            OmegonEvent::SessionReset => {
+            SessionEvent::SessionReset => {
                 if let Some(dispatcher) = self.dispatcher_binding.as_mut()
                     && let Some(switch_state) = dispatcher.switch_state.as_mut()
                     && switch_state.status == "pending"
@@ -360,7 +380,7 @@ impl RemoteHostSession {
                 self.transcript.active_turn = None;
                 true
             }
-            OmegonEvent::TurnStart { turn } => {
+            SessionEvent::TurnStarted { turn } => {
                 self.transcript.active_turn = Some(turn);
                 self.run_active = true;
                 self.summary.activity = format!("Turn {turn} in progress");
@@ -371,7 +391,7 @@ impl RemoteHostSession {
                 });
                 true
             }
-            OmegonEvent::TurnEnd {
+            SessionEvent::TurnEnded {
                 turn,
                 estimated_tokens,
                 actual_input_tokens,
@@ -392,24 +412,27 @@ impl RemoteHostSession {
                 };
                 true
             }
-            OmegonEvent::ToolStart { id, name, args } => {
+            SessionEvent::ToolStarted { id, name, args } => {
                 self.summary.activity = format!("Running tool {name}");
                 self.summary.activity_kind = ActivityKind::Running;
                 if let Some(turn) = self.transcript.turns.last_mut() {
-                    turn.blocks.push(crate::fixtures::TurnBlock::Tool(crate::fixtures::ToolCard {
-                        id,
-                        name,
-                        args: args.map(|v| v.to_string()).unwrap_or_default(),
-                        partial_output: String::new(),
-                        result: None,
-                        is_error: false,
-                        origin: Some(dispatcher_origin(&self.dispatcher_binding)),
-                    }));
+                    turn.blocks.push(crate::fixtures::TurnBlock::Tool(
+                        crate::fixtures::ToolCard {
+                            id,
+                            name,
+                            args: args.map(|v| v.to_string()).unwrap_or_default(),
+                            partial_output: String::new(),
+                            result: None,
+                            is_error: false,
+                            origin: Some(dispatcher_origin(&self.dispatcher_binding)),
+                        },
+                    ));
                 }
                 true
             }
-            OmegonEvent::ToolUpdate { id, partial } => {
-                if let Some(turn) = self.transcript.turns.last_mut()
+            SessionEvent::ToolUpdated { id, partial } => {
+                if let Some(partial) = partial
+                    && let Some(turn) = self.transcript.turns.last_mut()
                     && let Some(crate::fixtures::TurnBlock::Tool(tool)) = turn.blocks.last_mut()
                     && tool.id == id
                 {
@@ -420,7 +443,12 @@ impl RemoteHostSession {
                 }
                 true
             }
-            OmegonEvent::ToolEnd { id, is_error, result } => {
+            SessionEvent::ToolEnded {
+                id,
+                name: _,
+                is_error,
+                result,
+            } => {
                 self.summary.activity = if is_error {
                     "Tool run completed with an error".into()
                 } else {
@@ -440,7 +468,7 @@ impl RemoteHostSession {
                 }
                 true
             }
-            OmegonEvent::ContextUpdated {
+            SessionEvent::ContextUpdated {
                 tokens,
                 context_window,
                 context_class: _,
@@ -453,28 +481,31 @@ impl RemoteHostSession {
                 }
                 true
             }
-            OmegonEvent::AgentEnd => {
+            SessionEvent::AgentCompleted => {
                 self.run_active = false;
                 self.summary.activity = "Agent turn finished".into();
                 self.summary.activity_kind = ActivityKind::Completed;
                 true
             }
-            OmegonEvent::PhaseChanged { phase } => {
+            SessionEvent::PhaseChanged { phase } => {
                 self.summary.activity = format!("Lifecycle phase: {phase}");
                 self.summary.activity_kind = ActivityKind::Running;
                 true
             }
-            OmegonEvent::DecompositionStarted { children } => {
+            SessionEvent::DecompositionStarted { children } => {
                 self.summary.activity =
                     format!("Cleave started with {} child task(s)", children.len());
                 self.summary.activity_kind = ActivityKind::Running;
                 self.push_dispatcher_notice(
-                    format!("Dispatcher requested decomposition into {} child task(s)", children.len()),
+                    format!(
+                        "Dispatcher requested decomposition into {} child task(s)",
+                        children.len()
+                    ),
                     SystemNoticeKind::CleaveStart,
                 );
                 true
             }
-            OmegonEvent::DecompositionChildCompleted { label, success } => {
+            SessionEvent::DecompositionChildCompleted { label, success } => {
                 let message = format!(
                     "Cleave child {label} {}",
                     if success {
@@ -497,7 +528,7 @@ impl RemoteHostSession {
                 );
                 true
             }
-            OmegonEvent::DecompositionCompleted { merged } => {
+            SessionEvent::DecompositionCompleted { merged } => {
                 self.summary.activity = if merged {
                     "Cleave completed and merged".into()
                 } else {
@@ -512,6 +543,8 @@ impl RemoteHostSession {
                 self.push_dispatcher_notice(message, SystemNoticeKind::CleaveComplete);
                 true
             }
+            SessionEvent::HarnessChanged => false,
+            SessionEvent::StateChanged { sections: _ } => false,
         }
     }
 
@@ -615,13 +648,11 @@ impl HostSessionModel for RemoteHostSession {
         let instance_descriptor = self.instance_descriptor.as_ref();
         let dispatcher = self.dispatcher_binding.as_ref();
         SessionData {
-            git_branch: h
-                .and_then(|h| h.git_branch.clone())
-                .or_else(|| {
-                    instance_descriptor
-                        .and_then(|descriptor| descriptor.workspace.as_ref())
-                        .and_then(|workspace| workspace.branch.clone())
-                }),
+            git_branch: h.and_then(|h| h.git_branch.clone()).or_else(|| {
+                instance_descriptor
+                    .and_then(|descriptor| descriptor.workspace.as_ref())
+                    .and_then(|workspace| workspace.branch.clone())
+            }),
             git_detached: h.map(|h| h.git_detached).unwrap_or(false),
             thinking_level: h
                 .map(|h| h.thinking_level.clone())
@@ -696,7 +727,10 @@ impl HostSessionModel for RemoteHostSession {
                 self.instance_descriptor.as_ref(),
                 &self.latest_turn_telemetry,
             ),
-            instance_descriptor: self.instance_descriptor.as_ref().map(project_instance_descriptor),
+            instance_descriptor: self
+                .instance_descriptor
+                .as_ref()
+                .map(project_instance_descriptor),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
                 DispatcherBindingData {
                     session_id: binding
@@ -754,7 +788,10 @@ impl HostSessionModel for RemoteHostSession {
                         .and_then(|descriptor| descriptor.control_plane.as_ref())
                         .and_then(|control_plane| control_plane.last_verified_at.clone())
                         .or_else(|| binding.last_verified_at.clone()),
-                    instance_descriptor: binding.instance_descriptor.as_ref().map(project_instance_descriptor),
+                    instance_descriptor: binding
+                        .instance_descriptor
+                        .as_ref()
+                        .map(project_instance_descriptor),
                     available_options: binding
                         .available_options
                         .iter()
@@ -838,9 +875,7 @@ impl HostSessionModel for RemoteHostSession {
     }
 }
 
-fn project_instance_descriptor(
-    descriptor: &OmegonInstanceDescriptor,
-) -> InstanceDescriptorData {
+fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> InstanceDescriptorData {
     InstanceDescriptorData {
         identity: InstanceIdentityData {
             instance_id: descriptor.identity.instance_id.clone(),
@@ -848,15 +883,16 @@ fn project_instance_descriptor(
             profile: descriptor.identity.profile.clone(),
             status: descriptor.identity.status.clone(),
         },
-        workspace: descriptor.workspace.as_ref().map(|workspace| InstanceWorkspaceData {
-            cwd: workspace.cwd.clone(),
-            workspace_id: workspace.workspace_id.clone(),
-            branch: workspace.branch.clone(),
-        }),
-        control_plane: descriptor
-            .control_plane
+        workspace: descriptor
+            .workspace
             .as_ref()
-            .map(|control_plane| InstanceControlPlaneData {
+            .map(|workspace| InstanceWorkspaceData {
+                cwd: workspace.cwd.clone(),
+                workspace_id: workspace.workspace_id.clone(),
+                branch: workspace.branch.clone(),
+            }),
+        control_plane: descriptor.control_plane.as_ref().map(|control_plane| {
+            InstanceControlPlaneData {
                 schema_version: control_plane.schema_version,
                 omegon_version: control_plane.omegon_version.clone(),
                 base_url: control_plane.base_url.clone(),
@@ -870,19 +906,26 @@ fn project_instance_descriptor(
                 last_ready_at: control_plane.last_ready_at.clone(),
                 last_verified_at: control_plane.last_verified_at.clone(),
                 capabilities: control_plane.capabilities.clone(),
+            }
+        }),
+        runtime: descriptor
+            .runtime
+            .as_ref()
+            .map(|runtime| InstanceRuntimeData {
+                backend: runtime.backend.clone(),
+                host: runtime.host.clone(),
+                pid: runtime.pid,
+                placement_id: runtime.placement_id.clone(),
+                namespace: runtime.namespace.clone(),
+                pod_name: runtime.pod_name.clone(),
+                container_name: runtime.container_name.clone(),
             }),
-        runtime: descriptor.runtime.as_ref().map(|runtime| InstanceRuntimeData {
-            backend: runtime.backend.clone(),
-            host: runtime.host.clone(),
-            pid: runtime.pid,
-            placement_id: runtime.placement_id.clone(),
-            namespace: runtime.namespace.clone(),
-            pod_name: runtime.pod_name.clone(),
-            container_name: runtime.container_name.clone(),
-        }),
-        session: descriptor.session.as_ref().map(|session| InstanceSessionDescriptorData {
-            session_id: session.session_id.clone(),
-        }),
+        session: descriptor
+            .session
+            .as_ref()
+            .map(|session| InstanceSessionDescriptorData {
+                session_id: session.session_id.clone(),
+            }),
         policy: descriptor.policy.as_ref().map(|policy| InstancePolicyData {
             model: policy.model.clone(),
             thinking_level: policy.thinking_level.clone(),
@@ -908,8 +951,16 @@ fn dispatcher_origin(
                     .map(|descriptor| descriptor.identity.instance_id.clone())
                     .filter(|value| !value.is_empty())
             })
-            .or_else(|| dispatcher.as_ref().and_then(|binding| binding.expected_model.clone()))
-            .or_else(|| dispatcher.as_ref().map(|binding| binding.dispatcher_instance_id.clone()))
+            .or_else(|| {
+                dispatcher
+                    .as_ref()
+                    .and_then(|binding| binding.expected_model.clone())
+            })
+            .or_else(|| {
+                dispatcher
+                    .as_ref()
+                    .map(|binding| binding.dispatcher_instance_id.clone())
+            })
             .unwrap_or_else(|| "Dispatcher".into()),
     }
 }
@@ -918,7 +969,9 @@ fn reconcile_dispatcher_binding(
     previous: Option<crate::omegon_control::DispatcherBindingSnapshot>,
     next: Option<crate::omegon_control::DispatcherBindingSnapshot>,
 ) -> Option<crate::omegon_control::DispatcherBindingSnapshot> {
-    let previous_switch = previous.as_ref().and_then(|binding| binding.switch_state.clone());
+    let previous_switch = previous
+        .as_ref()
+        .and_then(|binding| binding.switch_state.clone());
     let previous_pending = previous_switch
         .as_ref()
         .filter(|switch_state| switch_state.status == "pending")
@@ -939,7 +992,9 @@ fn reconcile_dispatcher_binding(
         }
     }
 
-    if next.switch_state.is_none() && let Some(previous_switch) = previous_pending {
+    if next.switch_state.is_none()
+        && let Some(previous_switch) = previous_pending
+    {
         let requested_profile = previous_switch.requested_profile.as_deref();
         let requested_model = previous_switch.requested_model.as_deref();
         let profile_matches = requested_profile == Some(next.expected_profile.as_str());
@@ -1020,9 +1075,7 @@ fn append_dispatcher_switch_transition_notice(
             ))
         }
         "failed" => Some(match next_state.failure_code.as_deref() {
-            Some(code) => format!(
-                "Dispatcher switch failed{request_suffix}: {target} [{code}]"
-            ),
+            Some(code) => format!("Dispatcher switch failed{request_suffix}: {target} [{code}]"),
             None => format!("Dispatcher switch failed{request_suffix}: {target}"),
         }),
         "superseded" => Some(format!(
@@ -1076,7 +1129,12 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             .workspace
             .as_ref()
             .and_then(|workspace| workspace.branch.as_deref())
-            .or_else(|| snapshot.harness.as_ref().and_then(|harness| harness.git_branch.as_deref()))
+            .or_else(|| {
+                snapshot
+                    .harness
+                    .as_ref()
+                    .and_then(|harness| harness.git_branch.as_deref())
+            })
             .unwrap_or("detached");
         let identity = if descriptor.identity.instance_id.is_empty() {
             "instance unknown".to_string()
@@ -1089,7 +1147,10 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
             .and_then(|policy| policy.model.as_deref())
             .or_else(|| {
                 snapshot.harness.as_ref().and_then(|harness| {
-                    harness.providers.iter().find_map(|provider| provider.model.as_deref())
+                    harness
+                        .providers
+                        .iter()
+                        .find_map(|provider| provider.model.as_deref())
                 })
             })
             .unwrap_or("provider unknown");
@@ -1161,7 +1222,12 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
         activity,
         activity_kind: if snapshot.cleave.active {
             ActivityKind::Running
-        } else if snapshot.harness.as_ref().and_then(|h| h.memory_warning.as_ref()).is_some() {
+        } else if snapshot
+            .harness
+            .as_ref()
+            .and_then(|h| h.memory_warning.as_ref())
+            .is_some()
+        {
             ActivityKind::Degraded
         } else if snapshot.design.focused.is_some() {
             ActivityKind::Running
@@ -1215,7 +1281,10 @@ fn harness_can_execute_prompts(
     instance_descriptor: Option<&OmegonInstanceDescriptor>,
 ) -> bool {
     if let Some(harness) = harness {
-        return harness.providers.iter().any(|provider| provider.authenticated);
+        return harness
+            .providers
+            .iter()
+            .any(|provider| provider.authenticated);
     }
 
     if let Some(runtime) = instance_descriptor.and_then(|descriptor| descriptor.runtime.as_ref()) {
@@ -1254,10 +1323,9 @@ fn role_from_wire(role: &str) -> MessageRole {
 mod tests {
     use super::*;
     use crate::omegon_control::{
-        CleaveSnapshot, DesignSnapshot, DispatcherBindingSnapshot,
-        HarnessStatusSnapshot, OmegonInstanceDescriptor, OmegonInstanceIdentity,
-        OmegonPolicyDescriptor, OmegonStateSnapshot, OmegonWorkspaceDescriptor,
-        OpenSpecSnapshot, SessionSnapshot,
+        CleaveSnapshot, DesignSnapshot, DispatcherBindingSnapshot, HarnessStatusSnapshot,
+        OmegonInstanceDescriptor, OmegonInstanceIdentity, OmegonPolicyDescriptor,
+        OmegonStateSnapshot, OmegonWorkspaceDescriptor, OpenSpecSnapshot, SessionSnapshot,
     };
 
     const SNAPSHOT_JSON: &str = r#"{
@@ -1469,7 +1537,12 @@ mod tests {
 
         assert_eq!(session.shell_state(), ShellState::Ready);
         assert_eq!(session.scenario(), DevScenario::Ready);
-        assert!(session.summary().connection.contains("omg_primary_01HVTEST"));
+        assert!(
+            session
+                .summary()
+                .connection
+                .contains("omg_primary_01HVTEST")
+        );
         assert!(session.summary().connection.contains("branch main"));
         assert!(!session.summary().connection.contains("wrong-legacy-branch"));
         assert!(session.summary().activity.contains("Parallel work running"));
@@ -1483,22 +1556,48 @@ mod tests {
         let session_data = session.session_data();
         let instance = session_data.instance_descriptor.as_ref().unwrap();
         assert_eq!(instance.identity.instance_id, "omg_primary_01HVTEST");
-        assert_eq!(instance.workspace.as_ref().unwrap().workspace_id.as_deref(), Some("repo:main"));
+        assert_eq!(
+            instance.workspace.as_ref().unwrap().workspace_id.as_deref(),
+            Some("repo:main")
+        );
         assert_eq!(instance.control_plane.as_ref().unwrap().schema_version, 2);
         assert_eq!(instance.runtime.as_ref().unwrap().pid, Some(8123));
-        assert_eq!(instance.policy.as_ref().unwrap().model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
+        assert_eq!(
+            instance.policy.as_ref().unwrap().model.as_deref(),
+            Some("anthropic:claude-sonnet-4-6")
+        );
 
         let dispatcher = session_data.dispatcher_binding.as_ref().unwrap();
         assert_eq!(dispatcher.session_id, "session_01HVTEST");
         assert_eq!(dispatcher.dispatcher_instance_id, "omg_dispatcher_01HVTEST");
         assert_eq!(dispatcher.expected_role, "primary-driver");
         assert_eq!(dispatcher.expected_profile, "primary-interactive");
-        assert_eq!(dispatcher.expected_model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
+        assert_eq!(
+            dispatcher.expected_model.as_deref(),
+            Some("anthropic:claude-sonnet-4-6")
+        );
         assert_eq!(dispatcher.control_plane_schema, 2);
-        assert_eq!(dispatcher.observed_base_url.as_deref(), Some("http://127.0.0.1:7842"));
-        assert_eq!(dispatcher.last_verified_at.as_deref(), Some("2026-04-04T12:01:00Z"));
-        assert_eq!(dispatcher.token_ref.as_deref(), Some("secret://auspex/instances/omg_dispatcher_01HVTEST/token"));
-        assert_eq!(dispatcher.instance_descriptor.as_ref().unwrap().identity.instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(
+            dispatcher.observed_base_url.as_deref(),
+            Some("http://127.0.0.1:7842")
+        );
+        assert_eq!(
+            dispatcher.last_verified_at.as_deref(),
+            Some("2026-04-04T12:01:00Z")
+        );
+        assert_eq!(
+            dispatcher.token_ref.as_deref(),
+            Some("secret://auspex/instances/omg_dispatcher_01HVTEST/token")
+        );
+        assert_eq!(
+            dispatcher
+                .instance_descriptor
+                .as_ref()
+                .unwrap()
+                .identity
+                .instance_id,
+            "omg_dispatcher_01HVTEST"
+        );
     }
 
     #[test]
@@ -1512,6 +1611,50 @@ mod tests {
                 label: "anthropic:claude-sonnet-4-6".into(),
             }
         );
+    }
+
+    #[test]
+    fn ipc_message_and_tool_events_use_the_same_normalized_path() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        assert!(session.apply_ipc_event(omegon_traits::IpcEventPayload::TurnStarted { turn: 3 }));
+        assert!(session.apply_session_event(SessionEvent::MessageStart {
+            role: "assistant".into(),
+        }));
+        assert!(
+            session.apply_ipc_event(omegon_traits::IpcEventPayload::MessageDelta {
+                text: "hello from ipc".into(),
+            })
+        );
+        assert!(session.apply_ipc_event(omegon_traits::IpcEventPayload::MessageCompleted));
+        assert!(
+            session.apply_ipc_event(omegon_traits::IpcEventPayload::ToolStarted {
+                id: "tool-1".into(),
+                name: "read".into(),
+                args: serde_json::json!({"path":"Cargo.toml"}),
+            })
+        );
+        assert!(
+            session.apply_ipc_event(omegon_traits::IpcEventPayload::ToolEnded {
+                id: "tool-1".into(),
+                name: "read".into(),
+                is_error: false,
+                summary: Some("ok".into()),
+            })
+        );
+
+        assert_eq!(session.messages().last().unwrap().text, "hello from ipc");
+        let turn = session.transcript().turns.last().unwrap();
+        assert_eq!(turn.number, 3);
+        assert_eq!(turn.blocks.len(), 2);
+        match &turn.blocks[1] {
+            crate::fixtures::TurnBlock::Tool(tool) => {
+                assert_eq!(tool.id, "tool-1");
+                assert_eq!(tool.name, "read");
+                assert_eq!(tool.result.as_deref(), Some("ok"));
+            }
+            other => panic!("expected tool block, got {other:?}"),
+        }
     }
 
     #[test]
@@ -1566,14 +1709,16 @@ mod tests {
         assert_eq!(session.transcript.turns[0].number, 1);
         assert_eq!(
             session.transcript.turns[0].blocks,
-            vec![crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText {
-                text: "hello world".into(),
-                origin: Some(crate::fixtures::BlockOrigin {
-                    kind: crate::fixtures::OriginKind::Dispatcher,
-                    label: "anthropic:claude-sonnet-4-6".into(),
-                }),
-                notice_kind: None,
-            })]
+            vec![crate::fixtures::TurnBlock::Text(
+                crate::fixtures::AttributedText {
+                    text: "hello world".into(),
+                    origin: Some(crate::fixtures::BlockOrigin {
+                        kind: crate::fixtures::OriginKind::Dispatcher,
+                        label: "anthropic:claude-sonnet-4-6".into(),
+                    }),
+                    notice_kind: None,
+                }
+            )]
         );
     }
 
@@ -1606,7 +1751,10 @@ mod tests {
 
         assert_eq!(session.shell_state(), ShellState::Degraded);
         assert_eq!(session.scenario(), DevScenario::Degraded);
-        assert_eq!(session.summary().activity, "No authenticated providers reported by Omegon");
+        assert_eq!(
+            session.summary().activity,
+            "No authenticated providers reported by Omegon"
+        );
         assert_eq!(session.summary().activity_kind, ActivityKind::Degraded);
         assert!(!session.can_submit());
         assert!(!session.submit());
@@ -1685,7 +1833,11 @@ mod tests {
         assert!(session.transcript.turns.is_empty());
         assert_eq!(session.transcript.active_turn, None);
         assert_eq!(session.messages().len(), 1);
-        assert!(session.messages()[0].text.contains("cleared the cached transcript"));
+        assert!(
+            session.messages()[0]
+                .text
+                .contains("cleared the cached transcript")
+        );
     }
 
     #[test]
@@ -1768,13 +1920,19 @@ mod tests {
             .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
             .unwrap();
         session
-            .apply_event_json(r#"{"type":"decomposition_started","children":["child-a","child-b"]}"#)
+            .apply_event_json(
+                r#"{"type":"decomposition_started","children":["child-a","child-b"]}"#,
+            )
             .unwrap();
         session
-            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#)
+            .apply_event_json(
+                r#"{"type":"decomposition_child_completed","label":"child-a","success":true}"#,
+            )
             .unwrap();
         session
-            .apply_event_json(r#"{"type":"decomposition_child_completed","label":"child-b","success":false}"#)
+            .apply_event_json(
+                r#"{"type":"decomposition_child_completed","label":"child-b","success":false}"#,
+            )
             .unwrap();
 
         let blocks = &session.transcript.turns[0].blocks;
