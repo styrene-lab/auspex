@@ -2886,3 +2886,9 @@ body > * {
   color: var(--text-primary);
   background: rgba(21, 44, 58, 0.92);
 }
+
+.focus-host-footer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}

@@ -237,6 +237,7 @@ pub fn SessionScreen(
     selected_entity: Option<crate::app::SelectedCockpitEntity>,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
     on_transcript_focus: Option<EventHandler<String>>,
+    on_promote_selection: Option<EventHandler<crate::app::SelectedCockpitEntity>>,
 ) -> Element {
     let control_plane_expanded =
         should_expand_control_plane_widget(&data, selected_entity.as_ref());
@@ -250,7 +251,7 @@ pub fn SessionScreen(
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_control_plane_widget(&data, control_plane_expanded)}
             {render_provider_status_widget(&data, provider_expanded)}
-            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus)}
+            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection)}
             {render_session_stats_widget(&data, session_detail_expanded)}
             {render_session_harness_widget(&data, shell_expanded)}
         }
@@ -530,6 +531,7 @@ fn render_selected_entity_widget(
     data: &SessionData,
     selected_entity: Option<&crate::app::SelectedCockpitEntity>,
     on_transcript_focus: Option<EventHandler<String>>,
+    on_promote_selection: Option<EventHandler<crate::app::SelectedCockpitEntity>>,
 ) -> Element {
     let Some(selected_entity) = selected_entity else {
         return rsx! { Fragment {} };
@@ -559,6 +561,17 @@ fn render_selected_entity_widget(
                         if let Some(freshness) = instance.freshness.as_deref() { {kv_row("Freshness", freshness)} }
                         if let Some(base_url) = instance.base_url.as_deref() { {kv_row("Base URL", base_url)} }
                     }
+                    if let Some(handler) = on_promote_selection {
+                        button {
+                            class: "transcript-focus-link",
+                            r#type: "button",
+                            onclick: {
+                                let instance_id = instance.instance_id.clone();
+                                move |_| handler.call(crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id.clone()))
+                            },
+                            "Open in focus host"
+                        }
+                    }
                 },
             )
         }
@@ -579,6 +592,17 @@ fn render_selected_entity_widget(
                         {kv_row("Task", &delegate.task_id)}
                         {kv_row("Status", &delegate.status)}
                         {kv_row("Elapsed", &format!("{} ms", delegate.elapsed_ms))}
+                    }
+                    if let Some(handler) = on_promote_selection {
+                        button {
+                            class: "transcript-focus-link",
+                            r#type: "button",
+                            onclick: {
+                                let task_id = delegate.task_id.clone();
+                                move |_| handler.call(crate::app::SelectedCockpitEntity::ActivityActor(task_id.clone()))
+                            },
+                            "Open in focus host"
+                        }
                     }
                     if let Some(handler) = on_transcript_focus {
                         button {
@@ -1447,12 +1471,14 @@ mod tests {
                 "omg_primary".into(),
             )),
             None,
+            None,
         );
         let activity = render_selected_entity_widget(
             &data,
             Some(&crate::app::SelectedCockpitEntity::ActivityActor(
                 "task-1".into(),
             )),
+            None,
             None,
         );
         let deployment_debug = format!("{deployment:?}");

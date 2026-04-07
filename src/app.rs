@@ -706,6 +706,7 @@ pub fn App() -> Element {
     let mut audit_kind_filter = use_signal(|| "all".to_string());
     let mut audit_text_filter = use_signal(String::new);
     let mut selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
+    let mut promoted_cockpit_entity = use_signal(|| Option::<PromotedCockpitEntity>::None);
 
     #[cfg(not(target_arch = "wasm32"))]
     use_future(move || {
@@ -892,6 +893,7 @@ pub fn App() -> Element {
                         } else if *workspace.read() == Workspace::Session {
                             SessionScreen {
                                 data: controller.read().session_data(),
+                                selected_entity: selected_cockpit_entity.read().clone(),
                                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                     #[cfg(not(target_arch = "wasm32"))]
@@ -905,6 +907,12 @@ pub fn App() -> Element {
                                 })),
                                 on_transcript_focus: Some(EventHandler::new(move |target: String| {
                                     focus_transcript_target(controller.read().transcript(), &target);
+                                })),
+                                on_promote_selection: Some(EventHandler::new(move |selection: crate::app::SelectedCockpitEntity| {
+                                    match selection {
+                                        crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::DeploymentInstance(instance_id))),
+                                        crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
+                                    }
                                 }))
                             }
                         } else if *workspace.read() == Workspace::Scribe {
@@ -931,6 +939,26 @@ pub fn App() -> Element {
                                 on_transcript_focus: Some(EventHandler::new(move |target: String| {
                                     focus_transcript_target(controller.read().transcript(), &target);
                                 }))
+                            }
+                        } else if let Some(promoted) = promoted_cockpit_entity.read().as_ref() {
+                            match promoted {
+                                PromotedCockpitEntity::DeploymentInstance(instance_id) => {
+                                    {render_selected_deployment_cop(
+                                        &controller.read().session_data(),
+                                        instance_id,
+                                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
+                                    )}
+                                }
+                                PromotedCockpitEntity::ActivityActor(task_id) => {
+                                    {render_selected_activity_cop(
+                                        &controller.read().session_data(),
+                                        task_id,
+                                        Some(EventHandler::new(move |target: String| {
+                                            focus_transcript_target(controller.read().transcript(), &target);
+                                        })),
+                                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
+                                    )}
+                                }
                             }
                         } else {
                             {render_chat_cop_host(
@@ -1001,6 +1029,12 @@ pub fn App() -> Element {
                             })),
                             on_transcript_focus: Some(EventHandler::new(move |target: String| {
                                 focus_transcript_target(controller.read().transcript(), &target);
+                            })),
+                            on_promote_selection: Some(EventHandler::new(move |selection: crate::app::SelectedCockpitEntity| {
+                                match selection {
+                                    crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::DeploymentInstance(instance_id))),
+                                    crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
+                                }
                             }))
                         }
                     }
@@ -2132,6 +2166,12 @@ pub enum SelectedCockpitEntity {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+enum PromotedCockpitEntity {
+    DeploymentInstance(String),
+    ActivityActor(String),
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct TruthPanelModel {
     label: &'static str,
     tag: &'static str,
@@ -2612,6 +2652,85 @@ fn build_dispatch_context_strip_model(
             items
         },
     }
+}
+
+fn render_selected_deployment_cop(
+    session: &crate::fixtures::SessionData,
+    instance_id: &str,
+    on_return: EventHandler<()>,
+) -> Element {
+    let instance = session
+        .telemetry
+        .lifecycle
+        .instances
+        .iter()
+        .find(|instance| instance.instance_id == instance_id);
+    let Some(instance) = instance else {
+        return rsx! { Fragment {} };
+    };
+    let body = rsx! {
+        div { class: "kv-grid widget-kv-grid",
+            div { class: "kv-row", span { class: "kv-key", "Instance" } span { class: "kv-value", "{instance.instance_id}" } }
+            div { class: "kv-row", span { class: "kv-key", "Route" } span { class: "kv-value", "{instance.route_id}" } }
+            div { class: "kv-row", span { class: "kv-key", "Role" } span { class: "kv-value", "{instance.role}" } }
+            div { class: "kv-row", span { class: "kv-key", "Profile" } span { class: "kv-value", "{instance.profile}" } }
+            if let Some(status) = instance.status.as_deref() { div { class: "kv-row", span { class: "kv-key", "Status" } span { class: "kv-value", "{status}" } } }
+            if let Some(freshness) = instance.freshness.as_deref() { div { class: "kv-row", span { class: "kv-key", "Freshness" } span { class: "kv-value", "{freshness}" } } }
+            if let Some(base_url) = instance.base_url.as_deref() { div { class: "kv-row", span { class: "kv-key", "Base URL" } span { class: "kv-value", "{base_url}" } } }
+        }
+    };
+    let footer = rsx! { button { class: "transcript-focus-link", r#type: "button", onclick: move |_| on_return.call(()), "Return to chat COP" } };
+    render_focus_host_shell(FocusHostShell {
+        title: "Deployment drilldown",
+        kicker: "Operator-selected COP occupant",
+        body,
+        footer: Some(footer),
+    })
+}
+
+fn render_selected_activity_cop(
+    session: &crate::fixtures::SessionData,
+    task_id: &str,
+    on_transcript_focus: Option<EventHandler<String>>,
+    on_return: EventHandler<()>,
+) -> Element {
+    let delegate = session
+        .active_delegates
+        .iter()
+        .find(|delegate| delegate.task_id == task_id);
+    let Some(delegate) = delegate else {
+        return rsx! { Fragment {} };
+    };
+    let body = rsx! {
+        div { class: "kv-grid widget-kv-grid",
+            div { class: "kv-row", span { class: "kv-key", "Actor" } span { class: "kv-value", "{delegate.agent_name}" } }
+            div { class: "kv-row", span { class: "kv-key", "Task" } span { class: "kv-value", "{delegate.task_id}" } }
+            div { class: "kv-row", span { class: "kv-key", "Status" } span { class: "kv-value", "{delegate.status}" } }
+            div { class: "kv-row", span { class: "kv-key", "Elapsed" } span { class: "kv-value", "{delegate.elapsed_ms} ms" } }
+        }
+    };
+    let footer = rsx! {
+        div { class: "focus-host-footer-actions",
+            if let Some(handler) = on_transcript_focus {
+                button {
+                    class: "transcript-focus-link",
+                    r#type: "button",
+                    onclick: {
+                        let task_id = delegate.task_id.clone();
+                        move |_| handler.call(format!("delegate:{task_id}"))
+                    },
+                    "Focus related transcript events"
+                }
+            }
+            button { class: "transcript-focus-link", r#type: "button", onclick: move |_| on_return.call(()), "Return to chat COP" }
+        }
+    };
+    render_focus_host_shell(FocusHostShell {
+        title: "Activity drilldown",
+        kicker: "Operator-selected COP occupant",
+        body,
+        footer: Some(footer),
+    })
 }
 
 fn render_focus_host_shell(shell: FocusHostShell<'_>) -> Element {
