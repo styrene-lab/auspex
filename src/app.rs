@@ -2115,107 +2115,79 @@ fn build_cockpit_summary_model(
         crate::fixtures::ActivityKind::Failure => "FAILED",
     };
 
-    let attached_primary = session
+    let attached_role = session
         .dispatcher_binding
         .as_ref()
-        .map(|binding| {
-            format!(
-                "{} · {}",
-                if binding.expected_role.is_empty() {
-                    "attached"
-                } else {
-                    binding.expected_role.as_str()
-                },
-                if binding.dispatcher_instance_id.is_empty() {
-                    "unreported-instance"
-                } else {
-                    binding.dispatcher_instance_id.as_str()
-                }
-            )
-        })
+        .map(|binding| binding.expected_role.as_str())
         .or_else(|| {
-            session.instance_descriptor.as_ref().map(|instance| {
-                format!(
-                    "{} · {}",
-                    if instance.identity.role.is_empty() {
-                        "attached"
-                    } else {
-                        instance.identity.role.as_str()
-                    },
-                    if instance.identity.instance_id.is_empty() {
-                        "unreported-instance"
-                    } else {
-                        instance.identity.instance_id.as_str()
-                    }
-                )
-            })
+            session
+                .instance_descriptor
+                .as_ref()
+                .map(|instance| instance.identity.role.as_str())
         })
-        .unwrap_or_else(|| "Detached host session".into());
-
-    let attached_secondary_1 = session
+        .filter(|value| !value.is_empty())
+        .unwrap_or("attached");
+    let attached_id = session
         .dispatcher_binding
         .as_ref()
-        .map(|binding| {
-            let profile = if binding.expected_profile.is_empty() {
-                "profile unreported"
-            } else {
-                binding.expected_profile.as_str()
-            };
-            let model = binding
-                .expected_model
-                .as_deref()
-                .unwrap_or("model unreported");
-            format!("{profile} · {model}")
-        })
+        .map(|binding| binding.dispatcher_instance_id.as_str())
         .or_else(|| {
-            session.instance_descriptor.as_ref().map(|instance| {
-                let profile = if instance.identity.profile.is_empty() {
-                    "profile unreported"
-                } else {
-                    instance.identity.profile.as_str()
-                };
-                let model = instance
-                    .policy
-                    .as_ref()
-                    .and_then(|policy| policy.model.as_deref())
-                    .unwrap_or("model unreported");
-                format!("{profile} · {model}")
-            })
+            session
+                .instance_descriptor
+                .as_ref()
+                .map(|instance| instance.identity.instance_id.as_str())
         })
-        .unwrap_or_else(|| "No attached host instance reported".into());
-
-    let attached_secondary_2 = session
+        .filter(|value| !value.is_empty())
+        .unwrap_or("unreported-instance");
+    let attached_profile = session
         .dispatcher_binding
         .as_ref()
-        .map(|binding| {
-            let endpoint = binding
-                .observed_base_url
-                .as_deref()
-                .unwrap_or("endpoint unreported");
-            let freshness = if session.telemetry.lifecycle.counts.stale > 0 {
-                "stale"
-            } else {
-                "verified"
-            };
-            format!("{freshness} · {endpoint}")
-        })
+        .map(|binding| binding.expected_profile.as_str())
         .or_else(|| {
-            session.instance_descriptor.as_ref().map(|instance| {
-                let endpoint = instance
-                    .control_plane
-                    .as_ref()
-                    .and_then(|cp| cp.base_url.as_deref())
-                    .unwrap_or("endpoint unreported");
-                let status = if instance.identity.status.is_empty() {
-                    "status unreported"
-                } else {
-                    instance.identity.status.as_str()
-                };
-                format!("{status} · {endpoint}")
-            })
+            session
+                .instance_descriptor
+                .as_ref()
+                .map(|instance| instance.identity.profile.as_str())
         })
-        .unwrap_or_else(|| "detached · no verified endpoint".into());
-
+        .filter(|value| !value.is_empty())
+        .unwrap_or("profile unreported");
+    let attached_model = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.expected_model.as_deref())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|instance| instance.policy.as_ref())
+                .and_then(|policy| policy.model.as_deref())
+        })
+        .unwrap_or("model unreported");
+    let attached_endpoint = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.observed_base_url.as_deref())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|instance| instance.control_plane.as_ref())
+                .and_then(|cp| cp.base_url.as_deref())
+        })
+        .unwrap_or("endpoint unreported");
+    let attached_primary = if attached_id == "unreported-instance" && attached_role == "attached" {
+        "Detached host session".into()
+    } else {
+        format!("{attached_role} · {attached_id}")
+    };
+    let attached_secondary_1 = format!("{attached_profile} · {attached_model}");
+    let attached_secondary_2 = if attached_primary == "Detached host session" {
+        "detached · no verified endpoint".into()
+    } else if session.telemetry.lifecycle.counts.stale > 0 {
+        format!("stale · {attached_endpoint}")
+    } else {
+        format!("verified · {attached_endpoint}")
+    };
     let attached_tag = if attached_primary == "Detached host session" {
         "DETACHED"
     } else if session.telemetry.lifecycle.counts.stale > 0 {
@@ -2224,12 +2196,6 @@ fn build_cockpit_summary_model(
         "LIVE"
     };
 
-    let deployment_primary = format!(
-        "{} known · {} fresh · {} stale",
-        session.telemetry.lifecycle.counts.total_attached,
-        session.telemetry.lifecycle.counts.fresh,
-        session.telemetry.lifecycle.counts.stale
-    );
     let serve_count = session
         .telemetry
         .lifecycle
@@ -2240,6 +2206,12 @@ fn build_cockpit_summary_model(
     let temporary_count = session
         .active_delegate_count
         .max(session.active_delegates.len());
+    let deployment_primary = format!(
+        "{} total · {} live · {} stale",
+        session.telemetry.lifecycle.counts.total_attached,
+        session.telemetry.lifecycle.counts.fresh,
+        session.telemetry.lifecycle.counts.stale
+    );
     let deployment_secondary_1 = format!(
         "{} attached · {} serve · {} temporary",
         session.telemetry.lifecycle.attached_count, serve_count, temporary_count
@@ -2247,15 +2219,15 @@ fn build_cockpit_summary_model(
     let deployment_secondary_2 = if session.telemetry.lifecycle.instances.is_empty() {
         session.telemetry.lifecycle.summary.clone()
     } else {
-        let roles = session
+        let seen = session
             .telemetry
             .lifecycle
             .instances
             .iter()
-            .map(|instance| instance.role.as_str())
+            .map(|instance| instance.instance_id.as_str())
             .collect::<Vec<_>>()
             .join(", ");
-        format!("roles: {roles}")
+        format!("seen: {seen}")
     };
     let deployment_tag = if session.telemetry.lifecycle.counts.stale > 0
         || session.telemetry.lifecycle.counts.lost > 0
@@ -2266,9 +2238,7 @@ fn build_cockpit_summary_model(
         "STABLE"
     };
 
-    let active_count = session
-        .active_delegate_count
-        .max(session.active_delegates.len());
+    let active_count = temporary_count;
     let activity_tag = if active_count > 0 {
         "RUNNING"
     } else if matches!(
@@ -2284,8 +2254,8 @@ fn build_cockpit_summary_model(
     } else {
         "IDLE"
     };
-    let activity_primary = if active_count > 0 {
-        format!("{active_count} active dispatches")
+    let activity_primary = if let Some(delegate) = session.active_delegates.first() {
+        format!("{} · {}", delegate.agent_name, delegate.status)
     } else {
         summary
             .activity_kind
@@ -2293,13 +2263,8 @@ fn build_cockpit_summary_model(
             .to_ascii_uppercase()
             .to_string()
     };
-    let activity_secondary_1 = if !session.active_delegates.is_empty() {
-        session
-            .active_delegates
-            .iter()
-            .map(|delegate| format!("{} ({})", delegate.agent_name, delegate.status))
-            .collect::<Vec<_>>()
-            .join(", ")
+    let activity_secondary_1 = if active_count > 0 {
+        format!("{active_count} dispatches in flight")
     } else {
         summary.activity.clone()
     };
@@ -2310,7 +2275,7 @@ fn build_cockpit_summary_model(
             label: "Auspex",
             tag: shell_tag,
             primary: format!("{} · {}", workspace_label(workspace), session_mode.label()),
-            secondary: vec![format!("v{APP_VERSION}"), summary.connection.clone()],
+            secondary: vec![format!("v{APP_VERSION}"), context_window_label(session)],
         },
         attached: TruthPanelModel {
             label: "Attached Omegon",
@@ -3684,7 +3649,17 @@ mod tests {
         assert_eq!(model.auspex.label, "Auspex");
         assert_eq!(model.attached.tag, "LIVE");
         assert!(model.attached.primary.contains("primary-driver"));
-        assert!(model.deployment.primary.contains("known"));
+        assert!(model.attached.secondary[0].contains("primary-interactive"));
+        assert!(model.deployment.primary.contains("total"));
+        assert!(
+            model.deployment.secondary[1].contains("seen:")
+                || !controller
+                    .session_data()
+                    .telemetry
+                    .lifecycle
+                    .instances
+                    .is_empty()
+        );
         assert!(!model.activity.primary.is_empty());
         assert_eq!(model.activity.label, "Activity");
     }
