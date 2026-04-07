@@ -733,10 +733,6 @@ pub fn App() -> Element {
     );
     #[cfg(target_arch = "wasm32")]
     let settings_model = build_settings_panel_model(&controller.read(), &session, None);
-    let bootstrap_surface = controller
-        .read()
-        .surface_notice()
-        .filter(|surface| surface.kind == crate::fixtures::AppSurfaceKind::BootstrapNote);
     let context_status = context_window_label(&session);
     let dispatch_context = build_dispatch_context_strip_model(
         *workspace.read(),
@@ -750,136 +746,44 @@ pub fn App() -> Element {
     let provider_blocked_composer =
         build_provider_blocked_composer_model(&session, controller.read().can_submit());
 
+    let cockpit = build_cockpit_summary_model(
+        *workspace.read(),
+        controller.read().session_mode(),
+        controller.read().summary(),
+        &session,
+    );
+
     rsx! {
         document::Style { "{MAIN_CSS}" }
-        div { class: "shell",
+        div { class: "shell shell-cockpit",
+            div { class: "cockpit-canvas", "aria-hidden": "true" }
 
-            div { class: "top-chrome",
-                // ── Top bar ─────────────────────────────────────────────
-                header { class: "topbar",
-                    // Top-left corner box — shell identity
-                    div { class: "topbar-identity",
-                        h1 { class: "topbar-title", "Auspex" }
-                        span { class: "topbar-subtitle",
-                            if controller.read().is_remote() {
-                                "Remote"
-                            } else {
-                                "Local"
-                            }
-                        }
-                        span { class: "version-chip", "v{APP_VERSION}" }
-                    }
-
-                    // Top-center — workspace tabs (always visible)
-                    nav { class: "topbar-tabs topbar-tabs-depth",
-                        button {
-                            class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" },
-                            onclick: move |_| workspace.set(Workspace::Chat),
-                            "Chat"
-                        }
-                        button {
-                            class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" },
-                            onclick: move |_| workspace.set(Workspace::Session),
-                            "Session"
-                        }
-                        button {
-                            class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" },
-                            onclick: move |_| workspace.set(Workspace::Scribe),
-                            "Scribe"
-                        }
-                        button {
-                            class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" },
-                            onclick: move |_| workspace.set(Workspace::Graph),
-                            "Graph"
-                        }
-                        button {
-                            class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" },
-                            onclick: move |_| workspace.set(Workspace::Audit),
-                            "Audit"
-                        }
-                    }
-
-                    // Top-right — global state
-                    div { class: "topbar-status",
-                        button {
-                            class: "topbar-settings-button",
-                            r#type: "button",
-                            onclick: move |_| {
-                                #[cfg(not(target_arch = "wasm32"))]
-                                {
-                                    let _ = controller.write().refresh_settings_auth_status();
-                                }
-                                settings_open.set(true)
-                            },
-                            title: "Open operator settings",
-                            "Settings"
-                        }
-                        if let Some(surface) = bootstrap_surface.as_ref() {
-                            span {
-                                class: "topbar-meta",
-                                title: "{surface.body}",
-                                "{surface.body}"
-                            }
-                        }
-                        div { class: controller.read().shell_state().status_class(), "{controller.read().shell_state().label()}" }
-                    }
+            header { class: "cockpit-spine" ,
+                div { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
+                    h1 { class: "cockpit-panel-title", "Auspex" }
+                    p { class: "cockpit-panel-kicker", "v{APP_VERSION}" }
+                    p { class: "cockpit-panel-detail", "{cockpit.auspex_mode_label}" }
+                    p { class: "cockpit-panel-detail", "{cockpit.auspex_status_label}" }
                 }
-
-                // ── Surface notices that still deserve dedicated space ──
-                if let Some(surface) = controller.read().surface_notice()
-                    && surface.kind == crate::fixtures::AppSurfaceKind::Startup
-                {
-                    section {
-                        class: surface.kind.section_class(),
-                        "data-surface": app_surface_surface(surface.kind),
-                        "data-state": app_surface_state(surface.kind),
-                        "data-tone": app_surface_tone(surface.kind),
-                        div { class: "state-screen-icon", "⏳" }
-                        h2 { "{surface.kind.title()}" }
-                        p { class: "state-screen-detail", "{surface.body}" }
-                        if let Some(detail) = surface.detail.as_deref() {
-                            p { class: "state-screen-detail", "{detail}" }
-                        }
-                    }
+                div { class: "cockpit-panel cockpit-panel-attached", "data-surface": "panel", "data-elevation": "1",
+                    h2 { class: "cockpit-panel-title", "Attached Omegon" }
+                    p { class: "cockpit-panel-kicker", "{cockpit.attached_title}" }
+                    p { class: "cockpit-panel-detail", "{cockpit.attached_detail}" }
                 }
-
-                if let Some(surface) = controller.read().surface_notice()
-                    && surface.kind == crate::fixtures::AppSurfaceKind::Reconnecting
-                {
-                    section {
-                        class: surface.kind.section_class(),
-                        "data-surface": app_surface_surface(surface.kind),
-                        "data-state": app_surface_state(surface.kind),
-                        "data-tone": app_surface_tone(surface.kind),
-                        strong { "{surface.kind.title()}" }
-                        span { " {surface.body}" }
-                    }
+                div { class: "cockpit-panel cockpit-panel-deployment", "data-surface": "panel", "data-elevation": "1",
+                    h2 { class: "cockpit-panel-title", "Deployment" }
+                    p { class: "cockpit-panel-kicker", "{cockpit.deployment_title}" }
+                    p { class: "cockpit-panel-detail", "{cockpit.deployment_detail}" }
                 }
-
-                if let Some(surface) = controller.read().surface_notice()
-                    && matches!(
-                        surface.kind,
-                        crate::fixtures::AppSurfaceKind::StartupFailure
-                            | crate::fixtures::AppSurfaceKind::CompatibilityFailure
-                    )
-                {
-                    section {
-                        class: surface.kind.section_class(),
-                        "data-surface": app_surface_surface(surface.kind),
-                        "data-state": app_surface_state(surface.kind),
-                        "data-tone": app_surface_tone(surface.kind),
-                        strong { "{surface.kind.title()}" }
-                        p { "{surface.body}" }
-                        if let Some(detail) = surface.detail.as_deref() {
-                            p { class: "compat-detail", "{detail}" }
-                        }
-                    }
+                div { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
+                    h2 { class: "cockpit-panel-title", "Activity" }
+                    p { class: "cockpit-panel-kicker", "{cockpit.activity_title}" }
+                    p { class: "cockpit-panel-detail", "{cockpit.activity_detail}" }
                 }
             }
 
-            // ── Main area: left rail / center / right rail ─────────────
             if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
-                div { class: "main-area main-area-readiness",
+                div { class: "cockpit-layout cockpit-layout-readiness",
                     section {
                         class: "state-screen state-screen-starting",
                         div { class: "state-screen-icon", "⏳" }
@@ -903,119 +807,43 @@ pub fn App() -> Element {
                     }
                 }
             } else {
-            // ── Main area: left rail / center / right rail ─────────────
-            div { class: "main-area",
+                div { class: "cockpit-layout",
+                    section { class: "cockpit-focus-host",
+                        nav { class: "cockpit-workspace-nav",
+                            button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
+                            button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
+                            button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
+                            button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
+                            button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
+                        }
 
-                // Left rail — project/session navigator
-                aside { class: "left-rail",
-                    {render_left_rail_inventory(
-                        controller.read().summary(),
-                        &controller.read().work_data(),
-                        &controller.read().session_data(),
-                        controller.read().is_run_active(),
-                        controller.read().audit_timeline(),
-                    )}
-                }
-
-                // Center workspace — active tab content
-                div { class: "center-workspace",
-                    if *workspace.read() == Workspace::Graph {
-                        GraphScreen { data: controller.read().graph_data() }
-                    } else if *workspace.read() == Workspace::Audit {
-                        {render_audit_workspace(
-                            controller.read().audit_timeline(),
-                            controller.read().current_audit_session_key().as_str(),
-                            AuditPanelControls {
-                                filters: AuditFilters {
-                                    session_key: audit_session_filter.read().clone(),
-                                    turn_query: audit_turn_filter.read().clone(),
-                                    kind_key: audit_kind_filter.read().clone(),
-                                    text_query: audit_text_filter.read().clone(),
+                        if *workspace.read() == Workspace::Graph {
+                            GraphScreen { data: controller.read().graph_data() }
+                        } else if *workspace.read() == Workspace::Audit {
+                            {render_audit_workspace(
+                                controller.read().audit_timeline(),
+                                controller.read().current_audit_session_key().as_str(),
+                                AuditPanelControls {
+                                    filters: AuditFilters {
+                                        session_key: audit_session_filter.read().clone(),
+                                        turn_query: audit_turn_filter.read().clone(),
+                                        kind_key: audit_kind_filter.read().clone(),
+                                        text_query: audit_text_filter.read().clone(),
+                                    },
+                                    on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
+                                    on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
+                                    on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
+                                    on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
+                                    on_focus_entry: EventHandler::new(move |target: String| {
+                                        focus_transcript_target(controller.read().transcript(), &target);
+                                    }),
                                 },
-                                on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
-                                on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
-                                on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
-                                on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
-                                on_focus_entry: EventHandler::new(move |target: String| {
-                                    focus_transcript_target(controller.read().transcript(), &target);
-                                }),
-                            },
-                        )}
-                    } else if *workspace.read() == Workspace::Session {
-                        SessionScreen {
-                            data: controller.read().session_data(),
-                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    dispatch_targeted_command(&stream, &command);
-                                }
-                            })),
-                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                                focus_transcript_target(controller.read().transcript(), &target);
-                            }))
-                        }
-                    } else if *workspace.read() == Workspace::Scribe {
-                        ScribeScreen {
-                            summary: controller.read().summary().clone(),
-                            data: controller.read().session_data(),
-                            session_mode: controller.read().session_mode(),
-                            scenario_key: controller.read().scenario().key().to_string(),
-                            transcript_auto_expand: controller.read().transcript_auto_expand(),
-                            on_set_session_mode: Some(EventHandler::new(move |mode: String| {
-                                controller.write().switch_session_mode(mode.as_str());
-                            })),
-                            on_set_scenario: Some(EventHandler::new(move |scenario: String| {
-                                controller.write().select_scenario(scenario.as_str());
-                            })),
-                            on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| {
-                                controller.write().set_transcript_auto_expand(enabled);
-                            })),
-                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    dispatch_targeted_command(&stream, &command);
-                                }
-                            })),
-                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                                focus_transcript_target(controller.read().transcript(), &target);
-                            }))
-                        }
-                    } else {
-                        // Chat workspace — transcript + composer
-                        div { class: "chat-workspace",
-                            {render_chat_status_banner(
-                                controller.read().summary(),
-                                &controller.read().session_data(),
-                                controller.read().is_run_active(),
-                                controller.read().can_submit(),
                             )}
-                            main { class: "transcript",
-                                {render_transcript(
-                                    controller.read().summary(),
-                                    &controller.read().work_data(),
-                                    &controller.read().session_data(),
-                                    controller.read().transcript(),
-                                    controller.read().messages(),
-                                    controller.read().transcript_auto_expand(),
-                                )}
-                                div { id: "transcript-end" }
-                            }
-
-                            form {
-                                class: "composer",
-                                onsubmit: move |event| {
-                                    event.prevent_default();
-                                    let command = controller.write().submit_prompt_command();
+                        } else if *workspace.read() == Workspace::Session {
+                            SessionScreen {
+                                data: controller.read().session_data(),
+                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                     #[cfg(not(target_arch = "wasm32"))]
                                     if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
                                         let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
@@ -1024,100 +852,110 @@ pub fn App() -> Element {
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
                                         dispatch_targeted_command(&stream, &command);
                                     }
-                                },
-                                {render_dispatch_context_strip(&dispatch_context)}
-                                if let Some(message) = composer_ready_notice.read().as_deref() {
-                                    div { class: "composer-ready-notice", "{message}" }
+                                })),
+                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                    focus_transcript_target(controller.read().transcript(), &target);
+                                }))
+                            }
+                        } else if *workspace.read() == Workspace::Scribe {
+                            ScribeScreen {
+                                summary: controller.read().summary().clone(),
+                                data: controller.read().session_data(),
+                                session_mode: controller.read().session_mode(),
+                                scenario_key: controller.read().scenario().key().to_string(),
+                                transcript_auto_expand: controller.read().transcript_auto_expand(),
+                                on_set_session_mode: Some(EventHandler::new(move |mode: String| controller.write().switch_session_mode(mode.as_str()))),
+                                on_set_scenario: Some(EventHandler::new(move |scenario: String| controller.write().select_scenario(scenario.as_str()))),
+                                on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| controller.write().set_transcript_auto_expand(enabled))),
+                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                        dispatch_targeted_command(&stream, &command);
+                                    }
+                                })),
+                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                    focus_transcript_target(controller.read().transcript(), &target);
+                                }))
+                            }
+                        } else {
+                            div { class: "cockpit-chat-host",
+                                {render_chat_status_banner(
+                                    controller.read().summary(),
+                                    &controller.read().session_data(),
+                                    controller.read().is_run_active(),
+                                    controller.read().can_submit(),
+                                )}
+                                main { class: "transcript cockpit-transcript",
+                                    {render_transcript(
+                                        controller.read().summary(),
+                                        &controller.read().work_data(),
+                                        &controller.read().session_data(),
+                                        controller.read().transcript(),
+                                        controller.read().messages(),
+                                        controller.read().transcript_auto_expand(),
+                                    )}
+                                    div { id: "transcript-end" }
                                 }
-                                if let Some(blocked) = &provider_blocked_composer {
-                                    div { class: "composer-blocked-callout",
-                                        h3 { class: "composer-blocked-title", "{blocked.title}" }
-                                        p { class: "composer-blocked-detail", "{blocked.detail}" }
-                                        button {
-                                            class: "composer-blocked-action",
-                                            r#type: "button",
-                                            onclick: move |_| {
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                {
-                                                    let _ = controller.write().refresh_settings_auth_status();
-                                                }
-                                                settings_open.set(true)
-                                            },
-                                            "{blocked.action_label}"
+                                form {
+                                    class: "composer cockpit-composer",
+                                    onsubmit: move |event| {
+                                        event.prevent_default();
+                                        let command = controller.write().submit_prompt_command();
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                        }
+                                        #[cfg(target_arch = "wasm32")]
+                                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                            dispatch_targeted_command(&stream, &command);
+                                        }
+                                    },
+                                    {render_dispatch_context_strip(&dispatch_context)}
+                                    if let Some(message) = composer_ready_notice.read().as_deref() {
+                                        div { class: "composer-ready-notice", "{message}" }
+                                    }
+                                    if let Some(blocked) = &provider_blocked_composer {
+                                        div { class: "composer-blocked-callout",
+                                            h3 { class: "composer-blocked-title", "{blocked.title}" }
+                                            p { class: "composer-blocked-detail", "{blocked.detail}" }
+                                            button { class: "composer-blocked-action", r#type: "button", onclick: move |_| settings_open.set(true), "{blocked.action_label}" }
+                                        }
+                                    } else {
+                                        textarea {
+                                            class: "composer-input",
+                                            rows: "3",
+                                            value: controller.read().composer().draft().to_string(),
+                                            disabled: !controller.read().can_submit(),
+                                            placeholder: if controller.read().can_submit() { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
+                                            oninput: move |event| controller.write().update_draft(event.value()),
                                         }
                                     }
-                                } else {
-                                    textarea {
-                                        class: "composer-input",
-                                        rows: "3",
-                                        value: controller.read().composer().draft().to_string(),
-                                        disabled: !controller.read().can_submit(),
-                                        placeholder: if controller.read().can_submit() {
-                                            "Start with the smallest useful prompt…"
-                                        } else {
-                                            "Conversation input is unavailable in the current host state."
-                                        },
-                                        oninput: move |event| controller.write().update_draft(event.value()),
-                                        onkeydown: move |event| {
-                                            if event.key() == Key::Enter
-                                                && (event.modifiers().contains(Modifiers::CONTROL)
-                                                    || event.modifiers().contains(Modifiers::META))
-                                            {
-                                                let command = controller.write().submit_prompt_command();
+                                    div { class: "composer-actions",
+                                        if controller.read().is_run_active() {
+                                            button { class: "composer-cancel", r#type: "button", onclick: move |_| {
                                                 #[cfg(not(target_arch = "wasm32"))]
-                                                if let (Some(command), Some(transport)) =
-                                                    (command, command_transport.read().clone())
-                                                {
+                                                if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
                                                     let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                                 }
                                                 #[cfg(target_arch = "wasm32")]
-                                                if let (Some(command), Some(stream)) =
-                                                    (command, event_stream.read().clone())
-                                                {
+                                                if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
                                                     dispatch_targeted_command(&stream, &command);
                                                 }
-                                            }
-                                        },
-                                    }
-                                }
-                                div { class: "composer-actions",
-                                    if controller.read().is_run_active() {
-                                        button {
-                                            class: "composer-cancel",
-                                            r#type: "button",
-                                            onclick: move |_| {
-                                                #[cfg(not(target_arch = "wasm32"))]
-                                                if let Some(command) = controller.read().cancel_command()
-                                                    && let Some(transport) = command_transport.read().clone()
-                                                {
-                                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                                }
-                                                #[cfg(target_arch = "wasm32")]
-                                                if let Some(command) = controller.read().cancel_command()
-                                                    && let Some(stream) = event_stream.read().clone()
-                                                {
-                                                    dispatch_targeted_command(&stream, &command);
-                                                }
-                                            },
-                                            "Cancel"
+                                            }, "Cancel" }
                                         }
-                                    }
-                                    button {
-                                        class: "composer-submit",
-                                        r#type: "submit",
-                                        disabled: !controller.read().can_submit(),
-                                        title: dispatch_context.send_detail.clone(),
-                                        "Send"
+                                        button { class: "composer-submit", r#type: "submit", disabled: !controller.read().can_submit(), title: dispatch_context.send_detail.clone(), "Send" }
                                     }
                                 }
                             }
                         }
                     }
-                }
 
-                // Right rail — contextual inspector
-                aside { class: "right-rail",
-                    if *workspace.read() == Workspace::Session {
+                    aside { class: "cockpit-contextual-detail",
                         SessionScreen {
                             data: controller.read().session_data(),
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
@@ -1135,14 +973,9 @@ pub fn App() -> Element {
                                 focus_transcript_target(controller.read().transcript(), &target);
                             }))
                         }
-                    } else {
-                        {render_compact_right_rail(&controller.read().session_data())}
                     }
                 }
             }
-
-            }
-
             if *settings_open.read() {
                 div {
                     class: "settings-modal-backdrop",
@@ -2117,6 +1950,7 @@ fn render_chat_status_banner(
     }
 }
 
+#[allow(dead_code)]
 fn render_compact_right_rail(session: &crate::fixtures::SessionData) -> Element {
     rsx! {
         section { class: "screen-section right-rail-compact-section",
@@ -2174,6 +2008,7 @@ fn render_compact_right_rail(session: &crate::fixtures::SessionData) -> Element 
     }
 }
 
+#[allow(dead_code)]
 fn app_surface_surface(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
         crate::fixtures::AppSurfaceKind::Startup => "panel",
@@ -2184,6 +2019,7 @@ fn app_surface_surface(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn app_surface_state(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
         crate::fixtures::AppSurfaceKind::Startup => "starting",
@@ -2194,6 +2030,7 @@ fn app_surface_state(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     }
 }
 
+#[allow(dead_code)]
 fn app_surface_tone(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
         crate::fixtures::AppSurfaceKind::Startup
@@ -2226,6 +2063,182 @@ struct DispatchContextStripModel {
     state: &'static str,
     send_detail: String,
     items: Vec<DispatchContextItem>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct CockpitSummaryModel {
+    auspex_mode_label: String,
+    auspex_status_label: String,
+    attached_title: String,
+    attached_detail: String,
+    deployment_title: String,
+    deployment_detail: String,
+    activity_title: String,
+    activity_detail: String,
+}
+
+fn build_cockpit_summary_model(
+    workspace: Workspace,
+    session_mode: SessionMode,
+    summary: &crate::fixtures::HostSessionSummary,
+    session: &crate::fixtures::SessionData,
+) -> CockpitSummaryModel {
+    let auspex_mode_label = format!("{} · {}", workspace_label(workspace), session_mode.label());
+    let auspex_status_label = summary.connection.clone();
+
+    let attached_title = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| {
+            format!(
+                "{} · {}",
+                if binding.expected_role.is_empty() {
+                    "attached"
+                } else {
+                    binding.expected_role.as_str()
+                },
+                if binding.dispatcher_instance_id.is_empty() {
+                    "unreported-instance"
+                } else {
+                    binding.dispatcher_instance_id.as_str()
+                }
+            )
+        })
+        .or_else(|| {
+            session.instance_descriptor.as_ref().map(|instance| {
+                format!(
+                    "{} · {}",
+                    if instance.identity.role.is_empty() {
+                        "attached"
+                    } else {
+                        instance.identity.role.as_str()
+                    },
+                    if instance.identity.instance_id.is_empty() {
+                        "unreported-instance"
+                    } else {
+                        instance.identity.instance_id.as_str()
+                    }
+                )
+            })
+        })
+        .unwrap_or_else(|| "Detached host session".into());
+
+    let attached_detail = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| {
+            let profile = if binding.expected_profile.is_empty() {
+                "profile unreported"
+            } else {
+                binding.expected_profile.as_str()
+            };
+            let model = binding
+                .expected_model
+                .as_deref()
+                .unwrap_or("model unreported");
+            let endpoint = binding
+                .observed_base_url
+                .as_deref()
+                .unwrap_or("endpoint unreported");
+            format!("{profile} · {model} · {endpoint}")
+        })
+        .or_else(|| {
+            session.instance_descriptor.as_ref().map(|instance| {
+                let profile = if instance.identity.profile.is_empty() {
+                    "profile unreported"
+                } else {
+                    instance.identity.profile.as_str()
+                };
+                let model = instance
+                    .policy
+                    .as_ref()
+                    .and_then(|policy| policy.model.as_deref())
+                    .unwrap_or("model unreported");
+                let endpoint = instance
+                    .control_plane
+                    .as_ref()
+                    .and_then(|cp| cp.base_url.as_deref())
+                    .unwrap_or("endpoint unreported");
+                format!("{profile} · {model} · {endpoint}")
+            })
+        })
+        .unwrap_or_else(|| "No attached host instance reported".into());
+
+    let deployment_title = format!(
+        "{} known · {} fresh · {} stale",
+        session.telemetry.lifecycle.counts.total_attached,
+        session.telemetry.lifecycle.counts.fresh,
+        session.telemetry.lifecycle.counts.stale
+    );
+    let deployment_detail = if session.telemetry.lifecycle.instances.is_empty() {
+        session.telemetry.lifecycle.summary.clone()
+    } else {
+        let roles = session
+            .telemetry
+            .lifecycle
+            .instances
+            .iter()
+            .map(|instance| instance.role.as_str())
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!("{} · roles {roles}", session.telemetry.lifecycle.summary)
+    };
+
+    let activity_title = format!(
+        "{} · {}",
+        summary.activity_kind.label().to_ascii_uppercase(),
+        summary.activity
+    );
+    let activity_detail = if !session.active_delegates.is_empty() {
+        let actors = session
+            .active_delegates
+            .iter()
+            .map(|delegate| format!("{} ({})", delegate.agent_name, delegate.status))
+            .collect::<Vec<_>>()
+            .join(", ");
+        format!(
+            "{} active dispatch(es) · {actors}",
+            session
+                .active_delegate_count
+                .max(session.active_delegates.len())
+        )
+    } else {
+        format!(
+            "{} turn(s) · {} tool call(s) · {}",
+            session.session_turns,
+            session.session_tool_calls,
+            cockpit_work_hint(summary)
+        )
+    };
+
+    CockpitSummaryModel {
+        auspex_mode_label,
+        auspex_status_label,
+        attached_title,
+        attached_detail,
+        deployment_title,
+        deployment_detail,
+        activity_title,
+        activity_detail,
+    }
+}
+
+fn cockpit_work_hint(summary: &crate::fixtures::HostSessionSummary) -> String {
+    if summary.work.trim().is_empty() {
+        "no focused work".into()
+    } else {
+        summary.work.clone()
+    }
+}
+
+fn workspace_label(workspace: Workspace) -> &'static str {
+    match workspace {
+        Workspace::Chat => "Chat",
+        Workspace::Session => "Session",
+        Workspace::Scribe => "Scribe",
+        Workspace::Graph => "Graph",
+        Workspace::Audit => "Audit",
+    }
 }
 
 fn context_window_label(session: &crate::fixtures::SessionData) -> String {
@@ -2598,6 +2611,7 @@ fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 struct LeftRailInventory {
     workspace_label: String,
     workspace_detail: String,
@@ -2643,6 +2657,7 @@ struct AuditPanelModel {
     entries: Vec<AuditPanelEntry>,
 }
 
+#[allow(dead_code)]
 fn build_left_rail_inventory(
     summary: &crate::fixtures::HostSessionSummary,
     work: &crate::fixtures::WorkData,
@@ -2756,6 +2771,7 @@ fn build_left_rail_inventory(
     }
 }
 
+#[allow(dead_code)]
 fn render_left_rail_inventory(
     summary: &crate::fixtures::HostSessionSummary,
     work: &crate::fixtures::WorkData,

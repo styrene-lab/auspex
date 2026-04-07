@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0-rc.1] - 2026-04-07
+
+### Changed
+- Replaced the previous rail-dominant shell with a cockpit-oriented scaffold built around a dark grid-dot canvas, persistent Auspex/Attached Omegon/Deployment/Activity truth panels, a focus host, and a contextual detail region.
+- Preserved controller/state plumbing and existing routed workspace surfaces while re-composing them into the new cockpit shell rather than inheriting the old left/right/center layout semantics.
+
+
 ## [0.1.0-rc.6] - 2026-04-07
 
 ### Changed

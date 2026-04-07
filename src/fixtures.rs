@@ -358,6 +358,7 @@ pub enum ShellState {
     Failed,
 }
 
+#[allow(dead_code)]
 impl ShellState {
     pub fn label(self) -> &'static str {
         match self {
@@ -460,6 +461,7 @@ impl Default for OperatorReadinessData {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub enum AppSurfaceKind {
     BootstrapNote,
     Startup,
@@ -468,6 +470,7 @@ pub enum AppSurfaceKind {
     CompatibilityFailure,
 }
 
+#[allow(dead_code)]
 impl AppSurfaceKind {
     pub fn section_class(self) -> &'static str {
         match self {
@@ -492,6 +495,7 @@ impl AppSurfaceKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+#[allow(dead_code)]
 pub struct AppSurfaceNotice {
     pub kind: AppSurfaceKind,
     pub body: String,

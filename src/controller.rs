@@ -360,6 +360,7 @@ impl AppController {
         self.persist_instance_registry();
     }
 
+    #[allow(dead_code)]
     pub fn surface_notice(&self) -> Option<AppSurfaceNotice> {
         match self.shell_state() {
             ShellState::StartingOmegon => Some(AppSurfaceNotice {
