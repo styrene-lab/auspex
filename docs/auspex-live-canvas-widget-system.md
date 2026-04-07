@@ -1429,6 +1429,68 @@ Clearing selection should:
 - collapse non-pinned drilldown surfaces where appropriate
 - return focus-host occupancy to the prior/default context if the current occupant was purely selection-driven
 
+### Operator interaction contract
+
+This selection model is the canonical **operator contract** for cockpit interaction.
+
+It should govern:
+- implementation decisions
+- future how-to guides
+- debugging of visual behavior
+- assessment of whether a UI element is behaving correctly
+
+#### Contract statement
+
+When an operator interacts with a visual element, the system should make the result legible and reversible.
+
+That means every meaningful interactive visual element should answer four questions:
+1. **What did I select?**
+2. **What changed because of that selection?**
+3. **Where did the related detail go?**
+4. **How do I get back?**
+
+If an interaction cannot answer those four questions, the interaction contract is broken.
+
+#### Implementation rule
+
+Interactive visual elements should not invent private navigation behavior.
+
+They should map into the shared cockpit contract:
+- select semantic entity
+- highlight related surfaces
+- open related detail
+- optionally enter a drilldown occupant
+- preserve a return path
+
+#### Debugging rule
+
+When debugging a visual element, do not start with CSS or animation.
+
+Start with these checks:
+1. did the correct semantic selection fire?
+2. did the correct surfaces react?
+3. did the focus host remain stable unless takeover was truly justified?
+4. is the return/clear path intact?
+5. only then inspect styling, transitions, or animation defects
+
+#### Guide-writing rule
+
+Future operator-facing guides and developer how-to docs should describe interactions in terms of this contract, not only in terms of page geometry.
+
+Good guidance:
+- "Clicking a deployment chip selects that instance, opens the related detail section, and lets you enter deployment drilldown if needed."
+
+Bad guidance:
+- "Click the small pill in the upper-right card to go to another page."
+
+The contract is semantic first, visual second.
+
+#### Visual language consequence
+
+Animations, emphasis, hover states, chip highlights, disclosure changes, and focus-host transitions should all exist to clarify this contract.
+
+They are successful only if they make selection, reaction, detail location, and return path easier to understand.
+
 #### 6. Contextual detail region
 Secondary detail and action surfaces tied to the current focus or selected entity.
 
