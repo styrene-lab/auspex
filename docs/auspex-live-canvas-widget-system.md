@@ -306,6 +306,103 @@ The current shell already implies the first widget set.
 
 These widgets should be carved out from existing panels and screen sections before any full canvas-edit feature lands.
 
+## Primary instrumentation areas
+
+The live canvas should not begin as a generic wall of arbitrary widgets. Its first responsibility is to make the operator's current Omegon deployment legible.
+
+### Area 1 — attached Omegon status (primary instrumentation plane)
+
+This is the first-class instrumentation area and should dominate the default layout.
+
+Questions this area must answer immediately:
+- is the primary attached Omegon reachable?
+- what role is it serving right now?
+- what route/dispatcher is the operator currently speaking to?
+- is the control plane healthy, degraded, stale, or detached?
+- what model/profile/thinking tier is effectively active?
+
+This area should be treated as the main operator truth surface before broader multi-instance analytics are shown.
+
+### Area 2 — multi-Omegon deployment inventory
+
+Once the primary attached Omegon state is legible, the next layer is deployment visibility across one-to-many Omegon instances.
+
+Questions this area must answer:
+- how many Omegon instances are currently known?
+- how many are live vs stale/lost/detached?
+- which ones have been seen recently?
+- which roles exist in the pool: primary-driver, supervised-child, detached-service?
+- which instances belong to the active session versus the broader registry?
+- which control-plane endpoints are verified and usable?
+
+This is effectively the operator-facing rendition of the multi-instance registry.
+
+### Area 3 — interaction classes for runtime orchestration
+
+Once deployment visibility exists, the canvas should distinguish two interaction classes:
+
+#### Persistent serve-mode Omegon instances
+
+These are long-running and durable workers/services.
+
+Examples:
+- background agents
+- detached services
+- persistent session dispatchers
+- dedicated long-lived support agents under supervision
+
+The canvas should surface:
+- durable identity
+- ownership/supervision status
+- placement/backend
+- last seen / lifecycle freshness
+- attach/detach/reconnect authority
+- whether the instance is currently routable for operator interaction
+
+#### Temporary dispatches for fixed-known-single-task operations
+
+These are narrower-lived worker instantiations for bounded tasks.
+
+Examples:
+- delegated subtasks
+- one-shot fixed-purpose background operations
+- short-lived supervised-child workers
+
+The canvas should surface:
+- parent dispatcher/session
+- task purpose / binding
+- current lifecycle state
+- expected expiry or completion semantics
+- result handoff back to dispatcher/operator transcript
+
+These two classes should not be visually or semantically conflated. A durable serve-mode worker is not just a longer task card.
+
+## Deployment-first default layout rule
+
+The default live canvas should prioritize deployment and authority visibility before generalized telemetry ornamentation.
+
+That means the first widget cluster should bias toward:
+- attached Omegon truth
+- route/dispatcher truth
+- multi-instance inventory
+- lifecycle freshness
+- serve-mode vs temporary-dispatch classification
+
+Only after that foundation is legible should additional trend or decorative instrumentation compete for space.
+
+## Widget priorities implied by deployment-first instrumentation
+
+The first canonical widget cluster should evolve around:
+- `AttachedOmegonStatusWidget`
+- `RouteSelectionWidget`
+- `DispatcherBindingWidget`
+- `DeploymentInventoryWidget`
+- `LifecycleRollupWidget`
+- `ServeModeWorkersWidget`
+- `TemporaryDispatchesWidget`
+
+These widgets map directly onto accepted runtime doctrine in [[auspex-multi-agent-runtime]], [[auspex-session-dispatcher]], and [[auspex-runtime-backends]].
+
 ## Visual system implications
 
 The live canvas model depends on the existing depth-first visual spec, but shifts emphasis from rail composition to bounded widget composition.
