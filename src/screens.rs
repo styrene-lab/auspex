@@ -239,12 +239,12 @@ pub fn SessionScreen(
 ) -> Element {
     rsx! {
         div { class: "screen screen-session",
-            {render_session_harness_widget(&data)}
-            {render_provider_status_widget(&data)}
-            {render_control_plane_widget(&data)}
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
+            {render_control_plane_widget(&data)}
+            {render_provider_status_widget(&data)}
             {render_session_stats_widget(&data)}
+            {render_session_harness_widget(&data)}
         }
     }
 }
@@ -253,6 +253,7 @@ pub fn SessionScreen(
 fn render_session_harness_widget(data: &SessionData) -> Element {
     render_widget_section(
         "Auspex shell",
+        false,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Branch", data.git_branch.as_deref().unwrap_or("—"))}
@@ -275,6 +276,7 @@ fn render_session_harness_widget(data: &SessionData) -> Element {
 fn render_provider_status_widget(data: &SessionData) -> Element {
     render_widget_section(
         "Provider detail",
+        false,
         rsx! {
             if data.providers.is_empty() {
                 p { class: "screen-empty", "No provider data." }
@@ -348,6 +350,7 @@ fn render_control_plane_widget(data: &SessionData) -> Element {
 
     render_widget_section(
         "Control-plane detail",
+        false,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 if let Some(base_url) = control_plane.base_url.as_deref() {
@@ -415,6 +418,7 @@ fn render_dispatcher_binding_widget(
 
     render_widget_section(
         "Dispatcher authority",
+        true,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Canonical session", &dispatcher.session_id)}
@@ -489,6 +493,7 @@ fn render_temporary_dispatches_widget(
     }
     render_widget_section(
         "Temporary dispatch detail",
+        true,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 for delegate in &data.active_delegates {
@@ -516,6 +521,7 @@ fn render_temporary_dispatches_widget(
 fn render_session_stats_widget(data: &SessionData) -> Element {
     render_widget_section(
         "Session detail",
+        false,
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Turns", &data.session_turns.to_string())}
@@ -532,15 +538,28 @@ fn render_session_stats_widget(data: &SessionData) -> Element {
     )
 }
 
-fn render_widget_section(title: &str, body: Element) -> Element {
+fn render_widget_section(title: &str, expanded: bool, body: Element) -> Element {
+    let widget_id = title.to_ascii_lowercase().replace(' ', "-");
     rsx! {
         section {
-            class: "screen-section widget-section",
-            "data-widget": title.to_ascii_lowercase().replace(' ', "-"),
+            class: if expanded { "screen-section widget-section widget-section-expanded" } else { "screen-section widget-section widget-section-collapsible" },
+            "data-widget": widget_id.clone(),
             "data-surface": "panel",
             "data-elevation": "1",
-            h2 { class: "screen-section-title widget-section-title", "{title}" }
-            {body}
+            if expanded {
+                div {
+                    class: "widget-section-shell",
+                    h2 { class: "screen-section-title widget-section-title", "{title}" }
+                    {body}
+                }
+            } else {
+                details { class: "widget-disclosure", open: false,
+                    summary { class: "widget-disclosure-summary",
+                        h2 { class: "screen-section-title widget-section-title", "{title}" }
+                    }
+                    div { class: "widget-disclosure-body", {body} }
+                }
+            }
         }
     }
 }
@@ -1186,6 +1205,7 @@ mod tests {
         assert!(shell_debug.contains("Auspex shell"));
         assert!(provider_debug.contains("Provider detail"));
         assert!(session_debug.contains("Session detail"));
+        assert!(shell_debug.contains("details"));
         assert!(!shell_debug.contains("Lifecycle rollup"));
         assert!(!session_debug.contains("Attached Omegon status"));
     }
@@ -1194,6 +1214,7 @@ mod tests {
     fn render_widget_section_renders_title_and_body() {
         let element = render_widget_section(
             "Harness",
+            true,
             rsx! { div { class: "kv-grid", {kv_row("Memory", "available")} } },
         );
         let debug = format!("{element:?}");

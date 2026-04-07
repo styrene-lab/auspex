@@ -2746,3 +2746,49 @@ body > * {
     order: 4;
   }
 }
+
+.widget-section-expanded {
+  padding: 0.8rem 0.9rem;
+}
+
+.widget-section-collapsible {
+  padding: 0;
+}
+
+.widget-section-shell {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.widget-disclosure {
+  border-radius: inherit;
+}
+
+.widget-disclosure-summary {
+  display: flex;
+  align-items: center;
+  list-style: none;
+  cursor: pointer;
+  padding: 0.8rem 0.9rem;
+}
+
+.widget-disclosure-summary::-webkit-details-marker {
+  display: none;
+}
+
+.widget-disclosure-summary::after {
+  content: "+";
+  margin-left: auto;
+  color: var(--text-dim);
+  font-weight: 700;
+}
+
+.widget-disclosure[open] .widget-disclosure-summary::after {
+  content: "−";
+}
+
+.widget-disclosure-body {
+  display: grid;
+  gap: 0.55rem;
+  padding: 0 0.9rem 0.9rem;
+}
