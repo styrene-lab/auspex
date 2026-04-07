@@ -2839,3 +2839,40 @@ body > * {
   border-top: 1px solid rgba(42, 57, 74, 0.58);
   padding-top: 0.75rem;
 }
+
+.focus-host-shell {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.focus-host-header {
+  display: grid;
+  gap: 0.2rem;
+  margin-bottom: 0.65rem;
+}
+
+.focus-host-kicker {
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.focus-host-title {
+  margin: 0;
+  color: var(--text-primary);
+  font-size: 1rem;
+}
+
+.focus-host-body {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+.focus-host-footer {
+  margin-top: 0.75rem;
+}

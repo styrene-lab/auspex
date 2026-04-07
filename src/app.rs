@@ -2100,6 +2100,13 @@ struct ChatCopHostActions {
     on_cancel: EventHandler<()>,
 }
 
+struct FocusHostShell<'a> {
+    title: &'a str,
+    kicker: &'a str,
+    body: Element,
+    footer: Option<Element>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct TruthPanelModel {
     label: &'static str,
@@ -2571,6 +2578,28 @@ fn build_dispatch_context_strip_model(
     }
 }
 
+fn render_focus_host_shell(shell: FocusHostShell<'_>) -> Element {
+    let FocusHostShell {
+        title,
+        kicker,
+        body,
+        footer,
+    } = shell;
+
+    rsx! {
+        div { class: "focus-host-shell",
+            header { class: "focus-host-header",
+                span { class: "focus-host-kicker", "{kicker}" }
+                h2 { class: "focus-host-title", "{title}" }
+            }
+            div { class: "focus-host-body", {body} }
+            if let Some(footer) = footer {
+                div { class: "focus-host-footer", {footer} }
+            }
+        }
+    }
+}
+
 fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions) -> Element {
     let ChatCopHostModel {
         summary,
@@ -2593,47 +2622,55 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         on_cancel,
     } = actions;
 
-    rsx! {
-        div { class: "cockpit-chat-host",
-            div { class: "cockpit-cop-body",
-                {render_chat_status_banner(summary, session, is_run_active, can_submit)}
-                main { class: "transcript cockpit-transcript cockpit-cop-focus",
-                    {render_transcript(summary, work, session, transcript, messages, auto_expand)}
-                    div { id: "transcript-end" }
-                }
-            }
-            form {
-                class: "composer cockpit-composer cockpit-composer-docked",
-                onsubmit: move |event| on_submit.call(event),
-                {render_dispatch_context_strip(dispatch_context)}
-                if let Some(message) = composer_ready_notice {
-                    div { class: "composer-ready-notice", "{message}" }
-                }
-                if let Some(blocked) = provider_blocked_composer {
-                    div { class: "composer-blocked-callout",
-                        h3 { class: "composer-blocked-title", "{blocked.title}" }
-                        p { class: "composer-blocked-detail", "{blocked.detail}" }
-                        button { class: "composer-blocked-action", r#type: "button", onclick: move |_| on_open_settings.call(()), "{blocked.action_label}" }
-                    }
-                } else {
-                    textarea {
-                        class: "composer-input",
-                        rows: "3",
-                        value: draft.to_string(),
-                        disabled: !can_submit,
-                        placeholder: if can_submit { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
-                        oninput: move |event| on_update_draft.call(event.value()),
-                    }
-                }
-                div { class: "composer-actions",
-                    if is_run_active {
-                        button { class: "composer-cancel", r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
-                    }
-                    button { class: "composer-submit", r#type: "submit", disabled: !can_submit, title: dispatch_context.send_detail.clone(), "Send" }
-                }
+    let body = rsx! {
+        div { class: "cockpit-cop-body",
+            {render_chat_status_banner(summary, session, is_run_active, can_submit)}
+            main { class: "transcript cockpit-transcript cockpit-cop-focus",
+                {render_transcript(summary, work, session, transcript, messages, auto_expand)}
+                div { id: "transcript-end" }
             }
         }
-    }
+    };
+
+    let footer = rsx! {
+        form {
+            class: "composer cockpit-composer cockpit-composer-docked",
+            onsubmit: move |event| on_submit.call(event),
+            {render_dispatch_context_strip(dispatch_context)}
+            if let Some(message) = composer_ready_notice {
+                div { class: "composer-ready-notice", "{message}" }
+            }
+            if let Some(blocked) = provider_blocked_composer {
+                div { class: "composer-blocked-callout",
+                    h3 { class: "composer-blocked-title", "{blocked.title}" }
+                    p { class: "composer-blocked-detail", "{blocked.detail}" }
+                    button { class: "composer-blocked-action", r#type: "button", onclick: move |_| on_open_settings.call(()), "{blocked.action_label}" }
+                }
+            } else {
+                textarea {
+                    class: "composer-input",
+                    rows: "3",
+                    value: draft.to_string(),
+                    disabled: !can_submit,
+                    placeholder: if can_submit { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
+                    oninput: move |event| on_update_draft.call(event.value()),
+                }
+            }
+            div { class: "composer-actions",
+                if is_run_active {
+                    button { class: "composer-cancel", r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
+                }
+                button { class: "composer-submit", r#type: "submit", disabled: !can_submit, title: dispatch_context.send_detail.clone(), "Send" }
+            }
+        }
+    };
+
+    render_focus_host_shell(FocusHostShell {
+        title: "Chat",
+        kicker: "Default COP occupant",
+        body,
+        footer: Some(footer),
+    })
 }
 
 fn render_dispatch_context_strip(model: &DispatchContextStripModel) -> Element {
@@ -3823,6 +3860,38 @@ mod tests {
         if !model.activity.preview.is_empty() {
             assert!(model.activity.preview[0].contains("·"));
         }
+    }
+
+    #[test]
+    fn chat_cop_host_model_carries_focus_and_footer_state() {
+        let summary = HostSessionSummary {
+            connection: "Attached to local shell".into(),
+            activity: "Waiting for input".into(),
+            activity_kind: ActivityKind::Idle,
+            work: "No focused work".into(),
+        };
+        let model = super::ChatCopHostModel {
+            summary: &summary,
+            work: &crate::fixtures::WorkData::default(),
+            session: &crate::fixtures::SessionData::default(),
+            transcript: &TranscriptData::default(),
+            messages: &[],
+            auto_expand: false,
+            is_run_active: false,
+            can_submit: true,
+            draft: "hello",
+            dispatch_context: &super::DispatchContextStripModel {
+                state: "ready",
+                send_detail: "Prompt ready".into(),
+                items: vec![],
+            },
+            provider_blocked_composer: None,
+            composer_ready_notice: None,
+        };
+
+        assert_eq!(model.draft, "hello");
+        assert!(model.can_submit);
+        assert!(!model.is_run_active);
     }
 
     #[test]
