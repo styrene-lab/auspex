@@ -5,6 +5,7 @@ use crate::bootstrap::BootstrapResult;
 use crate::controller::{AppController, SessionMode};
 use crate::event_stream::EventStreamHandle;
 use crate::fixtures::{MessageRole, TranscriptData};
+use crate::runtime_types::TargetedCommand;
 use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 /// CSS embedded at compile time — bypasses the asset-serving pipeline so
@@ -95,6 +96,12 @@ struct SettingsPanelModel {
     last_error: Option<String>,
     last_action: Option<String>,
     provider_ready: bool,
+}
+
+fn dispatch_targeted_command(stream: &EventStreamHandle, command: &TargetedCommand) {
+    if stream.send_targeted_command(command).is_err() {
+        stream.send_command(command.command_json.clone());
+    }
 }
 
 fn provider_command_name(name: &str) -> Option<String> {
@@ -848,7 +855,7 @@ pub fn App() -> Element {
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command.command_json);
+                                    dispatch_targeted_command(&stream, &command);
                                 }
                             })),
                             on_transcript_focus: Some(EventHandler::new(move |target: String| {
@@ -874,7 +881,7 @@ pub fn App() -> Element {
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command.command_json);
+                                    dispatch_targeted_command(&stream, &command);
                                 }
                             })),
                             on_transcript_focus: Some(EventHandler::new(move |target: String| {
@@ -908,7 +915,7 @@ pub fn App() -> Element {
                                     event.prevent_default();
                                     let command = controller.write().submit_prompt_command();
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                        stream.send_command(command.command_json);
+                                        dispatch_targeted_command(&stream, &command);
                                     }
                                 },
                                 {render_dispatch_context_strip(&dispatch_context)}
@@ -953,7 +960,7 @@ pub fn App() -> Element {
                                                 if let (Some(command), Some(stream)) =
                                                     (command, event_stream.read().clone())
                                                 {
-                                                    stream.send_command(command.command_json);
+                                                    dispatch_targeted_command(&stream, &command);
                                                 }
                                             }
                                         },
@@ -968,7 +975,7 @@ pub fn App() -> Element {
                                                 if let Some(command) = controller.read().cancel_command()
                                                     && let Some(stream) = event_stream.read().clone()
                                                 {
-                                                    stream.send_command(command.command_json);
+                                                    dispatch_targeted_command(&stream, &command);
                                                 }
                                             },
                                             "Cancel"
@@ -995,7 +1002,7 @@ pub fn App() -> Element {
                             on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    stream.send_command(command.command_json);
+                                    dispatch_targeted_command(&stream, &command);
                                 }
                             })),
                             on_transcript_focus: Some(EventHandler::new(move |target: String| {
@@ -1128,7 +1135,7 @@ pub fn App() -> Element {
                                                                             };
                                                                             let target = controller.read().current_command_target();
                                                                             let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                            stream.send_command(command.command_json);
+                                                                            dispatch_targeted_command(&stream, &command);
                                                                             Ok(())
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
@@ -1185,7 +1192,7 @@ pub fn App() -> Element {
                                                                             };
                                                                             let target = controller.read().current_command_target();
                                                                             let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                            stream.send_command(command.command_json);
+                                                                            dispatch_targeted_command(&stream, &command);
                                                                             Ok(())
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
@@ -1277,7 +1284,7 @@ pub fn App() -> Element {
                                                                     };
                                                                     let target = controller.read().current_command_target();
                                                                     let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                    stream.send_command(command.command_json);
+                                                                    dispatch_targeted_command(&stream, &command);
                                                                     Ok(())
                                                                 } else {
                                                                     controller.write().run_settings_auth_action(
@@ -2908,8 +2915,8 @@ mod tests {
         build_chat_empty_state_model, build_dispatch_context_strip_model,
         build_left_rail_inventory, build_provider_blocked_composer_model,
         build_settings_panel_model, chat_status_tone, context_window_label,
-        find_transcript_anchor, looks_like_structured_payload, render_chat_status_banner,
-        render_dispatch_context_strip, should_expand_system_notice,
+        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
+        render_chat_status_banner, render_dispatch_context_strip, should_expand_system_notice,
         should_expand_tool_args, should_expand_tool_output, system_block_class, system_block_tone,
         system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
         tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
@@ -2918,6 +2925,8 @@ mod tests {
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::{AppController, SessionMode};
+    use crate::event_stream::EventStreamHandle;
+    use crate::runtime_types::TargetedCommand;
     use crate::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
         MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
@@ -3673,6 +3682,31 @@ mod tests {
         assert_eq!(
             targeted.command_json,
             r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
+        );
+        assert_eq!(
+            targeted.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"canonical_slash","slash":{"name":"login","args":"anthropic","raw_input":"/login anthropic"}}}"#
+        );
+    }
+
+    #[test]
+    fn dispatch_targeted_command_prefers_transport_envelope() {
+        let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
+        let command = TargetedCommand::legacy_json(
+            crate::runtime_types::CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            r#"{"type":"user_prompt","text":"hello"}"#,
+        );
+
+        dispatch_targeted_command(&handle, &command);
+
+        let commands = handle.debug_drain_outbox();
+        assert_eq!(commands.len(), 1);
+        assert_eq!(
+            commands[0],
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"user_prompt\",\"text\":\"hello\"}"}}"#
         );
     }
 

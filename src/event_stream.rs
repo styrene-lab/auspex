@@ -97,6 +97,11 @@ impl EventStreamHandle {
         self.outbox.push_envelope(&command.transport_envelope())
     }
 
+    #[cfg(test)]
+    pub fn debug_drain_outbox(&self) -> Vec<String> {
+        self.outbox.drain()
+    }
+
     fn push_system_notice(&self, message: impl Into<String>) {
         let payload = serde_json::json!({
             "type": "system_notification",
