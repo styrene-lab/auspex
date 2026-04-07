@@ -1032,7 +1032,6 @@ fn kv_row(key: &str, value: &str) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::SessionTelemetryData;
     use crate::fixtures::InstanceControlPlaneData;
 
     fn binding() -> DispatcherBindingData {

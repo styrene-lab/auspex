@@ -1251,10 +1251,9 @@ mod tests {
     use super::*;
     use crate::omegon_control::{
         CleaveSnapshot, DesignSnapshot, DispatcherBindingSnapshot,
-        HarnessStatusSnapshot, OmegonControlPlaneDescriptor, OmegonInstanceDescriptor,
-        OmegonInstanceIdentity, OmegonPolicyDescriptor, OmegonRuntimeDescriptor,
-        OmegonStateSnapshot, OmegonWorkspaceDescriptor, OpenSpecSnapshot,
-        SessionSnapshot,
+        HarnessStatusSnapshot, OmegonInstanceDescriptor, OmegonInstanceIdentity,
+        OmegonPolicyDescriptor, OmegonStateSnapshot, OmegonWorkspaceDescriptor,
+        OpenSpecSnapshot, SessionSnapshot,
     };
 
     const SNAPSHOT_JSON: &str = r#"{
@@ -1423,6 +1422,7 @@ mod tests {
         );
     }
 
+    #[test]
     fn snapshot_without_harness_uses_runtime_provider_health_for_submit_gate() {
         let session = RemoteHostSession::from_snapshot(OmegonStateSnapshot {
             design: crate::omegon_control::DesignSnapshot::default(),
