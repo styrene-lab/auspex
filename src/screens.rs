@@ -241,9 +241,7 @@ pub fn SessionScreen(
         div { class: "screen screen-session",
             {render_session_harness_widget(&data)}
             {render_provider_status_widget(&data)}
-            {render_lifecycle_rollup_widget(&data)}
             {render_control_plane_widget(&data)}
-            {render_attached_omegon_status_widget(&data)}
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_session_stats_widget(&data)}
@@ -254,7 +252,7 @@ pub fn SessionScreen(
 #[allow(dead_code)]
 fn render_session_harness_widget(data: &SessionData) -> Element {
     render_widget_section(
-        "Harness",
+        "Auspex shell",
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Branch", data.git_branch.as_deref().unwrap_or("—"))}
@@ -276,7 +274,7 @@ fn render_session_harness_widget(data: &SessionData) -> Element {
 #[allow(dead_code)]
 fn render_provider_status_widget(data: &SessionData) -> Element {
     render_widget_section(
-        "Providers",
+        "Provider detail",
         rsx! {
             if data.providers.is_empty() {
                 p { class: "screen-empty", "No provider data." }
@@ -343,55 +341,13 @@ fn render_provider_status_widget(data: &SessionData) -> Element {
 }
 
 #[allow(dead_code)]
-fn render_lifecycle_rollup_widget(data: &SessionData) -> Element {
-    if data.telemetry.lifecycle.attached_count == 0 {
-        return rsx! { Fragment {} };
-    }
-
-    render_widget_section(
-        "Lifecycle rollup",
-        rsx! {
-            div { class: "kv-grid widget-kv-grid",
-                {kv_row("Attached", &data.telemetry.lifecycle.counts.total_attached.to_string())}
-                {kv_row("Fresh", &data.telemetry.lifecycle.counts.fresh.to_string())}
-                {kv_row("Stale", &data.telemetry.lifecycle.counts.stale.to_string())}
-                {kv_row("Lost", &data.telemetry.lifecycle.counts.lost.to_string())}
-                {kv_row("Abandoned", &data.telemetry.lifecycle.counts.abandoned.to_string())}
-                {kv_row("Reaped", &data.telemetry.lifecycle.counts.reaped.to_string())}
-                {kv_row("Unknown", &data.telemetry.lifecycle.counts.unknown.to_string())}
-            }
-            for instance in &data.telemetry.lifecycle.instances {
-                div { class: "kv-grid widget-kv-grid",
-                    {kv_row("Route", &instance.route_id)}
-                    {kv_row("Instance", &instance.instance_id)}
-                    {kv_row("Role", &instance.role)}
-                    {kv_row("Profile", &instance.profile)}
-                    if let Some(status) = instance.status.as_deref() {
-                        {kv_row("Status", status)}
-                    }
-                    if let Some(freshness) = instance.freshness.as_deref() {
-                        {kv_row("Freshness", freshness)}
-                    }
-                    if let Some(base_url) = instance.base_url.as_deref() {
-                        {kv_row("Base URL", base_url)}
-                    }
-                    if let Some(last_seen_at) = instance.last_seen_at.as_deref() {
-                        {kv_row("Last seen", last_seen_at)}
-                    }
-                }
-            }
-        },
-    )
-}
-
-#[allow(dead_code)]
 fn render_control_plane_widget(data: &SessionData) -> Element {
     let Some(control_plane) = &data.telemetry.control_plane else {
         return rsx! { Fragment {} };
     };
 
     render_widget_section(
-        "Control-plane telemetry",
+        "Control-plane detail",
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 if let Some(base_url) = control_plane.base_url.as_deref() {
@@ -448,16 +404,6 @@ fn render_control_plane_widget(data: &SessionData) -> Element {
     )
 }
 
-fn render_attached_omegon_status_widget(data: &SessionData) -> Element {
-    let Some(instance) = &data.instance_descriptor else {
-        return rsx! { Fragment {} };
-    };
-    render_widget_section(
-        "Attached Omegon status",
-        rsx! { {render_instance_descriptor(instance)} },
-    )
-}
-
 fn render_dispatcher_binding_widget(
     data: &SessionData,
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
@@ -468,7 +414,7 @@ fn render_dispatcher_binding_widget(
     };
 
     render_widget_section(
-        "Dispatcher binding",
+        "Dispatcher authority",
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Canonical session", &dispatcher.session_id)}
@@ -542,7 +488,7 @@ fn render_temporary_dispatches_widget(
         return rsx! { Fragment {} };
     }
     render_widget_section(
-        "Temporary dispatches",
+        "Temporary dispatch detail",
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 for delegate in &data.active_delegates {
@@ -569,7 +515,7 @@ fn render_temporary_dispatches_widget(
 
 fn render_session_stats_widget(data: &SessionData) -> Element {
     render_widget_section(
-        "Session stats",
+        "Session detail",
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 {kv_row("Turns", &data.session_turns.to_string())}
@@ -686,6 +632,7 @@ fn render_dispatcher_switch_state(
     }
 }
 
+#[allow(dead_code)]
 fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData) -> Element {
     let capability_summary = instance
         .control_plane
@@ -811,6 +758,7 @@ fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData
     }
 }
 
+#[allow(dead_code)]
 fn capability_badge_label(capability: &str) -> &str {
     match capability {
         "events.stream" => "Events",
@@ -1223,6 +1171,23 @@ mod tests {
             model: None,
         });
         assert_eq!(unauthenticated, "not authenticated ⚠");
+    }
+
+    #[test]
+    fn session_detail_widget_titles_reflect_contextual_role() {
+        let shell = render_session_harness_widget(&crate::fixtures::SessionData::default());
+        let provider = render_provider_status_widget(&crate::fixtures::SessionData::default());
+        let session_detail = render_session_stats_widget(&crate::fixtures::SessionData::default());
+
+        let shell_debug = format!("{shell:?}");
+        let provider_debug = format!("{provider:?}");
+        let session_debug = format!("{session_detail:?}");
+
+        assert!(shell_debug.contains("Auspex shell"));
+        assert!(provider_debug.contains("Provider detail"));
+        assert!(session_debug.contains("Session detail"));
+        assert!(!shell_debug.contains("Lifecycle rollup"));
+        assert!(!session_debug.contains("Attached Omegon status"));
     }
 
     #[test]
