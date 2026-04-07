@@ -989,17 +989,21 @@ pub fn App() -> Element {
 
                 // Right rail — contextual inspector
                 aside { class: "right-rail",
-                    SessionScreen {
-                        data: controller.read().session_data(),
-                        on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                            let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                            if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                stream.send_command(command.command_json);
-                            }
-                        })),
-                        on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                            focus_transcript_target(controller.read().transcript(), &target);
-                        }))
+                    if *workspace.read() == Workspace::Session {
+                        SessionScreen {
+                            data: controller.read().session_data(),
+                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                    stream.send_command(command.command_json);
+                                }
+                            })),
+                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                focus_transcript_target(controller.read().transcript(), &target);
+                            }))
+                        }
+                    } else {
+                        {render_compact_right_rail(&controller.read().session_data())}
                     }
                 }
             }
@@ -1926,6 +1930,7 @@ fn render_chat_status_banner(
     can_submit: bool,
 ) -> Element {
     let provider_ready = session.providers.iter().any(|provider| provider.authenticated);
+    let no_work_yet = summary.work.trim() == "No focused work item";
     let (banner_class, banner_state, label, detail) = if is_run_active {
         (
             "chat-status-banner chat-status-banner-running",
@@ -1946,6 +1951,13 @@ fn render_chat_status_banner(
             "blocked",
             "Input paused",
             "Conversation input is unavailable in the current host state.",
+        )
+    } else if no_work_yet && summary.activity_kind == crate::fixtures::ActivityKind::Idle {
+        (
+            "chat-status-banner",
+            "ready",
+            "Ready",
+            "Host attached. No focused work item reported yet.",
         )
     } else {
         (
@@ -1968,6 +1980,63 @@ fn render_chat_status_banner(
             title: "Activity: {activity_kind}",
             strong { class: "chat-status-label", "{label}" }
             span { class: "chat-status-detail", "{detail}" }
+        }
+    }
+}
+
+fn render_compact_right_rail(session: &crate::fixtures::SessionData) -> Element {
+    rsx! {
+        section { class: "screen-section right-rail-compact-section",
+            h2 { class: "screen-section-title", "Harness" }
+            div { class: "kv-grid",
+                if let Some(branch) = session.git_branch.as_deref() {
+                    div { class: "kv-row", span { class: "kv-key", "Branch" } span { class: "kv-value", "{branch}" } }
+                }
+                if !session.thinking_level.trim().is_empty() {
+                    div { class: "kv-row", span { class: "kv-key", "Thinking" } span { class: "kv-value", "{session.thinking_level}" } }
+                }
+                if !session.capability_tier.trim().is_empty() {
+                    div { class: "kv-row", span { class: "kv-key", "Tier" } span { class: "kv-value", "{session.capability_tier}" } }
+                }
+                if !session.memory_available {
+                    div { class: "kv-row", span { class: "kv-key", "Memory" } span { class: "kv-value", "not available" } }
+                }
+                if !session.cleave_available {
+                    div { class: "kv-row", span { class: "kv-key", "Cleave" } span { class: "kv-value", "not available" } }
+                }
+            }
+        }
+
+        section { class: "screen-section right-rail-compact-section",
+            h2 { class: "screen-section-title", "Providers" }
+            if session.providers.is_empty() {
+                p { class: "screen-empty", "No provider inventory loaded yet." }
+            } else {
+                div { class: "kv-grid",
+                    for provider in &session.providers {
+                        div { class: "kv-row",
+                            span { class: "kv-key", "{provider.name}" }
+                            span { class: "kv-value",
+                                if provider.authenticated {
+                                    "authenticated"
+                                } else {
+                                    "not authenticated"
+                                }
+                                if !provider.authenticated { " ⚠" }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        section { class: "screen-section right-rail-compact-section",
+            h2 { class: "screen-section-title", "Session stats" }
+            div { class: "kv-grid",
+                div { class: "kv-row", span { class: "kv-key", "Turns" } span { class: "kv-value", "{session.session_turns}" } }
+                div { class: "kv-row", span { class: "kv-key", "Tool calls" } span { class: "kv-value", "{session.session_tool_calls}" } }
+                div { class: "kv-row", span { class: "kv-key", "Compactions" } span { class: "kv-value", "{session.session_compactions}" } }
+            }
         }
     }
 }
