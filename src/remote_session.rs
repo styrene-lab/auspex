@@ -819,16 +819,12 @@ impl HostSessionModel for RemoteHostSession {
             return false;
         }
 
-        let trimmed = self.composer.draft().trim();
-        if trimmed.is_empty() {
+        if self.composer.draft().trim().is_empty() {
             return false;
         }
 
-        self.messages.push(ChatMessage {
-            role: MessageRole::User,
-            text: trimmed.to_string(),
-        });
-        self.summary.activity = "Queued prompt for Omegon remote session".into();
+        self.summary.activity = "Submitting prompt to Omegon remote session".into();
+        self.summary.activity_kind = ActivityKind::Waiting;
         self.composer.clear();
         true
     }

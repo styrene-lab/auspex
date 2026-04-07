@@ -99,9 +99,7 @@ struct SettingsPanelModel {
 }
 
 fn dispatch_targeted_command(stream: &EventStreamHandle, command: &TargetedCommand) {
-    if stream.send_targeted_command(command).is_err() {
-        stream.send_command(command.command_json.clone());
-    }
+    stream.send_command(command.command_json.clone());
 }
 
 fn provider_command_name(name: &str) -> Option<String> {
@@ -3705,7 +3703,7 @@ mod tests {
     }
 
     #[test]
-    fn dispatch_targeted_command_prefers_transport_envelope() {
+    fn dispatch_targeted_command_queues_raw_command_json_for_websocket() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
         let command = TargetedCommand::legacy_json(
             crate::runtime_types::CommandTarget {
@@ -3719,10 +3717,7 @@ mod tests {
 
         let commands = handle.debug_drain_outbox();
         assert_eq!(commands.len(), 1);
-        assert_eq!(
-            commands[0],
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"user_prompt\",\"text\":\"hello\"}"}}"#
-        );
+        assert_eq!(commands[0], r#"{"type":"user_prompt","text":"hello"}"#);
     }
 
     #[test]

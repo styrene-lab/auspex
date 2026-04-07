@@ -1442,7 +1442,10 @@ mod tests {
             command.target.dispatcher_instance_id.as_deref(),
             Some("omg_primary_01HVDEMO")
         );
-        assert_eq!(controller.messages()[1].role, MessageRole::User);
+        assert_eq!(controller.messages().len(), 1);
+        assert_eq!(controller.summary().activity, "Submitting prompt to Omegon remote session");
+        assert_eq!(controller.summary().activity_kind, ActivityKind::Waiting);
+        assert_eq!(controller.composer().draft(), "");
         assert_eq!(
             command.transport_json().unwrap(),
             r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"text\":\"ship it\",\"type\":\"user_prompt\"}"}}"#
