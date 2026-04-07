@@ -551,6 +551,95 @@ A widget should be hideable, movable, or collapsible without changing the underl
 
 This preserves the rule from [[screen-bindings]]: one underlying state/cache, multiple projections.
 
+## Reduced-surface policy
+
+Reduced display surface should default to reduced cognitive surface.
+
+### Canonical rule
+
+Mobile and other reduced-surface layouts should enter **simple-mode projections first** unless the operator explicitly opts into expanded or power-density views.
+
+This preserves the product rule from [[vision]]: one backend contract, multiple UI projections, with low-cognitive-load defaults and explicit power expansion.
+
+### Default display-density policy
+
+#### Wide desktop / wide web
+- power-user composition is allowed by default
+- multiple concurrent surfaces may remain visible
+- persistent deployment/investigation/inspector surfaces are acceptable
+
+#### Narrow desktop / tablet / square layouts
+- default should bias toward reduced simultaneous visibility
+- side inspectors should collapse into trays, drawers, sheets, or secondary stacks
+- the system should prefer simpler projections before forcing dense layouts into cramped geometry
+
+#### Mobile / portrait-first layouts
+- default to simple-mode-first projection
+- keep transcript, current activity, route/attachment truth, and composer primary
+- require explicit operator intent to expose denser power surfaces
+
+### Mobile display levels
+
+The mobile composition should support at least three display levels:
+
+#### 1. Mobile Simple
+Default projection.
+
+Visible by default:
+- attached Omegon status
+- current route / dispatcher truth
+- transcript
+- current activity / run state
+- composer / action surface
+- minimal provider readiness
+- compact lifecycle/degraded warnings when actionable
+
+#### 2. Mobile Expanded
+Operator-requested expanded summary.
+
+May add:
+- deployment summary cards
+- temporary dispatch summary
+- compact telemetry
+- compact audit access
+- deeper route/dispatcher details
+
+#### 3. Mobile Power
+Explicit override only.
+
+Allows:
+- denser surface switching
+- more inspector-style detail
+- power-user investigation/workspace surfaces
+
+But still must remain mobile-composed rather than forcing the full desktop wall into portrait.
+
+### Surface visibility policy
+
+Each surface should eventually declare default visibility by context, for example:
+- `simple_default_visibility`
+- `power_default_visibility`
+- `mobile_default_visibility`
+- `escalation_policy`
+
+Examples:
+- `AttachedOmegonStatusSurface` → visible in simple, power, and mobile
+- `DeploymentInventorySurface` → hidden in simple, visible in power, collapsed/expandable on mobile
+- `TemporaryDispatchesSurface` → escalates when active; summary-first on mobile
+- `GraphOverviewSurface` → power-only by default; explicit override on mobile
+
+### Escalation rule
+
+Reduced-surface layouts may temporarily surface denser panels when the state becomes actionable or risky.
+
+Examples:
+- degraded attachment state
+- long-running active dispatches
+- lifecycle freshness loss
+- route/authority changes that affect operator actions
+
+This allows mobile to remain simple-first without hiding critical state when it matters.
+
 ## Responsive model: desktop, narrow web, mobile
 
 The widget model must survive across desktop and web/mobile targets without cloning the desktop shell literally.
