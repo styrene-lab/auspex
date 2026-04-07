@@ -769,7 +769,7 @@ pub fn App() -> Element {
                         p { class: "cockpit-panel-secondary", "{line}" }
                     }
                 }
-                article { class: "cockpit-panel cockpit-panel-attached", "data-surface": "panel", "data-elevation": "1",
+                article { class: "cockpit-panel cockpit-panel-primary-omegon", "data-surface": "panel", "data-elevation": "1",
                     div { class: "cockpit-panel-toprail",
                         span { class: "cockpit-panel-label", "{cockpit.attached.label}" }
                         span { class: "cockpit-panel-tag", "{cockpit.attached.tag}" }
@@ -2175,23 +2175,39 @@ fn build_cockpit_summary_model(
                 .and_then(|cp| cp.base_url.as_deref())
         })
         .unwrap_or("endpoint unreported");
-    let attached_primary = if attached_id == "unreported-instance" && attached_role == "attached" {
-        "Detached host session".into()
+    let primary_missing = attached_id == "unreported-instance" && attached_role == "attached";
+    let attached_primary = if primary_missing {
+        "Primary runtime unbound".into()
     } else {
         format!("{attached_role} · {attached_id}")
     };
-    let attached_secondary_1 = format!("{attached_profile} · {attached_model}");
-    let attached_secondary_2 = if attached_primary == "Detached host session" {
-        "detached · no verified endpoint".into()
+    let attached_secondary_1 = if primary_missing {
+        "Awaiting owned runtime identity".into()
+    } else {
+        format!("{attached_profile} · {attached_model}")
+    };
+    let attached_secondary_2 = if primary_missing {
+        "booting/attaching · no verified endpoint".into()
     } else if session.telemetry.lifecycle.counts.stale > 0 {
-        format!("stale · {attached_endpoint}")
+        format!("degraded · {attached_endpoint}")
     } else {
         format!("verified · {attached_endpoint}")
     };
-    let attached_tag = if attached_primary == "Detached host session" {
-        "DETACHED"
+    let attached_tag = if primary_missing {
+        match summary.activity_kind {
+            crate::fixtures::ActivityKind::Waiting => "ATTACHING",
+            crate::fixtures::ActivityKind::Running => "BOOTING",
+            crate::fixtures::ActivityKind::Failure => "FAILED",
+            crate::fixtures::ActivityKind::Degraded => "DEGRADED",
+            _ => "BOOTING",
+        }
     } else if session.telemetry.lifecycle.counts.stale > 0 {
-        "STALE"
+        "DEGRADED"
+    } else if matches!(
+        summary.activity_kind,
+        crate::fixtures::ActivityKind::Failure
+    ) {
+        "FAILED"
     } else {
         "LIVE"
     };
@@ -2278,7 +2294,7 @@ fn build_cockpit_summary_model(
             secondary: vec![format!("v{APP_VERSION}"), context_window_label(session)],
         },
         attached: TruthPanelModel {
-            label: "Attached Omegon",
+            label: "Primary Omegon",
             tag: attached_tag,
             primary: attached_primary,
             secondary: vec![attached_secondary_1, attached_secondary_2],
@@ -3637,7 +3653,7 @@ mod tests {
     }
 
     #[test]
-    fn cockpit_summary_model_prioritizes_attached_identity_and_activity_semantics() {
+    fn cockpit_summary_model_prioritizes_primary_omegon_identity_and_activity_semantics() {
         let controller = AppController::remote_demo();
         let model = super::build_cockpit_summary_model(
             Workspace::Chat,
@@ -3647,6 +3663,7 @@ mod tests {
         );
 
         assert_eq!(model.auspex.label, "Auspex");
+        assert_eq!(model.attached.label, "Primary Omegon");
         assert_eq!(model.attached.tag, "LIVE");
         assert!(model.attached.primary.contains("primary-driver"));
         assert!(model.attached.secondary[0].contains("primary-interactive"));
@@ -3662,6 +3679,28 @@ mod tests {
         );
         assert!(!model.activity.primary.is_empty());
         assert_eq!(model.activity.label, "Activity");
+    }
+
+    #[test]
+    fn cockpit_summary_model_uses_owned_runtime_states_for_unbound_primary() {
+        let summary = crate::fixtures::HostSessionSummary {
+            connection: "Starting owned runtime".into(),
+            activity: "Launching omegon serve".into(),
+            activity_kind: crate::fixtures::ActivityKind::Waiting,
+            work: "Attach to owned runtime".into(),
+        };
+        let session = crate::fixtures::SessionData::default();
+        let model = super::build_cockpit_summary_model(
+            Workspace::Chat,
+            SessionMode::Live,
+            &summary,
+            &session,
+        );
+
+        assert_eq!(model.attached.label, "Primary Omegon");
+        assert_eq!(model.attached.tag, "ATTACHING");
+        assert_eq!(model.attached.primary, "Primary runtime unbound");
+        assert!(model.attached.secondary[1].contains("booting/attaching"));
     }
 
     #[test]
