@@ -798,7 +798,13 @@ pub fn App() -> Element {
                                     r#type: "button",
                                     onclick: {
                                         let key = item.key.clone();
-                                        move |_| selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())))
+                                        move |_| {
+                                        if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                            selected_cockpit_entity.set(None);
+                                        } else {
+                                            selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                        }
+                                    }
                                     },
                                     "{item.label}"
                                 }
@@ -823,7 +829,13 @@ pub fn App() -> Element {
                                     r#type: "button",
                                     onclick: {
                                         let key = item.key.clone();
-                                        move |_| selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())))
+                                        move |_| {
+                                        if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
+                                            selected_cockpit_entity.set(None);
+                                        } else {
+                                            selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
+                                        }
+                                    }
                                     },
                                     "{item.label}"
                                 }
@@ -907,12 +919,6 @@ pub fn App() -> Element {
                                 })),
                                 on_transcript_focus: Some(EventHandler::new(move |target: String| {
                                     focus_transcript_target(controller.read().transcript(), &target);
-                                })),
-                                on_promote_selection: Some(EventHandler::new(move |selection: crate::app::SelectedCockpitEntity| {
-                                    match selection {
-                                        crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::DeploymentInstance(instance_id))),
-                                        crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
-                                    }
                                 }))
                             }
                         } else if *workspace.read() == Workspace::Scribe {

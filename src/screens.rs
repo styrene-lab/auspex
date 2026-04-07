@@ -238,6 +238,7 @@ pub fn SessionScreen(
     on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
     on_transcript_focus: Option<EventHandler<String>>,
     on_promote_selection: Option<EventHandler<crate::app::SelectedCockpitEntity>>,
+    on_clear_selection: Option<EventHandler<()>>,
 ) -> Element {
     let control_plane_expanded =
         should_expand_control_plane_widget(&data, selected_entity.as_ref());
@@ -251,7 +252,7 @@ pub fn SessionScreen(
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_control_plane_widget(&data, control_plane_expanded)}
             {render_provider_status_widget(&data, provider_expanded)}
-            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection)}
+            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection, on_clear_selection)}
             {render_session_stats_widget(&data, session_detail_expanded)}
             {render_session_harness_widget(&data, shell_expanded)}
         }
@@ -532,6 +533,7 @@ fn render_selected_entity_widget(
     selected_entity: Option<&crate::app::SelectedCockpitEntity>,
     on_transcript_focus: Option<EventHandler<String>>,
     on_promote_selection: Option<EventHandler<crate::app::SelectedCockpitEntity>>,
+    on_clear_selection: Option<EventHandler<()>>,
 ) -> Element {
     let Some(selected_entity) = selected_entity else {
         return rsx! { Fragment {} };
@@ -572,6 +574,14 @@ fn render_selected_entity_widget(
                             "Open in focus host"
                         }
                     }
+                    if let Some(handler) = on_clear_selection {
+                        button {
+                            class: "transcript-focus-link",
+                            r#type: "button",
+                            onclick: move |_| handler.call(()),
+                            "Clear selection"
+                        }
+                    }
                 },
             )
         }
@@ -602,6 +612,14 @@ fn render_selected_entity_widget(
                                 move |_| handler.call(crate::app::SelectedCockpitEntity::ActivityActor(task_id.clone()))
                             },
                             "Open in focus host"
+                        }
+                    }
+                    if let Some(handler) = on_clear_selection {
+                        button {
+                            class: "transcript-focus-link",
+                            r#type: "button",
+                            onclick: move |_| handler.call(()),
+                            "Clear selection"
                         }
                     }
                     if let Some(handler) = on_transcript_focus {
@@ -1472,12 +1490,14 @@ mod tests {
             )),
             None,
             None,
+            None,
         );
         let activity = render_selected_entity_widget(
             &data,
             Some(&crate::app::SelectedCockpitEntity::ActivityActor(
                 "task-1".into(),
             )),
+            None,
             None,
             None,
         );
