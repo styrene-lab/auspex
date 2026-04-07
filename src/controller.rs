@@ -412,15 +412,7 @@ impl AppController {
     }
 
     pub fn can_submit(&self) -> bool {
-        if !self.session.model().can_submit() {
-            return false;
-        }
-
-        let session_data = self.session_data();
-        session_data
-            .providers
-            .iter()
-            .any(|provider| provider.authenticated)
+        self.session.model().can_submit()
     }
 
     pub fn operator_readiness(&self) -> crate::fixtures::OperatorReadinessData {
@@ -580,7 +572,16 @@ impl AppController {
         let mut data = self.session.model().session_data();
         #[cfg(not(target_arch = "wasm32"))]
         if !self.settings_auth_state.providers.is_empty() {
-            data.providers = self.settings_auth_state.providers.clone();
+            for provider in &mut data.providers {
+                if let Some(settings_provider) = self.settings_auth_state.providers.iter().find(|candidate| {
+                    provider_status_key(&candidate.name) == provider_status_key(&provider.name)
+                }) {
+                    provider.auth_method = settings_provider.auth_method.clone();
+                    if provider.model.is_none() {
+                        provider.model = settings_provider.model.clone();
+                    }
+                }
+            }
         }
         data.telemetry = self.telemetry_snapshot.clone();
         data
@@ -1300,10 +1301,10 @@ mod tests {
 
     #[cfg(not(target_arch = "wasm32"))]
     #[test]
-    fn session_data_prefers_settings_auth_state_when_present() {
+    fn session_data_merges_settings_auth_metadata_without_overriding_runtime_auth() {
         let mut controller = AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.settings_auth_state.providers = vec![crate::fixtures::ProviderInfo {
-            name: "OpenAI API".into(),
+            name: "Anthropic/Claude".into(),
             authenticated: false,
             auth_method: Some("api-key".into()),
             model: None,
@@ -1311,9 +1312,41 @@ mod tests {
 
         let session = controller.session_data();
         assert_eq!(session.providers.len(), 1);
-        assert_eq!(session.providers[0].name, "OpenAI API");
+        assert_eq!(session.providers[0].name, "Anthropic");
+        assert!(session.providers[0].authenticated);
         assert_eq!(session.providers[0].auth_method.as_deref(), Some("api-key"));
+        assert!(controller.can_submit());
+    }
+
+    #[test]
+    fn remote_runtime_authority_blocks_submit_even_if_settings_inventory_lists_auth() {
+        let mut controller = AppController::from_remote_snapshot_json_with_registry(
+            r#"{
+              "design": {"focused": null, "implementing": [], "actionable": [], "all_nodes": [], "counts": {"total":0,"seed":0,"exploring":0,"resolved":0,"decided":0,"implementing":0,"implemented":0,"blocked":0,"deferred":0,"open_questions":0}},
+              "openspec": {"changes": [], "total_tasks": 0, "done_tasks": 0},
+              "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0, "children": []},
+              "session": {"turns": 0, "tool_calls": 0, "compactions": 0},
+              "harness": null,
+              "instance": {
+                "identity": {"instance_id": "web-compat", "role": "primary_driver", "profile": "primary-interactive", "status": "ready"},
+                "workspace": {"cwd": "/repo", "workspace_id": "repo:detached", "branch": "detached"},
+                "runtime": {"health": "ready", "provider_ok": false, "memory_ok": true, "cleave_available": false, "thinking_level": "Medium", "capability_tier": "victory"}
+              }
+            }"#,
+            InstanceRegistryStore::default(),
+        )
+        .unwrap();
+        controller.settings_auth_state.providers = vec![crate::fixtures::ProviderInfo {
+            name: "OpenAI/Codex".into(),
+            authenticated: true,
+            auth_method: Some("oauth".into()),
+            model: None,
+        }];
+        controller.settings_auth_state.inventory_refreshed = true;
+
         assert!(!controller.can_submit());
+        let session = controller.session_data();
+        assert!(session.providers.is_empty());
     }
 
     #[test]

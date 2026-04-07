@@ -464,10 +464,10 @@ struct ProviderBlockedComposerModel {
 }
 
 fn build_provider_blocked_composer_model(
-    session: &crate::fixtures::SessionData,
+    _session: &crate::fixtures::SessionData,
     can_submit: bool,
 ) -> Option<ProviderBlockedComposerModel> {
-    if can_submit || session.providers.iter().any(|provider| provider.authenticated) {
+    if can_submit {
         return None;
     }
 
@@ -3564,7 +3564,7 @@ mod tests {
     }
 
     #[test]
-    fn provider_blocked_composer_model_requires_authenticated_provider() {
+    fn provider_blocked_composer_model_requires_actual_submit_readiness() {
         let blocked = build_provider_blocked_composer_model(
             &crate::fixtures::SessionData {
                 providers: vec![],
@@ -3576,6 +3576,21 @@ mod tests {
         assert_eq!(blocked.title, "Prompt execution blocked");
         assert!(blocked.detail.contains("Authenticate a provider in Settings"));
         assert_eq!(blocked.action_label, "Open Settings");
+
+        let still_blocked = build_provider_blocked_composer_model(
+            &crate::fixtures::SessionData {
+                providers: vec![crate::fixtures::ProviderInfo {
+                    name: "Anthropic".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("claude-sonnet".into()),
+                }],
+                ..Default::default()
+            },
+            false,
+        )
+        .expect("authenticated inventory alone must not unblock prompting");
+        assert_eq!(still_blocked.title, "Prompt execution blocked");
 
         assert!(build_provider_blocked_composer_model(
             &crate::fixtures::SessionData {
