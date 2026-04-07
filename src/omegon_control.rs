@@ -63,6 +63,16 @@ pub struct OmegonRuntimeDescriptor {
     pub namespace: Option<String>,
     pub pod_name: Option<String>,
     pub container_name: Option<String>,
+    pub health: Option<String>,
+    #[serde(default)]
+    pub provider_ok: bool,
+    #[serde(default)]
+    pub memory_ok: bool,
+    #[serde(default)]
+    pub cleave_available: bool,
+    pub context_class: Option<String>,
+    pub thinking_level: Option<String>,
+    pub capability_tier: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]

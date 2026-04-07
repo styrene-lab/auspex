@@ -89,7 +89,8 @@ impl RemoteHostSession {
     }
 
     pub fn from_snapshot(snapshot: OmegonStateSnapshot) -> Self {
-        let (shell_state, scenario) = status_from_harness(snapshot.harness.as_ref());
+        let (shell_state, scenario) =
+            status_from_runtime_or_harness(snapshot.instance_descriptor.as_ref(), snapshot.harness.as_ref());
         let summary = summary_from_snapshot(&snapshot);
 
         Self {
@@ -238,7 +239,8 @@ impl RemoteHostSession {
     pub fn apply_event(&mut self, event: OmegonEvent) -> bool {
         match event {
             OmegonEvent::StateSnapshot { data } => {
-                let (shell_state, scenario) = status_from_harness(data.harness.as_ref());
+                let (shell_state, scenario) =
+                    status_from_runtime_or_harness(data.instance_descriptor.as_ref(), data.harness.as_ref());
                 self.shell_state = shell_state;
                 self.scenario = scenario;
                 self.summary = summary_from_snapshot(&data);
@@ -554,7 +556,10 @@ impl HostSessionModel for RemoteHostSession {
     fn can_submit(&self) -> bool {
         !self.run_active
             && matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
-            && harness_can_execute_prompts(self.harness_snapshot.as_ref())
+            && harness_can_execute_prompts(
+                self.harness_snapshot.as_ref(),
+                self.instance_descriptor.as_ref(),
+            )
     }
 
     fn is_run_active(&self) -> bool {
@@ -1163,6 +1168,24 @@ fn summary_from_snapshot(snapshot: &OmegonStateSnapshot) -> HostSessionSummary {
     }
 }
 
+fn status_from_runtime_or_harness(
+    instance_descriptor: Option<&OmegonInstanceDescriptor>,
+    harness: Option<&HarnessStatusSnapshot>,
+) -> (ShellState, DevScenario) {
+    if let Some(harness) = harness {
+        return status_from_harness(Some(harness));
+    }
+
+    if let Some(runtime) = instance_descriptor.and_then(|descriptor| descriptor.runtime.as_ref()) {
+        if runtime.provider_ok && runtime.memory_ok {
+            return (ShellState::Ready, DevScenario::Ready);
+        }
+        return (ShellState::Degraded, DevScenario::Degraded);
+    }
+
+    (ShellState::Ready, DevScenario::Ready)
+}
+
 fn status_from_harness(harness: Option<&HarnessStatusSnapshot>) -> (ShellState, DevScenario) {
     let Some(harness) = harness else {
         return (ShellState::Ready, DevScenario::Ready);
@@ -1176,17 +1199,26 @@ fn status_from_harness(harness: Option<&HarnessStatusSnapshot>) -> (ShellState, 
         return (ShellState::Degraded, DevScenario::Degraded);
     }
 
-    if !harness_can_execute_prompts(Some(harness)) {
+    if !harness_can_execute_prompts(Some(harness), None) {
         return (ShellState::Degraded, DevScenario::Degraded);
     }
 
     (ShellState::Ready, DevScenario::Ready)
 }
 
-fn harness_can_execute_prompts(harness: Option<&HarnessStatusSnapshot>) -> bool {
-    harness
-        .map(|harness| harness.providers.iter().any(|provider| provider.authenticated))
-        .unwrap_or(true)
+fn harness_can_execute_prompts(
+    harness: Option<&HarnessStatusSnapshot>,
+    instance_descriptor: Option<&OmegonInstanceDescriptor>,
+) -> bool {
+    if let Some(harness) = harness {
+        return harness.providers.iter().any(|provider| provider.authenticated);
+    }
+
+    if let Some(runtime) = instance_descriptor.and_then(|descriptor| descriptor.runtime.as_ref()) {
+        return runtime.provider_ok;
+    }
+
+    true
 }
 
 fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStatusSnapshot) {
@@ -1197,7 +1229,7 @@ fn apply_harness_summary(summary: &mut HostSessionSummary, harness: &HarnessStat
     if let Some(warning) = harness.memory_warning.as_ref() {
         summary.activity = warning.clone();
         summary.activity_kind = ActivityKind::Degraded;
-    } else if !harness_can_execute_prompts(Some(harness)) {
+    } else if !harness_can_execute_prompts(Some(harness), None) {
         summary.activity = "No authenticated providers reported by Omegon".into();
         summary.activity_kind = ActivityKind::Degraded;
     } else if !harness.active_delegates.is_empty() {
@@ -1382,6 +1414,42 @@ mod tests {
                 .and_then(|binding| binding.expected_model.as_deref()),
             Some("anthropic:claude-sonnet-4-6")
         );
+    }
+
+    fn snapshot_without_harness_uses_runtime_provider_health_for_submit_gate() {
+        let session = RemoteHostSession::from_snapshot(OmegonStateSnapshot {
+            design: crate::omegon_control::DesignSnapshot::default(),
+            openspec: crate::omegon_control::OpenSpecSnapshot::default(),
+            cleave: crate::omegon_control::CleaveSnapshot::default(),
+            session: crate::omegon_control::SessionSnapshot::default(),
+            harness: None,
+            dispatcher: None,
+            instance_descriptor: Some(OmegonInstanceDescriptor {
+                identity: crate::omegon_control::OmegonInstanceIdentity {
+                    instance_id: "web-compat".into(),
+                    role: "primary_driver".into(),
+                    profile: "primary-interactive".into(),
+                    status: "ready".into(),
+                },
+                runtime: Some(crate::omegon_control::OmegonRuntimeDescriptor {
+                    health: Some("ready".into()),
+                    provider_ok: false,
+                    memory_ok: true,
+                    cleave_available: false,
+                    context_class: Some("Squad".into()),
+                    thinking_level: Some("Medium".into()),
+                    capability_tier: Some("victory".into()),
+                    ..crate::omegon_control::OmegonRuntimeDescriptor::default()
+                }),
+                session: Some(crate::omegon_control::OmegonSessionDescriptor {
+                    session_id: Some("detached".into()),
+                }),
+                ..OmegonInstanceDescriptor::default()
+            }),
+        });
+
+        assert_eq!(session.shell_state(), ShellState::Degraded);
+        assert!(!session.can_submit());
     }
 
     #[test]
