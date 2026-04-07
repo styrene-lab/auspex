@@ -4,13 +4,24 @@ use crate::runtime_types::TargetedCommand;
 
 #[derive(Clone, Debug)]
 pub enum CommandTransport {
+    EventStream,
     #[cfg(not(target_arch = "wasm32"))]
     Ipc(IpcCommandClient),
 }
 
 impl CommandTransport {
-    pub fn dispatch_targeted_command(&self, command: &TargetedCommand) -> Result<(), String> {
+    pub fn dispatch_targeted_command(
+        &self,
+        event_stream: Option<&crate::event_stream::EventStreamHandle>,
+        command: &TargetedCommand,
+    ) -> Result<(), String> {
         match self {
+            Self::EventStream => {
+                let stream = event_stream
+                    .ok_or_else(|| "event stream unavailable for websocket command dispatch".to_string())?;
+                stream.send_targeted_command(command);
+                Ok(())
+            }
             #[cfg(not(target_arch = "wasm32"))]
             Self::Ipc(client) => dispatch_over_ipc(client, command),
         }
@@ -70,3 +81,27 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn event_stream_transport_queues_raw_command_json() {
+        let transport = CommandTransport::EventStream;
+        let handle = crate::event_stream::EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
+        let command = TargetedCommand::legacy_json(
+            crate::runtime_types::CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            r#"{"type":"user_prompt","text":"hello"}"#,
+        );
+
+        transport
+            .dispatch_targeted_command(Some(&handle), &command)
+            .expect("event-stream dispatch should queue raw JSON");
+
+        let commands = handle.debug_drain_outbox();
+        assert_eq!(commands, vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]);
+    }
+}

@@ -103,9 +103,10 @@ struct SettingsPanelModel {
 #[cfg(not(target_arch = "wasm32"))]
 fn dispatch_targeted_command(
     transport: &CommandTransport,
+    event_stream: Option<&EventStreamHandle>,
     command: &TargetedCommand,
 ) -> Result<(), String> {
-    transport.dispatch_targeted_command(command)
+    transport.dispatch_targeted_command(event_stream, command)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -916,7 +917,7 @@ pub fn App() -> Element {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 #[cfg(not(target_arch = "wasm32"))]
                                 if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, &command);
+                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                 }
                                 #[cfg(target_arch = "wasm32")]
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -947,7 +948,7 @@ pub fn App() -> Element {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 #[cfg(not(target_arch = "wasm32"))]
                                 if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, &command);
+                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                 }
                                 #[cfg(target_arch = "wasm32")]
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -986,7 +987,7 @@ pub fn App() -> Element {
                                     let command = controller.write().submit_prompt_command();
                                     #[cfg(not(target_arch = "wasm32"))]
                                     if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                        let _ = dispatch_targeted_command(&transport, &command);
+                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                     }
                                     #[cfg(target_arch = "wasm32")]
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -1036,7 +1037,7 @@ pub fn App() -> Element {
                                                 if let (Some(command), Some(transport)) =
                                                     (command, command_transport.read().clone())
                                                 {
-                                                    let _ = dispatch_targeted_command(&transport, &command);
+                                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                                 }
                                                 #[cfg(target_arch = "wasm32")]
                                                 if let (Some(command), Some(stream)) =
@@ -1058,7 +1059,7 @@ pub fn App() -> Element {
                                                 if let Some(command) = controller.read().cancel_command()
                                                     && let Some(transport) = command_transport.read().clone()
                                                 {
-                                                    let _ = dispatch_targeted_command(&transport, &command);
+                                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                                 }
                                                 #[cfg(target_arch = "wasm32")]
                                                 if let Some(command) = controller.read().cancel_command()
@@ -1092,7 +1093,7 @@ pub fn App() -> Element {
                                 let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                 #[cfg(not(target_arch = "wasm32"))]
                                 if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, &command);
+                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
                                 }
                                 #[cfg(target_arch = "wasm32")]
                                 if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -1229,7 +1230,7 @@ pub fn App() -> Element {
                                                                             };
                                                                             let target = controller.read().current_command_target();
                                                                             let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                            dispatch_targeted_command(&transport, &command)
+                                                                            dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
                                                                                 crate::bootstrap::DesktopAuthAction::Login,
@@ -1285,7 +1286,7 @@ pub fn App() -> Element {
                                                                             };
                                                                             let target = controller.read().current_command_target();
                                                                             let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                            dispatch_targeted_command(&transport, &command)
+                                                                            dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
                                                                                 crate::bootstrap::DesktopAuthAction::Logout,
@@ -1376,7 +1377,7 @@ pub fn App() -> Element {
                                                                     };
                                                                     let target = controller.read().current_command_target();
                                                                     let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
-                                                                    dispatch_targeted_command(&transport, &command)
+                                                                    dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                 } else {
                                                                     controller.write().run_settings_auth_action(
                                                                         crate::bootstrap::DesktopAuthAction::Unlock,
@@ -3016,6 +3017,7 @@ mod tests {
     };
     use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use crate::controller::{AppController, SessionMode};
+    use crate::event_stream::EventStreamHandle;
     use crate::runtime_types::TargetedCommand;
     use crate::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
@@ -3863,9 +3865,30 @@ mod tests {
             crate::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
         );
 
-        let result = dispatch_targeted_command(&transport, &command);
+        let result = dispatch_targeted_command(&transport, None, &command);
 
         assert!(result.is_err());
+    }
+
+    #[test]
+    fn dispatch_targeted_command_supports_websocket_transport_for_remote_control() {
+        let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
+        let command = TargetedCommand::legacy_json(
+            crate::runtime_types::CommandTarget {
+                session_key: "remote:session_01HVDEMO".into(),
+                dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+            },
+            r#"{"type":"user_prompt","text":"hello"}"#,
+        );
+        let transport = crate::command_transport::CommandTransport::EventStream;
+
+        let result = dispatch_targeted_command(&transport, Some(&handle), &command);
+
+        assert!(result.is_ok());
+        assert_eq!(
+            handle.debug_drain_outbox(),
+            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+        );
     }
 
     #[test]

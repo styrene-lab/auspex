@@ -437,7 +437,8 @@ pub async fn bootstrap_from_http_state_async(
         .filter(|path| !path.is_empty())
         .map(IpcCommandClient::new)
         .filter(|client| client.is_available())
-        .map(CommandTransport::Ipc);
+        .map(CommandTransport::Ipc)
+        .or(Some(CommandTransport::EventStream));
     let note = startup
         .as_ref()
         .map(|startup| {

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0-rc.6] - 2026-04-07
+
+### Changed
+- Embedded/local Auspex control remains IPC-only, but remote Omegon attachments temporarily retain limited websocket command dispatch until Styrene RPC replaces that path.
+
+### Fixed
+- Release-candidate transport policy now matches the intended boundary: embedded Omegon uses IPC, while remote web-compat control still works over websocket during the transition.
+
 ## [0.1.0-rc.5] - 2026-04-07
 
 ### Changed
