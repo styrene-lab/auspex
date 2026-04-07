@@ -551,6 +551,81 @@ A widget should be hideable, movable, or collapsible without changing the underl
 
 This preserves the rule from [[screen-bindings]]: one underlying state/cache, multiple projections.
 
+## Standard-display design target
+
+For standard display targets, Auspex should aim for a **live operator cockpit HUD**.
+
+This is the intended feel for:
+- desktop windows with normal or wide aspect ratios
+- large attached monitors
+- standard web targets with enough horizontal surface to support concurrent instrumentation
+
+### What this means
+
+The cockpit HUD target implies:
+- a persistent global operational frame rather than page-like screen transitions
+- bounded instrument panels layered on a stable structural field
+- deployment and activity truth remaining globally legible
+- dense but disciplined readouts
+- state-driven liveness across the shell
+- explicit ambient vs focal vs interruptive information hierarchy
+
+### What this does not mean
+
+The cockpit target does **not** justify:
+- cinematic concept-art dashboards
+- decorative rings or gauges without operator meaning
+- glow-heavy sci-fi ornament saturation
+- unreadably tiny labels used only for aesthetic density
+- motion that exists for spectacle rather than state meaning
+
+### Composition rule
+
+The standard-display cockpit should always preserve the global truth spine:
+- `AuspexPanel`
+- `AttachedOmegonPanel`
+- `DeploymentPanel`
+- `ActivityPanel`
+
+Secondary investigative and task surfaces (transcript, audit, work, graph, telemetry, dispatch detail) should compose around that spine instead of replacing it entirely.
+
+### Liveness rule
+
+The shell should feel live because:
+- actor states change
+- routes and authorities change
+- lifecycle/freshness changes occur
+- dispatches appear, progress, and complete
+- telemetry and transcript state update
+
+It should **not** feel live because of ambient decorative animation alone.
+
+### Visual guardrails for standard displays
+
+The standard-display cockpit should favor:
+- dark structural field
+- restrained dot-grid / seam-grid substrate
+- crisp panel boundaries
+- compact readout rails
+- modest accent colors for meaning
+- selective instrumentation
+- text-first summaries augmented by geometry where justified
+
+It should avoid:
+- full-screen illustrative HUD art
+- every panel becoming a spectacle widget
+- replacing textual truth with purely graphical metaphors
+- flattening all surfaces into equally bright visual noise
+
+### Relationship to mobile and reduced displays
+
+Mobile and reduced-surface layouts should inherit this same semantic system but trim it down through the reduced-surface policy.
+
+Meaning:
+- the standard-display cockpit is the full expression
+- reduced displays are projections of the same system
+- mobile is not a separate aesthetic product line
+
 ## Reduced-surface policy
 
 Reduced display surface should default to reduced cognitive surface.
