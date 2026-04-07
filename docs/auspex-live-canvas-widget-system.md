@@ -1338,6 +1338,97 @@ If Auspex does take over the focus host automatically, it should preserve enough
   - operator-selectable: yes
   - automatic takeover: no
 
+### Selection model
+
+The cockpit needs one coherent selection model connecting:
+- top-spine preview chips
+- contextual-detail widgets
+- focus-host occupants
+- transcript/audit focus actions
+
+Without this, the shell remains a collection of arranged surfaces instead of a coordinated instrument panel.
+
+#### Canonical selection kinds
+
+Selections should be modeled semantically, not as raw widget-local state.
+
+Representative selection kinds:
+- `SelectedDeploymentInstance(instance_id)`
+- `SelectedActivityActor(actor_id)`
+- `SelectedAuditEntry(block_id)`
+- `SelectedTranscriptTarget(target)`
+- `SelectedGraphNode(node_id)`
+- `SelectedRoute(route_id)`
+- `SelectedAuthority(instance_id | route_id)`
+
+#### Source-of-selection
+
+Every selection should also know where it came from:
+- top truth spine preview chip
+- contextual detail widget
+- focus-host content body
+- explicit workspace navigation
+- escalation/notice path
+
+This source matters for restoration, breadcrumbs, and anti-rugpull behavior.
+
+#### Selection rule
+
+A selection should not automatically imply a full focus-host takeover.
+
+Preferred effects of selection, in order:
+1. highlight the selected entity across relevant surfaces
+2. open or emphasize the matching contextual-detail section
+3. update local supporting rails / breadcrumbs
+4. offer or allow explicit jump into the matching focus-host occupant
+5. only replace the focus host immediately when the selection is clearly an action-follow drilldown
+
+#### Preview-chip behavior
+
+Top-spine preview chips should be treated as compact selectors.
+
+- clicking a `DeploymentPanel` preview chip should select the instance and open or focus related deployment detail
+- clicking an `ActivityPanel` preview chip should select the actor and open or focus related activity detail
+- preview-chip selection may enter a drilldown COP when that click is clearly the operator's intent
+- hover/focus states may reveal related detail, but should not change the focus host permanently
+
+#### Detail-widget behavior
+
+Contextual-detail widgets should respect the same selection model.
+
+Examples:
+- selecting a dispatcher option should update authority selection and related detail
+- selecting a temporary dispatch should align the activity selection and offer transcript focus
+- selecting a control-plane rollup row should align the deployment instance selection
+
+#### Focus-host behavior
+
+When a focus-host occupant is driven by a selection, it should expose:
+- what entity is selected
+- where the selection came from
+- how to return to the prior occupant or clear the drilldown
+
+#### Multi-surface alignment rule
+
+A single selection should be allowed to illuminate multiple surfaces simultaneously.
+
+Example:
+- selecting a deployment instance may
+  - highlight its preview chip in `DeploymentPanel`
+  - open matching control-plane detail in the right column
+  - optionally drive `Deployment Drilldown COP`
+
+This is desirable. Selection is shared semantic context, not a one-widget local toggle.
+
+#### Clear-selection rule
+
+The operator must be able to clear or back out of a selection cleanly.
+
+Clearing selection should:
+- remove highlight/emphasis states
+- collapse non-pinned drilldown surfaces where appropriate
+- return focus-host occupancy to the prior/default context if the current occupant was purely selection-driven
+
 #### 6. Contextual detail region
 Secondary detail and action surfaces tied to the current focus or selected entity.
 
