@@ -968,6 +968,8 @@ pub fn App() -> Element {
         }
     };
 
+    let cockpit_center_body_for_blockout = cockpit_center_body.clone();
+
     rsx! {
         div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
             div { class: "cockpit-canvas", "aria-hidden": "true" }
@@ -1031,7 +1033,9 @@ pub fn App() -> Element {
                             }
                         }
                     }
-                    div { class: "debug-shell-center", "CENTER STAGE" }
+                    div { class: "debug-shell-center-host",
+                        {render_cockpit_center_stage(workspace, cockpit_center_body_for_blockout)}
+                    }
                     div { class: "debug-shell-right-host",
                         {render_cockpit_sidecar(
                             &session,

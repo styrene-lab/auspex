@@ -2905,7 +2905,8 @@ body > * {
   }
 
   .cockpit-console-center-column,
-  .debug-shell-center {
+  .debug-shell-center,
+  .debug-shell-center-host {
     order: 2;
   }
 
@@ -3251,6 +3252,21 @@ body > * {
   overflow: hidden;
 }
 
+.debug-shell-center-host {
+  min-height: 520px;
+  min-width: 0;
+  box-sizing: border-box;
+  position: relative;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  border-radius: 24px;
+  padding: 0;
+  border: 3px solid #00b4ff;
+  background: rgba(0, 180, 255, 0.18);
+  overflow: hidden;
+}
+
 .debug-shell-left,
 .debug-shell-center,
 .debug-shell-right {
@@ -3263,6 +3279,26 @@ body > * {
   align-items: center;
   justify-content: center;
   border: 3px solid rgba(255,255,255,0.35);
+}
+
+.debug-shell-center-host .cockpit-cop-stage,
+.debug-shell-center-host .cockpit-cop-bay,
+.debug-shell-center-host .cockpit-focus-host,
+.debug-shell-center-host .cockpit-cop-body,
+.debug-shell-center-host .cockpit-cop-focus {
+  min-height: 100%;
+  width: 100%;
+  flex: 1 1 auto;
+}
+
+.debug-shell-center-host .cockpit-cop-bay {
+  border: 0;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.debug-shell-center-host .cockpit-focus-host {
+  padding: 0;
 }
 
 .debug-shell-right-host .cockpit-sidecar,
@@ -3313,6 +3349,7 @@ body > * {
 
   .debug-shell-left-host,
   .debug-shell-center,
+  .debug-shell-center-host,
   .debug-shell-right,
   .debug-shell-right-host {
     width: 100%;
