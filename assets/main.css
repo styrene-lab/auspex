@@ -2861,14 +2861,14 @@ body > * {
     row-gap: 0.75rem;
   }
 
-  .cockpit-console-center-column,
-  .debug-shell-center {
-    order: 1;
-  }
-
   .cockpit-console-side-left,
   .debug-shell-left,
   .debug-shell-left-host {
+    order: 1;
+  }
+
+  .cockpit-console-center-column,
+  .debug-shell-center {
     order: 2;
   }
 
