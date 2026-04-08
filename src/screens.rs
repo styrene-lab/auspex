@@ -247,13 +247,13 @@ pub fn SessionScreen(
     let shell_expanded = should_expand_session_harness_widget(&data);
 
     rsx! {
-        div { class: "screen screen-session",
+        div { class: "screen screen-session right-rail",
+            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection, on_clear_selection)}
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
-            {render_control_plane_widget(&data, control_plane_expanded)}
-            {render_provider_status_widget(&data, provider_expanded)}
-            {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection, on_clear_selection)}
             {render_session_stats_widget(&data, session_detail_expanded)}
+            {render_provider_status_widget(&data, provider_expanded)}
+            {render_control_plane_widget(&data, control_plane_expanded)}
             {render_session_harness_widget(&data, shell_expanded)}
         }
     }
@@ -660,31 +660,15 @@ fn render_session_stats_widget(data: &SessionData, expanded: bool) -> Element {
 }
 
 fn should_expand_session_harness_widget(data: &SessionData) -> bool {
-    data.memory_warning.is_some()
+    data.memory_warning.is_some() && !data.memory_warning.as_deref().unwrap_or_default().is_empty()
 }
 
 fn should_expand_provider_status_widget(data: &SessionData) -> bool {
-    if data.providers.is_empty()
-        || data
+    !data.providers.is_empty()
+        && data
             .providers
             .iter()
             .any(|provider| !provider.authenticated)
-    {
-        return true;
-    }
-
-    data.telemetry
-        .latest_provider_telemetry
-        .as_ref()
-        .is_some_and(|telemetry| {
-            telemetry.retry_after_secs.is_some()
-                || telemetry
-                    .requests_remaining
-                    .is_some_and(|remaining| remaining == 0)
-                || telemetry
-                    .tokens_remaining
-                    .is_some_and(|remaining| remaining == 0)
-        })
 }
 
 fn should_expand_control_plane_widget(
@@ -705,16 +689,6 @@ fn should_expand_control_plane_widget(
         .as_deref()
         .unwrap_or_default()
         .is_empty()
-        || control_plane
-            .startup_url
-            .as_deref()
-            .unwrap_or_default()
-            .is_empty()
-        || control_plane
-            .ready_url
-            .as_deref()
-            .unwrap_or_default()
-            .is_empty()
         || data.telemetry.lifecycle.counts.stale > 0
         || data.telemetry.lifecycle.counts.lost > 0
         || data.telemetry.lifecycle.counts.abandoned > 0
