@@ -251,9 +251,7 @@ pub fn SessionScreen(
             {render_selected_entity_widget(&data, selected_entity.as_ref(), on_transcript_focus, on_promote_selection, on_clear_selection)}
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
-            if session_detail_expanded {
-                {render_session_stats_widget(&data, true)}
-            }
+            {render_session_stats_widget(&data, true)}
             if provider_expanded {
                 {render_provider_status_widget(&data, true)}
             }
