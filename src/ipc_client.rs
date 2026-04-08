@@ -90,10 +90,6 @@ impl IpcEventStreamHandle {
             socket_path: socket_path.into(),
         }
     }
-
-    pub fn socket_path(&self) -> &str {
-        &self.socket_path
-    }
 }
 
 #[allow(dead_code)]
@@ -117,10 +113,6 @@ impl IpcCommandClient {
 
     pub fn is_available(&self) -> bool {
         Path::new(&self.socket_path).exists()
-    }
-
-    pub fn socket_path(&self) -> &str {
-        &self.socket_path
     }
 
     pub async fn submit_prompt(&self, prompt: &str) -> Result<bool, String> {
@@ -216,14 +208,14 @@ async fn run_ipc_event_stream(handle: IpcEventStreamHandle) {
                             Err(error) => {
                                 eprintln!(
                                     "Ignoring malformed IPC event frame from {}: {error}",
-                                    handle.socket_path()
+                                    &handle.socket_path
                                 );
                             }
                         },
                         Err(error) => {
                             eprintln!(
                                 "IPC event stream disconnected from {}: {error}",
-                                handle.socket_path()
+                                &handle.socket_path
                             );
                             break;
                         }
@@ -233,7 +225,7 @@ async fn run_ipc_event_stream(handle: IpcEventStreamHandle) {
             Err(error) => {
                 eprintln!(
                     "IPC event stream attach failed for {}: {error}",
-                    handle.socket_path()
+                    &handle.socket_path
                 );
             }
         }

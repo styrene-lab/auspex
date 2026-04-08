@@ -19,7 +19,7 @@ use crate::instance_registry::{
     default_instance_registry_path, load_or_default as load_registry_or_default,
 };
 #[cfg(not(target_arch = "wasm32"))]
-use crate::ipc_client::{IpcCommandClient, IpcEventStreamHandle, spawn_ipc_event_stream};
+use crate::ipc_client::{IpcCommandClient, IpcEventStreamHandle};
 use crate::omegon_control::OmegonStartupInfo;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -458,9 +458,7 @@ pub async fn bootstrap_from_http_state_async(
         .map(IpcCommandClient::new)
         .filter(|client| client.is_available());
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_event_stream = ipc_client
-        .as_ref()
-        .map(|client| spawn_ipc_event_stream(client.socket_path().to_string()));
+    let ipc_event_stream = None;
     #[cfg(not(target_arch = "wasm32"))]
     let command_transport = ipc_client
         .map(CommandTransport::Ipc)
@@ -472,7 +470,7 @@ pub async fn bootstrap_from_http_state_async(
                 .as_ref()
                 .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
             {
-                "Control via IPC; websocket event stream active"
+                "Control via IPC; websocket remains the read/event channel"
             } else {
                 "Control via degraded websocket bridge until Styrene RPC is established"
             };
