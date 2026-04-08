@@ -2848,7 +2848,12 @@ body > * {
   }
 }
 
-@media (max-width: 1180px), (max-aspect-ratio: 5/4), (max-height: 820px) {
+@media (max-width: 980px), (max-aspect-ratio: 4/5) {
+  .shell {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
   .cockpit-spine,
   .cockpit-console-shell,
   .debug-shell-main {
@@ -2877,6 +2882,7 @@ body > * {
     order: 3;
   }
 
+  .cockpit-cop-bay,
   .cockpit-support-bay,
   .cockpit-contextual-detail {
     max-height: none;
@@ -3173,5 +3179,32 @@ body > * {
 .debug-shell-right {
   background: rgba(120, 255, 120, 0.25);
   border-color: #58ff58;
+}
+
+@media (max-width: 980px), (max-aspect-ratio: 4/5) {
+  .debug-shell-main {
+    width: 100%;
+    grid-template-columns: minmax(0, 1fr);
+    row-gap: 0.75rem;
+    min-height: auto;
+  }
+
+  .debug-shell-left-host,
+  .debug-shell-center,
+  .debug-shell-right {
+    width: 100%;
+  }
+
+  .debug-shell-left-host {
+    order: 1;
+  }
+
+  .debug-shell-center {
+    order: 2;
+  }
+
+  .debug-shell-right {
+    order: 3;
+  }
 }
 
