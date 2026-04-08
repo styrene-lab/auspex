@@ -926,6 +926,7 @@ pub fn App() -> Element {
                     session: &controller.read().session_data(),
                     transcript: controller.read().transcript(),
                     messages: controller.read().messages(),
+                    scenario: controller.read().scenario(),
                     auto_expand: controller.read().transcript_auto_expand(),
                     is_run_active: controller.read().is_run_active(),
                     can_submit: controller.read().can_submit(),
@@ -1836,9 +1837,10 @@ fn render_transcript(
     transcript: &TranscriptData,
     messages: &[crate::fixtures::ChatMessage],
     auto_expand: bool,
+    scenario: crate::fixtures::DevScenario,
 ) -> Element {
     if let Some(empty_state) =
-        build_chat_empty_state_model(summary, work, session, transcript, messages)
+        build_chat_empty_state_model(summary, work, session, transcript, messages, scenario)
     {
         rsx! {
             section {
@@ -2064,8 +2066,17 @@ fn build_chat_empty_state_model(
     session: &crate::fixtures::SessionData,
     transcript: &TranscriptData,
     messages: &[crate::fixtures::ChatMessage],
+    scenario: crate::fixtures::DevScenario,
 ) -> Option<ChatEmptyStateModel> {
     if !transcript.turns.is_empty() {
+        return None;
+    }
+
+    let allow_starter_guidance = matches!(
+        scenario,
+        crate::fixtures::DevScenario::Ready | crate::fixtures::DevScenario::LocalDevQuiet
+    );
+    if !allow_starter_guidance {
         return None;
     }
 
@@ -2321,6 +2332,7 @@ struct ChatCopHostModel<'a> {
     session: &'a crate::fixtures::SessionData,
     transcript: &'a TranscriptData,
     messages: &'a [crate::fixtures::ChatMessage],
+    scenario: crate::fixtures::DevScenario,
     auto_expand: bool,
     is_run_active: bool,
     can_submit: bool,
@@ -3097,6 +3109,7 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         session,
         transcript,
         messages,
+        scenario,
         auto_expand,
         is_run_active,
         can_submit,
@@ -3118,7 +3131,7 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                 {render_chat_status_banner(summary, session, is_run_active, can_submit)}
             }
             main { class: "transcript cockpit-transcript cockpit-cop-focus",
-                {render_transcript(summary, work, session, transcript, messages, auto_expand)}
+                {render_transcript(summary, work, session, transcript, messages, auto_expand, scenario)}
                 div { id: "transcript-end" }
             }
         }
