@@ -2840,7 +2840,8 @@ body > * {
 }
 
 @media (max-width: 1500px) {
-  .cockpit-console-shell {
+  .cockpit-console-shell,
+  .debug-shell-main {
     grid-template-columns: minmax(190px, 240px) minmax(0, 1fr) minmax(210px, 280px);
     width: 100%;
     column-gap: 0.6rem;
@@ -2849,24 +2850,30 @@ body > * {
 
 @media (max-width: 1180px) {
   .cockpit-spine,
-  .cockpit-console-shell {
+  .cockpit-console-shell,
+  .debug-shell-main {
     width: 100%;
   }
 
-  .cockpit-console-shell {
+  .cockpit-console-shell,
+  .debug-shell-main {
     grid-template-columns: minmax(0, 1fr);
     row-gap: 0.75rem;
   }
 
-  .cockpit-console-center-column {
+  .cockpit-console-center-column,
+  .debug-shell-center {
     order: 1;
   }
 
-  .cockpit-console-side-left {
+  .cockpit-console-side-left,
+  .debug-shell-left,
+  .debug-shell-left-host {
     order: 2;
   }
 
-  .cockpit-console-side-right {
+  .cockpit-console-side-right,
+  .debug-shell-right {
     order: 3;
   }
 
@@ -2892,6 +2899,13 @@ body > * {
   .cockpit-top-rail .cockpit-panel:nth-child(3),
   .cockpit-top-rail .cockpit-panel:nth-child(4) {
     justify-self: stretch;
+  }
+
+  .debug-shell-left,
+  .debug-shell-center,
+  .debug-shell-right,
+  .debug-shell-left-host {
+    min-height: 260px;
   }
 }
 
