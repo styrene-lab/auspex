@@ -2849,6 +2849,22 @@ body > * {
 }
 
 @media (max-width: 980px), (max-aspect-ratio: 4/5) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  body > * {
+    height: auto;
+    min-height: 100%;
+  }
+
   .shell {
     position: relative;
     height: auto;
