@@ -2848,7 +2848,7 @@ body > * {
   }
 }
 
-@media (max-width: 1180px) {
+@media (max-width: 1180px), (max-aspect-ratio: 5/4) {
   .cockpit-spine,
   .cockpit-console-shell,
   .debug-shell-main {
