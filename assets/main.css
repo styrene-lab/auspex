@@ -2991,11 +2991,23 @@ body > * {
 }
 
 .widget-disclosure-summary {
+  width: 100%;
   display: flex;
   align-items: center;
+  justify-content: space-between;
   list-style: none;
   cursor: pointer;
   padding: 0.8rem 0.9rem;
+  margin: 0;
+  border: 0;
+  border-radius: inherit;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  appearance: none;
+  -webkit-appearance: none;
+  box-shadow: none;
 }
 
 .widget-disclosure-summary::-webkit-details-marker {
@@ -3009,7 +3021,7 @@ body > * {
   font-weight: 700;
 }
 
-.widget-disclosure[open] .widget-disclosure-summary::after {
+.widget-disclosure-summary[aria-expanded="true"]::after {
   content: "−";
 }
 
