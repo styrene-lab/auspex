@@ -987,7 +987,50 @@ pub fn App() -> Element {
             if SHELL_BLOCKOUT_MODE {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
                 div { class: "debug-shell-main",
-                    div { class: "debug-shell-left", "LEFT COLUMN" }
+                    div { class: "cockpit-console-side cockpit-console-side-left debug-shell-left-host",
+                        article { class: "cockpit-panel cockpit-panel-auspex cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
+                            for line in &cockpit.auspex.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                        }
+
+                        article { class: "cockpit-panel cockpit-panel-deployment cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
+                            for line in &cockpit.deployment.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                            if !cockpit.deployment.preview.is_empty() {
+                                div { class: "cockpit-panel-preview-rail",
+                                    for item in &cockpit.deployment.preview {
+                                        button {
+                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                            r#type: "button",
+                                            onclick: {
+                                                let key = item.key.clone();
+                                                move |_| {
+                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                                        selected_cockpit_entity.set(None);
+                                                    } else {
+                                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                                    }
+                                                }
+                                            },
+                                            "{item.label}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
                     div { class: "debug-shell-center", "CENTER STAGE" }
                     div { class: "debug-shell-right", "RIGHT COLUMN" }
                 }
