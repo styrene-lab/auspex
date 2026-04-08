@@ -243,7 +243,6 @@ pub fn SessionScreen(
     let control_plane_expanded =
         should_expand_control_plane_widget(&data, selected_entity.as_ref());
     let provider_expanded = should_expand_provider_status_widget(&data);
-    let session_detail_expanded = should_expand_session_stats_widget(&data);
     let shell_expanded = should_expand_session_harness_widget(&data);
 
     rsx! {
@@ -650,16 +649,25 @@ fn render_session_stats_widget(data: &SessionData, expanded: bool) -> Element {
         "Session detail",
         expanded,
         rsx! {
-            div { class: "kv-grid widget-kv-grid",
-                {kv_row("Turns", &data.session_turns.to_string())}
-                {kv_row("Tool calls", &data.session_tool_calls.to_string())}
-                {kv_row("Compactions", &data.session_compactions.to_string())}
-                if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
-                    {kv_row("Context", &context_usage)}
+            div { class: "progress-grid progress-grid-tight",
+                div { class: "progress-card progress-card-emphasis",
+                    span { class: "progress-label", "Turns" }
+                    span { class: "progress-value", "{data.session_turns}" }
                 }
-                if data.active_delegate_count > 0 {
-                    {kv_row("Active delegates", &data.active_delegate_count.to_string())}
+                div { class: "progress-card progress-card-emphasis",
+                    span { class: "progress-label", "Tool calls" }
+                    span { class: "progress-value", "{data.session_tool_calls}" }
                 }
+                div { class: "progress-card progress-card-emphasis",
+                    span { class: "progress-label", "Compactions" }
+                    span { class: "progress-value", "{data.session_compactions}" }
+                }
+            }
+            if let Some(context_usage) = format_context_usage(data.context_tokens, data.context_window) {
+                p { class: "cockpit-panel-secondary", "Context {context_usage}" }
+            }
+            if data.active_delegate_count > 0 {
+                p { class: "cockpit-panel-secondary", "{data.active_delegate_count} active delegates" }
             }
         },
     )
