@@ -2672,15 +2672,34 @@ body > * {
   min-height: 0;
 }
 
-.cockpit-layout {
+.cockpit-stage-shell {
   position: relative;
   z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 0.42rem;
-  width: min(100%, 1380px);
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  gap: 0.55rem;
+  width: min(100%, 1480px);
   min-height: 0;
-  align-items: stretch;
+}
+
+.cockpit-cop-stage {
+  position: relative;
+  flex: 0 1 980px;
+  max-width: 980px;
+  min-width: 0;
+  display: flex;
+  justify-content: center;
+  min-height: 0;
+}
+
+.cockpit-sidecar {
+  position: relative;
+  flex: 0 0 370px;
+  width: 370px;
+  min-width: 0;
+  min-height: 0;
+  padding-top: 0.45rem;
 }
 
 .cockpit-layout-readiness {
@@ -2700,6 +2719,15 @@ body > * {
   overflow: hidden;
 }
 
+.cockpit-cop-bay {
+  width: 100%;
+  min-height: min(78vh, 920px);
+}
+
+.cockpit-support-bay {
+  width: 100%;
+}
+
 .cockpit-focus-host,
 .cockpit-contextual-detail {
   min-height: 0;
@@ -2714,6 +2742,7 @@ body > * {
 .cockpit-contextual-detail {
   padding: 0.55rem;
   overflow: auto;
+  max-height: min(76vh, 920px);
 }
 
 .cockpit-workspace-nav {
@@ -2758,6 +2787,23 @@ body > * {
   margin-top: 0.7rem;
 }
 
+@media (max-width: 1320px) {
+  .cockpit-stage-shell {
+    width: 100%;
+    gap: 0.42rem;
+  }
+
+  .cockpit-cop-stage {
+    flex-basis: 100%;
+    max-width: none;
+  }
+
+  .cockpit-sidecar {
+    flex-basis: 340px;
+    width: 340px;
+  }
+}
+
 @media (max-width: 1180px) {
   .cockpit-spine {
     grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.6fr);
@@ -2769,9 +2815,20 @@ body > * {
     grid-column: span 1;
   }
 
-  .cockpit-layout {
-    grid-template-columns: minmax(0, 1fr);
+  .cockpit-stage-shell {
+    flex-direction: column;
+    align-items: stretch;
     width: 100%;
+  }
+
+  .cockpit-sidecar {
+    width: 100%;
+    flex: 0 0 auto;
+    padding-top: 0;
+  }
+
+  .cockpit-contextual-detail {
+    max-height: none;
   }
 }
 
@@ -2973,7 +3030,7 @@ body > * {
   position: absolute;
   left: 50%;
   top: 7.1rem;
-  width: min(1380px, calc(100% - 0.7rem));
+  width: min(1480px, calc(100% - 0.7rem));
   height: calc(100% - 7.45rem);
   transform: translateX(-50%);
   border-radius: 28px;

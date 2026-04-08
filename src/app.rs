@@ -870,6 +870,7 @@ pub fn App() -> Element {
                                     "{item.label}"
                                 }
                             }
+                            }
                         }
                     }
                 }
@@ -903,8 +904,9 @@ pub fn App() -> Element {
                 }
             } else {
                 div { class: "cockpit-main-frame",
-                    div { class: "cockpit-layout",
-                        section { class: "cockpit-cop-bay cockpit-focus-host",
+                    div { class: "cockpit-stage-shell",
+                        section { class: "cockpit-cop-stage" ,
+                            section { class: "cockpit-cop-bay cockpit-focus-host",
                         nav { class: "cockpit-workspace-nav",
                             button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
                             button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
@@ -1051,7 +1053,10 @@ pub fn App() -> Element {
                         }
                     }
 
-                        aside { class: "cockpit-support-bay cockpit-contextual-detail",
+                        }
+
+                        aside { class: "cockpit-sidecar",
+                            aside { class: "cockpit-support-bay cockpit-contextual-detail",
                         SessionScreen {
                             data: controller.read().session_data(),
                             selected_entity: selected_cockpit_entity.read().clone(),
