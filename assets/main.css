@@ -135,7 +135,7 @@ body > * {
   height: 100dvh;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 0.35rem;
+  padding: 1.5rem 0.35rem 0.35rem;
   gap: 0.35rem;
 }
 
