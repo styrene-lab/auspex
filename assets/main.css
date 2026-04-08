@@ -2910,14 +2910,18 @@ body > * {
   }
 
   .cockpit-console-side-right,
-  .debug-shell-right {
+  .debug-shell-right,
+  .debug-shell-right-host {
     order: 3;
   }
 
-  .cockpit-cop-bay,
-  .cockpit-support-bay,
-  .cockpit-contextual-detail {
-    max-height: none;
+  .debug-shell-right-host,
+  .debug-shell-right-host .cockpit-sidecar,
+  .debug-shell-right-host .cockpit-support-bay,
+  .debug-shell-right-host .cockpit-contextual-detail,
+  .debug-shell-right-host .screen-session {
+    min-height: 0;
+    flex: 0 0 auto;
   }
 }
 
@@ -3309,7 +3313,8 @@ body > * {
 
   .debug-shell-left-host,
   .debug-shell-center,
-  .debug-shell-right {
+  .debug-shell-right,
+  .debug-shell-right-host {
     width: 100%;
   }
 
