@@ -28,6 +28,12 @@ fn main() {
 
     let bootstrap = bootstrap::bootstrap_controller_from_env();
 
+    // Embed the stylesheet at launch time so it is guaranteed to be in the
+    // HTML head before the first render — the JS-eval injection path is
+    // async and can miss the first paint or fail silently in some host modes.
+    let main_css = include_str!("../assets/main.css");
+    let custom_head = format!("<style id=\"auspex-main-css\">{main_css}</style>");
+
     let menu = Menu::new();
     let app_menu = Submenu::new("Auspex", true);
     app_menu
@@ -74,7 +80,7 @@ fn main() {
             dioxus::desktop::Config::new()
                 .with_menu(menu)
                 .with_window(window)
-                .with_as_child_window()
+                .with_custom_head(custom_head)
                 .with_on_window(|window, _| {
                     #[cfg(target_os = "macos")]
                     {
@@ -86,17 +92,9 @@ fn main() {
                         let outer_pos = window.outer_position().ok();
                         let inner_pos = window.inner_position().ok();
                         eprintln!(
-                            "[auspex-window] inner={:?} outer={:?} outer_pos={:?} inner_pos={:?} scale_factor={} fullscreen={:?}",
-                            inner,
-                            outer,
-                            outer_pos,
-                            inner_pos,
-                            window.scale_factor(),
-                            window.fullscreen().is_some(),
+                            "[auspex-window] inner={:?} outer={:?} outer_pos={:?} inner_pos={:?} scale={}",
+                            inner, outer, outer_pos, inner_pos, window.scale_factor(),
                         );
-                        let ns_window = window.ns_window();
-                        let ns_view = window.ns_view();
-                        eprintln!("[auspex-window] ns_window={:?} ns_view={:?}", ns_window, ns_view);
                     }
                 }),
         )
@@ -106,8 +104,5 @@ fn main() {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    // Web mode: Omegon is running in a container / remote host.
-    // The app bootstraps by connecting to the state endpoint served
-    // alongside this page, or from a URL provided via query string.
     dioxus::LaunchBuilder::web().launch(app::App);
 }
