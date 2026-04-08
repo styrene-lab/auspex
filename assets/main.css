@@ -2797,7 +2797,7 @@ body > * {
 .cockpit-focus-host {
   display: flex;
   flex-direction: column;
-  padding: 0.7rem 0.78rem 0.68rem;
+  padding: 0.45rem 0.52rem 0.48rem;
 }
 
 .cockpit-contextual-detail {
@@ -2811,8 +2811,8 @@ body > * {
 .cockpit-workspace-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.28rem;
-  margin-bottom: 0.28rem;
+  gap: 0.22rem;
+  margin-bottom: 0.18rem;
 }
 
 .cockpit-chat-host {
@@ -3074,7 +3074,7 @@ body > * {
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
-  gap: 0.45rem;
+  gap: 0.3rem;
 }
 
 .cockpit-cop-focus {
@@ -3083,9 +3083,9 @@ body > * {
 }
 
 .cockpit-composer-docked {
-  margin-top: 0.45rem;
+  margin-top: 0.2rem;
   border-top: 1px solid rgba(42, 57, 74, 0.58);
-  padding-top: 0.55rem;
+  padding-top: 0.35rem;
 }
 
 .focus-host-shell {
@@ -3298,7 +3298,7 @@ body > * {
 }
 
 .debug-shell-center-host .cockpit-focus-host {
-  padding: 0;
+  padding: 0.25rem 0.32rem 0.32rem;
 }
 
 .debug-shell-right-host .cockpit-sidecar,
