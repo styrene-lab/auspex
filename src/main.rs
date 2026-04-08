@@ -71,7 +71,30 @@ fn main() {
 
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
-            dioxus::desktop::Config::new().with_menu(menu).with_window(window),
+            dioxus::desktop::Config::new()
+                .with_menu(menu)
+                .with_window(window)
+                .with_on_window(|window, _| {
+                    #[cfg(target_os = "macos")]
+                    {
+                        use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
+                        let inner = window.inner_size();
+                        let outer = window.outer_size();
+                        let outer_pos = window.outer_position().ok();
+                        let inner_pos = window.inner_position().ok();
+                        eprintln!(
+                            "[auspex-window] inner={:?} outer={:?} outer_pos={:?} inner_pos={:?} scale_factor={} fullscreen={:?}",
+                            inner,
+                            outer,
+                            outer_pos,
+                            inner_pos,
+                            window.scale_factor(),
+                            window.fullscreen().is_some(),
+                        );
+                        let ns_window = window.ns_window() as *mut std::ffi::c_void;
+                        eprintln!("[auspex-window] ns_window={:?}", ns_window);
+                    }
+                }),
         )
         .with_context(bootstrap)
         .launch(app::App);

@@ -926,7 +926,6 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "shell shell-cockpit",
-            div { class: "desktop-titlebar-clearance", "aria-hidden": "true" }
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
             {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
