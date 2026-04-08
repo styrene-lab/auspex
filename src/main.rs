@@ -68,7 +68,7 @@ fn main() {
         .with_title("Auspex")
         .with_resizable(true)
         .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 920.0))
-        .with_min_inner_size(dioxus::desktop::LogicalSize::new(1100.0, 760.0));
+        .with_min_inner_size(dioxus::desktop::LogicalSize::new(700.0, 600.0));
     #[cfg(target_os = "macos")]
     let window = window
         .with_titlebar_transparent(false)
