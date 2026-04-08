@@ -135,8 +135,8 @@ body > * {
   height: 100dvh;
   box-sizing: border-box;
   overflow: hidden;
-  padding: 0.5rem;
-  gap: 0.5rem;
+  padding: 0.35rem;
+  gap: 0.35rem;
 }
 
 .top-chrome {
@@ -178,7 +178,7 @@ body > * {
   padding: 0.55rem 0.9rem;
   background: linear-gradient(180deg, #151b24 0%, #10151d 100%);
   border: 1px solid rgba(55, 70, 89, 0.42);
-  border-radius: 14px;
+  border-radius: 18px;
   box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04), 0 10px 24px rgba(0, 0, 0, 0.24);
   gap: 0.85rem;
 }
@@ -2537,6 +2537,7 @@ body > * {
 
 .shell-cockpit {
   position: relative;
+  border-radius: 22px;
   background:
     radial-gradient(circle at top, rgba(42, 180, 200, 0.08), transparent 32%),
     radial-gradient(circle at 20% 20%, rgba(110, 202, 216, 0.05), transparent 18%),
@@ -2546,6 +2547,7 @@ body > * {
 .cockpit-canvas {
   position: absolute;
   inset: 0;
+  border-radius: 22px;
   pointer-events: none;
   background-image:
     radial-gradient(circle, rgba(196, 216, 228, 0.12) 0.8px, transparent 0.8px),
@@ -2559,15 +2561,15 @@ body > * {
 .cockpit-spine {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr 2fr 1.25fr 1.5fr;
-  gap: 0.5rem;
+  grid-template-columns: 0.95fr 1.95fr 1.2fr 1.45fr;
+  gap: 0.35rem;
   z-index: 1;
 }
 
 .cockpit-panel {
   position: relative;
-  min-height: 8.75rem;
-  padding: 0.8rem 0.95rem 0.9rem;
+  min-height: 6.65rem;
+  padding: 0.58rem 0.78rem 0.68rem;
   border: 1px solid rgba(54, 81, 103, 0.58);
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(12, 17, 25, 0.94), rgba(8, 12, 18, 0.96));
@@ -2631,14 +2633,14 @@ body > * {
 }
 
 .cockpit-panel-primary-omegon .cockpit-panel-primary {
-  font-size: 1.12rem;
+  font-size: 1.06rem;
 }
 
 .cockpit-panel-secondary {
-  margin: 0.28rem 0 0;
+  margin: 0.18rem 0 0;
   color: var(--text-secondary);
-  font-size: 0.79rem;
-  line-height: 1.4;
+  font-size: 0.74rem;
+  line-height: 1.28;
 }
 
 .cockpit-panel-auspex .cockpit-panel-primary {
@@ -2658,8 +2660,8 @@ body > * {
   position: relative;
   z-index: 1;
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(340px, 0.95fr);
-  gap: 0.5rem;
+  grid-template-columns: minmax(0, 1.72fr) minmax(312px, 0.84fr);
+  gap: 0.35rem;
   min-height: 0;
 }
 
@@ -2672,7 +2674,7 @@ body > * {
 .cockpit-contextual-detail {
   min-height: 0;
   border: 1px solid rgba(54, 81, 103, 0.42);
-  border-radius: 16px;
+  border-radius: 22px;
   background: linear-gradient(180deg, rgba(10, 14, 21, 0.9), rgba(8, 11, 17, 0.96));
   box-shadow: inset 0 1px 0 rgba(255,255,255,0.03), 0 16px 36px rgba(0,0,0,0.26);
   overflow: hidden;
@@ -2681,19 +2683,19 @@ body > * {
 .cockpit-focus-host {
   display: flex;
   flex-direction: column;
-  padding: 0.75rem;
+  padding: 0.62rem;
 }
 
 .cockpit-contextual-detail {
-  padding: 0.75rem;
+  padding: 0.55rem;
   overflow: auto;
 }
 
 .cockpit-workspace-nav {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-bottom: 0.65rem;
+  gap: 0.28rem;
+  margin-bottom: 0.45rem;
 }
 
 .cockpit-chat-host {
@@ -2817,8 +2819,8 @@ body > * {
 .cockpit-panel-preview-rail {
   display: flex;
   flex-wrap: wrap;
-  gap: 0.35rem;
-  margin-top: 0.55rem;
+  gap: 0.28rem;
+  margin-top: 0.4rem;
 }
 
 .cockpit-panel-preview-chip {
@@ -2844,7 +2846,7 @@ body > * {
   flex-direction: column;
   min-height: 0;
   flex: 1 1 auto;
-  gap: 0.65rem;
+  gap: 0.45rem;
 }
 
 .cockpit-cop-focus {
@@ -2853,9 +2855,9 @@ body > * {
 }
 
 .cockpit-composer-docked {
-  margin-top: 0.75rem;
+  margin-top: 0.45rem;
   border-top: 1px solid rgba(42, 57, 74, 0.58);
-  padding-top: 0.75rem;
+  padding-top: 0.55rem;
 }
 
 .focus-host-shell {
@@ -2867,8 +2869,8 @@ body > * {
 
 .focus-host-header {
   display: grid;
-  gap: 0.2rem;
-  margin-bottom: 0.65rem;
+  gap: 0.14rem;
+  margin-bottom: 0.42rem;
 }
 
 .focus-host-kicker {
@@ -2882,7 +2884,7 @@ body > * {
 .focus-host-title {
   margin: 0;
   color: var(--text-primary);
-  font-size: 1rem;
+  font-size: 0.92rem;
 }
 
 .focus-host-body {
@@ -2893,7 +2895,7 @@ body > * {
 }
 
 .focus-host-footer {
-  margin-top: 0.75rem;
+  margin-top: 0.45rem;
 }
 
 .cockpit-panel-preview-chip {
@@ -2917,4 +2919,55 @@ body > * {
 .font-mono-ui {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+
+.shell-cockpit::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 22px;
+  pointer-events: none;
+  border: 1px solid rgba(66, 93, 118, 0.38);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.04),
+    inset 0 -40px 80px rgba(0, 0, 0, 0.18);
+}
+
+.shell-cockpit::after {
+  content: "";
+  position: absolute;
+  inset: 3.2rem 0.35rem 0.35rem;
+  border-radius: 26px 26px 22px 22px;
+  pointer-events: none;
+  border: 1px solid rgba(26, 52, 72, 0.18);
+  box-shadow: inset 0 24px 60px rgba(10, 20, 32, 0.22);
+}
+
+.cockpit-focus-host {
+  position: relative;
+}
+
+.cockpit-focus-host::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background:
+    radial-gradient(120% 120% at 50% -10%, rgba(42, 180, 200, 0.05), transparent 42%),
+    linear-gradient(180deg, rgba(255,255,255,0.015), transparent 16%);
+}
+
+.cockpit-contextual-detail {
+  position: relative;
+}
+
+.cockpit-contextual-detail::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent 14%);
 }
