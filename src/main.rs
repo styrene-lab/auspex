@@ -87,14 +87,6 @@ fn main() {
                         use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
                         window.set_titlebar_transparent(false);
                         window.set_fullsize_content_view(false);
-                        let inner = window.inner_size();
-                        let outer = window.outer_size();
-                        let outer_pos = window.outer_position().ok();
-                        let inner_pos = window.inner_position().ok();
-                        eprintln!(
-                            "[auspex-window] inner={:?} outer={:?} outer_pos={:?} inner_pos={:?} scale={}",
-                            inner, outer, outer_pos, inner_pos, window.scale_factor(),
-                        );
                     }
                 }),
         )
