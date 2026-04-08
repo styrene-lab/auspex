@@ -3101,11 +3101,63 @@ body > * {
   position: relative;
 }
 
-.cockpit-contextual-detail::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(255,255,255,0.012), transparent 14%);
+.shell-blockout-mode .cockpit-top-rail,
+.shell-blockout-mode .cockpit-console-shell,
+.shell-blockout-mode .cockpit-layout-readiness {
+  display: none !important;
+}
+
+.debug-shell-top-rail {
+  position: relative;
+  z-index: 10;
+  width: min(100%, 1640px);
+  margin: 2.5rem auto 0;
+  min-height: 84px;
+  border: 3px solid #ff4d4f;
+  background: rgba(255, 77, 79, 0.28);
+  color: #fff;
+  font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 18px;
+}
+
+.debug-shell-main {
+  position: relative;
+  z-index: 10;
+  width: min(100%, 1640px);
+  margin: 2.5rem auto 0;
+  min-height: calc(100vh - 240px);
+  display: grid;
+  grid-template-columns: minmax(200px, 250px) minmax(0, 1fr) minmax(220px, 290px);
+  gap: 0.7rem;
+}
+
+.debug-shell-left,
+.debug-shell-center,
+.debug-shell-right {
+  min-height: 520px;
+  border-radius: 24px;
+  color: #fff;
+  font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 3px solid rgba(255,255,255,0.35);
+}
+
+.debug-shell-left {
+  background: rgba(255, 140, 0, 0.35);
+  border-color: #ff8c00;
+}
+
+.debug-shell-center {
+  background: rgba(0, 180, 255, 0.28);
+  border-color: #00b4ff;
+}
+
+.debug-shell-right {
+  background: rgba(120, 255, 120, 0.25);
+  border-color: #58ff58;
 }

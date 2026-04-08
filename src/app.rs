@@ -14,6 +14,7 @@ use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = true;
+const SHELL_BLOCKOUT_MODE: bool = true;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
@@ -968,16 +969,27 @@ pub fn App() -> Element {
     };
 
     rsx! {
-        div { class: "shell shell-cockpit",
+        div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
-            if let Some(snapshot) = layout_debug_snapshot.read().as_ref() {
-                div {
-                    style: "position: fixed; top: 72px; right: 12px; z-index: 99999; max-width: 420px; background: rgba(120,0,0,0.92); color: white; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; white-space: pre-wrap;",
-                    "innerHeight: {snapshot.inner_height}\n",
-                    for item in &snapshot.boxes {
-                        "{item.selector}: top={item.top} left={item.left} w={item.width} h={item.height}\n"
+            if LAYOUT_DEBUG_ENABLED {
+                if let Some(snapshot) = layout_debug_snapshot.read().as_ref() {
+                    div {
+                        style: "position: fixed; top: 72px; right: 12px; z-index: 99999; max-width: 420px; background: rgba(120,0,0,0.92); color: white; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; white-space: pre-wrap;",
+                        "innerHeight: {snapshot.inner_height}\n",
+                        for item in &snapshot.boxes {
+                            "{item.selector}: top={item.top} left={item.left} w={item.width} h={item.height}\n"
+                        }
                     }
+                }
+            }
+
+            if SHELL_BLOCKOUT_MODE {
+                div { class: "debug-shell-top-rail", "TOP RAIL" }
+                div { class: "debug-shell-main",
+                    div { class: "debug-shell-left", "LEFT COLUMN" }
+                    div { class: "debug-shell-center", "CENTER STAGE" }
+                    div { class: "debug-shell-right", "RIGHT COLUMN" }
                 }
             }
 
