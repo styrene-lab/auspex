@@ -3101,7 +3101,6 @@ body > * {
   position: relative;
 }
 
-.shell-blockout-mode .cockpit-top-rail,
 .shell-blockout-mode .cockpit-console-shell,
 .shell-blockout-mode .cockpit-layout-readiness {
   display: none !important;
