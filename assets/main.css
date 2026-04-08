@@ -2910,6 +2910,24 @@ body > * {
   }
 }
 
+@media (max-height: 900px) {
+  .shell {
+    position: relative;
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+    overflow-y: auto;
+    overflow-x: hidden;
+    grid-template-rows: auto auto auto;
+  }
+
+  .cockpit-cop-bay,
+  .cockpit-support-bay,
+  .cockpit-contextual-detail {
+    max-height: none;
+  }
+}
+
 @media (max-width: 760px) {
   .cockpit-top-rail,
   .cockpit-main-frame,
