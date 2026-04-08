@@ -905,6 +905,7 @@ pub fn App() -> Element {
             } else {
                 div { class: "cockpit-main-frame",
                     div { class: "cockpit-stage-shell",
+                        div { class: "cockpit-counterweight", "aria-hidden": "true" }
                         section { class: "cockpit-cop-stage" ,
                             section { class: "cockpit-cop-bay cockpit-focus-host",
                         nav { class: "cockpit-workspace-nav",

@@ -2675,18 +2675,25 @@ body > * {
 .cockpit-stage-shell {
   position: relative;
   z-index: 1;
-  display: flex;
+  display: grid;
+  grid-template-columns: minmax(260px, 370px) minmax(0, 980px) minmax(260px, 370px);
   align-items: flex-start;
-  justify-content: center;
-  gap: 0.55rem;
-  width: min(100%, 1480px);
+  column-gap: 0.55rem;
+  width: min(100%, 1760px);
   min-height: 0;
 }
 
+.cockpit-counterweight {
+  grid-column: 1;
+  min-height: 1px;
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .cockpit-cop-stage {
+  grid-column: 2;
   position: relative;
-  flex: 0 1 980px;
-  max-width: 980px;
+  width: 100%;
   min-width: 0;
   display: flex;
   justify-content: center;
@@ -2694,9 +2701,9 @@ body > * {
 }
 
 .cockpit-sidecar {
+  grid-column: 3;
   position: relative;
-  flex: 0 0 370px;
-  width: 370px;
+  width: 100%;
   min-width: 0;
   min-height: 0;
   padding-top: 0.45rem;
@@ -2787,20 +2794,11 @@ body > * {
   margin-top: 0.7rem;
 }
 
-@media (max-width: 1320px) {
+@media (max-width: 1500px) {
   .cockpit-stage-shell {
+    grid-template-columns: minmax(180px, 300px) minmax(0, 920px) minmax(180px, 340px);
     width: 100%;
-    gap: 0.42rem;
-  }
-
-  .cockpit-cop-stage {
-    flex-basis: 100%;
-    max-width: none;
-  }
-
-  .cockpit-sidecar {
-    flex-basis: 340px;
-    width: 340px;
+    column-gap: 0.42rem;
   }
 }
 
@@ -2816,14 +2814,21 @@ body > * {
   }
 
   .cockpit-stage-shell {
-    flex-direction: column;
-    align-items: stretch;
+    grid-template-columns: minmax(0, 1fr);
     width: 100%;
+  }
+
+  .cockpit-counterweight {
+    display: none;
+  }
+
+  .cockpit-cop-stage,
+  .cockpit-sidecar {
+    grid-column: 1;
   }
 
   .cockpit-sidecar {
     width: 100%;
-    flex: 0 0 auto;
     padding-top: 0;
   }
 
