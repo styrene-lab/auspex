@@ -2748,6 +2748,9 @@ body > * {
   width: 100%;
   min-width: 0;
   min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   padding-top: 0;
 }
 
@@ -2780,7 +2783,10 @@ body > * {
 
 .cockpit-support-bay {
   width: 100%;
-  max-height: min(48vh, 540px);
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
 }
 
 .cockpit-focus-host,
@@ -2796,8 +2802,10 @@ body > * {
 
 .cockpit-contextual-detail {
   padding: 0.55rem;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   overflow: auto;
-  max-height: min(48vh, 540px);
 }
 
 .cockpit-workspace-nav {
@@ -3230,6 +3238,8 @@ body > * {
   box-sizing: border-box;
   position: relative;
   z-index: 11;
+  display: flex;
+  flex-direction: column;
   border-radius: 24px;
   padding: 0.25rem;
   border: 3px solid #58ff58;
@@ -3252,8 +3262,11 @@ body > * {
 
 .debug-shell-right-host .cockpit-sidecar,
 .debug-shell-right-host .cockpit-support-bay,
-.debug-shell-right-host .cockpit-contextual-detail {
+.debug-shell-right-host .cockpit-contextual-detail,
+.debug-shell-right-host .screen-session {
   min-height: 100%;
+  width: 100%;
+  flex: 1 1 auto;
 }
 
 .debug-shell-left {
