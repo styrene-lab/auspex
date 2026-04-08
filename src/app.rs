@@ -731,7 +731,7 @@ pub fn App() -> Element {
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
     let mut audit_text_filter = use_signal(String::new);
-    let mut selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
+    let selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
     let mut promoted_cockpit_entity = use_signal(|| Option::<PromotedCockpitEntity>::None);
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -789,94 +789,7 @@ pub fn App() -> Element {
         div { class: "shell shell-cockpit",
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
-            div { class: "cockpit-top-rail" ,
-                header { class: "cockpit-spine" ,
-                article { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
-                    div { class: "cockpit-panel-toprail",
-                        span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
-                        span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
-                    }
-                    p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
-                    for line in &cockpit.auspex.secondary {
-                        p { class: "cockpit-panel-secondary", "{line}" }
-                    }
-                }
-                article { class: "cockpit-panel cockpit-panel-primary-omegon", "data-surface": "panel", "data-elevation": "1",
-                    div { class: "cockpit-panel-toprail",
-                        span { class: "cockpit-panel-label", "{cockpit.attached.label}" }
-                        span { class: "cockpit-panel-tag", "{cockpit.attached.tag}" }
-                    }
-                    p { class: "cockpit-panel-primary", "{cockpit.attached.primary}" }
-                    for line in &cockpit.attached.secondary {
-                        p { class: "cockpit-panel-secondary", "{line}" }
-                    }
-                }
-                article { class: "cockpit-panel cockpit-panel-deployment", "data-surface": "panel", "data-elevation": "1",
-                    div { class: "cockpit-panel-toprail",
-                        span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
-                        span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
-                    }
-                    p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
-                    for line in &cockpit.deployment.secondary {
-                        p { class: "cockpit-panel-secondary", "{line}" }
-                    }
-                    if !cockpit.deployment.preview.is_empty() {
-                        div { class: "cockpit-panel-preview-rail",
-                            for item in &cockpit.deployment.preview {
-                                button {
-                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
-                                    r#type: "button",
-                                    onclick: {
-                                        let key = item.key.clone();
-                                        move |_| {
-                                        if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
-                                            selected_cockpit_entity.set(None);
-                                        } else {
-                                            selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
-                                        }
-                                    }
-                                    },
-                                    "{item.label}"
-                                }
-                            }
-                        }
-                    }
-                }
-                article { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
-                    div { class: "cockpit-panel-toprail",
-                        span { class: "cockpit-panel-label", "{cockpit.activity.label}" }
-                        span { class: "cockpit-panel-tag", "{cockpit.activity.tag}" }
-                    }
-                    p { class: "cockpit-panel-primary", "{cockpit.activity.primary}" }
-                    for line in &cockpit.activity.secondary {
-                        p { class: "cockpit-panel-secondary", "{line}" }
-                    }
-                    if !cockpit.activity.preview.is_empty() {
-                        div { class: "cockpit-panel-preview-rail",
-                            for item in &cockpit.activity.preview {
-                                button {
-                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
-                                    r#type: "button",
-                                    onclick: {
-                                        let key = item.key.clone();
-                                        move |_| {
-                                        if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
-                                            selected_cockpit_entity.set(None);
-                                        } else {
-                                            selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
-                                        }
-                                    }
-                                    },
-                                    "{item.label}"
-                                }
-                            }
-                            }
-                        }
-                    }
-                }
-            }
-
-            }
+            {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
 
             if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
                 div { class: "cockpit-layout cockpit-layout-readiness",
@@ -1056,33 +969,32 @@ pub fn App() -> Element {
 
                         }
 
-                        aside { class: "cockpit-sidecar",
-                            aside { class: "cockpit-support-bay cockpit-contextual-detail",
-                        SessionScreen {
-                            data: controller.read().session_data(),
-                            selected_entity: selected_cockpit_entity.read().clone(),
-                            on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                                #[cfg(not(target_arch = "wasm32"))]
-                                if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                }
-                                #[cfg(target_arch = "wasm32")]
-                                if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                    dispatch_targeted_command(&stream, &command);
-                                }
-                            })),
-                            on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                                focus_transcript_target(controller.read().transcript(), &target);
-                            })),
-                            on_promote_selection: Some(EventHandler::new(move |selection: crate::app::SelectedCockpitEntity| {
-                                match selection {
-                                    crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::DeploymentInstance(instance_id))),
-                                    crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
-                                }
-                            }))
-                        }
-                        }
+                        {render_cockpit_sidecar(
+                            &controller.read().session_data(),
+                            selected_cockpit_entity.read().clone(),
+                            CockpitSidecarActions {
+                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                        dispatch_targeted_command(&stream, &command);
+                                    }
+                                })),
+                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                    focus_transcript_target(controller.read().transcript(), &target);
+                                })),
+                                on_promote_selection: Some(EventHandler::new(move |selection: crate::app::SelectedCockpitEntity| {
+                                    match selection {
+                                        crate::app::SelectedCockpitEntity::DeploymentInstance(instance_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::DeploymentInstance(instance_id))),
+                                        crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
+                                    }
+                                })),
+                            },
+                        )}
                     }
                 }
             }
@@ -2238,6 +2150,133 @@ struct CockpitSummaryModel {
 struct CockpitPreviewChip {
     key: String,
     label: String,
+}
+
+#[derive(Clone)]
+struct CockpitSidecarActions {
+    on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
+    on_transcript_focus: Option<EventHandler<String>>,
+    on_promote_selection: Option<EventHandler<crate::app::SelectedCockpitEntity>>,
+}
+
+fn render_cockpit_top_rail(
+    cockpit: &CockpitSummaryModel,
+    mut selected_cockpit_entity: Signal<Option<SelectedCockpitEntity>>,
+) -> Element {
+    rsx! {
+        div { class: "cockpit-top-rail",
+            header { class: "cockpit-spine",
+                article { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
+                    for line in &cockpit.auspex.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
+                }
+                article { class: "cockpit-panel cockpit-panel-primary-omegon", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.attached.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.attached.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.attached.primary}" }
+                    for line in &cockpit.attached.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
+                }
+                article { class: "cockpit-panel cockpit-panel-deployment", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
+                    for line in &cockpit.deployment.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
+                    if !cockpit.deployment.preview.is_empty() {
+                        div { class: "cockpit-panel-preview-rail",
+                            for item in &cockpit.deployment.preview {
+                                button {
+                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    r#type: "button",
+                                    onclick: {
+                                        let key = item.key.clone();
+                                        move |_| {
+                                            if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                                selected_cockpit_entity.set(None);
+                                            } else {
+                                                selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                            }
+                                        }
+                                    },
+                                    "{item.label}"
+                                }
+                            }
+                        }
+                    }
+                }
+                article { class: "cockpit-panel cockpit-panel-activity", "data-surface": "panel", "data-elevation": "1",
+                    div { class: "cockpit-panel-toprail",
+                        span { class: "cockpit-panel-label", "{cockpit.activity.label}" }
+                        span { class: "cockpit-panel-tag", "{cockpit.activity.tag}" }
+                    }
+                    p { class: "cockpit-panel-primary", "{cockpit.activity.primary}" }
+                    for line in &cockpit.activity.secondary {
+                        p { class: "cockpit-panel-secondary", "{line}" }
+                    }
+                    if !cockpit.activity.preview.is_empty() {
+                        div { class: "cockpit-panel-preview-rail",
+                            for item in &cockpit.activity.preview {
+                                button {
+                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    r#type: "button",
+                                    onclick: {
+                                        let key = item.key.clone();
+                                        move |_| {
+                                            if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
+                                                selected_cockpit_entity.set(None);
+                                            } else {
+                                                selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
+                                            }
+                                        }
+                                    },
+                                    "{item.label}"
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_cockpit_sidecar(
+    session: &crate::fixtures::SessionData,
+    selected_entity: Option<SelectedCockpitEntity>,
+    actions: CockpitSidecarActions,
+) -> Element {
+    let CockpitSidecarActions {
+        on_dispatcher_switch,
+        on_transcript_focus,
+        on_promote_selection,
+    } = actions;
+
+    rsx! {
+        aside { class: "cockpit-sidecar",
+            aside { class: "cockpit-support-bay cockpit-contextual-detail",
+                SessionScreen {
+                    data: session.clone(),
+                    selected_entity: selected_entity,
+                    on_dispatcher_switch: on_dispatcher_switch,
+                    on_transcript_focus: on_transcript_focus,
+                    on_promote_selection: on_promote_selection,
+                }
+            }
+        }
+    }
 }
 
 fn build_cockpit_summary_model(
