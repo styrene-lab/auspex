@@ -2562,7 +2562,7 @@ body > * {
   z-index: 2;
   display: flex;
   justify-content: center;
-  margin-top: 0.85rem;
+  margin-top: 0.425rem;
   padding-top: 0.35rem;
   padding-bottom: 0.08rem;
 }
@@ -2690,7 +2690,7 @@ body > * {
   column-gap: 0.7rem;
   align-items: start;
   width: min(100%, 1640px);
-  margin: 1rem auto 0;
+  margin: 0.5rem auto 0;
   min-height: 0;
   flex: 1 1 auto;
 }
