@@ -1032,7 +1032,34 @@ pub fn App() -> Element {
                         }
                     }
                     div { class: "debug-shell-center", "CENTER STAGE" }
-                    div { class: "debug-shell-right", "RIGHT COLUMN" }
+                    div { class: "debug-shell-right-host",
+                        {render_cockpit_sidecar(
+                            &session,
+                            selected_cockpit_entity.read().clone(),
+                            CockpitSidecarActions {
+                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                                    #[cfg(not(target_arch = "wasm32"))]
+                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    }
+                                    #[cfg(target_arch = "wasm32")]
+                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                                        dispatch_targeted_command(&stream, &command);
+                                    }
+                                })),
+                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                                    focus_transcript_target(controller.read().transcript(), &target);
+                                })),
+                                on_promote_selection: Some(EventHandler::new(move |entity| {
+                                    promoted_cockpit_entity.set(Some(match entity {
+                                        SelectedCockpitEntity::DeploymentInstance(instance_id) => PromotedCockpitEntity::DeploymentInstance(instance_id),
+                                        SelectedCockpitEntity::ActivityActor(task_id) => PromotedCockpitEntity::ActivityActor(task_id),
+                                    }));
+                                })),
+                            },
+                        )}
+                    }
                 }
             }
 
