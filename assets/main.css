@@ -3241,9 +3241,10 @@ body > * {
   display: flex;
   flex-direction: column;
   border-radius: 24px;
-  padding: 0.25rem;
+  padding: 0;
   border: 3px solid #58ff58;
   background: rgba(120, 255, 120, 0.18);
+  overflow: hidden;
 }
 
 .debug-shell-left,
@@ -3267,6 +3268,20 @@ body > * {
   min-height: 100%;
   width: 100%;
   flex: 1 1 auto;
+}
+
+.debug-shell-right-host .cockpit-support-bay {
+  border: 0;
+  border-radius: 20px;
+  box-shadow: none;
+}
+
+.debug-shell-right-host .cockpit-contextual-detail {
+  padding: 0;
+}
+
+.debug-shell-right-host .screen-session {
+  padding: 0;
 }
 
 .debug-shell-left {
