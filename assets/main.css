@@ -2562,6 +2562,7 @@ body > * {
   z-index: 2;
   display: flex;
   justify-content: center;
+  margin-top: 1.5rem;
   padding-top: 0.35rem;
   padding-bottom: 0.08rem;
 }
