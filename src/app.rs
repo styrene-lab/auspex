@@ -19,6 +19,32 @@ const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
+#[allow(dead_code)]
+fn ensure_main_stylesheet_once() {
+    let css_json = serde_json::to_string(MAIN_CSS).unwrap_or_else(|_| "\"\"".to_string());
+    spawn(async move {
+        let _ = document::eval(&format!(
+            r#"
+            (function() {{
+              var id = "auspex-main-css";
+              var css = {css_json};
+              if (!css) return;
+              var node = document.getElementById(id);
+              if (!node) {{
+                node = document.createElement("style");
+                node.id = id;
+                document.head.appendChild(node);
+              }}
+              if (node.textContent !== css) {{
+                node.textContent = css;
+              }}
+            }})();
+            "#
+        ))
+        .await;
+    });
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
     Chat,
@@ -755,8 +781,11 @@ pub fn App() -> Element {
         &session,
     );
 
+    use_effect(move || {
+        ensure_main_stylesheet_once();
+    });
+
     rsx! {
-        document::Style { "{MAIN_CSS}" }
         div { class: "shell shell-cockpit",
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
