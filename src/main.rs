@@ -74,10 +74,13 @@ fn main() {
             dioxus::desktop::Config::new()
                 .with_menu(menu)
                 .with_window(window)
+                .with_as_child_window()
                 .with_on_window(|window, _| {
                     #[cfg(target_os = "macos")]
                     {
                         use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
+                        window.set_titlebar_transparent(false);
+                        window.set_fullsize_content_view(false);
                         let inner = window.inner_size();
                         let outer = window.outer_size();
                         let outer_pos = window.outer_position().ok();
@@ -91,8 +94,9 @@ fn main() {
                             window.scale_factor(),
                             window.fullscreen().is_some(),
                         );
-                        let ns_window = window.ns_window() as *mut std::ffi::c_void;
-                        eprintln!("[auspex-window] ns_window={:?}", ns_window);
+                        let ns_window = window.ns_window();
+                        let ns_view = window.ns_view();
+                        eprintln!("[auspex-window] ns_window={:?} ns_view={:?}", ns_window, ns_view);
                     }
                 }),
         )
