@@ -731,7 +731,7 @@ pub fn App() -> Element {
     let mut audit_turn_filter = use_signal(String::new);
     let mut audit_kind_filter = use_signal(|| "all".to_string());
     let mut audit_text_filter = use_signal(String::new);
-    let selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
+    let mut selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
     let mut promoted_cockpit_entity = use_signal(|| Option::<PromotedCockpitEntity>::None);
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -926,6 +926,7 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "shell shell-cockpit",
+            div { class: "desktop-titlebar-clearance", "aria-hidden": "true" }
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
             {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
@@ -955,10 +956,103 @@ pub fn App() -> Element {
                     }
                 }
             } else {
-                div { class: "cockpit-main-frame",
-                    div { class: "cockpit-stage-shell",
-                        div { class: "cockpit-counterweight", "aria-hidden": "true" }
-                        {render_cockpit_center_stage(workspace, cockpit_center_body)}
+                div { class: "cockpit-console-shell",
+                    div { class: "cockpit-console-side cockpit-console-side-left",
+                        article { class: "cockpit-panel cockpit-panel-auspex cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
+                            for line in &cockpit.auspex.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                        }
+
+                        article { class: "cockpit-panel cockpit-panel-deployment cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
+                            for line in &cockpit.deployment.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                            if !cockpit.deployment.preview.is_empty() {
+                                div { class: "cockpit-panel-preview-rail",
+                                    for item in &cockpit.deployment.preview {
+                                        button {
+                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                            r#type: "button",
+                                            onclick: {
+                                                let key = item.key.clone();
+                                                move |_| {
+                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                                        selected_cockpit_entity.set(None);
+                                                    } else {
+                                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                                    }
+                                                }
+                                            },
+                                            "{item.label}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    div { class: "cockpit-console-center-column",
+                        div { class: "cockpit-main-frame",
+                            div { class: "cockpit-stage-shell cockpit-stage-shell-console",
+                                {render_cockpit_center_stage(workspace, cockpit_center_body)}
+                            }
+                        }
+                    }
+
+                    div { class: "cockpit-console-side cockpit-console-side-right",
+                        article { class: "cockpit-panel cockpit-panel-primary-omegon cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.attached.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.attached.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.attached.primary}" }
+                            for line in &cockpit.attached.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                        }
+
+                        article { class: "cockpit-panel cockpit-panel-activity cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
+                            div { class: "cockpit-panel-toprail",
+                                span { class: "cockpit-panel-label", "{cockpit.activity.label}" }
+                                span { class: "cockpit-panel-tag", "{cockpit.activity.tag}" }
+                            }
+                            p { class: "cockpit-panel-primary", "{cockpit.activity.primary}" }
+                            for line in &cockpit.activity.secondary {
+                                p { class: "cockpit-panel-secondary", "{line}" }
+                            }
+                            if !cockpit.activity.preview.is_empty() {
+                                div { class: "cockpit-panel-preview-rail",
+                                    for item in &cockpit.activity.preview {
+                                        button {
+                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                            r#type: "button",
+                                            onclick: {
+                                                let key = item.key.clone();
+                                                move |_| {
+                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
+                                                        selected_cockpit_entity.set(None);
+                                                    } else {
+                                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
+                                                    }
+                                                }
+                                            },
+                                            "{item.label}"
+                                        }
+                                    }
+                                }
+                            }
+                        }
 
                         {render_cockpit_sidecar(
                             &controller.read().session_data(),

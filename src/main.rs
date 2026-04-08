@@ -23,6 +23,8 @@ fn main() {
         Menu, MenuItem, PredefinedMenuItem, Submenu,
         accelerator::{Accelerator, Code, Modifiers},
     };
+    #[cfg(target_os = "macos")]
+    use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 
     let bootstrap = bootstrap::bootstrap_controller_from_env();
 
@@ -56,15 +58,20 @@ fn main() {
     menu.append_items(&[&app_menu, &edit_menu])
         .expect("desktop menu should build");
 
+    let window = dioxus::desktop::WindowBuilder::new()
+        .with_title("Auspex")
+        .with_resizable(true)
+        .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 920.0))
+        .with_min_inner_size(dioxus::desktop::LogicalSize::new(1100.0, 760.0));
+    #[cfg(target_os = "macos")]
+    let window = window
+        .with_titlebar_transparent(false)
+        .with_fullsize_content_view(false)
+        .with_title_hidden(false);
+
     dioxus::LaunchBuilder::desktop()
         .with_cfg(
-            dioxus::desktop::Config::new().with_menu(menu).with_window(
-                dioxus::desktop::WindowBuilder::new()
-                    .with_title("Auspex")
-                    .with_resizable(true)
-                    .with_inner_size(dioxus::desktop::LogicalSize::new(1440.0, 920.0))
-                    .with_min_inner_size(dioxus::desktop::LogicalSize::new(1100.0, 760.0)),
-            ),
+            dioxus::desktop::Config::new().with_menu(menu).with_window(window),
         )
         .with_context(bootstrap)
         .launch(app::App);
