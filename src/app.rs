@@ -722,14 +722,16 @@ pub fn App() -> Element {
         }
     });
 
-    // Auto-scroll transcript to the latest message whenever messages change.
+    // Auto-scroll the transcript pane to the latest message whenever messages change.
     use_effect(move || {
         let _ = controller.read().messages().len();
         spawn(async move {
             let _ = document::eval(
                 r#"
-                var el = document.getElementById('transcript-end');
-                if (el) el.scrollIntoView({ behavior: 'instant' });
+                var transcript = document.querySelector('.cockpit-transcript');
+                if (transcript) {
+                  transcript.scrollTop = transcript.scrollHeight;
+                }
             "#,
             )
             .await;
