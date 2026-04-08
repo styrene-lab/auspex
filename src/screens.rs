@@ -885,11 +885,7 @@ fn render_widget_section_static(
 
 #[component]
 fn WidgetSection(title: String, expanded: bool, body: Element) -> Element {
-    let mut open = use_signal(|| expanded);
-
-    use_effect(move || {
-        open.set(expanded);
-    });
+    let mut open = use_signal(|| false);
 
     let is_open = *open.read();
     let body_for_click = body.clone();
@@ -910,7 +906,10 @@ fn WidgetSection(title: String, expanded: bool, body: Element) -> Element {
                         class: "widget-disclosure-summary",
                         r#type: "button",
                         "aria-expanded": if is_open { "true" } else { "false" },
-                        onclick: move |_| open.set(!is_open),
+                        onclick: move |_| {
+                            let next = !*open.read();
+                            open.set(next);
+                        },
                         h2 { class: "screen-section-title widget-section-title", "{title_for_click}" }
                     }
                     if is_open {
