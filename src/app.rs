@@ -985,7 +985,7 @@ pub fn App() -> Element {
             }
 
             if SHELL_BLOCKOUT_MODE {
-                div { class: "debug-shell-top-rail", "TOP RAIL" }
+                {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
                 div { class: "debug-shell-main",
                     div { class: "debug-shell-left", "LEFT COLUMN" }
                     div { class: "debug-shell-center", "CENTER STAGE" }
@@ -993,7 +993,9 @@ pub fn App() -> Element {
                 }
             }
 
-            {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
+            if !SHELL_BLOCKOUT_MODE {
+                {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
+            }
 
             if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
                 div { class: "cockpit-layout cockpit-layout-readiness",
