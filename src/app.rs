@@ -926,7 +926,7 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "shell shell-cockpit",
-            div { class: "desktop-top-spacer", "aria-hidden": "true" }
+            div { class: "desktop-top-spacer", style: "background: red !important; height: 100px !important; min-height: 100px !important;", "aria-hidden": "true" }
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
             {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
