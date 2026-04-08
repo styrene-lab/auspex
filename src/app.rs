@@ -785,6 +785,145 @@ pub fn App() -> Element {
         ensure_main_stylesheet_once();
     });
 
+    let cockpit_center_body = rsx! {
+        if *workspace.read() == Workspace::Graph {
+            GraphScreen { data: controller.read().graph_data() }
+        } else if *workspace.read() == Workspace::Audit {
+            {render_audit_workspace(
+                controller.read().audit_timeline(),
+                controller.read().current_audit_session_key().as_str(),
+                AuditPanelControls {
+                    filters: AuditFilters {
+                        session_key: audit_session_filter.read().clone(),
+                        turn_query: audit_turn_filter.read().clone(),
+                        kind_key: audit_kind_filter.read().clone(),
+                        text_query: audit_text_filter.read().clone(),
+                    },
+                    on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
+                    on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
+                    on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
+                    on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
+                    on_focus_entry: EventHandler::new(move |target: String| {
+                        focus_transcript_target(controller.read().transcript(), &target);
+                    }),
+                },
+            )}
+        } else if *workspace.read() == Workspace::Session {
+            SessionScreen {
+                data: controller.read().session_data(),
+                selected_entity: selected_cockpit_entity.read().clone(),
+                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                        dispatch_targeted_command(&stream, &command);
+                    }
+                })),
+                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                    focus_transcript_target(controller.read().transcript(), &target);
+                }))
+            }
+        } else if *workspace.read() == Workspace::Scribe {
+            ScribeScreen {
+                summary: controller.read().summary().clone(),
+                data: controller.read().session_data(),
+                session_mode: controller.read().session_mode(),
+                scenario_key: controller.read().scenario().key().to_string(),
+                transcript_auto_expand: controller.read().transcript_auto_expand(),
+                on_set_session_mode: Some(EventHandler::new(move |mode: String| controller.write().switch_session_mode(mode.as_str()))),
+                on_set_scenario: Some(EventHandler::new(move |scenario: String| controller.write().select_scenario(scenario.as_str()))),
+                on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| controller.write().set_transcript_auto_expand(enabled))),
+                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
+                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
+                    #[cfg(not(target_arch = "wasm32"))]
+                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                    }
+                    #[cfg(target_arch = "wasm32")]
+                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                        dispatch_targeted_command(&stream, &command);
+                    }
+                })),
+                on_transcript_focus: Some(EventHandler::new(move |target: String| {
+                    focus_transcript_target(controller.read().transcript(), &target);
+                }))
+            }
+        } else if let Some(promoted) = promoted_cockpit_entity.read().as_ref() {
+            match promoted {
+                PromotedCockpitEntity::DeploymentInstance(instance_id) => {
+                    {render_selected_deployment_cop(
+                        &controller.read().session_data(),
+                        instance_id,
+                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
+                    )}
+                }
+                PromotedCockpitEntity::ActivityActor(task_id) => {
+                    {render_selected_activity_cop(
+                        &controller.read().session_data(),
+                        task_id,
+                        Some(EventHandler::new(move |target: String| {
+                            focus_transcript_target(controller.read().transcript(), &target);
+                        })),
+                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
+                    )}
+                }
+            }
+        } else {
+            {render_chat_cop_host(
+                ChatCopHostModel {
+                    summary: controller.read().summary(),
+                    work: &controller.read().work_data(),
+                    session: &controller.read().session_data(),
+                    transcript: controller.read().transcript(),
+                    messages: controller.read().messages(),
+                    auto_expand: controller.read().transcript_auto_expand(),
+                    is_run_active: controller.read().is_run_active(),
+                    can_submit: controller.read().can_submit(),
+                    draft: controller.read().composer().draft(),
+                    dispatch_context: &dispatch_context,
+                    provider_blocked_composer: provider_blocked_composer.as_ref(),
+                    composer_ready_notice: composer_ready_notice.read().as_deref(),
+                },
+                ChatCopHostActions {
+                    on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
+                        event.prevent_default();
+                        let command = controller.write().submit_prompt_command();
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
+                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
+                            dispatch_targeted_command(&stream, &command);
+                        }
+                    }),
+                    on_update_draft: EventHandler::new(move |value: String| controller.write().update_draft(value)),
+                    on_open_settings: EventHandler::new(move |_| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let _ = controller.write().refresh_settings_auth_status();
+                        }
+                        settings_open.set(true)
+                    }),
+                    on_cancel: EventHandler::new(move |_| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
+                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                        }
+                        #[cfg(target_arch = "wasm32")]
+                        if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
+                            dispatch_targeted_command(&stream, &command);
+                        }
+                    }),
+                },
+            )}
+        }
+    };
+
     rsx! {
         div { class: "shell shell-cockpit",
             div { class: "cockpit-canvas", "aria-hidden": "true" }
@@ -819,155 +958,7 @@ pub fn App() -> Element {
                 div { class: "cockpit-main-frame",
                     div { class: "cockpit-stage-shell",
                         div { class: "cockpit-counterweight", "aria-hidden": "true" }
-                        section { class: "cockpit-cop-stage" ,
-                            section { class: "cockpit-cop-bay cockpit-focus-host",
-                        nav { class: "cockpit-workspace-nav",
-                            button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
-                            button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
-                            button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
-                            button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
-                            button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
-                        }
-
-                        if *workspace.read() == Workspace::Graph {
-                            GraphScreen { data: controller.read().graph_data() }
-                        } else if *workspace.read() == Workspace::Audit {
-                            {render_audit_workspace(
-                                controller.read().audit_timeline(),
-                                controller.read().current_audit_session_key().as_str(),
-                                AuditPanelControls {
-                                    filters: AuditFilters {
-                                        session_key: audit_session_filter.read().clone(),
-                                        turn_query: audit_turn_filter.read().clone(),
-                                        kind_key: audit_kind_filter.read().clone(),
-                                        text_query: audit_text_filter.read().clone(),
-                                    },
-                                    on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
-                                    on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
-                                    on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
-                                    on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
-                                    on_focus_entry: EventHandler::new(move |target: String| {
-                                        focus_transcript_target(controller.read().transcript(), &target);
-                                    }),
-                                },
-                            )}
-                        } else if *workspace.read() == Workspace::Session {
-                            SessionScreen {
-                                data: controller.read().session_data(),
-                                selected_entity: selected_cockpit_entity.read().clone(),
-                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                                    #[cfg(not(target_arch = "wasm32"))]
-                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                    }
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                        dispatch_targeted_command(&stream, &command);
-                                    }
-                                })),
-                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                                    focus_transcript_target(controller.read().transcript(), &target);
-                                }))
-                            }
-                        } else if *workspace.read() == Workspace::Scribe {
-                            ScribeScreen {
-                                summary: controller.read().summary().clone(),
-                                data: controller.read().session_data(),
-                                session_mode: controller.read().session_mode(),
-                                scenario_key: controller.read().scenario().key().to_string(),
-                                transcript_auto_expand: controller.read().transcript_auto_expand(),
-                                on_set_session_mode: Some(EventHandler::new(move |mode: String| controller.write().switch_session_mode(mode.as_str()))),
-                                on_set_scenario: Some(EventHandler::new(move |scenario: String| controller.write().select_scenario(scenario.as_str()))),
-                                on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| controller.write().set_transcript_auto_expand(enabled))),
-                                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                                    #[cfg(not(target_arch = "wasm32"))]
-                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                    }
-                                    #[cfg(target_arch = "wasm32")]
-                                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                        dispatch_targeted_command(&stream, &command);
-                                    }
-                                })),
-                                on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                                    focus_transcript_target(controller.read().transcript(), &target);
-                                }))
-                            }
-                        } else if let Some(promoted) = promoted_cockpit_entity.read().as_ref() {
-                            match promoted {
-                                PromotedCockpitEntity::DeploymentInstance(instance_id) => {
-                                    {render_selected_deployment_cop(
-                                        &controller.read().session_data(),
-                                        instance_id,
-                                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
-                                    )}
-                                }
-                                PromotedCockpitEntity::ActivityActor(task_id) => {
-                                    {render_selected_activity_cop(
-                                        &controller.read().session_data(),
-                                        task_id,
-                                        Some(EventHandler::new(move |target: String| {
-                                            focus_transcript_target(controller.read().transcript(), &target);
-                                        })),
-                                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
-                                    )}
-                                }
-                            }
-                        } else {
-                            {render_chat_cop_host(
-                                ChatCopHostModel {
-                                    summary: controller.read().summary(),
-                                    work: &controller.read().work_data(),
-                                    session: &controller.read().session_data(),
-                                    transcript: controller.read().transcript(),
-                                    messages: controller.read().messages(),
-                                    auto_expand: controller.read().transcript_auto_expand(),
-                                    is_run_active: controller.read().is_run_active(),
-                                    can_submit: controller.read().can_submit(),
-                                    draft: controller.read().composer().draft(),
-                                    dispatch_context: &dispatch_context,
-                                    provider_blocked_composer: provider_blocked_composer.as_ref(),
-                                    composer_ready_notice: composer_ready_notice.read().as_deref(),
-                                },
-                                ChatCopHostActions {
-                                    on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
-                                        event.prevent_default();
-                                        let command = controller.write().submit_prompt_command();
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                        }
-                                        #[cfg(target_arch = "wasm32")]
-                                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                                            dispatch_targeted_command(&stream, &command);
-                                        }
-                                    }),
-                                    on_update_draft: EventHandler::new(move |value: String| controller.write().update_draft(value)),
-                                    on_open_settings: EventHandler::new(move |_| {
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        {
-                                            let _ = controller.write().refresh_settings_auth_status();
-                                        }
-                                        settings_open.set(true)
-                                    }),
-                                    on_cancel: EventHandler::new(move |_| {
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
-                                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                                        }
-                                        #[cfg(target_arch = "wasm32")]
-                                        if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
-                                            dispatch_targeted_command(&stream, &command);
-                                        }
-                                    }),
-                                },
-                            )}
-                        }
-                    }
-
-                        }
+                        {render_cockpit_center_stage(workspace, cockpit_center_body)}
 
                         {render_cockpit_sidecar(
                             &controller.read().session_data(),
@@ -2248,6 +2239,23 @@ fn render_cockpit_top_rail(
                         }
                     }
                 }
+            }
+        }
+    }
+}
+
+fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) -> Element {
+    rsx! {
+        section { class: "cockpit-cop-stage",
+            section { class: "cockpit-cop-bay cockpit-focus-host",
+                nav { class: "cockpit-workspace-nav",
+                    button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
+                    button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
+                    button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
+                    button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
+                    button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
+                }
+                {body}
             }
         }
     }
