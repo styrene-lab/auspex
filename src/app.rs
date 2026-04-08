@@ -13,6 +13,7 @@ use crate::runtime_types::TargetedCommand;
 use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
+const LAYOUT_DEBUG_ENABLED: bool = true;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
@@ -52,6 +53,21 @@ impl SettingsAuthAction {
             Self::Unlock => "auth.unlock",
         }
     }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayoutDebugBox {
+    selector: String,
+    top: i32,
+    left: i32,
+    width: i32,
+    height: i32,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LayoutDebugSnapshot {
+    inner_height: i32,
+    boxes: Vec<LayoutDebugBox>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -112,6 +128,26 @@ fn dispatch_targeted_command(
 #[cfg(target_arch = "wasm32")]
 fn dispatch_targeted_command(stream: &EventStreamHandle, command: &TargetedCommand) {
     stream.send_targeted_command(command);
+}
+
+fn parse_layout_debug_snapshot(raw: &str) -> Option<LayoutDebugSnapshot> {
+    let value: serde_json::Value = serde_json::from_str(raw).ok()?;
+    let inner_height = value.get("innerHeight")?.as_i64()? as i32;
+    let boxes = value
+        .get("boxes")?
+        .as_array()?
+        .iter()
+        .filter_map(|entry| {
+            Some(LayoutDebugBox {
+                selector: entry.get("selector")?.as_str()?.to_string(),
+                top: entry.get("top")?.as_i64()? as i32,
+                left: entry.get("left")?.as_i64()? as i32,
+                width: entry.get("width")?.as_i64()? as i32,
+                height: entry.get("height")?.as_i64()? as i32,
+            })
+        })
+        .collect::<Vec<_>>();
+    Some(LayoutDebugSnapshot { inner_height, boxes })
 }
 
 fn provider_command_name(name: &str) -> Option<String> {
@@ -746,6 +782,45 @@ pub fn App() -> Element {
     let provider_blocked_composer =
         build_provider_blocked_composer_model(&session, controller.read().can_submit());
 
+    let mut layout_debug_snapshot = use_signal(|| None::<LayoutDebugSnapshot>);
+
+    if LAYOUT_DEBUG_ENABLED {
+        use_effect(move || {
+            spawn(async move {
+                let script = r#"
+                    JSON.stringify({
+                      innerHeight: window.innerHeight,
+                      boxes: [
+                        '.shell',
+                        '.shell-cockpit',
+                        '.cockpit-top-rail',
+                        '.cockpit-console-shell',
+                        '.cockpit-console-side-left .cockpit-panel:first-child'
+                      ].map((selector) => {
+                        const el = document.querySelector(selector);
+                        if (!el) return { selector, top: -1, left: -1, width: -1, height: -1 };
+                        const rect = el.getBoundingClientRect();
+                        return {
+                          selector,
+                          top: Math.round(rect.top),
+                          left: Math.round(rect.left),
+                          width: Math.round(rect.width),
+                          height: Math.round(rect.height)
+                        };
+                      })
+                    })
+                "#;
+                if let Ok(reply) = document::eval(script).await {
+                    if let Some(raw) = reply.as_str() {
+                        if let Some(snapshot) = parse_layout_debug_snapshot(raw) {
+                            layout_debug_snapshot.set(Some(snapshot));
+                        }
+                    }
+                }
+            });
+        });
+    }
+
     let cockpit = build_cockpit_summary_model(
         *workspace.read(),
         controller.read().session_mode(),
@@ -895,6 +970,16 @@ pub fn App() -> Element {
     rsx! {
         div { class: "shell shell-cockpit",
             div { class: "cockpit-canvas", "aria-hidden": "true" }
+
+            if let Some(snapshot) = layout_debug_snapshot.read().as_ref() {
+                div {
+                    style: "position: fixed; top: 72px; right: 12px; z-index: 99999; max-width: 420px; background: rgba(120,0,0,0.92); color: white; font: 12px/1.4 ui-monospace, SFMono-Regular, Menlo, monospace; padding: 10px 12px; border: 1px solid rgba(255,255,255,0.25); border-radius: 8px; white-space: pre-wrap;",
+                    "innerHeight: {snapshot.inner_height}\n",
+                    for item in &snapshot.boxes {
+                        "{item.selector}: top={item.top} left={item.left} w={item.width} h={item.height}\n"
+                    }
+                }
+            }
 
             {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
 
