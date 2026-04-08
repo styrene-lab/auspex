@@ -2911,6 +2911,22 @@ body > * {
 }
 
 @media (max-height: 900px) {
+  html,
+  body {
+    height: auto;
+    min-height: 100%;
+  }
+
+  body {
+    overflow-y: auto;
+    overflow-x: hidden;
+  }
+
+  body > * {
+    height: auto;
+    min-height: 100%;
+  }
+
   .shell {
     position: relative;
     height: auto;
