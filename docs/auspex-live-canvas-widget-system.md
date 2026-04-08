@@ -1144,6 +1144,46 @@ Feeds primarily from:
 - temporary dispatches
 - active task and stream summaries
 
+### Center-anchored layout rule
+
+The standard-display cockpit should be laid out **center-first**, not edge-first.
+
+#### Canonical geometric rule
+
+The center of the focus host / COP bay should remain pegged to the center of the usable canvas.
+
+Other major regions should then resolve from offsets relative to that anchored center bay:
+- top instrument rail offsets from the top shell edge and COP width
+- right support/detail bay offsets from the right shell edge and COP boundary
+- lower operator/composer tray offsets from the bottom shell edge and COP boundary
+- auxiliary regions should resolve from the remaining shell-space after the COP anchor is established
+
+#### Why this matters
+
+If the layout is computed edge-first, resizing causes the main picture to drift and the shell starts to feel like a stretched dashboard.
+
+If the layout is computed center-first:
+- the operator's main picture remains visually stable
+- supporting regions compress or expand around it
+- wide/narrow resizing preserves the feeling of one anchored cockpit rather than a set of floating boxes
+
+#### Responsive consequence
+
+Across stretches and resizes:
+- the COP bay should remain the visual anchor
+- supporting regions should absorb most of the dimensional change
+- the layout may compress side/support regions earlier than the center COP
+- the center should preserve proportion and placement as long as the viewport allows
+
+#### Implementation implication
+
+Major shell geometry should be derived from:
+- centered COP bounding rect
+- top/bottom shell offsets
+- support-bay offsets from COP and shell edges
+
+rather than from independently edge-pinned cards.
+
 #### 5. Focus host region
 The currently selected detailed workspace or investigation host.
 
