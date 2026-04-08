@@ -2571,10 +2571,11 @@ body > * {
 .cockpit-spine {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 0.45rem;
   width: min(100%, 1640px);
   z-index: 1;
+  align-items: stretch;
 }
 
 .cockpit-panel {
@@ -2669,17 +2670,9 @@ body > * {
 .cockpit-top-rail .cockpit-panel {
   min-height: 0;
   padding: 0.24rem 0.46rem 0.28rem;
+  justify-self: stretch;
 }
 
-.cockpit-top-rail .cockpit-panel:nth-child(1),
-.cockpit-top-rail .cockpit-panel:nth-child(3) {
-  justify-self: start;
-}
-
-.cockpit-top-rail .cockpit-panel:nth-child(2),
-.cockpit-top-rail .cockpit-panel:nth-child(4) {
-  justify-self: end;
-}
 
 .cockpit-top-rail .cockpit-panel-primary {
   font-size: 0.82rem;
