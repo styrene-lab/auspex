@@ -543,7 +543,10 @@ mod tests {
         assert_eq!(record.ownership.owner_kind, OwnerKind::AuspexSession);
         assert_eq!(record.desired.backend.kind, BackendKind::Kubernetes);
         assert_eq!(record.desired.policy.max_runtime_seconds, Some(900));
-        assert_eq!(record.observed.control_plane.token_ref.as_deref(), Some("secret://auspex/instances/omg_01HV.../token"));
+        assert_eq!(
+            record.observed.control_plane.token_ref.as_deref(),
+            Some("secret://auspex/instances/omg_01HV.../token")
+        );
         assert!(record.observed.health.ready);
     }
 
@@ -609,21 +612,11 @@ mod tests {
         assert_eq!(request.backend, BackendKind::Kubernetes);
         assert_eq!(request.overrides.thinking_level, Some(ThinkingLevel::Low));
         assert_eq!(
-            request
-                .propagation
-                .as_ref()
-                .unwrap()
-                .policy
-                .memory_mode,
+            request.propagation.as_ref().unwrap().policy.memory_mode,
             MemoryMode::ProjectOnly
         );
         assert_eq!(
-            request
-                .propagation
-                .as_ref()
-                .unwrap()
-                .auth
-                .provider_refs,
+            request.propagation.as_ref().unwrap().auth.provider_refs,
             vec!["anthropic", "openai"]
         );
     }

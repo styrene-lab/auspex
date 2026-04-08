@@ -186,7 +186,12 @@ pub struct AuditEntry {
 }
 
 impl AuditEntry {
-    fn from_block(session_key: &str, turn_number: u32, block_index: usize, block: &TurnBlock) -> Self {
+    fn from_block(
+        session_key: &str,
+        turn_number: u32,
+        block_index: usize,
+        block: &TurnBlock,
+    ) -> Self {
         let (kind, label, content) = match block {
             TurnBlock::Thinking(thinking) => (
                 AuditEntryKind::Thinking,
@@ -242,9 +247,7 @@ impl AuditEntry {
     }
 }
 
-#[derive(
-    Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize,
-)]
+#[derive(Clone, Debug, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub enum AuditEntryKind {
     Thinking,
     Text,
@@ -319,8 +322,8 @@ pub fn persist(path: &std::path::Path, store: &AuditTimelineStore) -> std::io::R
 mod tests {
     use super::*;
     use crate::fixtures::{
-        AttributedText, BlockOrigin, OriginKind, SystemNoticeKind, TranscriptData, Turn,
-        TurnBlock, TurnBlockText,
+        AttributedText, BlockOrigin, OriginKind, SystemNoticeKind, TranscriptData, Turn, TurnBlock,
+        TurnBlockText,
     };
 
     #[test]
@@ -348,8 +351,14 @@ mod tests {
         };
 
         let mut store = AuditTimelineStore::default();
-        assert_eq!(store.append_transcript_snapshot("remote:main", &transcript), 2);
-        assert_eq!(store.append_transcript_snapshot("remote:main", &transcript), 0);
+        assert_eq!(
+            store.append_transcript_snapshot("remote:main", &transcript),
+            2
+        );
+        assert_eq!(
+            store.append_transcript_snapshot("remote:main", &transcript),
+            0
+        );
         assert_eq!(store.entries[0].block_id, "remote:main:turn-4-block-0");
         assert_eq!(store.entries[1].label, "Dispatcher");
     }
@@ -401,7 +410,10 @@ mod tests {
             text: "SHIP".into(),
         });
 
-        assert_eq!(filtered.sessions, vec!["mock:ready".to_string(), "remote:session-7".to_string()]);
+        assert_eq!(
+            filtered.sessions,
+            vec!["mock:ready".to_string(), "remote:session-7".to_string()]
+        );
         assert_eq!(filtered.turns, vec![1, 2]);
         assert_eq!(filtered.kinds, vec![AuditEntryKind::Tool]);
         assert_eq!(filtered.entries.len(), 1);

@@ -50,8 +50,10 @@ impl AttachedInstanceStateEngine {
         session: &SessionData,
     ) -> Self {
         let session_key = session_key.into();
-        let attached_instances = reconcile_attached_instances(&registry_store, session_key.clone(), session);
-        let registry_store = merge_attached_instances_into_registry(registry_store, &attached_instances);
+        let attached_instances =
+            reconcile_attached_instances(&registry_store, session_key.clone(), session);
+        let registry_store =
+            merge_attached_instances_into_registry(registry_store, &attached_instances);
         Self {
             attached_instances,
             session_key,
@@ -68,21 +70,35 @@ impl AttachedInstanceStateEngine {
         &self.registry_store
     }
 
-    pub fn reconcile_session_snapshot(&mut self, session_key: impl Into<String>, session: &SessionData) {
+    pub fn reconcile_session_snapshot(
+        &mut self,
+        session_key: impl Into<String>,
+        session: &SessionData,
+    ) {
         let session_key = session_key.into();
         let selected_route = self.selected_command_route_id();
-        let attached_instances = reconcile_attached_instances(&self.registry_store, session_key.clone(), session);
-        self.registry_store = merge_attached_instances_into_registry(self.registry_store.clone(), &attached_instances);
+        let attached_instances =
+            reconcile_attached_instances(&self.registry_store, session_key.clone(), session);
+        self.registry_store = merge_attached_instances_into_registry(
+            self.registry_store.clone(),
+            &attached_instances,
+        );
         self.attached_instances = attached_instances;
         self.session_key = session_key;
         self.selected_command_route_id = Some(selected_route);
     }
 
-    pub fn replace_registry_store(&mut self, registry_store: InstanceRegistryStore, session: &SessionData) {
+    pub fn replace_registry_store(
+        &mut self,
+        registry_store: InstanceRegistryStore,
+        session: &SessionData,
+    ) {
         let session_key = self.session_key.clone();
         let selected_route = self.selected_command_route_id();
-        let attached_instances = reconcile_attached_instances(&registry_store, session_key, session);
-        self.registry_store = merge_attached_instances_into_registry(registry_store, &attached_instances);
+        let attached_instances =
+            reconcile_attached_instances(&registry_store, session_key, session);
+        self.registry_store =
+            merge_attached_instances_into_registry(registry_store, &attached_instances);
         self.attached_instances = attached_instances;
         self.selected_command_route_id = Some(selected_route);
     }
@@ -294,12 +310,20 @@ pub fn reconcile_attached_instances(
                 .control_plane
                 .as_ref()
                 .and_then(|control_plane| control_plane.base_url.clone())
-                .or_else(|| registry_record.as_ref().map(|record| record.observed.control_plane.base_url.clone())),
+                .or_else(|| {
+                    registry_record
+                        .as_ref()
+                        .map(|record| record.observed.control_plane.base_url.clone())
+                }),
             model: instance
                 .policy
                 .as_ref()
                 .and_then(|policy| policy.model.clone())
-                .or_else(|| registry_record.as_ref().and_then(|record| record.desired.policy.model.clone())),
+                .or_else(|| {
+                    registry_record
+                        .as_ref()
+                        .and_then(|record| record.desired.policy.model.clone())
+                }),
             dispatcher_instance_id: None,
             registry_record,
         });
@@ -309,11 +333,12 @@ pub fn reconcile_attached_instances(
         .find(|record| {
             record.ownership.owner_kind == crate::runtime_types::OwnerKind::AuspexSession
                 && record.ownership.owner_id == session_key.trim_start_matches("remote:")
-                && record.identity.instance_id != session
-                    .dispatcher_binding
-                    .as_ref()
-                    .map(|binding| binding.dispatcher_instance_id.as_str())
-                    .unwrap_or_default()
+                && record.identity.instance_id
+                    != session
+                        .dispatcher_binding
+                        .as_ref()
+                        .map(|binding| binding.dispatcher_instance_id.as_str())
+                        .unwrap_or_default()
         })
         .cloned()
     {
@@ -352,9 +377,15 @@ pub fn reconcile_attached_instances(
                 registry_record
                     .as_ref()
                     .map(|record| match record.identity.role {
-                        crate::runtime_types::WorkerRole::PrimaryDriver => "primary-driver".to_string(),
-                        crate::runtime_types::WorkerRole::SupervisedChild => "supervised-child".to_string(),
-                        crate::runtime_types::WorkerRole::DetachedService => "detached-service".to_string(),
+                        crate::runtime_types::WorkerRole::PrimaryDriver => {
+                            "primary-driver".to_string()
+                        }
+                        crate::runtime_types::WorkerRole::SupervisedChild => {
+                            "supervised-child".to_string()
+                        }
+                        crate::runtime_types::WorkerRole::DetachedService => {
+                            "detached-service".to_string()
+                        }
                     })
                     .unwrap_or_else(|| "dispatcher".into())
             } else {
@@ -411,8 +442,10 @@ fn merge_attached_instances_into_registry(
     mut registry_store: InstanceRegistryStore,
     attached_instances: &[AttachedInstanceRecord],
 ) -> InstanceRegistryStore {
-    let active_ids: std::collections::HashSet<&str> =
-        attached_instances.iter().map(|instance| instance.instance_id.as_str()).collect();
+    let active_ids: std::collections::HashSet<&str> = attached_instances
+        .iter()
+        .map(|instance| instance.instance_id.as_str())
+        .collect();
     for instance in attached_instances {
         let next_record = synthesize_instance_record(instance);
         if let Some(position) = registry_store
@@ -430,7 +463,8 @@ fn merge_attached_instances_into_registry(
         if active_ids.contains(record.identity.instance_id.as_str()) {
             record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Fresh);
             if record.observed.health.last_seen_at.is_none() {
-                record.observed.health.last_seen_at = record.observed.health.last_heartbeat_at.clone();
+                record.observed.health.last_seen_at =
+                    record.observed.health.last_heartbeat_at.clone();
             }
         }
     }
@@ -438,79 +472,88 @@ fn merge_attached_instances_into_registry(
 }
 
 fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceRecord {
-    let mut record = instance.registry_record.clone().unwrap_or_else(|| InstanceRecord {
-        schema_version: 1,
-        identity: crate::runtime_types::WorkerIdentity {
-            instance_id: instance.instance_id.clone(),
-            role: infer_worker_role(instance),
-            profile: instance.profile.clone(),
-            status: crate::runtime_types::WorkerLifecycleState::Ready,
-            created_at: String::new(),
-            updated_at: String::new(),
-        },
-        ownership: crate::runtime_types::WorkerOwnership {
-            owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
-            owner_id: instance.session_key.trim_start_matches("remote:").to_string(),
-            parent_instance_id: None,
-        },
-        desired: crate::runtime_types::DesiredWorkerState {
-            backend: crate::runtime_types::BackendConfig {
-                kind: crate::runtime_types::BackendKind::LocalProcess,
-                image: None,
-                namespace: None,
-                resources: None,
+    let mut record = instance
+        .registry_record
+        .clone()
+        .unwrap_or_else(|| InstanceRecord {
+            schema_version: 1,
+            identity: crate::runtime_types::WorkerIdentity {
+                instance_id: instance.instance_id.clone(),
+                role: infer_worker_role(instance),
+                profile: instance.profile.clone(),
+                status: crate::runtime_types::WorkerLifecycleState::Ready,
+                created_at: String::new(),
+                updated_at: String::new(),
             },
-            workspace: crate::runtime_types::WorkspaceBinding {
-                cwd: String::new(),
-                workspace_id: String::new(),
-                branch: None,
+            ownership: crate::runtime_types::WorkerOwnership {
+                owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                owner_id: instance
+                    .session_key
+                    .trim_start_matches("remote:")
+                    .to_string(),
+                parent_instance_id: None,
             },
-            task: None,
-            policy: crate::runtime_types::PolicyOverrides::default(),
-        },
-        observed: crate::runtime_types::ObservedWorkerState {
-            placement: crate::runtime_types::ObservedPlacement {
-                placement_id: String::new(),
-                host: String::new(),
-                pid: None,
-                namespace: None,
-                pod_name: None,
-                container_name: None,
+            desired: crate::runtime_types::DesiredWorkerState {
+                backend: crate::runtime_types::BackendConfig {
+                    kind: crate::runtime_types::BackendKind::LocalProcess,
+                    image: None,
+                    namespace: None,
+                    resources: None,
+                },
+                workspace: crate::runtime_types::WorkspaceBinding {
+                    cwd: String::new(),
+                    workspace_id: String::new(),
+                    branch: None,
+                },
+                task: None,
+                policy: crate::runtime_types::PolicyOverrides::default(),
             },
-            control_plane: crate::runtime_types::ObservedControlPlane {
-                schema_version: 0,
-                omegon_version: String::new(),
-                base_url: String::new(),
-                startup_url: String::new(),
-                health_url: String::new(),
-                ready_url: String::new(),
-                ws_url: String::new(),
-                auth_mode: String::new(),
-                token_ref: None,
-                last_ready_at: None,
+            observed: crate::runtime_types::ObservedWorkerState {
+                placement: crate::runtime_types::ObservedPlacement {
+                    placement_id: String::new(),
+                    host: String::new(),
+                    pid: None,
+                    namespace: None,
+                    pod_name: None,
+                    container_name: None,
+                },
+                control_plane: crate::runtime_types::ObservedControlPlane {
+                    schema_version: 0,
+                    omegon_version: String::new(),
+                    base_url: String::new(),
+                    startup_url: String::new(),
+                    health_url: String::new(),
+                    ready_url: String::new(),
+                    ws_url: String::new(),
+                    auth_mode: String::new(),
+                    token_ref: None,
+                    last_ready_at: None,
+                },
+                health: crate::runtime_types::ObservedHealth {
+                    ready: true,
+                    degraded_reason: None,
+                    last_heartbeat_at: None,
+                    last_seen_at: None,
+                    freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
+                },
+                exit: crate::runtime_types::ObservedExit {
+                    exited: false,
+                    exit_code: None,
+                    exit_reason: None,
+                    exited_at: None,
+                },
             },
-            health: crate::runtime_types::ObservedHealth {
-                ready: true,
-                degraded_reason: None,
-                last_heartbeat_at: None,
-                last_seen_at: None,
-                freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
-            },
-            exit: crate::runtime_types::ObservedExit {
-                exited: false,
-                exit_code: None,
-                exit_reason: None,
-                exited_at: None,
-            },
-        },
-    });
+        });
 
     record.identity.instance_id = instance.instance_id.clone();
     record.identity.role = infer_worker_role(instance);
     record.identity.profile = instance.profile.clone();
     record.identity.status = crate::runtime_types::WorkerLifecycleState::Ready;
     record.ownership.owner_kind = crate::runtime_types::OwnerKind::AuspexSession;
-    record.ownership.owner_id = instance.session_key.trim_start_matches("remote:").to_string();
+    record.ownership.owner_id = instance
+        .session_key
+        .trim_start_matches("remote:")
+        .to_string();
     record.desired.policy.model = instance.model.clone();
     record.observed.health.ready = true;
     record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Fresh);
@@ -590,10 +633,8 @@ mod tests {
             ..SessionData::default()
         };
 
-        let engine = AttachedInstanceStateEngine::from_session_snapshot(
-            "remote:session_01HVTEST",
-            &session,
-        );
+        let engine =
+            AttachedInstanceStateEngine::from_session_snapshot("remote:session_01HVTEST", &session);
 
         assert_eq!(
             engine.attached_instances(),
@@ -671,7 +712,10 @@ mod tests {
         let mut engine =
             AttachedInstanceStateEngine::from_session_snapshot("remote:session_01HVTEST", &session);
 
-        assert_eq!(engine.selected_command_route_id(), SESSION_DISPATCHER_ROUTE_ID);
+        assert_eq!(
+            engine.selected_command_route_id(),
+            SESSION_DISPATCHER_ROUTE_ID
+        );
         assert_eq!(
             engine.current_command_target(),
             CommandTarget {
@@ -681,12 +725,18 @@ mod tests {
         );
 
         engine.select_command_route(HOST_CONTROL_PLANE_ROUTE_ID);
-        assert_eq!(engine.selected_command_route_id(), SESSION_DISPATCHER_ROUTE_ID);
+        assert_eq!(
+            engine.selected_command_route_id(),
+            SESSION_DISPATCHER_ROUTE_ID
+        );
     }
 
     #[test]
     fn falls_back_to_detached_host_session_when_no_instances_are_attached() {
-        let engine = AttachedInstanceStateEngine::from_session_snapshot("remote:unused", &SessionData::default());
+        let engine = AttachedInstanceStateEngine::from_session_snapshot(
+            "remote:unused",
+            &SessionData::default(),
+        );
 
         assert_eq!(engine.selected_command_route_id(), LOCAL_SHELL_ROUTE_ID);
         assert_eq!(
@@ -783,7 +833,9 @@ mod tests {
                         ready_url: "http://127.0.0.1:7842/api/readyz".into(),
                         ws_url: "ws://127.0.0.1:7842/ws".into(),
                         auth_mode: "ephemeral-bearer".into(),
-                        token_ref: Some("secret://auspex/instances/omg_dispatcher_01HVTEST/token".into()),
+                        token_ref: Some(
+                            "secret://auspex/instances/omg_dispatcher_01HVTEST/token".into(),
+                        ),
                         last_ready_at: Some("2026-04-06T00:00:02Z".into()),
                     },
                     health: crate::runtime_types::ObservedHealth {
@@ -813,8 +865,14 @@ mod tests {
         assert_eq!(attached.len(), 1);
         assert_eq!(attached[0].role, "primary-driver");
         assert_eq!(attached[0].profile, "primary-interactive");
-        assert_eq!(attached[0].base_url.as_deref(), Some("http://127.0.0.1:7842"));
-        assert_eq!(attached[0].model.as_deref(), Some("anthropic:claude-sonnet-4-6"));
+        assert_eq!(
+            attached[0].base_url.as_deref(),
+            Some("http://127.0.0.1:7842")
+        );
+        assert_eq!(
+            attached[0].model.as_deref(),
+            Some("anthropic:claude-sonnet-4-6")
+        );
         assert!(attached[0].registry_record.is_some());
     }
 
@@ -844,11 +902,13 @@ mod tests {
             &session,
         );
 
-        assert!(engine
-            .registry_store()
-            .instances
-            .iter()
-            .any(|record| record.identity.instance_id == "omg_dispatcher_01HVTEST"));
+        assert!(
+            engine
+                .registry_store()
+                .instances
+                .iter()
+                .any(|record| record.identity.instance_id == "omg_dispatcher_01HVTEST")
+        );
     }
 
     #[test]
@@ -917,15 +977,19 @@ mod tests {
             registry_record: None,
         });
 
-        assert!(engine
-            .attached_instances()
-            .iter()
-            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
-        assert!(engine
-            .registry_store()
-            .instances
-            .iter()
-            .any(|record| record.identity.instance_id == "omg_host_01HVTEST"));
+        assert!(
+            engine
+                .attached_instances()
+                .iter()
+                .any(|instance| instance.instance_id == "omg_host_01HVTEST")
+        );
+        assert!(
+            engine
+                .registry_store()
+                .instances
+                .iter()
+                .any(|record| record.identity.instance_id == "omg_host_01HVTEST")
+        );
     }
 
     #[test]
@@ -948,15 +1012,19 @@ mod tests {
         });
         engine.detach_instance("omg_host_01HVTEST");
 
-        assert!(!engine
-            .attached_instances()
-            .iter()
-            .any(|instance| instance.instance_id == "omg_host_01HVTEST"));
-        assert!(!engine
-            .registry_store()
-            .instances
-            .iter()
-            .any(|record| record.identity.instance_id == "omg_host_01HVTEST"));
+        assert!(
+            !engine
+                .attached_instances()
+                .iter()
+                .any(|instance| instance.instance_id == "omg_host_01HVTEST")
+        );
+        assert!(
+            !engine
+                .registry_store()
+                .instances
+                .iter()
+                .any(|record| record.identity.instance_id == "omg_host_01HVTEST")
+        );
     }
 
     #[test]
@@ -992,15 +1060,30 @@ mod tests {
         engine.purge_stale_instances(&["omg_dispatcher_01HVTEST".into()]);
 
         assert_eq!(engine.attached_instances().len(), 1);
-        assert_eq!(engine.attached_instances()[0].instance_id, "omg_dispatcher_01HVTEST");
-        assert_eq!(engine.registry_store().instances.len(), 2);
-        assert_eq!(engine.registry_store().instances[0].identity.instance_id, "omg_host_01HVTEST");
-        assert_eq!(engine.registry_store().instances[0].identity.status, crate::runtime_types::WorkerLifecycleState::Lost);
         assert_eq!(
-            engine.registry_store().instances[0].observed.health.freshness,
+            engine.attached_instances()[0].instance_id,
+            "omg_dispatcher_01HVTEST"
+        );
+        assert_eq!(engine.registry_store().instances.len(), 2);
+        assert_eq!(
+            engine.registry_store().instances[0].identity.instance_id,
+            "omg_host_01HVTEST"
+        );
+        assert_eq!(
+            engine.registry_store().instances[0].identity.status,
+            crate::runtime_types::WorkerLifecycleState::Lost
+        );
+        assert_eq!(
+            engine.registry_store().instances[0]
+                .observed
+                .health
+                .freshness,
             Some(crate::runtime_types::InstanceFreshness::Stale)
         );
-        assert_eq!(engine.registry_store().instances[1].identity.instance_id, "omg_dispatcher_01HVTEST");
+        assert_eq!(
+            engine.registry_store().instances[1].identity.instance_id,
+            "omg_dispatcher_01HVTEST"
+        );
     }
 
     #[test]
@@ -1021,7 +1104,10 @@ mod tests {
             dispatcher_instance_id: None,
             registry_record: None,
         });
-        engine.registry_store.instances[0].observed.health.last_seen_at = Some("100".into());
+        engine.registry_store.instances[0]
+            .observed
+            .health
+            .last_seen_at = Some("100".into());
 
         engine.evaluate_lifecycle_policy(100 + STALE_AFTER_SECONDS + 1);
 
@@ -1030,7 +1116,10 @@ mod tests {
             crate::runtime_types::WorkerLifecycleState::Lost
         );
         assert_eq!(
-            engine.registry_store().instances[0].observed.health.freshness,
+            engine.registry_store().instances[0]
+                .observed
+                .health
+                .freshness,
             Some(crate::runtime_types::InstanceFreshness::Stale)
         );
     }
@@ -1053,7 +1142,10 @@ mod tests {
             dispatcher_instance_id: None,
             registry_record: None,
         });
-        engine.registry_store.instances[0].observed.health.last_seen_at = Some("100".into());
+        engine.registry_store.instances[0]
+            .observed
+            .health
+            .last_seen_at = Some("100".into());
 
         engine.evaluate_lifecycle_policy(100 + ABANDON_AFTER_SECONDS + 1);
 
@@ -1062,7 +1154,10 @@ mod tests {
             crate::runtime_types::WorkerLifecycleState::Abandoned
         );
         assert_eq!(
-            engine.registry_store().instances[0].observed.health.freshness,
+            engine.registry_store().instances[0]
+                .observed
+                .health
+                .freshness,
             Some(crate::runtime_types::InstanceFreshness::Abandoned)
         );
     }
@@ -1163,7 +1258,10 @@ mod tests {
             crate::runtime_types::WorkerLifecycleState::Lost
         );
         assert_eq!(
-            engine.registry_store().instances[0].observed.health.freshness,
+            engine.registry_store().instances[0]
+                .observed
+                .health
+                .freshness,
             Some(crate::runtime_types::InstanceFreshness::Stale)
         );
     }

@@ -1133,7 +1133,8 @@ impl AppController {
                         let runtime = tokio::runtime::Handle::try_current().map_err(|error| {
                             format!("tokio runtime unavailable for IPC state refresh: {error}")
                         })?;
-                        let snapshot = runtime.block_on(client.get_state())?;
+                        let snapshot =
+                            tokio::task::block_in_place(|| runtime.block_on(client.get_state()))?;
                         session.refresh_from_ipc_state(&snapshot)
                     }
                     _ => session.apply_session_event(normalized),

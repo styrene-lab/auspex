@@ -194,7 +194,10 @@ mod tests {
             .duration_since(UNIX_EPOCH)
             .unwrap()
             .as_nanos();
-        path.push(format!("auspex-instance-registry-{label}-{nanos}-{}.json", std::process::id()));
+        path.push(format!(
+            "auspex-instance-registry-{label}-{nanos}-{}.json",
+            std::process::id()
+        ));
         path
     }
 }

@@ -124,10 +124,7 @@ pub fn apply_ws_auth_token(url: &str, token: Option<&str>) -> Result<String, Str
     Ok(parsed.to_string())
 }
 
-pub fn derive_authenticated_ws_url(
-    state_url: &str,
-    token: Option<&str>,
-) -> Result<String, String> {
+pub fn derive_authenticated_ws_url(state_url: &str, token: Option<&str>) -> Result<String, String> {
     let ws_url = derive_ws_url_from_state_url(state_url)?;
     apply_ws_auth_token(&ws_url, token)
 }
@@ -355,6 +352,9 @@ mod tests {
         handle.send_targeted_command(&command);
 
         let commands = handle.debug_drain_outbox();
-        assert_eq!(commands, vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]);
+        assert_eq!(
+            commands,
+            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+        );
     }
 }

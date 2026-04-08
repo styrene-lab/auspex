@@ -17,8 +17,9 @@ impl CommandTransport {
     ) -> Result<(), String> {
         match self {
             Self::EventStream => {
-                let stream = event_stream
-                    .ok_or_else(|| "event stream unavailable for websocket command dispatch".to_string())?;
+                let stream = event_stream.ok_or_else(|| {
+                    "event stream unavailable for websocket command dispatch".to_string()
+                })?;
                 stream.send_targeted_command(command);
                 Ok(())
             }
@@ -102,6 +103,9 @@ mod tests {
             .expect("event-stream dispatch should queue raw JSON");
 
         let commands = handle.debug_drain_outbox();
-        assert_eq!(commands, vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]);
+        assert_eq!(
+            commands,
+            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+        );
     }
 }
