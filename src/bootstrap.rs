@@ -238,6 +238,9 @@ impl OmegonCompatibilityManifest {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BootstrapSource {
     MockDefault,
+    FixtureScenario {
+        scenario: String,
+    },
     SnapshotFile {
         path: String,
     },
@@ -351,18 +354,35 @@ fn fixture_scenario_from_env() -> Option<String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn apply_fixture_scenario_override(mut result: BootstrapResult) -> BootstrapResult {
-    if let Some(scenario) = fixture_scenario_from_env()
-        && matches!(result.source, BootstrapSource::MockDefault)
-    {
-        result.controller.select_scenario(&scenario);
-        result.note = Some(format!("Loaded fixture scenario: {scenario}"));
+fn bootstrap_fixture_scenario(scenario: &str) -> BootstrapResult {
+    let mut controller = AppController::default();
+    if let Some(path) = default_audit_timeline_path() {
+        controller = controller.with_audit_timeline(load_or_default(&path));
     }
-    result
+    if let Some(path) = default_instance_registry_path() {
+        controller = controller.with_instance_registry(load_registry_or_default(&path));
+    }
+    controller.select_scenario(scenario);
+    controller.set_bootstrap_note(Some(format!("Loaded fixture scenario: {scenario}")));
+    BootstrapResult {
+        controller,
+        source: BootstrapSource::FixtureScenario {
+            scenario: scenario.to_string(),
+        },
+        note: Some(format!("Loaded fixture scenario: {scenario}")),
+        event_stream: None,
+        #[cfg(not(target_arch = "wasm32"))]
+        ipc_event_stream: None,
+        #[cfg(not(target_arch = "wasm32"))]
+        command_transport: None,
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
+    if let Some(scenario) = fixture_scenario_from_env() {
+        return bootstrap_fixture_scenario(&scenario);
+    }
     // 1. Explicit snapshot file wins for dev/test snapshots.
     if let Some(path) = snapshot_path_from_env() {
         return bootstrap_from_snapshot_file(&path).unwrap_or_else(|error| {
@@ -397,9 +417,9 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
     }
 
     // No explicit URL, no running instance, no binary found.
-    apply_fixture_scenario_override(BootstrapResult::startup_failure(
+    BootstrapResult::startup_failure(
         "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
-    ))
+    )
 }
 
 /// Async bootstrap from an HTTP state endpoint.
