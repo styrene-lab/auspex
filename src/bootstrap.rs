@@ -343,6 +343,25 @@ impl BootstrapResult {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+fn fixture_scenario_from_env() -> Option<String> {
+    env::var("AUSPEX_SCENARIO")
+        .ok()
+        .map(|value| value.trim().to_string())
+        .filter(|value| !value.is_empty())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn apply_fixture_scenario_override(mut result: BootstrapResult) -> BootstrapResult {
+    if let Some(scenario) = fixture_scenario_from_env()
+        && matches!(result.source, BootstrapSource::MockDefault)
+    {
+        result.controller.select_scenario(&scenario);
+        result.note = Some(format!("Loaded fixture scenario: {scenario}"));
+    }
+    result
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub fn bootstrap_controller_from_env() -> BootstrapResult {
     // 1. Explicit snapshot file wins for dev/test snapshots.
     if let Some(path) = snapshot_path_from_env() {
@@ -378,9 +397,9 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
     }
 
     // No explicit URL, no running instance, no binary found.
-    BootstrapResult::startup_failure(
+    apply_fixture_scenario_override(BootstrapResult::startup_failure(
         "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
-    )
+    ))
 }
 
 /// Async bootstrap from an HTTP state endpoint.

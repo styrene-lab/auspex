@@ -604,9 +604,13 @@ impl HostSessionModel for RemoteHostSession {
     fn set_scenario(&mut self, scenario: DevScenario) {
         self.scenario = scenario;
         self.shell_state = match scenario {
-            DevScenario::Ready => ShellState::Ready,
+            DevScenario::Ready | DevScenario::LocalDevQuiet | DevScenario::HomelabFleet => {
+                ShellState::Ready
+            }
             DevScenario::Booting => ShellState::StartingOmegon,
-            DevScenario::Degraded => ShellState::Degraded,
+            DevScenario::Degraded | DevScenario::LocalDevBusy | DevScenario::EnterpriseIncident => {
+                ShellState::Degraded
+            }
             DevScenario::StartupFailure | DevScenario::CompatibilityFailure => ShellState::Failed,
             DevScenario::Reconnecting => ShellState::CompatibilityChecking,
         };

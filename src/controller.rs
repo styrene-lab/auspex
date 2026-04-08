@@ -827,6 +827,10 @@ impl AppController {
             "startup-failure" => DevScenario::StartupFailure,
             "compat-failure" => DevScenario::CompatibilityFailure,
             "reconnecting" => DevScenario::Reconnecting,
+            "local-dev-quiet" => DevScenario::LocalDevQuiet,
+            "local-dev-busy" => DevScenario::LocalDevBusy,
+            "homelab-fleet" => DevScenario::HomelabFleet,
+            "enterprise-incident" => DevScenario::EnterpriseIncident,
             _ => DevScenario::Ready,
         };
         self.set_scenario(next);
@@ -1555,6 +1559,20 @@ mod tests {
 
         controller.select_scenario("compat-failure");
         assert_eq!(controller.scenario(), DevScenario::CompatibilityFailure);
+    }
+
+    #[test]
+    fn select_scenario_maps_fixture_pack_values() {
+        let mut controller = AppController::default();
+
+        controller.select_scenario("local-dev-busy");
+        assert_eq!(controller.scenario(), DevScenario::LocalDevBusy);
+
+        controller.select_scenario("homelab-fleet");
+        assert_eq!(controller.scenario(), DevScenario::HomelabFleet);
+
+        controller.select_scenario("enterprise-incident");
+        assert_eq!(controller.scenario(), DevScenario::EnterpriseIncident);
     }
 
     #[test]

@@ -388,6 +388,10 @@ pub enum DevScenario {
     StartupFailure,
     CompatibilityFailure,
     Reconnecting,
+    LocalDevQuiet,
+    LocalDevBusy,
+    HomelabFleet,
+    EnterpriseIncident,
 }
 
 impl DevScenario {
@@ -399,6 +403,10 @@ impl DevScenario {
             Self::StartupFailure => "startup-failure",
             Self::CompatibilityFailure => "compat-failure",
             Self::Reconnecting => "reconnecting",
+            Self::LocalDevQuiet => "local-dev-quiet",
+            Self::LocalDevBusy => "local-dev-busy",
+            Self::HomelabFleet => "homelab-fleet",
+            Self::EnterpriseIncident => "enterprise-incident",
         }
     }
 }
@@ -672,6 +680,235 @@ impl MockHostSession {
         }
     }
 
+    pub fn local_dev_quiet_session() -> Self {
+        Self {
+            shell_state: ShellState::Ready,
+            scenario: DevScenario::LocalDevQuiet,
+            summary: HostSessionSummary {
+                connection: "Connected to local host session".into(),
+                activity: "Idle — waiting for the next local prompt".into(),
+                activity_kind: ActivityKind::Idle,
+                work: "No focused work item yet".into(),
+            },
+            messages: vec![ChatMessage {
+                role: MessageRole::Assistant,
+                text: "Quiet local-dev fixture loaded. This scenario is optimized for baseline layout checks with minimal operational noise.".into(),
+            }],
+            composer: ComposerState::default(),
+            transcript: TranscriptData::default(),
+        }
+    }
+
+    pub fn local_dev_busy_session() -> Self {
+        let mut composer = ComposerState::default();
+        composer.set_draft("Summarize the last dispatcher switch and propose the next smallest implementation step.");
+        Self {
+            shell_state: ShellState::Degraded,
+            scenario: DevScenario::LocalDevBusy,
+            summary: HostSessionSummary {
+                connection: "Connected to local host session".into(),
+                activity: "Input paused pending provider auth".into(),
+                activity_kind: ActivityKind::Running,
+                work: "Dispatcher posture review in progress".into(),
+            },
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::Assistant,
+                    text: "Busy local-dev fixture loaded. The shell shows a blocked composer, active delegates, and recent transcript density.".into(),
+                },
+                ChatMessage {
+                    role: MessageRole::System,
+                    text: "Provider auth is incomplete. Sending is paused until a provider is authenticated.".into(),
+                },
+            ],
+            composer,
+            transcript: TranscriptData {
+                active_turn: Some(5),
+                context_tokens: Some(148_000),
+                turns: vec![
+                    Turn {
+                        number: 1,
+                        blocks: vec![TurnBlock::Text(AttributedText {
+                            text: "Summarize the current session, branch, and work focus around primary_driver attached to workspace unknown.".into(),
+                            origin: None,
+                            notice_kind: None,
+                        })],
+                    },
+                    Turn {
+                        number: 2,
+                        blocks: vec![
+                            TurnBlock::System(AttributedText {
+                                text: "Dispatcher switch confirmed (dispatcher-switch-17): primary-interactive · anthropic:claude-sonnet-4-6".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::Dispatcher,
+                                    label: "primary_driver".into(),
+                                }),
+                                notice_kind: Some(SystemNoticeKind::DispatcherSwitch),
+                            }),
+                            TurnBlock::Text(AttributedText {
+                                text: "Current branch is main and the focused work remains the shell integration pass.".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::Dispatcher,
+                                    label: "primary_driver".into(),
+                                }),
+                                notice_kind: None,
+                            }),
+                        ],
+                    },
+                    Turn {
+                        number: 3,
+                        blocks: vec![TurnBlock::Tool(ToolCard {
+                            id: "tool-1".into(),
+                            name: "cargo test".into(),
+                            args: "--lib screens::tests".into(),
+                            partial_output: String::new(),
+                            result: Some("188 passed; 0 failed".into()),
+                            is_error: false,
+                            origin: Some(BlockOrigin {
+                                kind: OriginKind::Child,
+                                label: "subtask-1".into(),
+                            }),
+                        })],
+                    },
+                    Turn {
+                        number: 4,
+                        blocks: vec![TurnBlock::System(AttributedText {
+                            text: "Prompt execution blocked: authenticate a provider before sending prompts so Auspex can route work to a runnable model backend.".into(),
+                            origin: Some(BlockOrigin {
+                                kind: OriginKind::System,
+                                label: "Auspex".into(),
+                            }),
+                            notice_kind: Some(SystemNoticeKind::Failure),
+                        })],
+                    },
+                ],
+            },
+        }
+    }
+
+    pub fn homelab_fleet_session() -> Self {
+        Self {
+            shell_state: ShellState::Ready,
+            scenario: DevScenario::HomelabFleet,
+            summary: HostSessionSummary {
+                connection: "Connected to homelab control plane".into(),
+                activity: "Fleet overview with mixed freshness across attached instances".into(),
+                activity_kind: ActivityKind::Running,
+                work: "4 attached routes · 2 delegates active".into(),
+            },
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::Assistant,
+                    text: "Homelab fleet fixture loaded. This scenario stresses right-rail summaries and lifecycle density.".into(),
+                },
+                ChatMessage {
+                    role: MessageRole::System,
+                    text: "Two detached services are stale but still report control-plane metadata.".into(),
+                },
+            ],
+            composer: ComposerState::default(),
+            transcript: TranscriptData {
+                active_turn: Some(8),
+                context_tokens: Some(62_000),
+                turns: vec![
+                    Turn {
+                        number: 7,
+                        blocks: vec![TurnBlock::Text(AttributedText {
+                            text: "List all stale detached services and identify any with mismatched profiles.".into(),
+                            origin: None,
+                            notice_kind: None,
+                        })],
+                    },
+                    Turn {
+                        number: 8,
+                        blocks: vec![
+                            TurnBlock::Text(AttributedText {
+                                text: "Detached service omg_detached_backup is stale on profile homelab-watch, while omg_media_index remains fresh on profile media-index.".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::Dispatcher,
+                                    label: "primary_driver".into(),
+                                }),
+                                notice_kind: None,
+                            }),
+                            TurnBlock::System(AttributedText {
+                                text: "Lifecycle rollup: fresh 4 · stale 2 · lost 1".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::System,
+                                    label: "Auspex".into(),
+                                }),
+                                notice_kind: Some(SystemNoticeKind::Generic),
+                            }),
+                        ],
+                    },
+                ],
+            },
+        }
+    }
+
+    pub fn enterprise_incident_session() -> Self {
+        let mut composer = ComposerState::default();
+        composer.set_draft("Summarize the enterprise incident state and propose a triage sequence.");
+        Self {
+            shell_state: ShellState::Degraded,
+            scenario: DevScenario::EnterpriseIncident,
+            summary: HostSessionSummary {
+                connection: "Connected to enterprise relay, incident mode".into(),
+                activity: "Provider exhaustion and stale routes require triage".into(),
+                activity_kind: ActivityKind::Failure,
+                work: "12 attached routes · 3 stale · 1 abandoned".into(),
+            },
+            messages: vec![
+                ChatMessage {
+                    role: MessageRole::Assistant,
+                    text: "Enterprise incident fixture loaded. This pack is intended to stress every shell surface with high-density degraded-state data.".into(),
+                },
+                ChatMessage {
+                    role: MessageRole::System,
+                    text: "Anthropic is exhausted for the current 5h window and the primary detached analytics route has entered stale lifecycle state.".into(),
+                },
+            ],
+            composer,
+            transcript: TranscriptData {
+                active_turn: Some(19),
+                context_tokens: Some(182_000),
+                turns: vec![
+                    Turn {
+                        number: 18,
+                        blocks: vec![TurnBlock::System(AttributedText {
+                            text: "Dispatcher switch requested (dispatcher-switch-42): enterprise-triage · openai:gpt-4.1".into(),
+                            origin: Some(BlockOrigin {
+                                kind: OriginKind::Dispatcher,
+                                label: "primary_driver".into(),
+                            }),
+                            notice_kind: Some(SystemNoticeKind::DispatcherSwitch),
+                        })],
+                    },
+                    Turn {
+                        number: 19,
+                        blocks: vec![
+                            TurnBlock::Text(AttributedText {
+                                text: "Provider exhaustion detected for anthropic. Remaining enterprise routes should be redistributed to openai:gpt-4.1 and local codex workers until the retry window clears.".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::Dispatcher,
+                                    label: "primary_driver".into(),
+                                }),
+                                notice_kind: None,
+                            }),
+                            TurnBlock::System(AttributedText {
+                                text: "Abandoned route omg_enterprise_batch_03 exceeded lifecycle policy and awaits reap.".into(),
+                                origin: Some(BlockOrigin {
+                                    kind: OriginKind::System,
+                                    label: "Auspex".into(),
+                                }),
+                                notice_kind: Some(SystemNoticeKind::Failure),
+                            }),
+                        ],
+                    },
+                ],
+            },
+        }
+    }
+
     pub fn from_scenario(scenario: DevScenario) -> Self {
         match scenario {
             DevScenario::Ready => Self::ready_session(),
@@ -680,6 +917,10 @@ impl MockHostSession {
             DevScenario::StartupFailure => Self::startup_failure_session(),
             DevScenario::CompatibilityFailure => Self::compatibility_failure_session(),
             DevScenario::Reconnecting => Self::reconnecting_session(),
+            DevScenario::LocalDevQuiet => Self::local_dev_quiet_session(),
+            DevScenario::LocalDevBusy => Self::local_dev_busy_session(),
+            DevScenario::HomelabFleet => Self::homelab_fleet_session(),
+            DevScenario::EnterpriseIncident => Self::enterprise_incident_session(),
         }
     }
 }
@@ -846,5 +1087,24 @@ impl HostSessionModel for MockHostSession {
         self.summary.activity = "Waiting for attached engine integration".into();
         self.composer.clear();
         true
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{DevScenario, HostSessionModel, MockHostSession};
+
+    #[test]
+    fn fixture_packs_have_distinct_density_profiles() {
+        let quiet = MockHostSession::from_scenario(DevScenario::LocalDevQuiet);
+        let busy = MockHostSession::from_scenario(DevScenario::LocalDevBusy);
+        let homelab = MockHostSession::from_scenario(DevScenario::HomelabFleet);
+        let enterprise = MockHostSession::from_scenario(DevScenario::EnterpriseIncident);
+
+        assert!(quiet.messages().len() < busy.messages().len());
+        assert!(busy.transcript().turns.len() >= 4);
+        assert!(homelab.transcript().turns.len() >= 2);
+        assert!(enterprise.transcript().context_tokens.unwrap_or_default()
+            > homelab.transcript().context_tokens.unwrap_or_default());
     }
 }
