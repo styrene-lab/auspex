@@ -760,7 +760,8 @@ pub fn App() -> Element {
         div { class: "shell shell-cockpit",
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
-            header { class: "cockpit-spine" ,
+            div { class: "cockpit-top-rail" ,
+                header { class: "cockpit-spine" ,
                 article { class: "cockpit-panel cockpit-panel-auspex", "data-surface": "panel", "data-elevation": "1",
                     div { class: "cockpit-panel-toprail",
                         span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
@@ -845,6 +846,8 @@ pub fn App() -> Element {
                 }
             }
 
+            }
+
             if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
                 div { class: "cockpit-layout cockpit-layout-readiness",
                     section {
@@ -870,8 +873,9 @@ pub fn App() -> Element {
                     }
                 }
             } else {
-                div { class: "cockpit-layout",
-                    section { class: "cockpit-focus-host",
+                div { class: "cockpit-main-frame",
+                    div { class: "cockpit-layout",
+                        section { class: "cockpit-cop-bay cockpit-focus-host",
                         nav { class: "cockpit-workspace-nav",
                             button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
                             button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
@@ -1018,7 +1022,7 @@ pub fn App() -> Element {
                         }
                     }
 
-                    aside { class: "cockpit-contextual-detail",
+                        aside { class: "cockpit-support-bay cockpit-contextual-detail",
                         SessionScreen {
                             data: controller.read().session_data(),
                             selected_entity: selected_cockpit_entity.read().clone(),
@@ -1042,6 +1046,7 @@ pub fn App() -> Element {
                                     crate::app::SelectedCockpitEntity::ActivityActor(task_id) => promoted_cockpit_entity.set(Some(PromotedCockpitEntity::ActivityActor(task_id))),
                                 }
                             }))
+                        }
                         }
                     }
                 }
