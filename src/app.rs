@@ -926,7 +926,11 @@ pub fn App() -> Element {
 
     rsx! {
         div { class: "shell shell-cockpit",
-            div { class: "desktop-top-spacer", style: "background: red !important; height: 100px !important; min-height: 100px !important;", "aria-hidden": "true" }
+            div {
+                class: "desktop-top-spacer",
+                style: "position: relative; z-index: 9999; background: red; height: 150px; min-height: 150px; display: flex; align-items: center; justify-content: center; font-size: 32px; color: white; font-weight: bold;",
+                "SPACER — if hidden under titlebar the overlap is at the host level"
+            }
             div { class: "cockpit-canvas", "aria-hidden": "true" }
 
             {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
