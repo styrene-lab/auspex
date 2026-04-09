@@ -708,17 +708,6 @@ fn should_expand_control_plane_widget(
         || data.telemetry.lifecycle.counts.abandoned > 0
 }
 
-fn should_expand_session_stats_widget(data: &SessionData) -> bool {
-    data.active_delegates.is_empty()
-        && (data
-            .context_tokens
-            .zip(data.context_window)
-            .is_some_and(|(tokens, window)| {
-                window > 0 && tokens.saturating_mul(100) / window >= 70
-            })
-            || data.session_tool_calls > 0)
-}
-
 fn render_widget_section_static(
     title: &str,
     expanded: bool,
@@ -1492,7 +1481,6 @@ mod tests {
 
         assert!(should_expand_provider_status_widget(&degraded));
         assert!(should_expand_control_plane_widget(&degraded, None));
-        assert!(should_expand_session_stats_widget(&degraded));
         assert!(!should_expand_session_harness_widget(&degraded));
 
         let warning = crate::fixtures::SessionData {

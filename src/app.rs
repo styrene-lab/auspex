@@ -813,12 +813,11 @@ pub fn App() -> Element {
                       })
                     })
                 "#;
-                if let Ok(reply) = document::eval(script).await {
-                    if let Some(raw) = reply.as_str() {
-                        if let Some(snapshot) = parse_layout_debug_snapshot(raw) {
-                            layout_debug_snapshot.set(Some(snapshot));
-                        }
-                    }
+                if let Ok(reply) = document::eval(script).await
+                    && let Some(raw) = reply.as_str()
+                    && let Some(snapshot) = parse_layout_debug_snapshot(raw)
+                {
+                    layout_debug_snapshot.set(Some(snapshot));
                 }
             });
         });
@@ -4088,6 +4087,7 @@ mod tests {
             &controller.session_data(),
             controller.transcript(),
             controller.messages(),
+            controller.scenario(),
         )
         .expect("default controller should expose the starter state");
 
@@ -4117,6 +4117,7 @@ mod tests {
             &session,
             controller.transcript(),
             controller.messages(),
+            controller.scenario(),
         )
         .expect("detached empty state should still render starter guidance");
 
@@ -4148,6 +4149,7 @@ mod tests {
             &controller.session_data(),
             &transcript,
             controller.messages(),
+            controller.scenario(),
         );
 
         assert!(model.is_none());
@@ -4381,6 +4383,7 @@ mod tests {
             session: &crate::fixtures::SessionData::default(),
             transcript: &TranscriptData::default(),
             messages: &[],
+            scenario: crate::fixtures::DevScenario::Ready,
             auto_expand: false,
             is_run_active: false,
             can_submit: true,

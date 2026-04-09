@@ -967,47 +967,431 @@ impl HostSessionModel for MockHostSession {
     }
 
     fn work_data(&self) -> WorkData {
-        WorkData {
-            focused_title: Some("Phase 3 — Simple mode MVP".into()),
-            focused_status: Some("decided".into()),
-            ..Default::default()
+        match self.scenario {
+            DevScenario::LocalDevQuiet => WorkData {
+                focused_id: Some("simple-mode-mvp".into()),
+                focused_title: Some("Phase 3 — Simple mode MVP".into()),
+                focused_status: Some("decided".into()),
+                open_question_count: 0,
+                actionable: vec![WorkNode {
+                    id: "simple-mode-shell".into(),
+                    title: "Wire shell composition for local dev".into(),
+                    status: "ready".into(),
+                }],
+                openspec_total: 3,
+                openspec_done: 2,
+                ..Default::default()
+            },
+            DevScenario::LocalDevBusy => WorkData {
+                focused_id: Some("shell-integration".into()),
+                focused_title: Some("Dispatcher posture review".into()),
+                focused_status: Some("implementing".into()),
+                open_question_count: 2,
+                implementing: vec![WorkNode {
+                    id: "embedded-bootstrap".into(),
+                    title: "Repair embedded control-plane bootstrap".into(),
+                    status: "implementing".into(),
+                }],
+                actionable: vec![
+                    WorkNode {
+                        id: "provider-auth".into(),
+                        title: "Authenticate a runnable provider".into(),
+                        status: "blocked".into(),
+                    },
+                    WorkNode {
+                        id: "dispatcher-review".into(),
+                        title: "Confirm dispatcher route and profile".into(),
+                        status: "ready".into(),
+                    },
+                ],
+                openspec_total: 5,
+                openspec_done: 3,
+                cleave_active: true,
+                cleave_total: 3,
+                cleave_completed: 1,
+                ..Default::default()
+            },
+            DevScenario::HomelabFleet => WorkData {
+                focused_id: Some("fleet-overview".into()),
+                focused_title: Some("Homelab fleet lifecycle audit".into()),
+                focused_status: Some("implementing".into()),
+                open_question_count: 1,
+                implementing: vec![
+                    WorkNode {
+                        id: "fleet-lifecycle".into(),
+                        title: "Normalize stale route lifecycle summaries".into(),
+                        status: "implementing".into(),
+                    },
+                    WorkNode {
+                        id: "control-plane-card".into(),
+                        title: "Surface detached instance control-plane metadata".into(),
+                        status: "implementing".into(),
+                    },
+                ],
+                actionable: vec![WorkNode {
+                    id: "profile-drift".into(),
+                    title: "Investigate mismatched detached profiles".into(),
+                    status: "ready".into(),
+                }],
+                openspec_total: 7,
+                openspec_done: 4,
+                cleave_active: true,
+                cleave_total: 2,
+                cleave_completed: 1,
+                ..Default::default()
+            },
+            DevScenario::EnterpriseIncident => WorkData {
+                focused_id: Some("enterprise-triage".into()),
+                focused_title: Some("Enterprise incident triage".into()),
+                focused_status: Some("implementing".into()),
+                open_question_count: 4,
+                implementing: vec![
+                    WorkNode {
+                        id: "provider-failover".into(),
+                        title: "Redistribute exhausted provider load".into(),
+                        status: "implementing".into(),
+                    },
+                    WorkNode {
+                        id: "stale-routes".into(),
+                        title: "Triage stale and abandoned enterprise routes".into(),
+                        status: "implementing".into(),
+                    },
+                ],
+                actionable: vec![
+                    WorkNode {
+                        id: "incident-summary".into(),
+                        title: "Produce incident commander summary".into(),
+                        status: "ready".into(),
+                    },
+                    WorkNode {
+                        id: "reap-policy".into(),
+                        title: "Confirm reap policy for abandoned route".into(),
+                        status: "blocked".into(),
+                    },
+                ],
+                openspec_total: 9,
+                openspec_done: 5,
+                cleave_active: true,
+                cleave_total: 4,
+                cleave_completed: 2,
+                cleave_failed: 1,
+            },
+            _ => WorkData {
+                focused_title: Some("Phase 3 — Simple mode MVP".into()),
+                focused_status: Some("decided".into()),
+                ..Default::default()
+            },
         }
     }
 
     fn session_data(&self) -> SessionData {
-        SessionData {
-            git_branch: Some("main".into()),
-            thinking_level: "medium".into(),
-            capability_tier: "victory".into(),
-            providers: vec![ProviderInfo {
-                name: "Anthropic".into(),
-                authenticated: true,
-                auth_method: Some("oauth".into()),
-                model: Some("claude-sonnet".into()),
-            }],
-            memory_available: true,
-            cleave_available: true,
-            session_turns: 4,
-            session_tool_calls: 12,
-            telemetry: SessionTelemetryData {
-                provider_summary: "1 / 1 authenticated".into(),
-                lifecycle_summary: "no active delegates".into(),
-                lifecycle: LifecycleTelemetryData {
-                    summary: "no attached instances".into(),
-                    ..Default::default()
+        match self.scenario {
+            DevScenario::LocalDevQuiet => SessionData {
+                git_branch: Some("main".into()),
+                thinking_level: "medium".into(),
+                capability_tier: "victory".into(),
+                providers: vec![ProviderInfo {
+                    name: "Anthropic".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("claude-sonnet".into()),
+                }],
+                memory_available: true,
+                cleave_available: true,
+                session_turns: 1,
+                session_tool_calls: 0,
+                telemetry: SessionTelemetryData {
+                    provider_summary: "1 / 1 authenticated".into(),
+                    lifecycle_summary: "no active delegates".into(),
+                    lifecycle: LifecycleTelemetryData {
+                        summary: "single local shell attached".into(),
+                        ..Default::default()
+                    },
+                    route_summary: "local shell".into(),
+                    latest_turn_summary: "turns 1 · tool calls 0".into(),
+                    latest_provider_telemetry: None,
+                    provider_rollups: Vec::new(),
+                    latest_estimated_tokens: Some(2_400),
+                    latest_actual_input_tokens: None,
+                    latest_actual_output_tokens: None,
+                    latest_cache_read_tokens: None,
+                    control_plane: None,
+                    control_plane_rollups: Vec::new(),
                 },
-                route_summary: "local shell".into(),
-                latest_turn_summary: "turns 4 · tool calls 12".into(),
-                latest_provider_telemetry: None,
-                provider_rollups: Vec::new(),
-                latest_estimated_tokens: None,
-                latest_actual_input_tokens: None,
-                latest_actual_output_tokens: None,
-                latest_cache_read_tokens: None,
-                control_plane: None,
-                control_plane_rollups: Vec::new(),
+                ..Default::default()
             },
-            ..Default::default()
+            DevScenario::LocalDevBusy => SessionData {
+                git_branch: Some("main".into()),
+                thinking_level: "high".into(),
+                capability_tier: "victory".into(),
+                providers: vec![
+                    ProviderInfo {
+                        name: "Anthropic".into(),
+                        authenticated: false,
+                        auth_method: Some("oauth".into()),
+                        model: Some("claude-sonnet-4-6".into()),
+                    },
+                    ProviderInfo {
+                        name: "OpenAI".into(),
+                        authenticated: false,
+                        auth_method: Some("api key".into()),
+                        model: Some("gpt-5-codex".into()),
+                    },
+                ],
+                memory_available: true,
+                cleave_available: true,
+                active_delegate_count: 1,
+                active_delegates: vec![DelegateSummaryData {
+                    task_id: "subtask-1".into(),
+                    agent_name: "analyzer".into(),
+                    status: "running".into(),
+                    elapsed_ms: 84_000,
+                }],
+                session_turns: 4,
+                session_tool_calls: 12,
+                context_tokens: Some(148_000),
+                context_window: Some(272_000),
+                telemetry: SessionTelemetryData {
+                    provider_summary: "0 / 2 authenticated".into(),
+                    lifecycle_summary: "1 delegate active".into(),
+                    lifecycle: LifecycleTelemetryData {
+                        summary: "dispatcher attached · 1 active delegate".into(),
+                        attached_count: 1,
+                        counts: LifecycleRollupCountsData {
+                            total_attached: 1,
+                            fresh: 1,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    route_summary: "local shell · dispatcher pending auth".into(),
+                    latest_turn_summary: "turns 4 · tool calls 12".into(),
+                    latest_provider_telemetry: None,
+                    provider_rollups: Vec::new(),
+                    latest_estimated_tokens: Some(148_000),
+                    latest_actual_input_tokens: Some(4_822),
+                    latest_actual_output_tokens: Some(1_188),
+                    latest_cache_read_tokens: Some(0),
+                    control_plane: None,
+                    control_plane_rollups: Vec::new(),
+                },
+                dispatcher_binding: Some(DispatcherBindingData {
+                    session_id: "session_01HVLOCAL".into(),
+                    dispatcher_instance_id: "primary_driver".into(),
+                    expected_role: "dispatcher".into(),
+                    expected_profile: "primary-interactive".into(),
+                    expected_model: Some("anthropic:claude-sonnet-4-6".into()),
+                    control_plane_schema: 1,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            DevScenario::HomelabFleet => SessionData {
+                git_branch: Some("homelab/fleet-audit".into()),
+                thinking_level: "medium".into(),
+                capability_tier: "victory".into(),
+                providers: vec![
+                    ProviderInfo {
+                        name: "Anthropic".into(),
+                        authenticated: true,
+                        auth_method: Some("oauth".into()),
+                        model: Some("claude-sonnet-4-6".into()),
+                    },
+                    ProviderInfo {
+                        name: "OpenAI".into(),
+                        authenticated: true,
+                        auth_method: Some("api key".into()),
+                        model: Some("gpt-5-codex".into()),
+                    },
+                ],
+                memory_available: true,
+                cleave_available: true,
+                active_delegate_count: 2,
+                active_delegates: vec![
+                    DelegateSummaryData {
+                        task_id: "media-index-audit".into(),
+                        agent_name: "general".into(),
+                        status: "running".into(),
+                        elapsed_ms: 212_000,
+                    },
+                    DelegateSummaryData {
+                        task_id: "backup-watch".into(),
+                        agent_name: "analyzer".into(),
+                        status: "waiting".into(),
+                        elapsed_ms: 98_000,
+                    },
+                ],
+                session_turns: 8,
+                session_tool_calls: 26,
+                context_tokens: Some(62_000),
+                context_window: Some(272_000),
+                telemetry: SessionTelemetryData {
+                    provider_summary: "2 / 2 authenticated".into(),
+                    lifecycle_summary: "4 fresh · 2 stale · 1 lost".into(),
+                    lifecycle: LifecycleTelemetryData {
+                        summary: "7 attached homelab routes".into(),
+                        attached_count: 7,
+                        counts: LifecycleRollupCountsData {
+                            total_attached: 7,
+                            fresh: 4,
+                            stale: 2,
+                            lost: 1,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    route_summary: "homelab control plane".into(),
+                    latest_turn_summary: "turns 8 · tool calls 26".into(),
+                    latest_provider_telemetry: None,
+                    provider_rollups: Vec::new(),
+                    latest_estimated_tokens: Some(62_000),
+                    latest_actual_input_tokens: Some(2_704),
+                    latest_actual_output_tokens: Some(1_006),
+                    latest_cache_read_tokens: Some(320),
+                    control_plane: None,
+                    control_plane_rollups: Vec::new(),
+                },
+                dispatcher_binding: Some(DispatcherBindingData {
+                    session_id: "session_01HVHOME".into(),
+                    dispatcher_instance_id: "primary_driver".into(),
+                    expected_role: "dispatcher".into(),
+                    expected_profile: "homelab-watch".into(),
+                    expected_model: Some("anthropic:claude-sonnet-4-6".into()),
+                    control_plane_schema: 1,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            DevScenario::EnterpriseIncident => SessionData {
+                git_branch: Some("incident/enterprise-relay".into()),
+                thinking_level: "high".into(),
+                capability_tier: "gloriana".into(),
+                providers: vec![
+                    ProviderInfo {
+                        name: "Anthropic".into(),
+                        authenticated: true,
+                        auth_method: Some("oauth".into()),
+                        model: Some("claude-sonnet-4-6".into()),
+                    },
+                    ProviderInfo {
+                        name: "OpenAI".into(),
+                        authenticated: true,
+                        auth_method: Some("api key".into()),
+                        model: Some("gpt-4.1".into()),
+                    },
+                    ProviderInfo {
+                        name: "Local Codex".into(),
+                        authenticated: true,
+                        auth_method: Some("loopback".into()),
+                        model: Some("gpt-5-codex".into()),
+                    },
+                ],
+                memory_available: true,
+                cleave_available: true,
+                active_delegate_count: 3,
+                active_delegates: vec![
+                    DelegateSummaryData {
+                        task_id: "reroute-primary".into(),
+                        agent_name: "general".into(),
+                        status: "running".into(),
+                        elapsed_ms: 441_000,
+                    },
+                    DelegateSummaryData {
+                        task_id: "quota-audit".into(),
+                        agent_name: "analyzer".into(),
+                        status: "running".into(),
+                        elapsed_ms: 305_000,
+                    },
+                    DelegateSummaryData {
+                        task_id: "reap-abandoned".into(),
+                        agent_name: "general".into(),
+                        status: "blocked".into(),
+                        elapsed_ms: 127_000,
+                    },
+                ],
+                session_turns: 19,
+                session_tool_calls: 73,
+                session_compactions: 2,
+                context_tokens: Some(182_000),
+                context_window: Some(272_000),
+                telemetry: SessionTelemetryData {
+                    provider_summary: "3 providers available · anthropic exhausted".into(),
+                    lifecycle_summary: "12 attached · 3 stale · 1 abandoned".into(),
+                    lifecycle: LifecycleTelemetryData {
+                        summary: "enterprise relay under incident load".into(),
+                        attached_count: 12,
+                        counts: LifecycleRollupCountsData {
+                            total_attached: 12,
+                            fresh: 8,
+                            stale: 3,
+                            abandoned: 1,
+                            ..Default::default()
+                        },
+                        ..Default::default()
+                    },
+                    route_summary: "enterprise relay".into(),
+                    latest_turn_summary: "turns 19 · tool calls 73".into(),
+                    latest_provider_telemetry: Some(ProviderTelemetryData {
+                        provider: "Anthropic".into(),
+                        source: "dispatcher".into(),
+                        profile: Some("enterprise-triage".into()),
+                        model: Some("claude-sonnet-4-6".into()),
+                        retry_after_secs: Some(2_400),
+                        ..Default::default()
+                    }),
+                    provider_rollups: Vec::new(),
+                    latest_estimated_tokens: Some(182_000),
+                    latest_actual_input_tokens: Some(9_640),
+                    latest_actual_output_tokens: Some(2_118),
+                    latest_cache_read_tokens: Some(2_048),
+                    control_plane: None,
+                    control_plane_rollups: Vec::new(),
+                },
+                dispatcher_binding: Some(DispatcherBindingData {
+                    session_id: "session_01HVENT".into(),
+                    dispatcher_instance_id: "primary_driver".into(),
+                    expected_role: "dispatcher".into(),
+                    expected_profile: "enterprise-triage".into(),
+                    expected_model: Some("openai:gpt-4.1".into()),
+                    control_plane_schema: 1,
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            _ => SessionData {
+                git_branch: Some("main".into()),
+                thinking_level: "medium".into(),
+                capability_tier: "victory".into(),
+                providers: vec![ProviderInfo {
+                    name: "Anthropic".into(),
+                    authenticated: true,
+                    auth_method: Some("oauth".into()),
+                    model: Some("claude-sonnet".into()),
+                }],
+                memory_available: true,
+                cleave_available: true,
+                session_turns: 4,
+                session_tool_calls: 12,
+                telemetry: SessionTelemetryData {
+                    provider_summary: "1 / 1 authenticated".into(),
+                    lifecycle_summary: "no active delegates".into(),
+                    lifecycle: LifecycleTelemetryData {
+                        summary: "no attached instances".into(),
+                        ..Default::default()
+                    },
+                    route_summary: "local shell".into(),
+                    latest_turn_summary: "turns 4 · tool calls 12".into(),
+                    latest_provider_telemetry: None,
+                    provider_rollups: Vec::new(),
+                    latest_estimated_tokens: None,
+                    latest_actual_input_tokens: None,
+                    latest_actual_output_tokens: None,
+                    latest_cache_read_tokens: None,
+                    control_plane: None,
+                    control_plane_rollups: Vec::new(),
+                },
+                ..Default::default()
+            },
         }
     }
 
@@ -1106,5 +1490,67 @@ mod tests {
         assert!(homelab.transcript().turns.len() >= 2);
         assert!(enterprise.transcript().context_tokens.unwrap_or_default()
             > homelab.transcript().context_tokens.unwrap_or_default());
+    }
+
+    #[test]
+    fn fixture_packs_expose_distinct_work_payloads() {
+        let quiet = MockHostSession::from_scenario(DevScenario::LocalDevQuiet);
+        let busy = MockHostSession::from_scenario(DevScenario::LocalDevBusy);
+        let homelab = MockHostSession::from_scenario(DevScenario::HomelabFleet);
+        let enterprise = MockHostSession::from_scenario(DevScenario::EnterpriseIncident);
+
+        assert_eq!(
+            quiet.work_data().focused_title.as_deref(),
+            Some("Phase 3 — Simple mode MVP")
+        );
+        assert_eq!(
+            busy.work_data().focused_title.as_deref(),
+            Some("Dispatcher posture review")
+        );
+        assert_eq!(
+            homelab.work_data().focused_title.as_deref(),
+            Some("Homelab fleet lifecycle audit")
+        );
+        assert_eq!(
+            enterprise.work_data().focused_title.as_deref(),
+            Some("Enterprise incident triage")
+        );
+        assert!(enterprise.work_data().cleave_failed > 0);
+    }
+
+    #[test]
+    fn fixture_packs_expose_distinct_session_payloads() {
+        let quiet = MockHostSession::from_scenario(DevScenario::LocalDevQuiet);
+        let busy = MockHostSession::from_scenario(DevScenario::LocalDevBusy);
+        let homelab = MockHostSession::from_scenario(DevScenario::HomelabFleet);
+        let enterprise = MockHostSession::from_scenario(DevScenario::EnterpriseIncident);
+
+        assert_eq!(quiet.session_data().providers.len(), 1);
+        assert_eq!(busy.session_data().providers.len(), 2);
+        assert_eq!(homelab.session_data().active_delegate_count, 2);
+        assert_eq!(enterprise.session_data().active_delegate_count, 3);
+        assert_eq!(
+            busy.session_data()
+                .dispatcher_binding
+                .as_ref()
+                .map(|binding| binding.expected_profile.as_str()),
+            Some("primary-interactive")
+        );
+        assert_eq!(
+            enterprise.session_data()
+                .dispatcher_binding
+                .as_ref()
+                .map(|binding| binding.expected_model.as_deref()),
+            Some(Some("openai:gpt-4.1"))
+        );
+        assert_eq!(
+            enterprise
+                .session_data()
+                .telemetry
+                .lifecycle
+                .counts
+                .abandoned,
+            1
+        );
     }
 }
