@@ -640,9 +640,17 @@ pub fn App() -> Element {
                 ) {
                     let ipc_events = ipc_handle.inbox.drain();
                     if !ipc_events.is_empty() {
-                        let mut controller = controller.write();
-                        for event in ipc_events {
-                            let _ = controller.apply_ipc_event(&client, event);
+                        let mut needs_refresh = false;
+                        {
+                            let mut controller = controller.write();
+                            for event in ipc_events {
+                                needs_refresh |= crate::controller::AppController::ipc_event_requires_refresh(&event);
+                                let _ = controller.apply_ipc_event(event);
+                            }
+                        }
+                        if needs_refresh && let Ok(snapshot) = client.get_state().await {
+                            let mut controller = controller.write();
+                            let _ = controller.apply_ipc_state_snapshot(&snapshot);
                         }
                     }
                 }

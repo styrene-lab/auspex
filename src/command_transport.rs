@@ -38,45 +38,66 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
     let command_type = value
         .get("type")
         .and_then(|value| value.as_str())
-        .ok_or_else(|| "command JSON missing type field".to_string())?;
-    match command_type {
+        .ok_or_else(|| "command JSON missing type field".to_string())?
+        .to_string();
+
+    match command_type.as_str() {
         "user_prompt" => {
             let text = value
                 .get("text")
                 .and_then(|value| value.as_str())
-                .ok_or_else(|| "user_prompt missing text field".to_string())?;
-            let accepted = runtime.block_on(client.submit_prompt(text))?;
-            if accepted {
-                Ok(())
-            } else {
-                Err("IPC submit_prompt was rejected by Omegon".into())
-            }
+                .ok_or_else(|| "user_prompt missing text field".to_string())?
+                .to_string();
+            let client = client.clone();
+            runtime.spawn(async move {
+                match client.submit_prompt(&text).await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        eprintln!("auspex: IPC submit_prompt was rejected by Omegon");
+                    }
+                    Err(error) => eprintln!("auspex: IPC submit_prompt failed: {error}"),
+                }
+            });
+            Ok(())
         }
         "cancel" => {
-            let accepted = runtime.block_on(client.cancel())?;
-            if accepted {
-                Ok(())
-            } else {
-                Err("IPC cancel was rejected by Omegon".into())
-            }
+            let client = client.clone();
+            runtime.spawn(async move {
+                match client.cancel().await {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        eprintln!("auspex: IPC cancel was rejected by Omegon");
+                    }
+                    Err(error) => eprintln!("auspex: IPC cancel failed: {error}"),
+                }
+            });
+            Ok(())
         }
         "slash_command" => {
             let name = value
                 .get("name")
                 .and_then(|value| value.as_str())
-                .ok_or_else(|| "slash_command missing name field".to_string())?;
+                .ok_or_else(|| "slash_command missing name field".to_string())?
+                .to_string();
             let args = value
                 .get("args")
                 .and_then(|value| value.as_str())
-                .unwrap_or_default();
-            let result = runtime.block_on(client.run_slash_command(name, args))?;
-            if result.accepted {
-                Ok(())
-            } else {
-                Err(result
-                    .output
-                    .unwrap_or_else(|| "IPC slash command was rejected by Omegon".to_string()))
-            }
+                .unwrap_or_default()
+                .to_string();
+            let client = client.clone();
+            runtime.spawn(async move {
+                match client.run_slash_command(&name, &args).await {
+                    Ok(result) if result.accepted => {}
+                    Ok(result) => {
+                        eprintln!(
+                            "auspex: IPC slash command rejected: {}",
+                            result.output.unwrap_or_else(|| "unknown rejection".to_string())
+                        );
+                    }
+                    Err(error) => eprintln!("auspex: IPC slash command failed: {error}"),
+                }
+            });
+            Ok(())
         }
         other => Err(format!("unsupported IPC command type: {other}")),
     }

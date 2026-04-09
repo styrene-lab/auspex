@@ -1126,23 +1126,41 @@ impl AppController {
     #[allow(dead_code)]
     pub fn apply_ipc_event(
         &mut self,
-        client: &crate::ipc_client::IpcCommandClient,
         event: omegon_traits::IpcEventPayload,
     ) -> Result<bool, String> {
         match &mut self.session {
             SessionSource::Remote(session) => {
                 let normalized: SessionEvent = event.into();
                 let applied = match &normalized {
-                    SessionEvent::HarnessChanged | SessionEvent::StateChanged { .. } => {
-                        let runtime = tokio::runtime::Handle::try_current().map_err(|error| {
-                            format!("tokio runtime unavailable for IPC state refresh: {error}")
-                        })?;
-                        let snapshot =
-                            tokio::task::block_in_place(|| runtime.block_on(client.get_state()))?;
-                        session.refresh_from_ipc_state(&snapshot)
-                    }
+                    SessionEvent::HarnessChanged | SessionEvent::StateChanged { .. } => false,
                     _ => session.apply_session_event(normalized),
                 };
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn ipc_event_requires_refresh(event: &omegon_traits::IpcEventPayload) -> bool {
+        matches!(
+            event,
+            omegon_traits::IpcEventPayload::HarnessChanged
+                | omegon_traits::IpcEventPayload::StateChanged { .. }
+        )
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_state_snapshot(
+        &mut self,
+        snapshot: &omegon_traits::IpcStateSnapshot,
+    ) -> Result<bool, String> {
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let applied = session.refresh_from_ipc_state(snapshot);
                 if applied {
                     self.handle_session_mutation();
                 }
@@ -1658,19 +1676,13 @@ mod tests {
     fn ipc_invalidation_events_require_runtime_refresh() {
         let mut controller =
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
-        let client = crate::ipc_client::IpcCommandClient::new("/definitely/not/here.sock");
 
-        let error = controller
-            .apply_ipc_event(&client, omegon_traits::IpcEventPayload::HarnessChanged)
-            .expect_err("missing IPC socket should fail refresh");
-        assert!(
-            error.contains("IPC")
-                || error.contains("ipc")
-                || error.contains("socket")
-                || error.contains("No such file")
-                || error.contains("os error")
-                || error.contains("tokio runtime unavailable")
-        );
+        assert!(AppController::ipc_event_requires_refresh(
+            &omegon_traits::IpcEventPayload::HarnessChanged
+        ));
+        assert!(!controller
+            .apply_ipc_event(omegon_traits::IpcEventPayload::HarnessChanged)
+            .expect("invalidation event handling should not fail immediately"));
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -1678,14 +1690,10 @@ mod tests {
     fn ipc_non_invalidation_events_apply_without_refresh_client() {
         let mut controller =
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
-        let client = crate::ipc_client::IpcCommandClient::new("/definitely/not/here.sock");
 
         assert!(
             controller
-                .apply_ipc_event(
-                    &client,
-                    omegon_traits::IpcEventPayload::TurnStarted { turn: 9 }
-                )
+                .apply_ipc_event(omegon_traits::IpcEventPayload::TurnStarted { turn: 9 })
                 .unwrap()
         );
         if let SessionSource::Remote(session) = &mut controller.session {
@@ -1697,17 +1705,14 @@ mod tests {
         }
         assert!(
             controller
-                .apply_ipc_event(
-                    &client,
-                    omegon_traits::IpcEventPayload::MessageDelta {
-                        text: "hello".into()
-                    }
-                )
+                .apply_ipc_event(omegon_traits::IpcEventPayload::MessageDelta {
+                    text: "hello".into()
+                })
                 .unwrap()
         );
         assert!(
             controller
-                .apply_ipc_event(&client, omegon_traits::IpcEventPayload::MessageCompleted)
+                .apply_ipc_event(omegon_traits::IpcEventPayload::MessageCompleted)
                 .unwrap()
         );
 

@@ -3051,7 +3051,7 @@ dependencies = [
 
 [[package]]
 name = "omegon-traits"
-version = "0.15.10-rc.58"
+version = "0.15.10-rc.59"
 dependencies = [
  "anyhow",
  "async-trait",

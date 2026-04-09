@@ -486,18 +486,30 @@ pub async fn bootstrap_from_http_state_async(
                 .replace("https://", "wss://")
                 .replace("/api/state", "/ws")
         });
-    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_client = startup
+    let ipc_socket_path = startup
         .as_ref()
         .and_then(|startup| startup.instance_descriptor.as_ref())
         .and_then(|instance| instance.control_plane.as_ref())
         .and_then(|control_plane| control_plane.ipc_socket_path.clone())
-        .filter(|path| !path.is_empty())
+        .filter(|path| !path.is_empty());
+    #[cfg(not(target_arch = "wasm32"))]
+    let ipc_client = ipc_socket_path
+        .clone()
         .map(IpcCommandClient::new)
         .filter(|client| client.is_available());
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_event_stream = None;
+    let ipc_event_stream = ipc_socket_path
+        .filter(|_| ipc_client.is_some())
+        .map(crate::ipc_client::spawn_ipc_event_stream);
+    #[cfg(not(target_arch = "wasm32"))]
+    let event_stream = if ipc_client.is_some() {
+        None
+    } else {
+        Some(spawn_websocket_event_stream(&ws_url))
+    };
+    #[cfg(target_arch = "wasm32")]
+    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
     #[cfg(not(target_arch = "wasm32"))]
     let command_transport = ipc_client
         .map(CommandTransport::Ipc)
@@ -509,7 +521,7 @@ pub async fn bootstrap_from_http_state_async(
                 .as_ref()
                 .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
             {
-                "Control via IPC; websocket remains the read/event channel"
+                "Control via IPC event stream"
             } else {
                 "Control via degraded websocket bridge until Styrene RPC is established"
             };
@@ -1247,7 +1259,7 @@ mod tests {
     #[test]
     fn startup_discovery_note_mentions_transport_mode() {
         let mut note = String::from(
-            "Attached via Omegon startup discovery at http://127.0.0.1:7842/api/startup (auth: ephemeral-bearer via generated). Control via IPC; websocket event stream active. Streaming events from ws://127.0.0.1:7842/ws?token=test",
+            "Attached via Omegon startup discovery at http://127.0.0.1:7842/api/startup (auth: ephemeral-bearer via generated). Control via IPC event stream. Streaming events from ws://127.0.0.1:7842/ws?token=test",
         );
         assert!(note.contains("Control via IPC"));
         note = String::from(
