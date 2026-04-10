@@ -341,12 +341,12 @@ mod tests {
     #[test]
     fn send_targeted_command_queues_raw_command_json() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
-        let command = TargetedCommand::legacy_json(
+        let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
-            r#"{"type":"user_prompt","text":"hello"}"#,
+            "hello",
         );
 
         handle.send_targeted_command(&command);
@@ -354,7 +354,7 @@ mod tests {
         let commands = handle.debug_drain_outbox();
         assert_eq!(
             commands,
-            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+            vec![r#"{"text":"hello","type":"user_prompt"}"#.to_string()]
         );
     }
 }

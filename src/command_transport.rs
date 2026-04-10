@@ -80,76 +80,9 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        crate::runtime_types::OperatorCommand::LegacyJson { command_json } => {
-            let value: serde_json::Value = serde_json::from_str(command_json)
-                .map_err(|error| format!("invalid legacy command JSON for IPC dispatch: {error}"))?;
-            let command_type = value
-                .get("type")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| "legacy command JSON missing type field".to_string())?
-                .to_string();
-
-            match command_type.as_str() {
-                "user_prompt" => {
-                    let text = value
-                        .get("text")
-                        .and_then(|value| value.as_str())
-                        .ok_or_else(|| "user_prompt missing text field".to_string())?
-                        .to_string();
-                    let client = client.clone();
-                    runtime.spawn(async move {
-                        match client.submit_prompt(&text).await {
-                            Ok(true) => {}
-                            Ok(false) => {
-                                eprintln!("auspex: IPC submit_prompt was rejected by Omegon");
-                            }
-                            Err(error) => eprintln!("auspex: IPC submit_prompt failed: {error}"),
-                        }
-                    });
-                    Ok(())
-                }
-                "cancel" => {
-                    let client = client.clone();
-                    runtime.spawn(async move {
-                        match client.cancel().await {
-                            Ok(true) => {}
-                            Ok(false) => {
-                                eprintln!("auspex: IPC cancel was rejected by Omegon");
-                            }
-                            Err(error) => eprintln!("auspex: IPC cancel failed: {error}"),
-                        }
-                    });
-                    Ok(())
-                }
-                "slash_command" => {
-                    let name = value
-                        .get("name")
-                        .and_then(|value| value.as_str())
-                        .ok_or_else(|| "slash_command missing name field".to_string())?
-                        .to_string();
-                    let args = value
-                        .get("args")
-                        .and_then(|value| value.as_str())
-                        .unwrap_or_default()
-                        .to_string();
-                    let client = client.clone();
-                    runtime.spawn(async move {
-                        match client.run_slash_command(&name, &args).await {
-                            Ok(result) if result.accepted => {}
-                            Ok(result) => {
-                                eprintln!(
-                                    "auspex: IPC slash command rejected: {}",
-                                    result.output.unwrap_or_else(|| "unknown rejection".to_string())
-                                );
-                            }
-                            Err(error) => eprintln!("auspex: IPC slash command failed: {error}"),
-                        }
-                    });
-                    Ok(())
-                }
-                other => Err(format!("unsupported legacy IPC command type: {other}")),
-            }
-        }
+        crate::runtime_types::OperatorCommand::DispatcherSwitch { .. } => Err(
+            "dispatcher switch does not have a canonical IPC control request yet".to_string(),
+        ),
     }
 }
 
@@ -161,12 +94,12 @@ mod tests {
     fn event_stream_transport_queues_raw_command_json() {
         let transport = CommandTransport::EventStream;
         let handle = crate::event_stream::EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
-        let command = TargetedCommand::legacy_json(
+        let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
-            r#"{"type":"user_prompt","text":"hello"}"#,
+            "hello",
         );
 
         transport
@@ -176,7 +109,7 @@ mod tests {
         let commands = handle.debug_drain_outbox();
         assert_eq!(
             commands,
-            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+            vec![r#"{"text":"hello","type":"user_prompt"}"#.to_string()]
         );
     }
 }

@@ -4793,12 +4793,12 @@ mod tests {
 
     #[test]
     fn dispatch_targeted_command_requires_ipc_transport() {
-        let command = TargetedCommand::legacy_json(
+        let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
-            r#"{"type":"user_prompt","text":"hello"}"#,
+            "hello",
         );
         let transport = crate::command_transport::CommandTransport::Ipc(
             crate::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
@@ -4812,12 +4812,12 @@ mod tests {
     #[test]
     fn dispatch_targeted_command_supports_websocket_transport_for_remote_control() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
-        let command = TargetedCommand::legacy_json(
+        let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
-            r#"{"type":"user_prompt","text":"hello"}"#,
+            "hello",
         );
         let transport = crate::command_transport::CommandTransport::EventStream;
 
@@ -4826,7 +4826,7 @@ mod tests {
         assert!(result.is_ok());
         assert_eq!(
             handle.debug_drain_outbox(),
-            vec![r#"{"type":"user_prompt","text":"hello"}"#.to_string()]
+            vec![r#"{"text":"hello","type":"user_prompt"}"#.to_string()]
         );
     }
 

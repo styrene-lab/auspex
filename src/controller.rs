@@ -1070,15 +1070,11 @@ impl AppController {
             SessionSource::Remote(session) => {
                 match session.request_dispatcher_switch(profile, model)? {
                     DispatcherSwitchCommandOutcome::Issued { request_id } => {
-                        Some(TargetedCommand::legacy_json(
+                        Some(TargetedCommand::dispatcher_switch(
                             target,
-                            serde_json::json!({
-                                "type": "switch_dispatcher",
-                                "request_id": request_id,
-                                "profile": profile,
-                                "model": model,
-                            })
-                            .to_string(),
+                            request_id,
+                            profile,
+                            model.map(str::to_string),
                         ))
                     }
                     DispatcherSwitchCommandOutcome::Noop => None,

@@ -22,7 +22,11 @@ pub enum OperatorCommand {
     PromptSubmit { text: String },
     TurnCancel,
     CanonicalSlash { slash: CanonicalSlashCommand },
-    LegacyJson { command_json: String },
+    DispatcherSwitch {
+        request_id: String,
+        profile: String,
+        model: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -38,15 +42,6 @@ pub struct TargetedCommand {
 }
 
 impl TargetedCommand {
-    pub fn legacy_json(target: CommandTarget, command_json: impl Into<String>) -> Self {
-        Self {
-            target,
-            command: OperatorCommand::LegacyJson {
-                command_json: command_json.into(),
-            },
-        }
-    }
-
     pub fn prompt_submit(target: CommandTarget, text: impl Into<String>) -> Self {
         Self {
             target,
@@ -68,6 +63,22 @@ impl TargetedCommand {
         }
     }
 
+    pub fn dispatcher_switch(
+        target: CommandTarget,
+        request_id: impl Into<String>,
+        profile: impl Into<String>,
+        model: Option<String>,
+    ) -> Self {
+        Self {
+            target,
+            command: OperatorCommand::DispatcherSwitch {
+                request_id: request_id.into(),
+                profile: profile.into(),
+                model,
+            },
+        }
+    }
+
     pub fn compatibility_command_json(&self) -> String {
         match &self.command {
             OperatorCommand::PromptSubmit { text } => serde_json::json!({
@@ -82,7 +93,17 @@ impl TargetedCommand {
                 "args": slash.args,
             })
             .to_string(),
-            OperatorCommand::LegacyJson { command_json } => command_json.clone(),
+            OperatorCommand::DispatcherSwitch {
+                request_id,
+                profile,
+                model,
+            } => serde_json::json!({
+                "type": "switch_dispatcher",
+                "request_id": request_id,
+                "profile": profile,
+                "model": model,
+            })
+            .to_string(),
         }
     }
 
@@ -639,18 +660,33 @@ mod tests {
     }
 
     #[test]
-    fn targeted_command_serializes_legacy_json_envelope() {
-        let command = TargetedCommand::legacy_json(
+    fn targeted_command_serializes_turn_cancel_envelope() {
+        let command = TargetedCommand::turn_cancel(CommandTarget {
+            session_key: "remote:session_01HVDEMO".into(),
+            dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
+        });
+
+        assert_eq!(
+            command.transport_json().unwrap(),
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"turn_cancel"}}"#
+        );
+    }
+
+    #[test]
+    fn targeted_command_serializes_dispatcher_switch_envelope() {
+        let command = TargetedCommand::dispatcher_switch(
             CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
-            r#"{"type":"cancel"}"#,
+            "dispatcher-switch-1",
+            "supervisor-heavy",
+            Some("openai:gpt-4.1".into()),
         );
 
         assert_eq!(
             command.transport_json().unwrap(),
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"cancel\"}"}}"#
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"dispatcher_switch","request_id":"dispatcher-switch-1","profile":"supervisor-heavy","model":"openai:gpt-4.1"}}"#
         );
     }
 
