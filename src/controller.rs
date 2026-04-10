@@ -1995,28 +1995,6 @@ mod tests {
         assert_eq!(switch_state.status, "pending");
     }
 
-    #[cfg(not(target_arch = "wasm32"))]
-    #[test]
-    fn dispatcher_switch_ipc_failure_is_reported_to_operator() {
-        let mut controller =
-            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
-        let command = controller
-            .request_dispatcher_switch_command("supervisor-heavy", Some("openai:gpt-4.1"))
-            .unwrap();
-        let transport = crate::command_transport::CommandTransport::Ipc(
-            crate::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
-        );
-
-        let error = transport
-            .dispatch_targeted_command(None, &command)
-            .unwrap_err();
-        controller.record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
-
-        assert!(controller.messages().iter().any(|message| {
-            message.text.contains("Dispatcher switch could not be sent:")
-        }));
-    }
-
     #[test]
     fn dispatcher_switch_becomes_active_when_snapshot_confirms_binding() {
         let mut controller =

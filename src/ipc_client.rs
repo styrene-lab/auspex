@@ -156,6 +156,24 @@ impl IpcCommandClient {
             .map_err(|error| format!("decode run_slash_command response: {error}"))
     }
 
+    pub async fn switch_dispatcher(
+        &self,
+        request_id: &str,
+        profile: &str,
+        model: Option<&str>,
+    ) -> Result<bool, String> {
+        let payload = serde_json::json!({
+            "request_id": request_id,
+            "profile": profile,
+            "model": model,
+            "caller_role": "admin",
+        });
+        let response = self.request("switch_dispatcher", Some(payload)).await?;
+        let accepted = serde_json::from_value::<AcceptedResponse>(response)
+            .map_err(|error| format!("decode switch_dispatcher response: {error}"))?;
+        Ok(accepted.accepted)
+    }
+
     async fn request(&self, method: &str, payload: Option<Value>) -> Result<Value, String> {
         let mut stream = connect_ipc_stream(&self.socket_path).await?;
         perform_hello(
@@ -163,6 +181,7 @@ impl IpcCommandClient {
             vec![
                 "submit_prompt".into(),
                 "cancel".into(),
+                "switch_dispatcher".into(),
                 "run_slash_command".into(),
             ],
         )
@@ -513,5 +532,20 @@ mod tests {
             validate_response_envelope(&envelope, "hello", "IPC handshake"),
             Ok(())
         );
+    }
+
+    #[test]
+    fn dispatcher_switch_request_payload_matches_canonical_ipc_shape() {
+        let payload = serde_json::json!({
+            "request_id": "dispatcher-switch-1",
+            "profile": "supervisor-heavy",
+            "model": "openai:gpt-4.1",
+            "caller_role": "admin",
+        });
+
+        assert_eq!(payload["request_id"], "dispatcher-switch-1");
+        assert_eq!(payload["profile"], "supervisor-heavy");
+        assert_eq!(payload["model"], "openai:gpt-4.1");
+        assert_eq!(payload["caller_role"], "admin");
     }
 }

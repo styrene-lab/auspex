@@ -80,9 +80,29 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        crate::runtime_types::OperatorCommand::DispatcherSwitch { .. } => Err(
-            "dispatcher switch does not have a canonical IPC control request yet".to_string(),
-        ),
+        crate::runtime_types::OperatorCommand::DispatcherSwitch {
+            request_id,
+            profile,
+            model,
+        } => {
+            let client = client.clone();
+            let request_id = request_id.clone();
+            let profile = profile.clone();
+            let model = model.clone();
+            runtime.spawn(async move {
+                match client
+                    .switch_dispatcher(&request_id, &profile, model.as_deref())
+                    .await
+                {
+                    Ok(true) => {}
+                    Ok(false) => {
+                        eprintln!("auspex: IPC switch_dispatcher was rejected by Omegon");
+                    }
+                    Err(error) => eprintln!("auspex: IPC switch_dispatcher failed: {error}"),
+                }
+            });
+            Ok(())
+        }
     }
 }
 
