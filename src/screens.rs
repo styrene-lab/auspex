@@ -323,8 +323,11 @@ fn render_provider_status_widget(data: &SessionData, expanded: bool) -> Element 
                         if let Some(util_7d) = provider_telemetry.unified_7d_utilization_pct.as_deref() {
                             {kv_row("7d utilization", &format!("{util_7d}%"))}
                         }
-                        if let Some(codex_primary_pct) = provider_telemetry.codex_primary_pct {
-                            {kv_row("Codex primary", &format!("{codex_primary_pct}%"))}
+                        if let Some(codex_primary_used_pct) = provider_telemetry.codex_primary_used_pct.as_deref() {
+                            {kv_row("Codex primary", &format!("{codex_primary_used_pct}%"))}
+                        }
+                        if let Some(codex_secondary_used_pct) = provider_telemetry.codex_secondary_used_pct.as_deref() {
+                            {kv_row("Codex secondary", &format!("{codex_secondary_used_pct}%"))}
                         }
                     }
                 }

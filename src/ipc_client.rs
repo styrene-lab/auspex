@@ -119,6 +119,7 @@ impl IpcCommandClient {
         let payload = serde_json::to_value(SubmitPromptRequest {
             prompt: prompt.to_string(),
             source: Some(AUSPEX_IPC_CLIENT_NAME.to_string()),
+            caller_role: Some("admin".to_string()),
         })
         .map_err(|error| format!("encode submit_prompt payload: {error}"))?;
         let response = self.request("submit_prompt", Some(payload)).await?;

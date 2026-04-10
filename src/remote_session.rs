@@ -1963,6 +1963,8 @@ mod tests {
                 runtime: omegon_traits::OmegonRuntime {
                     deployment_kind: omegon_traits::OmegonDeploymentKind::EmbeddedBackend,
                     runtime_mode: omegon_traits::OmegonRuntimeMode::AuspexManaged,
+                    runtime_profile: omegon_traits::OmegonRuntimeProfile::PrimaryInteractive,
+                    autonomy_mode: omegon_traits::OmegonAutonomyMode::OperatorDriven,
                     health: omegon_traits::OmegonRuntimeHealth::Ready,
                     provider_ok: true,
                     memory_ok: true,
@@ -2042,6 +2044,8 @@ mod tests {
                 context_class: "Squad".into(),
                 thinking_level: "high".into(),
                 capability_tier: "gloriana".into(),
+                runtime_profile: "primary-interactive".into(),
+                autonomy_mode: "operator-driven".into(),
                 memory_available: true,
                 cleave_available: true,
                 memory_warning: None,

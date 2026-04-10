@@ -192,8 +192,15 @@ pub fn aggregate_provider_rollups(
             } else {
                 None
             },
-            codex_primary_pct: if instance.route_id == selected_route_id {
-                latest_provider_telemetry.and_then(|telemetry| telemetry.codex_primary_pct)
+            codex_primary_used_pct: if instance.route_id == selected_route_id {
+                latest_provider_telemetry
+                    .and_then(|telemetry| telemetry.codex_primary_used_pct.clone())
+            } else {
+                None
+            },
+            codex_secondary_used_pct: if instance.route_id == selected_route_id {
+                latest_provider_telemetry
+                    .and_then(|telemetry| telemetry.codex_secondary_used_pct.clone())
             } else {
                 None
             },
@@ -341,7 +348,12 @@ pub fn project_provider_telemetry(snapshot: ProviderTelemetrySnapshot) -> Provid
         unified_7d_utilization_pct: snapshot
             .unified_7d_utilization_pct
             .map(|value| format!("{value:.1}")),
-        codex_primary_pct: snapshot.codex_primary_pct,
+        codex_primary_used_pct: snapshot
+            .codex_primary_used_pct
+            .map(|value| format!("{value:.0}")),
+        codex_secondary_used_pct: snapshot
+            .codex_secondary_used_pct
+            .map(|value| format!("{value:.0}")),
     }
 }
 
@@ -463,7 +475,8 @@ mod tests {
                 tokens_remaining: Some(1234),
                 retry_after_secs: Some(3),
                 request_id: Some("req-123".into()),
-                codex_primary_pct: Some(88),
+                codex_primary_used_pct: Some(88.0),
+                codex_secondary_used_pct: Some(94.0),
                 ..ProviderTelemetrySnapshot::default()
             }),
             estimated_tokens: Some(100),
@@ -508,7 +521,8 @@ mod tests {
                 request_id: Some("req-123".into()),
                 unified_5h_utilization_pct: Some("12.3".into()),
                 unified_7d_utilization_pct: Some("56.8".into()),
-                codex_primary_pct: Some(88),
+                codex_primary_used_pct: Some("88".into()),
+                codex_secondary_used_pct: Some("94".into()),
             })
         );
         assert_eq!(

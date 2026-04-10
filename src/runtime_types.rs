@@ -19,8 +19,10 @@ pub struct CanonicalSlashCommand {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OperatorCommand {
-    LegacyJson { command_json: String },
+    PromptSubmit { text: String },
+    TurnCancel,
     CanonicalSlash { slash: CanonicalSlashCommand },
+    LegacyJson { command_json: String },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -32,47 +34,62 @@ pub struct TargetedCommandEnvelope {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct TargetedCommand {
     pub target: CommandTarget,
-    pub command_json: String,
-    pub canonical_slash: Option<CanonicalSlashCommand>,
+    pub command: OperatorCommand,
 }
 
 impl TargetedCommand {
     pub fn legacy_json(target: CommandTarget, command_json: impl Into<String>) -> Self {
         Self {
             target,
-            command_json: command_json.into(),
-            canonical_slash: None,
+            command: OperatorCommand::LegacyJson {
+                command_json: command_json.into(),
+            },
+        }
+    }
+
+    pub fn prompt_submit(target: CommandTarget, text: impl Into<String>) -> Self {
+        Self {
+            target,
+            command: OperatorCommand::PromptSubmit { text: text.into() },
+        }
+    }
+
+    pub fn turn_cancel(target: CommandTarget) -> Self {
+        Self {
+            target,
+            command: OperatorCommand::TurnCancel,
         }
     }
 
     pub fn canonical_slash(target: CommandTarget, slash: CanonicalSlashCommand) -> Self {
-        let command_json = serde_json::json!({
-            "type": "slash_command",
-            "name": slash.name,
-            "args": slash.args,
-        })
-        .to_string();
-
         Self {
             target,
-            command_json,
-            canonical_slash: Some(slash),
+            command: OperatorCommand::CanonicalSlash { slash },
+        }
+    }
+
+    pub fn compatibility_command_json(&self) -> String {
+        match &self.command {
+            OperatorCommand::PromptSubmit { text } => serde_json::json!({
+                "type": "user_prompt",
+                "text": text,
+            })
+            .to_string(),
+            OperatorCommand::TurnCancel => serde_json::json!({ "type": "cancel" }).to_string(),
+            OperatorCommand::CanonicalSlash { slash } => serde_json::json!({
+                "type": "slash_command",
+                "name": slash.name,
+                "args": slash.args,
+            })
+            .to_string(),
+            OperatorCommand::LegacyJson { command_json } => command_json.clone(),
         }
     }
 
     pub fn transport_envelope(&self) -> TargetedCommandEnvelope {
-        let command = match &self.canonical_slash {
-            Some(slash) => OperatorCommand::CanonicalSlash {
-                slash: slash.clone(),
-            },
-            None => OperatorCommand::LegacyJson {
-                command_json: self.command_json.clone(),
-            },
-        };
-
         TargetedCommandEnvelope {
             target: self.target.clone(),
-            command,
+            command: self.command.clone(),
         }
     }
 
@@ -652,7 +669,7 @@ mod tests {
         );
 
         assert_eq!(
-            command.command_json,
+            command.compatibility_command_json(),
             r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
         );
         assert_eq!(

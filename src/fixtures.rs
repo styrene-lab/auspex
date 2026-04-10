@@ -245,7 +245,8 @@ pub struct ProviderTelemetryData {
     pub request_id: Option<String>,
     pub unified_5h_utilization_pct: Option<String>,
     pub unified_7d_utilization_pct: Option<String>,
-    pub codex_primary_pct: Option<u64>,
+    pub codex_primary_used_pct: Option<String>,
+    pub codex_secondary_used_pct: Option<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

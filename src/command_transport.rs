@@ -33,22 +33,11 @@ impl CommandTransport {
 fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Result<(), String> {
     let runtime = tokio::runtime::Handle::try_current()
         .map_err(|error| format!("tokio runtime unavailable for IPC dispatch: {error}"))?;
-    let value: serde_json::Value = serde_json::from_str(&command.command_json)
-        .map_err(|error| format!("invalid command JSON for IPC dispatch: {error}"))?;
-    let command_type = value
-        .get("type")
-        .and_then(|value| value.as_str())
-        .ok_or_else(|| "command JSON missing type field".to_string())?
-        .to_string();
 
-    match command_type.as_str() {
-        "user_prompt" => {
-            let text = value
-                .get("text")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| "user_prompt missing text field".to_string())?
-                .to_string();
+    match &command.command {
+        crate::runtime_types::OperatorCommand::PromptSubmit { text } => {
             let client = client.clone();
+            let text = text.clone();
             runtime.spawn(async move {
                 match client.submit_prompt(&text).await {
                     Ok(true) => {}
@@ -60,7 +49,7 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        "cancel" => {
+        crate::runtime_types::OperatorCommand::TurnCancel => {
             let client = client.clone();
             runtime.spawn(async move {
                 match client.cancel().await {
@@ -73,18 +62,10 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        "slash_command" => {
-            let name = value
-                .get("name")
-                .and_then(|value| value.as_str())
-                .ok_or_else(|| "slash_command missing name field".to_string())?
-                .to_string();
-            let args = value
-                .get("args")
-                .and_then(|value| value.as_str())
-                .unwrap_or_default()
-                .to_string();
+        crate::runtime_types::OperatorCommand::CanonicalSlash { slash } => {
             let client = client.clone();
+            let name = slash.name.clone();
+            let args = slash.args.clone();
             runtime.spawn(async move {
                 match client.run_slash_command(&name, &args).await {
                     Ok(result) if result.accepted => {}
@@ -99,7 +80,76 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        other => Err(format!("unsupported IPC command type: {other}")),
+        crate::runtime_types::OperatorCommand::LegacyJson { command_json } => {
+            let value: serde_json::Value = serde_json::from_str(command_json)
+                .map_err(|error| format!("invalid legacy command JSON for IPC dispatch: {error}"))?;
+            let command_type = value
+                .get("type")
+                .and_then(|value| value.as_str())
+                .ok_or_else(|| "legacy command JSON missing type field".to_string())?
+                .to_string();
+
+            match command_type.as_str() {
+                "user_prompt" => {
+                    let text = value
+                        .get("text")
+                        .and_then(|value| value.as_str())
+                        .ok_or_else(|| "user_prompt missing text field".to_string())?
+                        .to_string();
+                    let client = client.clone();
+                    runtime.spawn(async move {
+                        match client.submit_prompt(&text).await {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                eprintln!("auspex: IPC submit_prompt was rejected by Omegon");
+                            }
+                            Err(error) => eprintln!("auspex: IPC submit_prompt failed: {error}"),
+                        }
+                    });
+                    Ok(())
+                }
+                "cancel" => {
+                    let client = client.clone();
+                    runtime.spawn(async move {
+                        match client.cancel().await {
+                            Ok(true) => {}
+                            Ok(false) => {
+                                eprintln!("auspex: IPC cancel was rejected by Omegon");
+                            }
+                            Err(error) => eprintln!("auspex: IPC cancel failed: {error}"),
+                        }
+                    });
+                    Ok(())
+                }
+                "slash_command" => {
+                    let name = value
+                        .get("name")
+                        .and_then(|value| value.as_str())
+                        .ok_or_else(|| "slash_command missing name field".to_string())?
+                        .to_string();
+                    let args = value
+                        .get("args")
+                        .and_then(|value| value.as_str())
+                        .unwrap_or_default()
+                        .to_string();
+                    let client = client.clone();
+                    runtime.spawn(async move {
+                        match client.run_slash_command(&name, &args).await {
+                            Ok(result) if result.accepted => {}
+                            Ok(result) => {
+                                eprintln!(
+                                    "auspex: IPC slash command rejected: {}",
+                                    result.output.unwrap_or_else(|| "unknown rejection".to_string())
+                                );
+                            }
+                            Err(error) => eprintln!("auspex: IPC slash command failed: {error}"),
+                        }
+                    });
+                    Ok(())
+                }
+                other => Err(format!("unsupported legacy IPC command type: {other}")),
+            }
+        }
     }
 }
 

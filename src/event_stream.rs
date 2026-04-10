@@ -73,7 +73,7 @@ impl EventStreamHandle {
     }
 
     pub fn send_targeted_command(&self, command: &TargetedCommand) {
-        self.outbox.push_raw(command.command_json.clone());
+        self.outbox.push_raw(command.compatibility_command_json());
     }
 
     #[cfg(test)]

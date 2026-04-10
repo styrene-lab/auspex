@@ -1038,33 +1038,22 @@ impl AppController {
                     return None;
                 }
                 self.refresh_audit_timeline();
-                Some(TargetedCommand::legacy_json(
-                    target,
-                    serde_json::json!({
-                        "type": "user_prompt",
-                        "text": trimmed,
-                    })
-                    .to_string(),
-                ))
+                Some(TargetedCommand::prompt_submit(target, trimmed))
             }
             SessionSource::Mock(session) => {
                 let submitted = session.submit();
                 if submitted {
                     self.refresh_audit_timeline();
                 }
-                submitted.then(|| TargetedCommand::legacy_json(target, String::new()))
+                None
             }
         }
-        .filter(|command| !command.command_json.is_empty())
     }
 
     pub fn cancel_command(&self) -> Option<TargetedCommand> {
         match &self.session {
             SessionSource::Remote(session) if session.is_run_active() => {
-                Some(TargetedCommand::legacy_json(
-                    self.command_target(),
-                    serde_json::json!({ "type": "cancel" }).to_string(),
-                ))
+                Some(TargetedCommand::turn_cancel(self.command_target()))
             }
             _ => None,
         }
@@ -1106,7 +1095,7 @@ impl AppController {
         model: Option<&str>,
     ) -> Option<String> {
         self.request_dispatcher_switch_command(profile, model)
-            .map(|command| command.command_json)
+            .map(|command| command.compatibility_command_json())
     }
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
@@ -1620,7 +1609,7 @@ mod tests {
         let command = controller.submit_prompt_command().unwrap();
 
         assert_eq!(
-            command.command_json,
+            command.compatibility_command_json(),
             r#"{"text":"ship it","type":"user_prompt"}"#
         );
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
@@ -1637,7 +1626,7 @@ mod tests {
         assert_eq!(controller.composer().draft(), "");
         assert_eq!(
             command.transport_json().unwrap(),
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"text\":\"ship it\",\"type\":\"user_prompt\"}"}}"#
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"prompt_submit","text":"ship it"}}"#
         );
     }
 
@@ -1914,7 +1903,7 @@ mod tests {
         let cancel = controller
             .cancel_command()
             .expect("cancel command expected during active run");
-        assert_eq!(cancel.command_json, r#"{"type":"cancel"}"#);
+        assert_eq!(cancel.compatibility_command_json(), r#"{"type":"cancel"}"#);
         assert_eq!(cancel.target.session_key, "remote:session_01HVDEMO");
         assert_eq!(
             cancel.target.dispatcher_instance_id.as_deref(),
@@ -1922,7 +1911,7 @@ mod tests {
         );
         assert_eq!(
             cancel.transport_json().unwrap(),
-            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"legacy_json","command_json":"{\"type\":\"cancel\"}"}}"#
+            r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"turn_cancel"}}"#
         );
     }
 
@@ -1973,7 +1962,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            command.command_json,
+            command.compatibility_command_json(),
             r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","request_id":"dispatcher-switch-1","type":"switch_dispatcher"}"#
         );
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
@@ -2069,7 +2058,8 @@ mod tests {
     fn operator_readiness_becomes_ready_after_auth_inventory_refresh() {
         let mut controller =
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
-        let _ = controller.refresh_settings_auth_status();
+        controller.settings_auth_state.inventory_refreshed = true;
+        controller.settings_auth_state.last_error = None;
         let readiness = controller.operator_readiness();
 
         assert!(readiness.ready);
