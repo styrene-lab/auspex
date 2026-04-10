@@ -228,6 +228,10 @@ impl RemoteHostSession {
         Some(DispatcherSwitchCommandOutcome::Issued { request_id })
     }
 
+    pub fn report_dispatch_failure(&mut self, text: impl Into<String>) {
+        self.push_dispatcher_notice(text, SystemNoticeKind::Failure);
+    }
+
     pub fn refresh_provider_auth(
         &mut self,
         providers: Vec<crate::omegon_control::ProviderStatusSnapshot>,

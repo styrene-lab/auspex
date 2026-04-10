@@ -868,8 +868,9 @@ pub fn App() -> Element {
                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                     #[cfg(not(target_arch = "wasm32"))]
-                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
+                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
+                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
                     }
                     #[cfg(target_arch = "wasm32")]
                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -893,8 +894,9 @@ pub fn App() -> Element {
                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                     #[cfg(not(target_arch = "wasm32"))]
-                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
+                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
+                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
                     }
                     #[cfg(target_arch = "wasm32")]
                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -1054,8 +1056,9 @@ pub fn App() -> Element {
                                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                     #[cfg(not(target_arch = "wasm32"))]
-                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
+                                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
+                                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
                                     }
                                     #[cfg(target_arch = "wasm32")]
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
@@ -1211,8 +1214,9 @@ pub fn App() -> Element {
                                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                                     #[cfg(not(target_arch = "wasm32"))]
-                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                                        let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
+                                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
+                                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
                                     }
                                     #[cfg(target_arch = "wasm32")]
                                     if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {

@@ -1155,6 +1155,16 @@ impl AppController {
         }
     }
 
+    pub fn record_dispatch_failure(&mut self, message: impl Into<String>) {
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                session.report_dispatch_failure(message);
+                self.handle_session_mutation();
+            }
+            SessionSource::Mock(_) => {}
+        }
+    }
+
     fn handle_session_mutation(&mut self) {
         self.rebuild_attached_instances();
         let active_instance_ids: Vec<String> = self
@@ -1983,6 +1993,28 @@ mod tests {
             Some("openai:gpt-4.1")
         );
         assert_eq!(switch_state.status, "pending");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn dispatcher_switch_ipc_failure_is_reported_to_operator() {
+        let mut controller =
+            AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
+        let command = controller
+            .request_dispatcher_switch_command("supervisor-heavy", Some("openai:gpt-4.1"))
+            .unwrap();
+        let transport = crate::command_transport::CommandTransport::Ipc(
+            crate::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
+        );
+
+        let error = transport
+            .dispatch_targeted_command(None, &command)
+            .unwrap_err();
+        controller.record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
+
+        assert!(controller.messages().iter().any(|message| {
+            message.text.contains("Dispatcher switch could not be sent:")
+        }));
     }
 
     #[test]
