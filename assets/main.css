@@ -3233,10 +3233,10 @@ body > * {
 .debug-shell-left-host {
   min-height: 520px;
   box-sizing: border-box;
-  border-radius: 24px;
-  padding: 0.25rem;
-  border: 3px solid #ff8c00;
-  background: rgba(255, 140, 0, 0.18);
+  border-radius: 10px;
+  padding: 0.2rem;
+  border: 2px solid #ff8c00;
+  background: rgba(255, 140, 0, 0.14);
 }
 
 .debug-shell-right-host {
@@ -3247,10 +3247,10 @@ body > * {
   z-index: 11;
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
+  border-radius: 10px;
   padding: 0;
-  border: 3px solid #58ff58;
-  background: rgba(120, 255, 120, 0.18);
+  border: 2px solid #58ff58;
+  background: rgba(120, 255, 120, 0.14);
   overflow: hidden;
 }
 
@@ -3262,10 +3262,10 @@ body > * {
   z-index: 11;
   display: flex;
   flex-direction: column;
-  border-radius: 24px;
+  border-radius: 10px;
   padding: 0;
-  border: 3px solid #00b4ff;
-  background: rgba(0, 180, 255, 0.18);
+  border: 2px solid #00b4ff;
+  background: rgba(0, 180, 255, 0.14);
   overflow: hidden;
 }
 
@@ -3274,13 +3274,13 @@ body > * {
 .debug-shell-right {
   min-height: 520px;
   box-sizing: border-box;
-  border-radius: 24px;
+  border-radius: 10px;
   color: #fff;
   font: 700 24px/1.2 ui-monospace, SFMono-Regular, Menlo, monospace;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 3px solid rgba(255,255,255,0.35);
+  border: 2px solid rgba(255,255,255,0.35);
 }
 
 .debug-shell-center-host .cockpit-cop-stage,
@@ -3295,7 +3295,7 @@ body > * {
 
 .debug-shell-center-host .cockpit-cop-bay {
   border: 0;
-  border-radius: 20px;
+  border-radius: 8px;
   box-shadow: none;
 }
 
@@ -3314,7 +3314,7 @@ body > * {
 
 .debug-shell-right-host .cockpit-support-bay {
   border: 0;
-  border-radius: 20px;
+  border-radius: 8px;
   box-shadow: none;
 }
 
