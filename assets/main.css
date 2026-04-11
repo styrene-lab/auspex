@@ -2551,30 +2551,27 @@ body > * {
   pointer-events: none;
   overflow: hidden;
   background:
-    radial-gradient(140% 92% at 50% -18%, rgba(22, 40, 66, 0.18), transparent 44%),
-    radial-gradient(120% 150% at 50% 120%, rgba(2, 6, 12, 0.54), transparent 54%),
-    radial-gradient(115% 88% at 50% 52%, rgba(8, 16, 28, 0.28), transparent 60%);
-  opacity: 0.78;
+    radial-gradient(145% 100% at 50% -18%, rgba(22, 40, 66, 0.18), transparent 44%),
+    radial-gradient(120% 160% at 50% 120%, rgba(2, 6, 12, 0.58), transparent 56%),
+    radial-gradient(120% 90% at 50% 55%, rgba(8, 16, 28, 0.30), transparent 62%);
+  opacity: 0.82;
 }
 
 .cockpit-canvas::before {
   content: "";
   position: absolute;
-  left: -10%;
-  right: -10%;
-  bottom: -12%;
-  height: 82%;
+  inset: -6% -4% -2% -4%;
   pointer-events: none;
   background-image:
-    radial-gradient(circle, rgba(88, 116, 156, 0.60) 1.1px, rgba(48, 68, 96, 0.28) 1.9px, transparent 2.8px),
-    linear-gradient(rgba(16, 28, 44, 0.30) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(16, 28, 44, 0.30) 1px, transparent 1px);
+    radial-gradient(circle, rgba(86, 112, 150, 0.48) 1px, rgba(42, 60, 88, 0.18) 1.8px, transparent 2.8px),
+    linear-gradient(rgba(14, 24, 38, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(14, 24, 38, 0.18) 1px, transparent 1px);
   background-size: 24px 24px, 96px 96px, 96px 96px;
   background-position: center center, center center, center center;
-  transform-origin: center bottom;
-  transform: perspective(1400px) rotateX(76deg) scaleY(2.6);
-  opacity: 0.95;
-  mask-image: radial-gradient(140% 115% at 50% 100%, #000 28%, rgba(0, 0, 0, 0.95) 42%, rgba(0, 0, 0, 0.78) 58%, rgba(0, 0, 0, 0.38) 72%, transparent 86%);
+  transform-origin: center center;
+  transform: perspective(1600px) rotateX(58deg) scale(1.18, 1.5);
+  opacity: 0.52;
+  mask-image: radial-gradient(130% 110% at 50% 58%, rgba(0, 0, 0, 0.95) 22%, rgba(0, 0, 0, 0.78) 48%, rgba(0, 0, 0, 0.42) 68%, transparent 88%);
 }
 
 .cockpit-canvas::after {
@@ -2583,8 +2580,9 @@ body > * {
   inset: 0;
   pointer-events: none;
   background:
-    radial-gradient(120% 90% at 50% 100%, rgba(34, 58, 92, 0.10), transparent 46%),
-    radial-gradient(100% 80% at 50% -10%, rgba(12, 22, 38, 0.16), transparent 48%);
+    radial-gradient(120% 100% at 50% 58%, rgba(36, 60, 92, 0.08), transparent 40%),
+    radial-gradient(100% 80% at 50% -10%, rgba(12, 22, 38, 0.14), transparent 48%),
+    radial-gradient(110% 90% at 50% 115%, rgba(5, 10, 18, 0.22), transparent 54%);
 }
 
 .cockpit-top-rail {
