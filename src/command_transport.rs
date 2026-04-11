@@ -18,7 +18,7 @@ impl CommandTransport {
         match self {
             Self::EventStream => {
                 let stream = event_stream.ok_or_else(|| {
-                    "event stream unavailable for websocket command dispatch".to_string()
+                    "event stream unavailable for websocket web-command dispatch".to_string()
                 })?;
                 stream.send_targeted_command(command);
                 Ok(())
@@ -111,7 +111,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn event_stream_transport_queues_raw_command_json() {
+    fn event_stream_transport_queues_web_command_json() {
         let transport = CommandTransport::EventStream;
         let handle = crate::event_stream::EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
         let command = TargetedCommand::prompt_submit(
@@ -124,7 +124,7 @@ mod tests {
 
         transport
             .dispatch_targeted_command(Some(&handle), &command)
-            .expect("event-stream dispatch should queue raw JSON");
+            .expect("event-stream dispatch should queue websocket web-command JSON");
 
         let commands = handle.debug_drain_outbox();
         assert_eq!(

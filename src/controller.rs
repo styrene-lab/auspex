@@ -1091,7 +1091,7 @@ impl AppController {
         model: Option<&str>,
     ) -> Option<String> {
         self.request_dispatcher_switch_command(profile, model)
-            .map(|command| command.compatibility_command_json())
+            .map(|command| command.web_command_json())
     }
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
@@ -1607,7 +1607,7 @@ mod tests {
     }
 
     #[test]
-    fn remote_submit_emits_user_prompt_command_json() {
+    fn remote_submit_emits_user_prompt_web_command_json() {
         let mut controller =
             AppController::from_remote_snapshot_json(REMOTE_SNAPSHOT_JSON).unwrap();
         controller.update_draft("ship it");
@@ -1615,7 +1615,7 @@ mod tests {
         let command = controller.submit_prompt_command().unwrap();
 
         assert_eq!(
-            command.compatibility_command_json(),
+            command.web_command_json(),
             r#"{"text":"ship it","type":"user_prompt"}"#
         );
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");
@@ -1909,7 +1909,7 @@ mod tests {
         let cancel = controller
             .cancel_command()
             .expect("cancel command expected during active run");
-        assert_eq!(cancel.compatibility_command_json(), r#"{"type":"cancel"}"#);
+        assert_eq!(cancel.web_command_json(), r#"{"type":"cancel"}"#);
         assert_eq!(cancel.target.session_key, "remote:session_01HVDEMO");
         assert_eq!(
             cancel.target.dispatcher_instance_id.as_deref(),
@@ -1968,7 +1968,7 @@ mod tests {
             .unwrap();
 
         assert_eq!(
-            command.compatibility_command_json(),
+            command.web_command_json(),
             r#"{"model":"openai:gpt-4.1","profile":"supervisor-heavy","request_id":"dispatcher-switch-1","type":"switch_dispatcher"}"#
         );
         assert_eq!(command.target.session_key, "remote:session_01HVDEMO");

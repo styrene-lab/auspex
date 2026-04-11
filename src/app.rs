@@ -4786,7 +4786,7 @@ mod tests {
             slash,
         );
         assert_eq!(
-            targeted.compatibility_command_json(),
+            targeted.web_command_json(),
             r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
         );
         assert_eq!(

@@ -73,7 +73,7 @@ impl EventStreamHandle {
     }
 
     pub fn send_targeted_command(&self, command: &TargetedCommand) {
-        self.outbox.push_raw(command.compatibility_command_json());
+        self.outbox.push_raw(command.web_command_json());
     }
 
     #[cfg(test)]
@@ -339,7 +339,7 @@ mod tests {
     }
 
     #[test]
-    fn send_targeted_command_queues_raw_command_json() {
+    fn send_targeted_command_queues_web_command_json() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
         let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {

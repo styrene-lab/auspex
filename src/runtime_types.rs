@@ -79,7 +79,7 @@ impl TargetedCommand {
         }
     }
 
-    pub fn compatibility_command_json(&self) -> String {
+    pub fn web_command_json(&self) -> String {
         match &self.command {
             OperatorCommand::PromptSubmit { text } => serde_json::json!({
                 "type": "user_prompt",
@@ -705,7 +705,7 @@ mod tests {
         );
 
         assert_eq!(
-            command.compatibility_command_json(),
+            command.web_command_json(),
             r#"{"args":"anthropic","name":"login","type":"slash_command"}"#
         );
         assert_eq!(
