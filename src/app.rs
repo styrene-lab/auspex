@@ -1546,6 +1546,7 @@ pub fn App() -> Element {
 
                 // Bottom-center — instrumentation
                 div { class: "bottombar-instruments",
+                    span { class: "instrument", "CANARY-RADIUS-PASS-2" }
                     span { class: "instrument", "{controller.read().summary().connection}" }
                     span { class: "instrument", "{context_status}" }
                 }
