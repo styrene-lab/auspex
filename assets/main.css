@@ -2538,11 +2538,10 @@ body > * {
 .shell-cockpit {
   border-radius: 24px;
   background:
-    radial-gradient(140% 90% at 50% -18%, rgba(28, 58, 92, 0.18), transparent 46%),
-    radial-gradient(120% 140% at 50% 118%, rgba(8, 14, 24, 0.46), transparent 54%),
-    radial-gradient(circle at top, rgba(22, 44, 74, 0.09), transparent 32%),
-    radial-gradient(circle at 20% 20%, rgba(42, 78, 118, 0.05), transparent 18%),
-    linear-gradient(180deg, #070b12 0%, #05070c 100%);
+    radial-gradient(150% 110% at 50% -24%, rgba(20, 38, 68, 0.22), transparent 42%),
+    radial-gradient(135% 165% at 50% 122%, rgba(4, 8, 16, 0.72), transparent 56%),
+    radial-gradient(120% 85% at 50% 52%, rgba(10, 18, 32, 0.34), transparent 62%),
+    linear-gradient(180deg, #04070d 0%, #02040a 100%);
 }
 
 .cockpit-canvas {
@@ -2551,14 +2550,17 @@ body > * {
   border-radius: 24px;
   pointer-events: none;
   background-image:
-    radial-gradient(circle, rgba(54, 76, 102, 0.18) 0.8px, transparent 0.8px),
-    linear-gradient(rgba(18, 32, 48, 0.18) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(18, 32, 48, 0.18) 1px, transparent 1px),
-    radial-gradient(140% 100% at 50% -12%, rgba(26, 44, 68, 0.18), transparent 48%),
-    radial-gradient(120% 140% at 50% 118%, rgba(5, 10, 18, 0.3), transparent 58%);
-  background-size: 18px 18px, 90px 90px, 90px 90px, 100% 100%, 100% 100%;
-  background-position: 0 0, -1px -1px, -1px -1px, center top, center bottom;
-  opacity: 0.44;
+    radial-gradient(circle at 50% 45%, rgba(84, 114, 154, 0.42) 0.9px, rgba(56, 80, 112, 0.24) 1.6px, transparent 2.6px),
+    linear-gradient(rgba(16, 28, 44, 0.24) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(16, 28, 44, 0.24) 1px, transparent 1px),
+    radial-gradient(140% 92% at 50% -18%, rgba(22, 40, 66, 0.26), transparent 44%),
+    radial-gradient(120% 150% at 50% 120%, rgba(2, 6, 12, 0.46), transparent 54%),
+    radial-gradient(115% 88% at 50% 52%, rgba(10, 20, 36, 0.18), transparent 60%);
+  background-size: 22px 22px, 92px 92px, 92px 92px, 100% 100%, 100% 100%, 100% 100%;
+  background-position: 0 0, -1px -1px, -1px -1px, center top, center bottom, center center;
+  opacity: 0.6;
+  filter: perspective(1200px) rotateX(10deg) scale(1.02);
+  transform-origin: center center;
 }
 
 .cockpit-top-rail {
@@ -3178,10 +3180,11 @@ body > * {
   transform: translateX(-50%);
   border-radius: 28px;
   pointer-events: none;
-  border: 1px solid rgba(18, 32, 48, 0.18);
+  border: 1px solid rgba(10, 20, 34, 0.22);
   box-shadow:
-    inset 0 22px 56px rgba(8, 16, 28, 0.26),
-    inset 0 -24px 48px rgba(4, 8, 14, 0.16);
+    inset 0 32px 84px rgba(6, 12, 22, 0.34),
+    inset 0 -30px 64px rgba(2, 5, 10, 0.24),
+    inset 0 0 120px rgba(12, 24, 40, 0.08);
 }
 
 .cockpit-focus-host {
