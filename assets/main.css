@@ -2538,8 +2538,10 @@ body > * {
 .shell-cockpit {
   border-radius: 24px;
   background:
-    radial-gradient(circle at top, rgba(42, 180, 200, 0.08), transparent 32%),
-    radial-gradient(circle at 20% 20%, rgba(110, 202, 216, 0.05), transparent 18%),
+    radial-gradient(140% 90% at 50% -18%, rgba(28, 58, 92, 0.18), transparent 46%),
+    radial-gradient(120% 140% at 50% 118%, rgba(8, 14, 24, 0.46), transparent 54%),
+    radial-gradient(circle at top, rgba(22, 44, 74, 0.09), transparent 32%),
+    radial-gradient(circle at 20% 20%, rgba(42, 78, 118, 0.05), transparent 18%),
     linear-gradient(180deg, #070b12 0%, #05070c 100%);
 }
 
@@ -2549,12 +2551,14 @@ body > * {
   border-radius: 24px;
   pointer-events: none;
   background-image:
-    radial-gradient(circle, rgba(196, 216, 228, 0.12) 0.8px, transparent 0.8px),
-    linear-gradient(rgba(26, 52, 72, 0.22) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(26, 52, 72, 0.22) 1px, transparent 1px);
-  background-size: 18px 18px, 90px 90px, 90px 90px;
-  background-position: 0 0, -1px -1px, -1px -1px;
-  opacity: 0.42;
+    radial-gradient(circle, rgba(54, 76, 102, 0.18) 0.8px, transparent 0.8px),
+    linear-gradient(rgba(18, 32, 48, 0.18) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(18, 32, 48, 0.18) 1px, transparent 1px),
+    radial-gradient(140% 100% at 50% -12%, rgba(26, 44, 68, 0.18), transparent 48%),
+    radial-gradient(120% 140% at 50% 118%, rgba(5, 10, 18, 0.3), transparent 58%);
+  background-size: 18px 18px, 90px 90px, 90px 90px, 100% 100%, 100% 100%;
+  background-position: 0 0, -1px -1px, -1px -1px, center top, center bottom;
+  opacity: 0.44;
 }
 
 .cockpit-top-rail {
@@ -3174,8 +3178,10 @@ body > * {
   transform: translateX(-50%);
   border-radius: 28px;
   pointer-events: none;
-  border: 1px solid rgba(26, 52, 72, 0.18);
-  box-shadow: inset 0 24px 60px rgba(10, 20, 32, 0.22);
+  border: 1px solid rgba(18, 32, 48, 0.18);
+  box-shadow:
+    inset 0 22px 56px rgba(8, 16, 28, 0.26),
+    inset 0 -24px 48px rgba(4, 8, 14, 0.16);
 }
 
 .cockpit-focus-host {
@@ -3189,9 +3195,9 @@ body > * {
   border-radius: inherit;
   pointer-events: none;
   background:
-    radial-gradient(120% 120% at 50% -10%, rgba(42, 180, 200, 0.05), transparent 42%),
+    radial-gradient(120% 120% at 50% -10%, rgba(18, 40, 64, 0.045), transparent 42%),
     linear-gradient(180deg, rgba(255,255,255,0.015), transparent 16%);
-  box-shadow: inset 0 0 0 1px rgba(42, 180, 200, 0.06);
+  box-shadow: inset 0 0 0 1px rgba(24, 48, 76, 0.05);
 }
 
 .cockpit-contextual-detail {
