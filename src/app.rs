@@ -983,13 +983,14 @@ pub fn App() -> Element {
 
     let cockpit_center_body_for_blockout = cockpit_center_body.clone();
     let cockpit_bg_svg = COCKPIT_BG_SVG.replacen("fill=\"#030303\"", "fill=\"none\"", 1);
+    let cockpit_bg_probe = r#"<div style='position:absolute;inset:40px;border:6px dashed magenta;background:rgba(255,0,255,0.22);color:#ff4dff;font:700 48px/1.2 ui-monospace,monospace;display:flex;align-items:center;justify-content:center;letter-spacing:0.08em;'>SVG BACKDROP TEST</div>"#;
 
     rsx! {
         div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
             div { class: "cockpit-canvas", "aria-hidden": "true",
                 div {
                     class: "cockpit-bg-svg",
-                    dangerous_inner_html: "{cockpit_bg_svg}",
+                    dangerous_inner_html: "{cockpit_bg_probe}",
                     "aria-hidden": "true",
                 }
             }
