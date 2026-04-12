@@ -2561,8 +2561,11 @@ body > * {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  opacity: 0.72;
-  filter: invert(1) brightness(0.88) contrast(1.18);
+  opacity: 0.35;
+  filter: invert(1) sepia(1) saturate(12) hue-rotate(260deg) brightness(1.35) contrast(1.4);
+  z-index: 50;
+  outline: 2px dashed magenta;
+  outline-offset: -2px;
 }
 
 .cockpit-bg-svg svg {
