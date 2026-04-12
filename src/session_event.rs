@@ -157,6 +157,7 @@ impl From<IpcEventPayload> for SessionEvent {
                 actual_output_tokens,
                 cache_read_tokens,
                 provider_telemetry,
+                ..
             } => Self::TurnEnded {
                 turn,
                 estimated_tokens: Some(estimated_tokens as u64),
@@ -189,7 +190,7 @@ impl From<IpcEventPayload> for SessionEvent {
                 name,
                 args: Some(args),
             },
-            IpcEventPayload::ToolUpdated { id } => Self::ToolUpdated { id, partial: None },
+            IpcEventPayload::ToolUpdated { id, .. } => Self::ToolUpdated { id, partial: None },
             IpcEventPayload::ToolEnded {
                 id,
                 name,
@@ -212,6 +213,9 @@ impl From<IpcEventPayload> for SessionEvent {
             IpcEventPayload::DecompositionCompleted { merged } => {
                 Self::DecompositionCompleted { merged }
             }
+            IpcEventPayload::FamilyVitalSignsUpdated { .. } => Self::SystemNotification {
+                message: "Family vital signs updated".into(),
+            },
             IpcEventPayload::HarnessChanged => Self::HarnessChanged,
             IpcEventPayload::StateChanged { sections } => Self::StateChanged { sections },
             IpcEventPayload::SystemNotification { message } => Self::SystemNotification { message },
