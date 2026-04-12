@@ -2566,8 +2566,9 @@ body > * {
   background-repeat: no-repeat;
   background-position: center center;
   background-size: cover;
-  opacity: 0.56;
-  mix-blend-mode: screen;
+  opacity: 0.72;
+  mix-blend-mode: normal;
+  filter: invert(1) brightness(0.88) contrast(1.18);
 }
 
 .cockpit-canvas::after {
