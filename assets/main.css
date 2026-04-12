@@ -2557,18 +2557,18 @@ body > * {
   opacity: 0.92;
 }
 
-.cockpit-canvas::before {
-  content: "";
+.cockpit-bg-svg {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background-image: url("./bg.svg");
-  background-repeat: no-repeat;
-  background-position: center center;
-  background-size: cover;
   opacity: 0.72;
-  mix-blend-mode: normal;
   filter: invert(1) brightness(0.88) contrast(1.18);
+}
+
+.cockpit-bg-svg svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
 
 .cockpit-canvas::after {

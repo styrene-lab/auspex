@@ -15,6 +15,7 @@ use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = true;
 const SHELL_BLOCKOUT_MODE: bool = true;
+const COCKPIT_BG_SVG: &str = include_str!("../assets/bg.svg");
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
@@ -981,10 +982,17 @@ pub fn App() -> Element {
     };
 
     let cockpit_center_body_for_blockout = cockpit_center_body.clone();
+    let cockpit_bg_svg = COCKPIT_BG_SVG.replacen("fill=\"#030303\"", "fill=\"none\"", 1);
 
     rsx! {
         div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
-            div { class: "cockpit-canvas", "aria-hidden": "true" }
+            div { class: "cockpit-canvas", "aria-hidden": "true",
+                div {
+                    class: "cockpit-bg-svg",
+                    dangerous_inner_html: "{cockpit_bg_svg}",
+                    "aria-hidden": "true",
+                }
+            }
 
             if LAYOUT_DEBUG_ENABLED {
                 if let Some(snapshot) = layout_debug_snapshot.read().as_ref() {
