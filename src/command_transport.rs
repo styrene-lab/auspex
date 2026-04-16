@@ -24,7 +24,18 @@ impl CommandTransport {
                 Ok(())
             }
             #[cfg(not(target_arch = "wasm32"))]
-            Self::Ipc(client) => dispatch_over_ipc(client, command),
+            Self::Ipc(client) => {
+                let result = dispatch_over_ipc(client, command);
+                if result.is_err() {
+                    // IPC failed (broken pipe, etc.) — fall back to WebSocket.
+                    if let Some(stream) = event_stream {
+                        eprintln!("auspex: IPC dispatch failed, falling back to WebSocket");
+                        stream.send_targeted_command(command);
+                        return Ok(());
+                    }
+                }
+                result
+            }
         }
     }
 }

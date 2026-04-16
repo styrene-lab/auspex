@@ -2703,7 +2703,6 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
             section { class: "cockpit-cop-bay cockpit-focus-host",
                 nav { class: "cockpit-workspace-nav",
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
-                    button { class: if *workspace.read() == Workspace::Session { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Session), "Session" }
                     button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
                     button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }

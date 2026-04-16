@@ -550,18 +550,18 @@ pub async fn bootstrap_from_http_state_async(
     let ipc_event_stream = ipc_socket_path
         .filter(|_| ipc_client.is_some())
         .map(crate::ipc_client::spawn_ipc_event_stream);
+    // Always create the WebSocket event stream — it handles command
+    // dispatch even when IPC is the primary event transport.
     #[cfg(not(target_arch = "wasm32"))]
-    let event_stream = if ipc_client.is_some() {
-        None
-    } else {
-        Some(spawn_websocket_event_stream(&ws_url))
-    };
+    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
     #[cfg(target_arch = "wasm32")]
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
+    // Command transport: always use WebSocket for commands. The IPC socket
+    // uses a single-controller model that conflicts with the event stream
+    // connection. IPC is used for event streaming only; commands go via
+    // the multiplexed WebSocket endpoint.
     #[cfg(not(target_arch = "wasm32"))]
-    let command_transport = ipc_client
-        .map(CommandTransport::Ipc)
-        .or(Some(CommandTransport::EventStream));
+    let command_transport = Some(CommandTransport::EventStream);
     let note = startup
         .as_ref()
         .map(|startup| {
