@@ -97,3 +97,29 @@ Follow-on from earlier session. Multi-instance event streams needed so operator 
 - **Session stats for focused instance**: right panel stats still show primary session data when focused on remote. The per-instance session_data() is wired but the right panel session screen doesn't use focused_session_data() yet
 - **Stable auth tokens**: ephemeral tokens in remote config break on agent restart
 
+## 2026-04-16 — Fleet dashboard, layout fixes, rendering diagnosis
+
+### Context
+Follow-on from per-instance event streams. Fleet dashboard left rail, right panel compaction, center column layout, and chat rendering investigation.
+
+### Completed
+- Fleet dashboard left rail: Local Agent card at top, Fleet section with per-instance cards (role, status badge, activity stats), click to focus
+- Right panel: session stats as compact KV rows, selected deployment trimmed to 4 rows, provider detail collapsed by default, scroll containment
+- Dispatch context strip: 8 chips → 4 (Target, State, Thinking, Send), tighter sizing
+- Center column overflow fixed: grid columns changed to minmax(0, ...), removed all width: 100% from flex chain, added overflow: hidden on grid
+- Empty state: removed "New Project starter" boilerplate and system bootstrap messages, show only subtle session hint
+- Aborted turn rendering: TurnBlock::Aborted with empty text now shows "Message aborted by agent" in red
+- Assessment cleanup: 7 findings fixed (autonomy_mode format, token rename, write guard, WebSocket cancel, JSON logging, dedup, handler sync)
+
+### Decisions
+- Center column flex chain: NO explicit width: 100% on flex children — flex column children stretch by default; explicit width was resolving against wrong containing block
+- Grid columns: minmax(0, X) not minmax(200px, X) — minimum widths can force grid wider than viewport
+- Provider detail collapsed by default — operator expands on demand; auth issues surfaced in dispatch strip
+
+### Open Threads — CRITICAL
+- **Omegon integration is broken at the lifecycle layer**: auspex spawns omegon but doesn't manage auth state. When Anthropic OAuth expires, the omegon aborts all turns silently. `omegon auth login` updates the profile file but the running process keeps the stale token. Auspex has no mechanism to restart or signal the omegon to refresh auth.
+- **IPC socket missing**: the auspex-spawned omegon reports an IPC socket path but the socket file doesn't exist on disk. This forces WebSocket-only command transport, which is degraded mode.
+- **No auth surface in COP**: the settings panel has auth actions but they're hidden behind a modal. When auth blocks execution, the user sees "Message aborted by agent" with no indication that expired auth is the cause and no inline action to fix it.
+- **Session stats stay at 0**: the omegon aborts before completing any turns, so stats never increment. The focused session_data works but the source data is empty.
+- **Omegon process lifecycle**: auspex needs ability to restart its owned omegon, signal auth refresh, and detect provider failures proactively rather than discovering them via message aborts.
+
