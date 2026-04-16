@@ -842,11 +842,18 @@ pub fn App() -> Element {
                     JSON.stringify({
                       innerHeight: window.innerHeight,
                       boxes: [
-                        '.shell',
-                        '.shell-cockpit',
-                        '.cockpit-top-rail',
-                        '.cockpit-console-shell',
-                        '.cockpit-console-side-left .cockpit-panel:first-child'
+                        '.debug-shell-main',
+                        '.debug-shell-center-host',
+                        '.cockpit-cop-stage',
+                        '.cockpit-cop-bay',
+                        '.cockpit-focus-host',
+                        '.focus-host-shell',
+                        '.focus-host-body',
+                        '.cockpit-cop-body',
+                        '.cockpit-cop-focus',
+                        '.transcript',
+                        '.bubble-user',
+                        '.turn-card'
                       ].map((selector) => {
                         const el = document.querySelector(selector);
                         if (!el) return { selector, top: -1, left: -1, width: -1, height: -1 };
@@ -865,6 +872,11 @@ pub fn App() -> Element {
                     && let Some(raw) = reply.as_str()
                     && let Some(snapshot) = parse_layout_debug_snapshot(raw)
                 {
+                    eprintln!("=== LAYOUT DEBUG ===");
+                    eprintln!("  innerHeight: {}", snapshot.inner_height);
+                    for item in &snapshot.boxes {
+                        eprintln!("  {} → left={} w={} h={}", item.selector, item.left, item.width, item.height);
+                    }
                     layout_debug_snapshot.set(Some(snapshot));
                 }
             });
@@ -2053,13 +2065,20 @@ fn render_transcript(
                                     }
                                 }
                             },
-                            crate::fixtures::TurnBlock::Aborted(text) => rsx! {
-                                section {
-                                    id: transcript_block_dom_id(turn.number, block_index),
-                                    class: "block block-aborted",
-                                    "data-surface": "panel",
-                                    "data-tone": "danger",
-                                    p { "{text}" }
+                            crate::fixtures::TurnBlock::Aborted(text) => {
+                                let display_text = if text.is_empty() {
+                                    "Message aborted by agent"
+                                } else {
+                                    text.as_str()
+                                };
+                                rsx! {
+                                    section {
+                                        id: transcript_block_dom_id(turn.number, block_index),
+                                        class: "block block-aborted",
+                                        "data-surface": "panel",
+                                        "data-tone": "danger",
+                                        p { class: "msg-aborted", "{display_text}" }
+                                    }
                                 }
                             },
                         }
