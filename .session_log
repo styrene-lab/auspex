@@ -123,3 +123,32 @@ Follow-on from per-instance event streams. Fleet dashboard left rail, right pane
 - **Session stats stay at 0**: the omegon aborts before completing any turns, so stats never increment. The focused session_data works but the source data is empty.
 - **Omegon process lifecycle**: auspex needs ability to restart its owned omegon, signal auth refresh, and detect provider failures proactively rather than discovering them via message aborts.
 
+## 2026-04-16 — Omegon 0.15.26 integration, transport fix, COP architecture pivot
+
+### Context
+Omegon 0.15.26 released with IPC socket in serve mode, auth over WebSocket, per-turn bridge resolution, SIGHUP reload, MessageAbort reason. Integrated with auspex.
+
+### Completed
+- Omegon 0.15.26 compat bump and integration
+- IPC single-controller conflict diagnosed and fixed: WebSocket for commands, IPC for events
+- Abort state cleanup: run_active cleared, summary updated, activity kind set to Failure
+- Provider-specific auth detection in composer blocked overlay
+- Omegon restart and auth login capabilities in bootstrap
+- Transcript scroll fix (overflow-y: scroll + momentum)
+- HTML entity decoding in tool output
+- Session tab removed from COP center
+- Center column overflow fully resolved (grid minmax(0,...), no width:100% in flex chain)
+- End-to-end chat working: prompt → stream → tool calls → response → display
+
+### Decisions
+- WebSocket for commands, IPC for events (single-controller constraint)
+- Always create WebSocket even when IPC is primary event transport
+- AUSPEX_OMEGON_BIN=~/.local/bin/omegon for dev/RC builds
+
+### Open Threads — ARCHITECTURAL PIVOT APPROVED
+- **COP Display Surface (DEFAULT)**: Replace the chat transcript as default view with an agent-controlled dynamic HUD. The internal auspex omegon agent gets tools to write directly to named COP regions. Content types: table, status_card, alert_feed, kv_grid, text_block, code_block. Agent curates what the operator sees.
+- **Chat Mode (OPT-IN)**: Current transcript moves to opt-in tab. Foundation built and working.
+- **Tool Surface Design**: cop_write(region, content_type, data), cop_clear(region), cop_layout(regions). Agent renders responses by updating display regions instead of appending to transcript.
+- **Self-improvement loop**: Common operator interactions tune the system toward useful COP layouts and presentations for operational contexts.
+- **Markdown rendering**: pulldown-cmark or similar needed for chat mode transcript. Raw markdown/tables currently render as plaintext.
+
