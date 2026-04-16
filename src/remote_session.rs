@@ -1144,7 +1144,9 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
             thinking_level: instance.runtime.thinking_level.clone(),
             capability_tier: instance.runtime.capability_tier.clone(),
             runtime_profile: Some(instance.runtime.runtime_profile.as_str().to_string()),
-            autonomy_mode: Some(format!("{:?}", instance.runtime.autonomy_mode).to_lowercase()),
+            autonomy_mode: serde_json::to_value(&instance.runtime.autonomy_mode)
+                .ok()
+                .and_then(|v| v.as_str().map(|s| s.to_string())),
             active_persona: snapshot.harness.active_persona.clone(),
             extensions: Vec::new(),
         }),

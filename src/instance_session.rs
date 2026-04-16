@@ -81,10 +81,18 @@ impl InstanceSession {
         }
 
         for event_json in &events {
-            if let Ok(event) = serde_json::from_str::<OmegonEvent>(event_json) {
-                let session_event = SessionEvent::from(event.clone());
-                self.update_activity(&session_event);
-                self.session.apply_event(event);
+            match serde_json::from_str::<OmegonEvent>(event_json) {
+                Ok(event) => {
+                    let session_event = SessionEvent::from(event.clone());
+                    self.update_activity(&session_event);
+                    self.session.apply_event(event);
+                }
+                Err(error) => {
+                    eprintln!(
+                        "auspex: instance {}: failed to parse event: {error}",
+                        self.instance_id
+                    );
+                }
             }
         }
 
@@ -175,9 +183,12 @@ impl InstanceSessionMap {
         self.sessions.insert(instance_id, session);
     }
 
-    /// Disconnect from a remote instance. Drops the session and stream.
+    /// Disconnect from a remote instance. Cancels the WebSocket task
+    /// and drops the session.
     pub fn disconnect(&mut self, instance_id: &str) {
-        self.sessions.remove(instance_id);
+        if let Some(session) = self.sessions.remove(instance_id) {
+            session.event_stream.cancel();
+        }
     }
 
     /// Check if an instance has a connected session.

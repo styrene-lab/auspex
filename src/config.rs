@@ -93,8 +93,11 @@ pub struct RemoteInstanceEntry {
     pub role: WorkerRole,
     #[serde(default = "default_remote_profile")]
     pub profile: String,
+    /// Auth token for the WebSocket connection. Can be an inline token
+    /// value for dev/local use, or a `secret://` URI for production
+    /// secret resolution (not yet implemented — currently used inline).
     #[serde(default)]
-    pub token_ref: Option<String>,
+    pub token: Option<String>,
     #[serde(default)]
     pub extensions: Vec<String>,
     #[serde(default)]
@@ -140,7 +143,7 @@ impl RemoteInstanceEntry {
         let ws_base = base
             .replace("https://", "wss://")
             .replace("http://", "ws://");
-        match &self.token_ref {
+        match &self.token {
             Some(token) if !token.is_empty() => format!("{ws_base}/ws?token={token}"),
             _ => format!("{ws_base}/ws"),
         }
@@ -382,7 +385,7 @@ impl RemoteInstanceEntry {
                     ready_url: self.ready_url(),
                     ws_url: self.ws_url(),
                     auth_mode: self.auth_mode.clone(),
-                    token_ref: self.token_ref.clone(),
+                    token_ref: self.token.clone(),
                     last_ready_at: None,
                 },
                 health: crate::runtime_types::ObservedHealth {
@@ -637,7 +640,7 @@ label = "Styrene Community Agent"
 base_url = "https://agents.styrene.dev:7842"
 role = "detached-service"
 profile = "messaging-agent"
-token_ref = "secret://auspex/instances/styrene-community-discord/token"
+token = "tok_styrene_community_discord"
 extensions = ["vox"]
 tags = ["discord", "community"]
 
@@ -657,8 +660,8 @@ base_url = "http://192.168.1.50:7842"
         assert_eq!(discord.role, WorkerRole::DetachedService);
         assert_eq!(discord.profile, "messaging-agent");
         assert_eq!(
-            discord.token_ref.as_deref(),
-            Some("secret://auspex/instances/styrene-community-discord/token")
+            discord.token.as_deref(),
+            Some("tok_styrene_community_discord")
         );
         assert_eq!(discord.extensions, vec!["vox"]);
         assert_eq!(discord.tags, vec!["discord", "community"]);
@@ -677,7 +680,7 @@ base_url = "http://192.168.1.50:7842"
         let entry = RemoteInstanceEntry {
             label: "test".into(),
             base_url: "https://agents.styrene.dev:7842".into(),
-            token_ref: Some("my-token".into()),
+            token: Some("my-token".into()),
             ..Default::default()
         };
 
@@ -717,7 +720,7 @@ base_url = "http://192.168.1.50:7842"
             base_url: "https://agents.styrene.dev:7842".into(),
             role: WorkerRole::DetachedService,
             profile: "messaging-agent".into(),
-            token_ref: Some("secret://token".into()),
+            token: Some("tok_test".into()),
             extensions: vec!["vox".into()],
             tags: vec!["discord".into()],
             auth_mode: "ephemeral-bearer".into(),
@@ -750,10 +753,10 @@ base_url = "http://192.168.1.50:7842"
             .observed
             .control_plane
             .ws_url
-            .contains("token=secret://token"));
+            .contains("token=tok_test"));
         assert_eq!(
             record.observed.control_plane.token_ref.as_deref(),
-            Some("secret://token")
+            Some("tok_test")
         );
         assert!(!record.observed.health.ready);
     }

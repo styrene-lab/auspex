@@ -1094,9 +1094,12 @@ pub fn App() -> Element {
                                                         controller.write().focus_instance(None);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
-                                                        controller.write().select_command_route_for_instance(&key);
-                                                        #[cfg(not(target_arch = "wasm32"))]
-                                                        controller.write().focus_instance(Some(&key));
+                                                        {
+                                                            let mut ctrl = controller.write();
+                                                            ctrl.select_command_route_for_instance(&key);
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            ctrl.focus_instance(Some(&key));
+                                                        }
                                                     }
                                                 }
                                             },
@@ -1201,11 +1204,20 @@ pub fn App() -> Element {
                                             r#type: "button",
                                             onclick: {
                                                 let key = item.key.clone();
+                                                let mut controller = controller;
                                                 move |_| {
                                                     if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
                                                         selected_cockpit_entity.set(None);
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        controller.write().focus_instance(None);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                                        {
+                                                            let mut ctrl = controller.write();
+                                                            ctrl.select_command_route_for_instance(&key);
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            ctrl.focus_instance(Some(&key));
+                                                        }
                                                     }
                                                 }
                                             },

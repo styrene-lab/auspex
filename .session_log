@@ -45,3 +45,32 @@ Append-only record of development sessions. Read recent entries for context.
   97a593c feat: scaffold auspex live-session data model v2
   8ea1136 refactor: unify WS command channel and rename session modes
 
+## 2026-04-16 — Omegon 0.15.25 compat, remote instances, WKWebView fix, right panel polish
+
+### Context
+Omegon 0.15.25 shipped with vox extension bridge for Discord/Slack agents. Styrene community Discord agent is live in a local container on port 7843. Goal: view and interact with it from auspex.
+
+### Completed
+- Bumped omegon compat range to 0.15.25 (schema v2 unchanged)
+- Added vox/daemon session awareness to control plane types (runtime_profile, autonomy_mode, active_persona, extensions, DaemonSessionsSnapshot, FamilyVitalSigns event)
+- Built remote instance registration: pkl/toml config at ~/.config/auspex/remote-instances.{pkl,toml}, config loader, async health probe on 15s cadence, auto-attach when ready
+- Container discovery module for podman-based agent detection
+- Found and fixed WKWebView hit-test dead zone: `body > *` CSS selector with height constraints kills all dioxus onclick events — replaced with explicit `#main` targeting
+- Polished right panel: scroll containment, compact KV rows, collapsible provider/control-plane/shell sections, condensed rollups
+- Deployment chip click now switches command route to that instance
+- COP kicker shows instance identity instead of "DEFAULT COP OCCUPANT"
+- Community agent successfully discovered, probed, attached, and visible in auspex
+
+### Decisions
+- `body > *` → `#main` for WKWebView compatibility (position:fixed on dioxus root child div breaks native hit-testing)
+- Decorative overlays (cockpit-canvas, cockpit-bg-svg) pushed to z-index: -1
+- Vox doesn't change IPC wire protocol — uses existing DaemonEventEnvelope, so no new event types needed
+- Remote instance config uses toml with pkl fallback, matching existing worker/deploy profile pattern
+- Remote probe uses reqwest async (same client as bootstrap), not sync curl like container discovery
+
+### Open Threads
+- **Multi-instance event streams**: auspex has one WebSocket/IPC connection to primary. Each remote instance needs its own event stream for transcript viewing. This is the blocker for direct operator chat with remote agents.
+- **Managed vs autonomous agent modes**: operator wants local auspex omegon to be able to command remote instances (C2 director pattern). Remote instances either run as autonomous daemons (vox/trigger-driven) or as managed agents directed by the local omegon. Implies tool surface on local agent for remote instance control.
+- **Session stats for remote instances**: right panel shows 0 turns/tools because stats come from primary session. Per-instance stats need per-instance event stream.
+- Community agent token is ephemeral (changes on restart). Need stable auth for persistent remote instance config.
+

@@ -55,6 +55,7 @@ pub struct EventStreamHandle {
     pub inbox: EventInbox,
     pub source: EventStreamSource,
     outbox: CommandOutbox,
+    cancelled: std::sync::Arc<std::sync::atomic::AtomicBool>,
 }
 
 impl EventStreamHandle {
@@ -63,7 +64,18 @@ impl EventStreamHandle {
             inbox: EventInbox::default(),
             source: EventStreamSource::WebSocket { url: url.into() },
             outbox: CommandOutbox::default(),
+            cancelled: std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
         }
+    }
+
+    /// Signal the background WebSocket task to stop.
+    pub fn cancel(&self) {
+        self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+    }
+
+    /// Whether this stream has been cancelled.
+    pub fn is_cancelled(&self) -> bool {
+        self.cancelled.load(std::sync::atomic::Ordering::Relaxed)
     }
 
     pub fn url(&self) -> &str {
@@ -146,6 +158,9 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
         let mut first_attempt = true;
 
         loop {
+            if worker_handle.is_cancelled() {
+                break;
+            }
             if !first_attempt {
                 worker_handle.push_system_notice(format!(
                     "Reconnecting to Omegon event stream in {}s\u{2026}",

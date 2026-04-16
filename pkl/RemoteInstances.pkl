@@ -17,7 +17,7 @@
 ///     base_url = "https://agents.styrene.dev:7842"
 ///     role = "detached-service"
 ///     profile = "messaging-agent"
-///     token_ref = "secret://auspex/instances/styrene-community-discord/token"
+///     token = "your-token-here"
 ///     extensions { "vox" }
 ///     tags { "discord"; "community" }
 ///   }
@@ -39,8 +39,9 @@ class Instance {
   /// Worker profile name.
   profile: String = "remote-agent"
 
-  /// Secret reference for the auth token (secret:// URI or inline for dev).
-  token_ref: String?
+  /// Auth token for the WebSocket connection. Inline token value for
+  /// dev/local use. Future: secret:// URI for production resolution.
+  token: String?
 
   /// Extensions the remote instance is known to run (e.g. ["vox"]).
   extensions: Listing<String>?

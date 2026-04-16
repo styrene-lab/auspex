@@ -608,7 +608,17 @@ impl AppController {
 
     /// Scan the instance registry for container-backed agents with
     /// healthy control planes and register them as attached instances.
+    /// Skips containers whose base_url matches a config-registered remote
+    /// instance to avoid duplicate entries for the same endpoint.
     pub fn reattach_container_agents(&mut self) {
+        let remote_base_urls: std::collections::HashSet<String> = self
+            .instance_registry
+            .instances
+            .iter()
+            .filter(|r| r.identity.instance_id.starts_with("remote:"))
+            .map(|r| r.observed.control_plane.base_url.clone())
+            .collect();
+
         let container_records: Vec<crate::runtime_types::InstanceRecord> = self
             .instance_registry
             .instances
@@ -617,6 +627,7 @@ impl AppController {
                 record.desired.backend.kind == crate::runtime_types::BackendKind::OciContainer
                     && record.observed.health.ready
                     && !record.observed.control_plane.base_url.is_empty()
+                    && !remote_base_urls.contains(&record.observed.control_plane.base_url)
             })
             .cloned()
             .collect();
@@ -776,10 +787,21 @@ impl AppController {
             .map(|r| r.identity.instance_id.clone())
             .collect();
 
+        // Skip containers whose endpoint matches a config-registered remote.
+        let remote_base_urls: std::collections::HashSet<String> = self
+            .instance_registry
+            .instances
+            .iter()
+            .filter(|r| r.identity.instance_id.starts_with("remote:"))
+            .map(|r| r.observed.control_plane.base_url.clone())
+            .collect();
+
         // Register or update each discovered container.
         for record in &discovered {
             self.instance_registry.upsert(record.clone());
-            if record.observed.health.ready {
+            if record.observed.health.ready
+                && !remote_base_urls.contains(&record.observed.control_plane.base_url)
+            {
                 self.register_container_agent(record);
             }
         }
@@ -3016,7 +3038,7 @@ mod tests {
             base_url: "https://agents.styrene.dev:7842".into(),
             role: crate::runtime_types::WorkerRole::DetachedService,
             profile: "messaging-agent".into(),
-            token_ref: Some("tok".into()),
+            token: Some("tok".into()),
             extensions: vec!["vox".into()],
             ..Default::default()
         };
