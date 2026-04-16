@@ -142,6 +142,9 @@ impl From<OmegonEvent> for SessionEvent {
             OmegonEvent::DecompositionCompleted { merged } => {
                 Self::DecompositionCompleted { merged }
             }
+            OmegonEvent::FamilyVitalSigns { .. } => Self::SystemNotification {
+                message: "Family vital signs updated".into(),
+            },
         }
     }
 }

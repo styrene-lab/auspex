@@ -557,19 +557,31 @@ struct ProviderBlockedComposerModel {
 }
 
 fn build_provider_blocked_composer_model(
-    _session: &crate::fixtures::SessionData,
+    session: &crate::fixtures::SessionData,
     can_submit: bool,
 ) -> Option<ProviderBlockedComposerModel> {
     if can_submit {
         return None;
     }
-
+    let has_authenticated_provider = session.providers.iter().any(|p| p.authenticated);
+    if has_authenticated_provider {
+        return None;
+    }
     Some(ProviderBlockedComposerModel {
         title: "Prompt execution blocked".into(),
         detail:
             "Omegon has no authenticated providers. Authenticate a provider in Settings before sending prompts so Auspex can route work to a runnable model backend.".into(),
         action_label: "Open Settings".into(),
     })
+}
+
+fn decode_html_entities(text: &str) -> String {
+    text.replace("&amp;", "&")
+        .replace("&lt;", "<")
+        .replace("&gt;", ">")
+        .replace("&quot;", "\"")
+        .replace("&apos;", "'")
+        .replace("&#39;", "'")
 }
 
 #[component]
@@ -620,16 +632,38 @@ pub fn App() -> Element {
         let mut settings_open = settings_open;
         let mut workspace = workspace;
         async move {
+            #[cfg(not(target_arch = "wasm32"))]
+            let mut container_reconcile_tick: u64 = 0;
             loop {
                 #[cfg(not(target_arch = "wasm32"))]
-                {
+                let remote_probe_targets = {
                     let now_epoch_seconds = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|duration| duration.as_secs())
                         .unwrap_or(0);
-                    let mut controller = controller.write();
-                    controller.evaluate_instance_lifecycle(now_epoch_seconds);
-                    controller.ensure_settings_auth_status();
+                    let mut ctrl = controller.write();
+                    ctrl.evaluate_instance_lifecycle(now_epoch_seconds);
+                    ctrl.ensure_settings_auth_status();
+
+                    // Reconcile container agents every ~15s (100 ticks × 150ms).
+                    // Collect remote probe targets on the same cadence, offset by 50 ticks.
+                    container_reconcile_tick += 1;
+                    if container_reconcile_tick % 100 == 0 {
+                        ctrl.reconcile_container_agents();
+                    }
+                    if container_reconcile_tick % 100 == 50 {
+                        let targets = ctrl.remote_instances_needing_probe();
+                        if targets.is_empty() { None } else { Some(targets) }
+                    } else {
+                        None
+                    }
+                    // ctrl (write guard) dropped here at block end.
+                };
+                #[cfg(not(target_arch = "wasm32"))]
+                if let Some(targets) = remote_probe_targets {
+                    let results =
+                        crate::controller::probe_remote_instances(&targets).await;
+                    controller.write().apply_remote_probe_results(&results);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 if let (
@@ -982,17 +1016,11 @@ pub fn App() -> Element {
     };
 
     let cockpit_center_body_for_blockout = cockpit_center_body.clone();
-    let cockpit_bg_svg = COCKPIT_BG_SVG.replacen("fill=\"#030303\"", "fill=\"none\"", 1);
-    let cockpit_bg_probe = r#"<div style='position:absolute;inset:40px;border:6px dashed magenta;background:rgba(255,0,255,0.22);color:#ff4dff;font:700 48px/1.2 ui-monospace,monospace;display:flex;align-items:center;justify-content:center;letter-spacing:0.08em;'>SVG BACKDROP TEST</div>"#;
 
     rsx! {
         div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
             div { class: "cockpit-canvas", "aria-hidden": "true",
-                div {
-                    class: "cockpit-bg-svg",
-                    dangerous_inner_html: "{cockpit_bg_probe}",
-                    "aria-hidden": "true",
-                }
+                div { class: "cockpit-bg-svg", "aria-hidden": "true" }
             }
 
             if LAYOUT_DEBUG_ENABLED {
@@ -1918,12 +1946,17 @@ fn render_transcript(
     } else {
         rsx! {
             for turn in &transcript.turns {
+                if let Some(prompt) = &turn.user_prompt {
+                    article { class: "bubble bubble-user",
+                        h2 { "You" }
+                        p { "{prompt}" }
+                    }
+                }
                 article {
                     class: "turn-card",
                     id: format!("turn-{}", turn.number),
                     "data-surface": "panel",
                     "data-elevation": "1",
-                    h2 { class: "turn-title", "Turn {turn.number}" }
                     for (block_index, block) in turn.blocks.iter().enumerate() {
                         match block {
                             crate::fixtures::TurnBlock::Thinking(thinking) => rsx! {
@@ -1933,7 +1966,7 @@ fn render_transcript(
                                     "data-surface": "panel",
                                     "data-tone": "muted",
                                     h3 { "Thinking" }
-                                    p { "{thinking.text}" }
+                                    p { "{decode_html_entities(&thinking.text)}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Text(text) => rsx! {
@@ -1945,7 +1978,7 @@ fn render_transcript(
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
-                                    p { "{text.text}" }
+                                    p { "{decode_html_entities(&text.text)}" }
                                 }
                             },
                             crate::fixtures::TurnBlock::Tool(tool) => rsx! {
@@ -3838,6 +3871,7 @@ mod tests {
         let transcript = TranscriptData {
             turns: vec![crate::fixtures::Turn {
                 number: 7,
+                user_prompt: None,
                 blocks: vec![
                     crate::fixtures::TurnBlock::System(AttributedText {
                         text: "Dispatcher switch confirmed (dispatcher-switch-9): supervisor-heavy · openai:gpt-4.1".into(),
@@ -4155,6 +4189,7 @@ mod tests {
         let transcript = TranscriptData {
             turns: vec![crate::fixtures::Turn {
                 number: 1,
+                user_prompt: None,
                 blocks: vec![crate::fixtures::TurnBlock::Text(AttributedText {
                     text: "hello".into(),
                     origin: None,
@@ -4607,20 +4642,24 @@ mod tests {
         );
         assert_eq!(blocked.action_label, "Open Settings");
 
-        let still_blocked = build_provider_blocked_composer_model(
-            &crate::fixtures::SessionData {
-                providers: vec![crate::fixtures::ProviderInfo {
-                    name: "Anthropic".into(),
-                    authenticated: true,
-                    auth_method: Some("oauth".into()),
-                    model: Some("claude-sonnet".into()),
-                }],
-                ..Default::default()
-            },
-            false,
-        )
-        .expect("authenticated inventory alone must not unblock prompting");
-        assert_eq!(still_blocked.title, "Prompt execution blocked");
+        // When providers ARE authenticated but can_submit is false (e.g. active
+        // run), the overlay should NOT appear — the real reason is shown in the
+        // dispatch context strip instead.
+        assert!(
+            build_provider_blocked_composer_model(
+                &crate::fixtures::SessionData {
+                    providers: vec![crate::fixtures::ProviderInfo {
+                        name: "Anthropic".into(),
+                        authenticated: true,
+                        auth_method: Some("oauth".into()),
+                        model: Some("claude-sonnet".into()),
+                    }],
+                    ..Default::default()
+                },
+                false,
+            )
+            .is_none()
+        );
 
         assert!(
             build_provider_blocked_composer_model(

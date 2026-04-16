@@ -57,60 +57,65 @@ This prevents parent inheritance from silently broadening a restricted profile.
 
 ## Canonical config format
 
-Store profiles in a config file such as:
+Pkl is the canonical config format, with TOML as fallback. Schema lives in `pkl/WorkerProfile.pkl`. Config is loaded from `~/.config/auspex/`:
 
 ```text
-~/.config/auspex/worker-profiles.toml
+~/.config/auspex/worker-profiles.pkl    # preferred
+~/.config/auspex/worker-profiles.toml   # fallback
 ```
 
-### TOML example
+Evaluation: `rpkl::from_config()` shells out to the `pkl` CLI, validates against the schema, and deserializes directly into Rust structs via serde. Same pattern as omegon's `agent_manifest.rs`.
 
-```toml
+### Pkl example
+
+```pkl
+amends "WorkerProfile.pkl"
+
 version = 1
 
-[profiles.primary-interactive]
-role = "primary-driver"
-preferred_models = ["anthropic:claude-sonnet-4-6", "openai:gpt-4.1"]
-fallback_models = ["anthropic:claude-haiku", "openai:gpt-4.1-mini"]
-thinking_level = "medium"
-context_class = "clan"
-tool_policy = "full"
-memory_mode = "full"
-max_runtime_seconds = 0
-max_cost_usd = 0.0
-
-[profiles.supervisor-heavy]
-role = "primary-driver"
-preferred_models = ["anthropic:claude-sonnet-4-6", "openai:gpt-4.1"]
-fallback_models = ["anthropic:claude-haiku"]
-thinking_level = "high"
-context_class = "legion"
-tool_policy = "full"
-memory_mode = "full"
-max_runtime_seconds = 0
-max_cost_usd = 0.0
-
-[profiles.cheap-subtask]
-role = "supervised-child"
-preferred_models = ["anthropic:claude-haiku", "gpt-spark", "openai:gpt-4.1-mini"]
-fallback_models = ["local:qwen2.5-coder"]
-thinking_level = "low"
-context_class = "squad"
-tool_policy = "restricted"
-memory_mode = "minimal"
-max_runtime_seconds = 900
-max_cost_usd = 0.50
-
-[profiles.background-service]
-role = "detached-service"
-preferred_models = ["anthropic:claude-haiku", "openai:gpt-4.1-mini"]
-fallback_models = ["local:qwen2.5-coder"]
-thinking_level = "minimal"
-context_class = "maniple"
-tool_policy = "bounded"
-memory_mode = "project-only"
-max_runtime_seconds = 0
-max_cost_usd = 5.00
+profiles {
+  ["primary-interactive"] {
+    role = "primary-driver"
+    preferred_models { "anthropic:claude-sonnet-4-6"; "openai:gpt-4.1" }
+    fallback_models { "anthropic:claude-haiku"; "openai:gpt-4.1-mini" }
+    thinking_level = "medium"
+    context_class = "clan"
+    tool_policy = "full"
+    memory_mode = "full"
+  }
+  ["supervisor-heavy"] {
+    role = "primary-driver"
+    preferred_models { "anthropic:claude-sonnet-4-6"; "openai:gpt-4.1" }
+    fallback_models { "anthropic:claude-haiku" }
+    thinking_level = "high"
+    context_class = "legion"
+    tool_policy = "full"
+    memory_mode = "full"
+  }
+  ["cheap-subtask"] {
+    role = "supervised-child"
+    preferred_models { "anthropic:claude-haiku"; "gpt-spark"; "openai:gpt-4.1-mini" }
+    fallback_models { "local:qwen2.5-coder" }
+    thinking_level = "low"
+    context_class = "squad"
+    tool_policy = "restricted"
+    memory_mode = "minimal"
+    max_runtime_seconds = 900
+    max_cost_usd = 0.50
+    parallelism_limit = 4
+    network_policy = "restricted"
+  }
+  ["background-service"] {
+    role = "detached-service"
+    preferred_models { "anthropic:claude-haiku"; "openai:gpt-4.1-mini" }
+    fallback_models { "local:qwen2.5-coder" }
+    thinking_level = "minimal"
+    context_class = "maniple"
+    tool_policy = "bounded"
+    memory_mode = "project-only"
+    max_cost_usd = 5.00
+  }
+}
 ```
 
 ## Knobs owned by profiles

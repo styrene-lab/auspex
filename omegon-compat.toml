@@ -6,8 +6,8 @@ This file is a placeholder for Auspex's explicit runtime compatibility contract 
 
 ```toml
 [omegon]
-minimum_version = "0.15.7"
-maximum_tested_version = "0.15.7"
+minimum_version = "0.15.20"
+maximum_tested_version = "0.15.25"
 control_plane_schema = 2
 ```
 

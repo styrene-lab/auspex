@@ -30,6 +30,34 @@ impl InstanceRegistryStore {
     pub fn to_json_pretty(&self) -> Result<String, serde_json::Error> {
         serde_json::to_string_pretty(self)
     }
+
+    /// Insert a new record or replace an existing one with the same instance_id.
+    pub fn upsert(&mut self, record: InstanceRecord) {
+        if let Some(existing) = self
+            .instances
+            .iter_mut()
+            .find(|r| r.identity.instance_id == record.identity.instance_id)
+        {
+            *existing = record;
+        } else {
+            self.instances.push(record);
+        }
+    }
+
+    /// Remove a record by instance_id. Returns true if a record was removed.
+    pub fn remove(&mut self, instance_id: &str) -> bool {
+        let before = self.instances.len();
+        self.instances
+            .retain(|r| r.identity.instance_id != instance_id);
+        self.instances.len() < before
+    }
+
+    /// Look up a record by instance_id.
+    pub fn find(&self, instance_id: &str) -> Option<&InstanceRecord> {
+        self.instances
+            .iter()
+            .find(|r| r.identity.instance_id == instance_id)
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -186,6 +214,56 @@ mod tests {
         assert_eq!(load_or_default(&path), InstanceRegistryStore::default());
 
         let _ = std::fs::remove_file(path);
+    }
+
+    #[test]
+    fn upsert_inserts_new_record() {
+        let mut store = InstanceRegistryStore::default();
+        store.upsert(sample_record("omg_01"));
+        assert_eq!(store.instances.len(), 1);
+        assert_eq!(store.instances[0].identity.instance_id, "omg_01");
+    }
+
+    #[test]
+    fn upsert_replaces_existing_record() {
+        let mut store = InstanceRegistryStore::default();
+        store.upsert(sample_record("omg_01"));
+
+        let mut updated = sample_record("omg_01");
+        updated.identity.status = WorkerLifecycleState::Busy;
+        store.upsert(updated);
+
+        assert_eq!(store.instances.len(), 1);
+        assert_eq!(store.instances[0].identity.status, WorkerLifecycleState::Busy);
+    }
+
+    #[test]
+    fn remove_returns_true_when_found() {
+        let mut store = InstanceRegistryStore::default();
+        store.upsert(sample_record("omg_01"));
+        store.upsert(sample_record("omg_02"));
+
+        assert!(store.remove("omg_01"));
+        assert_eq!(store.instances.len(), 1);
+        assert_eq!(store.instances[0].identity.instance_id, "omg_02");
+    }
+
+    #[test]
+    fn remove_returns_false_when_not_found() {
+        let mut store = InstanceRegistryStore::default();
+        assert!(!store.remove("nonexistent"));
+    }
+
+    #[test]
+    fn find_returns_matching_record() {
+        let mut store = InstanceRegistryStore::default();
+        store.upsert(sample_record("omg_01"));
+        store.upsert(sample_record("omg_02"));
+
+        let found = store.find("omg_02");
+        assert!(found.is_some());
+        assert_eq!(found.unwrap().identity.instance_id, "omg_02");
+        assert!(store.find("nonexistent").is_none());
     }
 
     fn unique_temp_path(label: &str) -> std::path::PathBuf {

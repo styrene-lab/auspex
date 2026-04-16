@@ -69,6 +69,7 @@ pub enum TurnBlock {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct Turn {
     pub number: u32,
+    pub user_prompt: Option<String>,
     pub blocks: Vec<TurnBlock>,
 }
 
@@ -728,6 +729,7 @@ impl MockHostSession {
                 context_tokens: Some(148_000),
                 turns: vec![
                     Turn {
+                        user_prompt: None,
                         number: 1,
                         blocks: vec![TurnBlock::Text(AttributedText {
                             text: "Summarize the current session, branch, and work focus around primary_driver attached to workspace unknown.".into(),
@@ -736,6 +738,7 @@ impl MockHostSession {
                         })],
                     },
                     Turn {
+                        user_prompt: None,
                         number: 2,
                         blocks: vec![
                             TurnBlock::System(AttributedText {
@@ -757,6 +760,7 @@ impl MockHostSession {
                         ],
                     },
                     Turn {
+                        user_prompt: None,
                         number: 3,
                         blocks: vec![TurnBlock::Tool(ToolCard {
                             id: "tool-1".into(),
@@ -772,6 +776,7 @@ impl MockHostSession {
                         })],
                     },
                     Turn {
+                        user_prompt: None,
                         number: 4,
                         blocks: vec![TurnBlock::System(AttributedText {
                             text: "Prompt execution blocked: authenticate a provider before sending prompts so Auspex can route work to a runnable model backend.".into(),
@@ -813,6 +818,7 @@ impl MockHostSession {
                 context_tokens: Some(62_000),
                 turns: vec![
                     Turn {
+                        user_prompt: None,
                         number: 7,
                         blocks: vec![TurnBlock::Text(AttributedText {
                             text: "List all stale detached services and identify any with mismatched profiles.".into(),
@@ -821,6 +827,7 @@ impl MockHostSession {
                         })],
                     },
                     Turn {
+                        user_prompt: None,
                         number: 8,
                         blocks: vec![
                             TurnBlock::Text(AttributedText {
@@ -874,6 +881,7 @@ impl MockHostSession {
                 context_tokens: Some(182_000),
                 turns: vec![
                     Turn {
+                        user_prompt: None,
                         number: 18,
                         blocks: vec![TurnBlock::System(AttributedText {
                             text: "Dispatcher switch requested (dispatcher-switch-42): enterprise-triage · openai:gpt-4.1".into(),
@@ -885,6 +893,7 @@ impl MockHostSession {
                         })],
                     },
                     Turn {
+                        user_prompt: None,
                         number: 19,
                         blocks: vec![
                             TurnBlock::Text(AttributedText {
@@ -1453,6 +1462,7 @@ impl HostSessionModel for MockHostSession {
         let turn_number = self.transcript.turns.len() as u32 + 1;
         self.transcript.turns.push(Turn {
             number: turn_number,
+            user_prompt: None,
             blocks: vec![
                 TurnBlock::Text(AttributedText {
                     text: trimmed.to_string(),

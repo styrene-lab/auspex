@@ -335,7 +335,6 @@ impl AppController {
         self.persist_instance_registry();
     }
 
-    #[allow(dead_code)]
     pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
         self.attached_instance_engine.attach_instance(instance);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
@@ -343,7 +342,6 @@ impl AppController {
         self.persist_instance_registry();
     }
 
-    #[allow(dead_code)]
     pub fn detach_instance_record(&mut self, instance_id: &str) {
         self.attached_instance_engine.detach_instance(instance_id);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
@@ -351,13 +349,272 @@ impl AppController {
         self.persist_instance_registry();
     }
 
-    #[allow(dead_code)]
     pub fn purge_stale_instance_records(&mut self, active_instance_ids: &[String]) {
         self.attached_instance_engine
             .purge_stale_instances(active_instance_ids);
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
+    }
+
+    /// Register a container-backed agent as an attached instance.
+    /// The agent is identified by its registry record and becomes
+    /// visible in the command route selector.
+    pub fn register_container_agent(&mut self, record: &crate::runtime_types::InstanceRecord) {
+        let instance_id = record.identity.instance_id.clone();
+        let base_url = if record.observed.control_plane.base_url.is_empty() {
+            None
+        } else {
+            Some(record.observed.control_plane.base_url.clone())
+        };
+        let model = record.desired.policy.model.clone();
+
+        self.attached_instance_engine
+            .attach_instance(AttachedInstanceRecord {
+                instance_id: instance_id.clone(),
+                route_id: format!("container:{instance_id}"),
+                role: format!("{:?}", record.identity.role),
+                profile: record.identity.profile.clone(),
+                session_key: format!("container:{instance_id}"),
+                base_url,
+                model,
+                dispatcher_instance_id: None,
+                registry_record: Some(record.clone()),
+            });
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
+    }
+
+    /// Load remote instances from config and upsert them into the
+    /// instance registry. Instances with `auto_attach: true` are
+    /// registered as attached instances (initially unprobed).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn register_remote_instances(&mut self) {
+        let config = crate::config::load_config();
+        for (name, entry) in config.auto_attach_instances() {
+            let record = entry.to_instance_record(name);
+            let instance_id = record.identity.instance_id.clone();
+            let base_url = Some(record.observed.control_plane.base_url.clone())
+                .filter(|url| !url.is_empty());
+
+            self.instance_registry.upsert(record.clone());
+            self.attached_instance_engine
+                .attach_instance(AttachedInstanceRecord {
+                    instance_id: instance_id.clone(),
+                    route_id: format!("remote:{instance_id}"),
+                    role: format!("{:?}", entry.role),
+                    profile: entry.profile.clone(),
+                    session_key: format!("remote:{instance_id}"),
+                    base_url,
+                    model: None,
+                    dispatcher_instance_id: None,
+                    registry_record: Some(record),
+                });
+        }
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
+    }
+
+    /// Scan the instance registry for container-backed agents with
+    /// healthy control planes and register them as attached instances.
+    pub fn reattach_container_agents(&mut self) {
+        let container_records: Vec<crate::runtime_types::InstanceRecord> = self
+            .instance_registry
+            .instances
+            .iter()
+            .filter(|record| {
+                record.desired.backend.kind == crate::runtime_types::BackendKind::OciContainer
+                    && record.observed.health.ready
+                    && !record.observed.control_plane.base_url.is_empty()
+            })
+            .cloned()
+            .collect();
+
+        for record in &container_records {
+            self.register_container_agent(record);
+        }
+    }
+
+    /// Collect remote instance IDs that need health probing.
+    /// Returns `(instance_id, ready_url, startup_url)` tuples.
+    pub fn remote_instances_needing_probe(&self) -> Vec<(String, String, String)> {
+        self.instance_registry
+            .instances
+            .iter()
+            .filter(|r| {
+                r.identity.instance_id.starts_with("remote:")
+                    && !r.observed.control_plane.ready_url.is_empty()
+                    && (!r.observed.health.ready
+                        || r.observed.control_plane.omegon_version.is_empty())
+            })
+            .map(|r| {
+                (
+                    r.identity.instance_id.clone(),
+                    r.observed.control_plane.ready_url.clone(),
+                    r.observed.control_plane.startup_url.clone(),
+                )
+            })
+            .collect()
+    }
+
+    /// Apply probe results for remote instances. Each entry is
+    /// `(instance_id, ready, omegon_version)`.
+    pub fn apply_remote_probe_results(
+        &mut self,
+        results: &[(String, bool, String)],
+    ) {
+        let mut changed = false;
+        for (instance_id, ready, omegon_version) in results {
+            if let Some(record) = self
+                .instance_registry
+                .instances
+                .iter_mut()
+                .find(|r| r.identity.instance_id == *instance_id)
+            {
+                let was_ready = record.observed.health.ready;
+                record.observed.health.ready = *ready;
+                if *ready {
+                    record.identity.status =
+                        crate::runtime_types::WorkerLifecycleState::Ready;
+                    let now = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|d| d.as_secs().to_string())
+                        .unwrap_or_default();
+                    record.observed.health.last_heartbeat_at = Some(now.clone());
+                    record.observed.health.last_seen_at = Some(now.clone());
+                    record.observed.health.freshness =
+                        Some(crate::runtime_types::InstanceFreshness::Fresh);
+                    record.observed.control_plane.last_ready_at = Some(now);
+                } else if was_ready {
+                    record.identity.status =
+                        crate::runtime_types::WorkerLifecycleState::Lost;
+                    record.observed.health.freshness =
+                        Some(crate::runtime_types::InstanceFreshness::Stale);
+                }
+                if !omegon_version.is_empty() {
+                    record.observed.control_plane.omegon_version =
+                        omegon_version.clone();
+                }
+                record.identity.updated_at = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_secs().to_string())
+                    .unwrap_or_default();
+
+                // If newly ready, register as attached instance.
+                if *ready && !was_ready {
+                    let cloned = record.clone();
+                    self.register_remote_agent(&cloned);
+                }
+                changed = true;
+            }
+        }
+        if changed {
+            self.instance_registry = self.attached_instance_engine.registry_store().clone();
+            // Re-merge our direct instance_registry mutations.
+            for (instance_id, ready, omegon_version) in results {
+                if let Some(record) = self
+                    .instance_registry
+                    .instances
+                    .iter_mut()
+                    .find(|r| r.identity.instance_id == *instance_id)
+                {
+                    record.observed.health.ready = *ready;
+                    if !omegon_version.is_empty() {
+                        record.observed.control_plane.omegon_version =
+                            omegon_version.clone();
+                    }
+                }
+            }
+            self.refresh_telemetry_snapshot();
+            self.persist_instance_registry();
+        }
+    }
+
+    /// Register a remote agent as an attached instance.
+    fn register_remote_agent(&mut self, record: &crate::runtime_types::InstanceRecord) {
+        let instance_id = record.identity.instance_id.clone();
+        let base_url = if record.observed.control_plane.base_url.is_empty() {
+            None
+        } else {
+            Some(record.observed.control_plane.base_url.clone())
+        };
+
+        self.attached_instance_engine
+            .attach_instance(AttachedInstanceRecord {
+                instance_id: instance_id.clone(),
+                route_id: format!("remote:{instance_id}"),
+                role: format!("{:?}", record.identity.role),
+                profile: record.identity.profile.clone(),
+                session_key: format!("remote:{instance_id}"),
+                base_url,
+                model: None,
+                dispatcher_instance_id: None,
+                registry_record: Some(record.clone()),
+            });
+    }
+
+    /// Discover running auspex-agent containers via podman, probe their
+    /// health, and reconcile the instance registry.
+    ///
+    /// New containers are registered. Containers that disappeared are
+    /// marked as exited. Returns the number of live containers found.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn reconcile_container_agents(&mut self) -> usize {
+        let discovered = crate::container_discovery::discover_and_probe();
+
+        // Track which container instance_ids are still alive.
+        let live_ids: std::collections::HashSet<String> = discovered
+            .iter()
+            .map(|r| r.identity.instance_id.clone())
+            .collect();
+
+        // Register or update each discovered container.
+        for record in &discovered {
+            self.instance_registry.upsert(record.clone());
+            if record.observed.health.ready {
+                self.register_container_agent(record);
+            }
+        }
+
+        // Mark previously-known container agents that are no longer running.
+        let stale_ids: Vec<String> = self
+            .instance_registry
+            .instances
+            .iter()
+            .filter(|r| {
+                r.desired.backend.kind == crate::runtime_types::BackendKind::OciContainer
+                    && !live_ids.contains(&r.identity.instance_id)
+                    && r.identity.status != crate::runtime_types::WorkerLifecycleState::Exited
+            })
+            .map(|r| r.identity.instance_id.clone())
+            .collect();
+
+        for id in &stale_ids {
+            if let Some(record) = self
+                .instance_registry
+                .instances
+                .iter_mut()
+                .find(|r| r.identity.instance_id == *id)
+            {
+                record.identity.status = crate::runtime_types::WorkerLifecycleState::Exited;
+                record.observed.health.ready = false;
+            }
+            self.attached_instance_engine.detach_instance(id);
+        }
+
+        if !discovered.is_empty() || !stale_ids.is_empty() {
+            self.instance_registry = self.attached_instance_engine.registry_store().clone();
+            // Merge back any changes we made directly to self.instance_registry
+            for record in &discovered {
+                self.instance_registry.upsert(record.clone());
+            }
+            self.refresh_telemetry_snapshot();
+            self.persist_instance_registry();
+        }
+
+        discovered.len()
     }
 
     #[allow(dead_code)]
@@ -1108,7 +1365,6 @@ impl AppController {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    #[allow(dead_code)]
     pub fn apply_ipc_event(
         &mut self,
         event: omegon_traits::IpcEventPayload,
@@ -1200,6 +1456,62 @@ impl AppController {
                 .to_string(),
         })
     }
+}
+
+/// Probe a list of remote instances asynchronously.
+/// Returns `(instance_id, ready, omegon_version)` for each.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn probe_remote_instances(
+    targets: &[(String, String, String)],
+) -> Vec<(String, bool, String)> {
+    use std::time::Duration;
+
+    let client = match reqwest::Client::builder()
+        .timeout(Duration::from_secs(5))
+        .build()
+    {
+        Ok(client) => client,
+        Err(_) => return vec![],
+    };
+
+    let mut results = Vec::with_capacity(targets.len());
+
+    for (instance_id, ready_url, startup_url) in targets {
+        let ready = match client.get(ready_url).send().await {
+            Ok(response) if response.status().is_success() => {
+                let body = response.text().await.unwrap_or_default();
+                serde_json::from_str::<serde_json::Value>(&body)
+                    .ok()
+                    .and_then(|v| v.get("ok").and_then(|ok| ok.as_bool()))
+                    .unwrap_or(false)
+            }
+            _ => false,
+        };
+
+        let omegon_version = if ready {
+            match client.get(startup_url).send().await {
+                Ok(response) if response.status().is_success() => {
+                    let body = response.text().await.unwrap_or_default();
+                    serde_json::from_str::<serde_json::Value>(&body)
+                        .ok()
+                        .and_then(|v| {
+                            v.pointer("/instance_descriptor/identity/omegon_version")
+                                .or_else(|| v.get("omegon_version"))
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                        })
+                        .unwrap_or_default()
+                }
+                _ => String::new(),
+            }
+        } else {
+            String::new()
+        };
+
+        results.push((instance_id.clone(), ready, omegon_version));
+    }
+
+    results
 }
 
 #[cfg(test)]
@@ -1623,7 +1935,8 @@ mod tests {
             command.target.dispatcher_instance_id.as_deref(),
             Some("omg_primary_01HVDEMO")
         );
-        assert_eq!(controller.messages().len(), 1);
+        assert_eq!(controller.messages().len(), 2);
+        assert_eq!(controller.messages().last().unwrap().text, "ship it");
         assert_eq!(
             controller.summary().activity,
             "Submitting prompt to Omegon remote session"
@@ -2356,5 +2669,256 @@ mod tests {
             session.telemetry.lifecycle_summary,
             "1 attached instance(s) · ready · freshness fresh"
         );
+    }
+
+    #[test]
+    fn register_container_agent_adds_to_attached_instances_and_routes() {
+        let mut controller = AppController::default();
+
+        let record = crate::runtime_types::InstanceRecord {
+            schema_version: 1,
+            identity: crate::runtime_types::WorkerIdentity {
+                instance_id: "omg_slack_01".into(),
+                role: crate::runtime_types::WorkerRole::DetachedService,
+                profile: "messaging-agent".into(),
+                status: crate::runtime_types::WorkerLifecycleState::Ready,
+                created_at: "2026-04-15T12:00:00Z".into(),
+                updated_at: "2026-04-15T12:00:00Z".into(),
+            },
+            ownership: crate::runtime_types::WorkerOwnership {
+                owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                owner_id: "auspex".into(),
+                parent_instance_id: None,
+            },
+            desired: crate::runtime_types::DesiredWorkerState {
+                backend: crate::runtime_types::BackendConfig {
+                    kind: crate::runtime_types::BackendKind::OciContainer,
+                    image: Some("localhost/auspex-agents:latest".into()),
+                    ..Default::default()
+                },
+                workspace: crate::runtime_types::WorkspaceBinding {
+                    cwd: "/workspace".into(),
+                    workspace_id: "container".into(),
+                    ..Default::default()
+                },
+                policy: crate::runtime_types::PolicyOverrides {
+                    model: Some("anthropic:claude-haiku".into()),
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+            observed: crate::runtime_types::ObservedWorkerState {
+                placement: crate::runtime_types::ObservedPlacement {
+                    placement_id: "container:slack-agent".into(),
+                    host: "localhost".into(),
+                    container_name: Some("slack-agent".into()),
+                    ..Default::default()
+                },
+                control_plane: crate::runtime_types::ObservedControlPlane {
+                    schema_version: 2,
+                    omegon_version: "0.15.25".into(),
+                    base_url: "http://127.0.0.1:7843".into(),
+                    startup_url: "http://127.0.0.1:7843/api/startup".into(),
+                    health_url: "http://127.0.0.1:7843/api/healthz".into(),
+                    ready_url: "http://127.0.0.1:7843/api/readyz".into(),
+                    ws_url: "ws://127.0.0.1:7843/ws".into(),
+                    auth_mode: "generated".into(),
+                    ..Default::default()
+                },
+                health: crate::runtime_types::ObservedHealth {
+                    ready: true,
+                    ..Default::default()
+                },
+                ..Default::default()
+            },
+        };
+
+        controller.register_container_agent(&record);
+
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .any(|i| i.instance_id == "omg_slack_01")
+        );
+        let routes = controller.available_command_routes();
+        assert!(
+            routes
+                .iter()
+                .any(|r| r.route_id == "container:omg_slack_01")
+        );
+    }
+
+    #[test]
+    fn reattach_container_agents_picks_up_healthy_oci_instances() {
+        let registry = InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![crate::runtime_types::InstanceRecord {
+                schema_version: 1,
+                identity: crate::runtime_types::WorkerIdentity {
+                    instance_id: "omg_discord_01".into(),
+                    role: crate::runtime_types::WorkerRole::DetachedService,
+                    profile: "messaging-agent".into(),
+                    status: crate::runtime_types::WorkerLifecycleState::Ready,
+                    created_at: "2026-04-15T12:00:00Z".into(),
+                    updated_at: "2026-04-15T12:00:00Z".into(),
+                },
+                ownership: crate::runtime_types::WorkerOwnership {
+                    owner_kind: crate::runtime_types::OwnerKind::AuspexSession,
+                    owner_id: "auspex".into(),
+                    parent_instance_id: None,
+                },
+                desired: crate::runtime_types::DesiredWorkerState {
+                    backend: crate::runtime_types::BackendConfig {
+                        kind: crate::runtime_types::BackendKind::OciContainer,
+                        image: Some("localhost/auspex-agents:latest".into()),
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+                observed: crate::runtime_types::ObservedWorkerState {
+                    control_plane: crate::runtime_types::ObservedControlPlane {
+                        base_url: "http://127.0.0.1:7844".into(),
+                        ws_url: "ws://127.0.0.1:7844/ws".into(),
+                        ..Default::default()
+                    },
+                    health: crate::runtime_types::ObservedHealth {
+                        ready: true,
+                        ..Default::default()
+                    },
+                    ..Default::default()
+                },
+            }],
+        };
+
+        let mut controller = AppController::default()
+            .with_instance_registry(registry);
+        controller.reattach_container_agents();
+
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .any(|i| i.instance_id == "omg_discord_01")
+        );
+    }
+
+    #[test]
+    fn remote_instances_needing_probe_collects_unprobed_entries() {
+        let entry = crate::config::RemoteInstanceEntry {
+            label: "Discord Agent".into(),
+            base_url: "https://agents.styrene.dev:7842".into(),
+            role: crate::runtime_types::WorkerRole::DetachedService,
+            profile: "messaging-agent".into(),
+            token_ref: Some("tok".into()),
+            extensions: vec!["vox".into()],
+            ..Default::default()
+        };
+        let record = entry.to_instance_record("styrene-discord");
+
+        let mut controller = AppController::default()
+            .with_instance_registry(InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
+
+        let targets = controller.remote_instances_needing_probe();
+        assert_eq!(targets.len(), 1);
+        assert_eq!(targets[0].0, "remote:styrene-discord");
+        assert!(targets[0].1.contains("/api/readyz"));
+        assert!(targets[0].2.contains("/api/startup"));
+    }
+
+    #[test]
+    fn apply_remote_probe_results_promotes_to_ready_and_attaches() {
+        let entry = crate::config::RemoteInstanceEntry {
+            label: "Discord Agent".into(),
+            base_url: "https://agents.styrene.dev:7842".into(),
+            role: crate::runtime_types::WorkerRole::DetachedService,
+            profile: "messaging-agent".into(),
+            ..Default::default()
+        };
+        let record = entry.to_instance_record("styrene-discord");
+
+        let mut controller = AppController::default()
+            .with_instance_registry(InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
+
+        // Initially needs probing (not ready, no version).
+        assert_eq!(controller.remote_instances_needing_probe().len(), 1);
+
+        // Simulate successful probe.
+        controller.apply_remote_probe_results(&[(
+            "remote:styrene-discord".into(),
+            true,
+            "0.15.25".into(),
+        )]);
+
+        // No longer needs probing.
+        assert!(controller.remote_instances_needing_probe().is_empty());
+
+        // Instance should now be attached.
+        assert!(
+            controller
+                .attached_instances()
+                .iter()
+                .any(|i| i.instance_id == "remote:styrene-discord")
+        );
+    }
+
+    #[test]
+    fn apply_remote_probe_results_marks_lost_on_failure() {
+        let entry = crate::config::RemoteInstanceEntry {
+            label: "Agent".into(),
+            base_url: "http://host:7842".into(),
+            ..Default::default()
+        };
+        let mut record = entry.to_instance_record("test");
+        // Pre-mark as ready to test degradation.
+        record.observed.health.ready = true;
+        record.identity.status = crate::runtime_types::WorkerLifecycleState::Ready;
+        record.observed.control_plane.omegon_version = "0.15.25".into();
+
+        let mut controller = AppController::default()
+            .with_instance_registry(InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
+
+        // Already ready → no probe needed.
+        assert!(controller.remote_instances_needing_probe().is_empty());
+
+        // Simulate failed probe.
+        controller.apply_remote_probe_results(&[(
+            "remote:test".into(),
+            false,
+            String::new(),
+        )]);
+
+        // Now needs probing again (lost health).
+        assert_eq!(controller.remote_instances_needing_probe().len(), 1);
+    }
+
+    #[test]
+    fn already_ready_remote_not_in_probe_targets() {
+        let entry = crate::config::RemoteInstanceEntry {
+            label: "Agent".into(),
+            base_url: "http://host:7842".into(),
+            ..Default::default()
+        };
+        let mut record = entry.to_instance_record("test");
+        record.observed.health.ready = true;
+        record.observed.control_plane.omegon_version = "0.15.25".into();
+
+        let controller = AppController::default()
+            .with_instance_registry(InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
+
+        // Already ready + has version → no probe needed.
+        assert!(controller.remote_instances_needing_probe().is_empty());
     }
 }

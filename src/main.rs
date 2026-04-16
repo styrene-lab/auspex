@@ -2,6 +2,10 @@ mod app;
 mod audit_timeline;
 mod bootstrap;
 mod command_transport;
+#[cfg(not(target_arch = "wasm32"))]
+mod config;
+#[cfg(not(target_arch = "wasm32"))]
+mod container_discovery;
 mod controller;
 mod event_stream;
 mod fixtures;

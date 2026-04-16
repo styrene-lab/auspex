@@ -75,6 +75,18 @@ pub struct OmegonRuntimeDescriptor {
     pub context_class: Option<String>,
     pub thinking_level: Option<String>,
     pub capability_tier: Option<String>,
+    /// Runtime profile (e.g. "primary-interactive", "long-running-daemon", "remote-agent").
+    #[serde(default)]
+    pub runtime_profile: Option<String>,
+    /// Autonomy mode (e.g. "operator-driven", "guarded-autonomous", "autonomous").
+    #[serde(default)]
+    pub autonomy_mode: Option<String>,
+    /// Active persona name, if an agent manifest persona is loaded.
+    #[serde(default)]
+    pub active_persona: Option<String>,
+    /// Extensions loaded by this instance (e.g. ["vox"]).
+    #[serde(default)]
+    pub extensions: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -135,6 +147,48 @@ pub struct OmegonStateSnapshot {
     pub dispatcher: Option<DispatcherBindingSnapshot>,
     #[serde(default, alias = "instance")]
     pub instance_descriptor: Option<OmegonInstanceDescriptor>,
+    /// Daemon session router state (0.15.24+). Present when the instance is
+    /// running in daemon mode with multi-session routing.
+    #[serde(default)]
+    pub daemon_sessions: Option<DaemonSessionsSnapshot>,
+}
+
+/// Snapshot of the daemon session router's multiplexed sessions.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct DaemonSessionsSnapshot {
+    /// Number of active sessions (routed by source_user/channel/thread).
+    #[serde(default)]
+    pub active_count: usize,
+    /// Maximum concurrent turns allowed by the semaphore.
+    #[serde(default)]
+    pub concurrency_limit: usize,
+    /// Number of turns currently in-flight across all sessions.
+    #[serde(default)]
+    pub in_flight_turns: usize,
+    /// Per-session summaries, keyed by session routing key.
+    #[serde(default)]
+    pub sessions: Vec<DaemonSessionBrief>,
+}
+
+/// Brief summary of a single daemon-routed session.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct DaemonSessionBrief {
+    /// Routing key (e.g. "vox:discord:U123:C456").
+    #[serde(default)]
+    pub key: String,
+    /// Event source (e.g. "vox:discord", "trigger:hourly").
+    #[serde(default)]
+    pub source: String,
+    #[serde(default)]
+    pub turns: u32,
+    #[serde(default)]
+    pub busy: bool,
+    /// Source user identity if available.
+    #[serde(default)]
+    pub source_user: Option<String>,
+    /// Source channel if available.
+    #[serde(default)]
+    pub source_channel: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -383,6 +437,37 @@ pub enum OmegonEvent {
     DecompositionCompleted {
         merged: bool,
     },
+    FamilyVitalSigns {
+        signs: FamilyVitalSignsData,
+    },
+}
+
+/// Periodic rollup of cleave family tree state.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct FamilyVitalSignsData {
+    #[serde(default)]
+    pub total_children: usize,
+    #[serde(default)]
+    pub completed: usize,
+    #[serde(default)]
+    pub failed: usize,
+    #[serde(default)]
+    pub active: usize,
+    #[serde(default)]
+    pub children: Vec<FamilyChildDigest>,
+}
+
+/// Per-child digest in a family vital signs rollup.
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct FamilyChildDigest {
+    #[serde(default)]
+    pub label: String,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub turns: u32,
+    #[serde(default)]
+    pub tool_calls: u32,
 }
 
 #[cfg(test)]
@@ -693,5 +778,135 @@ mod tests {
         assert_eq!(snapshot.openspec.done_tasks, 7);
         assert_eq!(snapshot.session.turns, 3);
         assert_eq!(snapshot.session.tool_calls, 15);
+    }
+
+    #[test]
+    fn runtime_descriptor_with_vox_extensions() {
+        let json = r#"{
+            "backend": "homelab-service",
+            "host": "agents.styrene.dev",
+            "pid": 1234,
+            "health": "ready",
+            "provider_ok": true,
+            "memory_ok": true,
+            "cleave_available": false,
+            "runtime_profile": "long-running-daemon",
+            "autonomy_mode": "guarded-autonomous",
+            "active_persona": "styrene-community",
+            "extensions": ["vox"]
+        }"#;
+
+        let runtime: OmegonRuntimeDescriptor = serde_json::from_str(json).unwrap();
+
+        assert_eq!(runtime.runtime_profile.as_deref(), Some("long-running-daemon"));
+        assert_eq!(runtime.autonomy_mode.as_deref(), Some("guarded-autonomous"));
+        assert_eq!(runtime.active_persona.as_deref(), Some("styrene-community"));
+        assert_eq!(runtime.extensions, vec!["vox"]);
+    }
+
+    #[test]
+    fn runtime_descriptor_without_new_fields_defaults() {
+        let json = r#"{
+            "backend": "local-process",
+            "provider_ok": true
+        }"#;
+
+        let runtime: OmegonRuntimeDescriptor = serde_json::from_str(json).unwrap();
+
+        assert!(runtime.runtime_profile.is_none());
+        assert!(runtime.autonomy_mode.is_none());
+        assert!(runtime.active_persona.is_none());
+        assert!(runtime.extensions.is_empty());
+    }
+
+    #[test]
+    fn state_snapshot_with_daemon_sessions() {
+        let json = r#"{
+            "design": {"focused": null, "implementing": [], "actionable": [], "all_nodes": [], "counts": {}},
+            "openspec": {"total_tasks": 0, "done_tasks": 0},
+            "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+            "session": {"turns": 12, "tool_calls": 45, "compactions": 1},
+            "daemon_sessions": {
+                "active_count": 3,
+                "concurrency_limit": 8,
+                "in_flight_turns": 1,
+                "sessions": [
+                    {
+                        "key": "vox:discord:U123:C456",
+                        "source": "vox:discord",
+                        "turns": 5,
+                        "busy": true,
+                        "source_user": "U123",
+                        "source_channel": "C456"
+                    },
+                    {
+                        "key": "vox:discord:U789:C456",
+                        "source": "vox:discord",
+                        "turns": 3,
+                        "busy": false,
+                        "source_user": "U789",
+                        "source_channel": "C456"
+                    }
+                ]
+            }
+        }"#;
+
+        let snapshot: OmegonStateSnapshot = serde_json::from_str(json).unwrap();
+
+        let sessions = snapshot.daemon_sessions.as_ref().unwrap();
+        assert_eq!(sessions.active_count, 3);
+        assert_eq!(sessions.concurrency_limit, 8);
+        assert_eq!(sessions.in_flight_turns, 1);
+        assert_eq!(sessions.sessions.len(), 2);
+        assert_eq!(sessions.sessions[0].key, "vox:discord:U123:C456");
+        assert_eq!(sessions.sessions[0].source, "vox:discord");
+        assert!(sessions.sessions[0].busy);
+        assert_eq!(sessions.sessions[0].source_user.as_deref(), Some("U123"));
+    }
+
+    #[test]
+    fn state_snapshot_without_daemon_sessions_defaults_to_none() {
+        let json = r#"{
+            "design": {"focused": null, "implementing": [], "actionable": [], "all_nodes": [], "counts": {}},
+            "openspec": {"total_tasks": 0, "done_tasks": 0},
+            "cleave": {"active": false, "total_children": 0, "completed": 0, "failed": 0},
+            "session": {"turns": 0, "tool_calls": 0, "compactions": 0}
+        }"#;
+
+        let snapshot: OmegonStateSnapshot = serde_json::from_str(json).unwrap();
+        assert!(snapshot.daemon_sessions.is_none());
+    }
+
+    #[test]
+    fn family_vital_signs_event_deserializes() {
+        let json = r#"{
+            "type": "family_vital_signs",
+            "signs": {
+                "total_children": 3,
+                "completed": 1,
+                "failed": 0,
+                "active": 2,
+                "children": [
+                    {"label": "schema-migration", "status": "completed", "turns": 4, "tool_calls": 12},
+                    {"label": "api-handler", "status": "busy", "turns": 2, "tool_calls": 8},
+                    {"label": "test-suite", "status": "busy", "turns": 1, "tool_calls": 3}
+                ]
+            }
+        }"#;
+
+        let event: OmegonEvent = serde_json::from_str(json).unwrap();
+
+        match event {
+            OmegonEvent::FamilyVitalSigns { signs } => {
+                assert_eq!(signs.total_children, 3);
+                assert_eq!(signs.completed, 1);
+                assert_eq!(signs.active, 2);
+                assert_eq!(signs.children.len(), 3);
+                assert_eq!(signs.children[0].label, "schema-migration");
+                assert_eq!(signs.children[0].status, "completed");
+                assert_eq!(signs.children[1].turns, 2);
+            }
+            other => panic!("expected FamilyVitalSigns, got {other:?}"),
+        }
     }
 }

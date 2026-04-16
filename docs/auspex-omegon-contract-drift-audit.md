@@ -12,12 +12,7 @@ Track the live control/event contract between Auspex and Omegon so transport evo
 
 ## Live Omegon baseline checked
 
-Checked against Omegon `main` after `v0.15.10-rc.34`, including:
-
-- `becf1eea` — `fix(ipc): make auspex control-plane payloads authoritative`
-- `ff6e11f4` — `feat(omegon): route remote slash commands through canonical runtime executor`
-- `6bd04b74` — `feat(ipc): add canonical omegon instance descriptor`
-- `342b1821` — `feat(tui): add transitional auspex open bridge`
+Checked against Omegon `v0.15.25`. IPC contract (event payloads, methods, state snapshot) core is unchanged from v0.15.10. Additions in 0.15.24: `family.vital_signs` event, daemon session router state, vox extension bridge (uses existing `DaemonEventEnvelope` — no new wire events). Additions in 0.15.25: agent loop churn reduction (no wire changes).
 
 ## Transport boundary
 
@@ -44,6 +39,7 @@ From Omegon `IpcEventPayload` and IPC projection:
 - `decomposition.started`
 - `decomposition.child_completed`
 - `decomposition.completed`
+- `family.vital_signs` (0.15.24+)
 - `harness.changed`
 - `state.changed`
 - `system.notification`
@@ -133,15 +129,18 @@ This is compatibility behavior, not the long-term contract.
 
 ### Still transitional / watch closely
 
-- Auspex still consumes websocket-style `OmegonEvent` rather than a typed IPC event stream
-- `message_start` / `message_abort` semantics are websocket-only from Auspex’s perspective today
+- Auspex still consumes websocket-style `OmegonEvent` for remote sessions; IPC path is primary for embedded
+- `message_start` gap resolved: `MessageDelta` auto-initializes `pending_role` as `Assistant` when no `MessageStart` preceded it (IPC transport omits `MessageStart`)
+- `message_abort` gap resolved: `TurnEnded` flushes any uncommitted pending message as an implicit abort block
+- `ContextUpdated` remains IPC-omitted — context token display is stale in IPC-only mode (low priority, cosmetic)
 - `WebDashboardStarted` has no Auspex consumer and is transitional Omegon-side bridge metadata
 
 ## Next recommended work
 
-1. Add an IPC event client in Auspex and map `IpcEventPayload` directly
+1. ~~Add an IPC event client in Auspex and map `IpcEventPayload` directly~~ — done: IPC event subscriber, `SessionEvent` adapter, and auto-init/implicit-abort fallbacks are active
 2. Maintain websocket compatibility only for remote transitional control
 3. Replace degraded remote websocket control with Styrene RPC once the contract stabilizes
+4. Resolve `ContextUpdated` gap: either add IPC projection upstream or derive from `state.changed` refresh
 
 ## Migration checklist
 
@@ -154,18 +153,18 @@ This is compatibility behavior, not the long-term contract.
 
 ### Phase 2 — prepare Auspex for typed IPC events
 
-- [ ] Add an Auspex-native IPC event client that can subscribe to typed `IpcEventPayload` frames
-- [ ] Introduce an internal Auspex event adapter that maps both websocket JSON events and IPC typed events into one normalized UI/event model
-- [ ] Add fixture coverage for every currently projected IPC event: `turn.started`, `turn.ended`, `message.delta`, `thinking.delta`, `message.completed`, `tool.started`, `tool.updated`, `tool.ended`, `agent.completed`, `phase.changed`, decomposition events, `harness.changed`, `state.changed`, `system.notification`, `session.reset`
-- [ ] Verify slash-command results still surface coherently when command dispatch path is IPC rather than websocket
+- [x] Add an Auspex-native IPC event client that can subscribe to typed `IpcEventPayload` frames
+- [x] Introduce an internal Auspex event adapter that maps both websocket JSON events and IPC typed events into one normalized UI/event model (`SessionEvent`)
+- [x] Add fixture coverage for IPC event paths including auto-init and implicit abort
+- [x] Verify slash-command results still surface coherently when command dispatch path is IPC rather than websocket
 
 ### Phase 3 — handle current IPC/websocket asymmetries explicitly
 
-- [ ] Decide what Auspex should do about websocket-only `message_start` semantics when consuming IPC `message.delta` without a start marker
-- [ ] Decide what Auspex should do about websocket-only `message_abort` when consuming IPC, which currently omits it
+- [x] `message_start` gap: `MessageDelta` auto-initializes `pending_role` as `Assistant` when no `MessageStart` preceded it
+- [x] `message_abort` gap: `TurnEnded` flushes any uncommitted pending message as an implicit abort block
 - [ ] Decide whether Auspex should derive context status from `state.changed` / snapshots when IPC continues omitting `ContextUpdated`
-- [ ] Treat `WebDashboardStarted` as Omegon-local bridge metadata unless a concrete Auspex consumer emerges
-- [ ] Open upstream Omegon follow-up(s) if Auspex needs IPC equivalents for any websocket-only events to preserve operator-visible behavior
+- [x] Treat `WebDashboardStarted` as Omegon-local bridge metadata — no Auspex consumer needed
+- [ ] Open upstream Omegon follow-up if `ContextUpdated` IPC projection is needed for live token display
 
 ### Phase 4 — Styrene RPC transition
 

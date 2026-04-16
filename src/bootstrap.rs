@@ -121,34 +121,79 @@ fn parse_desktop_auth_status(stdout: &str) -> Result<DesktopAuthSnapshot, String
     let mut providers = Vec::new();
     for line in stdout.lines() {
         let trimmed = line.trim();
-        if trimmed.is_empty() || trimmed.starts_with("Authentication Status") {
+        if trimmed.is_empty()
+            || trimmed.starts_with("Authentication")
+            || trimmed.starts_with("Provider")
+            || trimmed.starts_with("Expired")
+        {
             continue;
         }
-        let status = if let Some(rest) = trimmed.strip_prefix('✓') {
-            (true, rest.trim())
-        } else if let Some(rest) = trimmed.strip_prefix('✗') {
-            (false, rest.trim())
-        } else {
-            continue;
-        };
-        let parts: Vec<&str> = status.1.split_whitespace().collect();
-        if parts.is_empty() {
-            continue;
-        }
-        let auth_method = parts
-            .last()
-            .map(|value| value.trim_matches(['(', ')']))
-            .map(str::to_string);
-        let name = if parts.len() > 1 {
-            parts[..parts.len() - 1].join(" ")
-        } else {
-            parts[0].to_string()
-        };
+
+        // Old format: "✓ name (method)" / "✗ name"
+        // New format (0.15.22+): "name    ✓ authenticated (method)" / "name    ✗ not authenticated"
+        let (authenticated, name, detail, auth_method) =
+            if let Some(rest) = trimmed.strip_prefix('✓') {
+                let rest = rest.trim();
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                let method = parts
+                    .last()
+                    .map(|v| v.trim_matches(['(', ')']))
+                    .map(str::to_string);
+                let name = if parts.len() > 1 {
+                    parts[..parts.len() - 1].join(" ")
+                } else {
+                    parts[0].to_string()
+                };
+                (true, name, rest.to_string(), method)
+            } else if let Some(rest) = trimmed.strip_prefix('✗') {
+                let rest = rest.trim();
+                let parts: Vec<&str> = rest.split_whitespace().collect();
+                if parts.is_empty() {
+                    continue;
+                }
+                let method = parts
+                    .last()
+                    .map(|v| v.trim_matches(['(', ')']))
+                    .map(str::to_string);
+                let name = if parts.len() > 1 {
+                    parts[..parts.len() - 1].join(" ")
+                } else {
+                    parts[0].to_string()
+                };
+                (false, name, rest.to_string(), method)
+            } else if trimmed.contains('✓') || trimmed.contains('✗') {
+                // New tabular format: "name   ✓ status (method)"
+                let (name_part, rest, is_auth) = if let Some(idx) = trimmed.find('✓') {
+                    (&trimmed[..idx], trimmed[idx + '✓'.len_utf8()..].trim(), true)
+                } else if let Some(idx) = trimmed.find('✗') {
+                    (
+                        &trimmed[..idx],
+                        trimmed[idx + '✗'.len_utf8()..].trim(),
+                        false,
+                    )
+                } else {
+                    continue;
+                };
+                let name = name_part.trim().to_string();
+                if name.is_empty() {
+                    continue;
+                }
+                let method = rest
+                    .rsplit_once('(')
+                    .map(|(_, m)| m.trim_end_matches(')').to_string());
+                (is_auth, name, rest.to_string(), method)
+            } else {
+                continue;
+            };
+
         providers.push(ProviderAuthStatus {
             name,
-            authenticated: status.0,
+            authenticated,
             auth_method,
-            detail: status.1.to_string(),
+            detail,
         });
     }
 
@@ -462,6 +507,9 @@ pub async fn bootstrap_from_http_state_async(
     let mut controller =
         AppController::from_remote_snapshot_json_with_registry(&body, registry_store)
             .map_err(|error| format!("invalid state payload: {error}"))?;
+    controller.reattach_container_agents();
+    #[cfg(not(target_arch = "wasm32"))]
+    controller.register_remote_instances();
     #[cfg(not(target_arch = "wasm32"))]
     if let Some(path) = default_audit_timeline_path() {
         controller = controller.with_audit_timeline(load_or_default(&path));
@@ -819,6 +867,8 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     }
 
     reap_owned_omegon_child();
+    ensure_omegon_profile_has_runnable_model();
+    validate_deploy_prerequisites();
 
     let label = binary.display().to_string();
 
@@ -827,6 +877,8 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         .arg("--control-port")
         .arg("7842")
         .arg("--strict-port")
+        .arg("--model")
+        .arg("anthropic:claude-sonnet-4-6")
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -1053,6 +1105,79 @@ fn reap_owned_omegon_child() {
     clear_owned_omegon_pid();
 }
 
+/// Ensure the persisted Omegon profile uses a model backed by an
+/// authenticated provider.  Omegon's `serve` mode honours the profile's
+/// `lastUsedModel` over the `--model` CLI flag, so if the profile points
+/// at an unauthenticated provider (e.g. openai when only anthropic is
+/// configured) the daemon starts with a NullBridge and all prompts hang.
+#[cfg(not(target_arch = "wasm32"))]
+fn ensure_omegon_profile_has_runnable_model() {
+    const FALLBACK_PROVIDER: &str = "anthropic";
+    const FALLBACK_MODEL: &str = "claude-sonnet-4-6";
+
+    let Some(home) = std::env::var("HOME").ok() else {
+        return;
+    };
+    let profile_path = std::path::PathBuf::from(&home).join(".omegon/profile.json");
+    let Ok(contents) = fs::read_to_string(&profile_path) else {
+        return;
+    };
+    let Ok(mut profile) = serde_json::from_str::<serde_json::Value>(&contents) else {
+        return;
+    };
+
+    let needs_fix = profile
+        .get("lastUsedModel")
+        .and_then(|model| model.get("provider"))
+        .and_then(|provider| provider.as_str())
+        .is_some_and(|provider| {
+            // Check if the provider is one we know is authenticated via
+            // `omegon auth status`.  If the status check fails we can't
+            // verify, so leave the profile alone.
+            let Ok(snapshot) = load_desktop_auth_snapshot() else {
+                return false;
+            };
+            !snapshot
+                .providers
+                .iter()
+                .any(|p| p.authenticated && provider_status_key(&p.name) == provider)
+        });
+
+    if needs_fix {
+        let model_value = serde_json::json!({
+            "provider": FALLBACK_PROVIDER,
+            "modelId": FALLBACK_MODEL,
+        });
+        profile["lastUsedModel"] = model_value;
+        if let Ok(json) = serde_json::to_string_pretty(&profile) {
+            let _ = fs::write(&profile_path, json);
+            eprintln!(
+                "auspex: updated Omegon profile to use {FALLBACK_PROVIDER}:{FALLBACK_MODEL} (previous model provider was not authenticated)"
+            );
+        }
+    }
+}
+
+/// Validate that system tools required by deploy profiles are available
+/// in PATH.  The internal Omegon uses bash to invoke these tools
+/// (kubectl, docker, helm, etc.) — if they're missing, the corresponding
+/// deploy profiles cannot function.
+#[cfg(not(target_arch = "wasm32"))]
+fn validate_deploy_prerequisites() {
+    let config = crate::config::load_config();
+
+    for (profile, tool) in config.missing_tools() {
+        eprintln!(
+            "auspex: deploy profile \"{profile}\" requires \"{tool}\" but it is not in PATH"
+        );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn provider_status_key(name: &str) -> &str {
+    name.split('/').next().unwrap_or(name).trim()
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_conflicting_omegon_children() {
     for pid in owned_omegon_pids() {
@@ -1127,7 +1252,7 @@ mod tests {
             auth_source: "default".into(),
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
-                    omegon_version: Some("0.15.10-rc.17".into()),
+                    omegon_version: Some("0.15.25".into()),
                     schema_version: 2,
                     ..Default::default()
                 }),
@@ -1155,6 +1280,27 @@ mod tests {
     fn parse_desktop_auth_status_rejects_empty_output() {
         let err = parse_desktop_auth_status("Authentication Status:\n\n").unwrap_err();
         assert!(err.contains("no provider rows"));
+    }
+
+    #[test]
+    fn parse_desktop_auth_status_handles_tabular_format() {
+        let snapshot = parse_desktop_auth_status(
+            "Authentication Overview\n\nProviders\n  Authenticated:   3/5\n  Expired:         0\n\nProvider Status\n  anthropic          ✓ authenticated (oauth)\n  openai             ✗ not authenticated\n  ollama-cloud       ✓ authenticated\n",
+        )
+        .expect("tabular auth status should parse");
+
+        assert_eq!(snapshot.providers.len(), 3);
+        assert_eq!(snapshot.providers[0].name, "anthropic");
+        assert!(snapshot.providers[0].authenticated);
+        assert_eq!(
+            snapshot.providers[0].auth_method.as_deref(),
+            Some("oauth")
+        );
+        assert_eq!(snapshot.providers[1].name, "openai");
+        assert!(!snapshot.providers[1].authenticated);
+        assert_eq!(snapshot.providers[2].name, "ollama-cloud");
+        assert!(snapshot.providers[2].authenticated);
+        assert!(snapshot.providers[2].auth_method.is_none());
     }
 
     #[test]
@@ -1192,9 +1338,9 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.15.10-rc.16".into());
+            .omegon_version = Some("0.15.19".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("requires Omegon 0.15.10-rc.17 or newer"));
+        assert!(err.contains("requires Omegon 0.15.20 or newer"));
     }
 
     #[test]
@@ -1204,13 +1350,13 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.15.10-rc.18".into());
+            .omegon_version = Some("0.15.99".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning
                 .as_deref()
                 .unwrap_or_default()
-                .contains("newer than Auspex's maximum tested version 0.15.10-rc.17")
+                .contains("newer than Auspex's maximum tested version")
         );
     }
 

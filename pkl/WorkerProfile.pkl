@@ -1,0 +1,66 @@
+/// Auspex worker profile schema.
+///
+/// Worker profiles define model, thinking, context, tool, memory, and cost
+/// policy for each class of Omegon worker instance. Auspex resolves a
+/// profile before spawning or attaching to a worker.
+///
+/// Example:
+/// ```
+/// amends "WorkerProfile.pkl"
+///
+/// version = 1
+///
+/// profiles {
+///   ["primary-interactive"] {
+///     role = "primary-driver"
+///     preferred_models { "anthropic:claude-sonnet-4-6"; "openai:gpt-4.1" }
+///     thinking_level = "medium"
+///     context_class = "clan"
+///     tool_policy = "full"
+///     memory_mode = "full"
+///   }
+/// }
+/// ```
+module WorkerProfile
+
+/// A single worker profile definition.
+class Profile {
+  /// Worker role this profile is intended for.
+  role: "primary-driver"|"supervised-child"|"detached-service"
+
+  /// Preferred models in priority order.
+  preferred_models: Listing<String(length > 0)>
+
+  /// Fallback models if preferred are unavailable.
+  fallback_models: Listing<String(length > 0)>?
+
+  /// Thinking budget: minimal, low, medium, high.
+  thinking_level: "minimal"|"low"|"medium"|"high" = "minimal"
+
+  /// Context window class: squad, maniple, clan, legion.
+  context_class: "squad"|"maniple"|"clan"|"legion" = "squad"
+
+  /// Tool access policy: full, restricted, bounded.
+  tool_policy: "full"|"restricted"|"bounded" = "full"
+
+  /// Memory access mode: full, minimal, project-only, reference-based.
+  memory_mode: "full"|"minimal"|"project-only"|"reference-based" = "full"
+
+  /// Maximum runtime in seconds (0 = unlimited).
+  max_runtime_seconds: UInt = 0
+
+  /// Maximum cost in USD (0.0 = unlimited).
+  max_cost_usd: Float = 0.0
+
+  /// Maximum parallel child workers this profile may spawn.
+  parallelism_limit: UInt?
+
+  /// Network access policy name.
+  network_policy: String?
+}
+
+/// Schema version.
+version: UInt
+
+/// Named profile definitions.
+profiles: Mapping<String(length > 0), Profile>

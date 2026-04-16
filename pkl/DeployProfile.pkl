@@ -1,0 +1,94 @@
+/// Auspex deploy profile schema.
+///
+/// Deploy profiles define the runtime backend, OCI image, resource
+/// requirements, and placement constraints for Omegon worker instances.
+/// A deploy profile is paired with a worker profile to produce a fully
+/// resolved instantiation request.
+///
+/// Example:
+/// ```
+/// amends "DeployProfile.pkl"
+///
+/// version = 1
+///
+/// profiles {
+///   ["local-default"] {
+///     backend = "local-process"
+///   }
+///   ["homelab-container"] {
+///     backend = "oci-container"
+///     image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+///     resources { cpu = "1"; memory = "2Gi" }
+///   }
+///   ["k8s-worker"] {
+///     backend = "kubernetes"
+///     image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+///     namespace = "agents"
+///     requires { "kubectl"; "helm" }
+///   }
+/// }
+/// ```
+module DeployProfile
+
+/// Resource requirements for containerized backends.
+class Resources {
+  /// CPU request/limit (e.g., "500m", "1", "2").
+  cpu: String?
+
+  /// Memory request/limit (e.g., "512Mi", "1Gi", "4Gi").
+  memory: String?
+}
+
+/// Health check configuration.
+class HealthCheck {
+  /// Interval between probes in seconds.
+  interval_secs: UInt(this > 0) = 30
+
+  /// Number of consecutive failures before marking unhealthy.
+  failure_threshold: UInt(this > 0) = 3
+
+  /// Seconds to wait before first probe after startup.
+  initial_delay_secs: UInt = 10
+}
+
+/// A single deploy profile definition.
+class Profile {
+  /// Runtime backend: local-process, local-detached, oci-container, kubernetes.
+  backend: "local-process"|"local-detached"|"oci-container"|"kubernetes"
+
+  /// OCI image reference (required for oci-container and kubernetes).
+  image: String?
+
+  /// Kubernetes namespace or container runtime label namespace.
+  namespace: String?
+
+  /// Resource requirements for containerized backends.
+  resources: Resources?
+
+  /// Health check configuration override.
+  health_check: HealthCheck?
+
+  /// Omegon CLI flags to pass at launch.
+  omegon_flags: Listing<String>?
+
+  /// Environment variables to inject into the worker runtime.
+  env: Mapping<String, String>?
+
+  /// Maximum number of instances allowed under this profile.
+  max_instances: UInt?
+
+  /// Whether to restart the worker on exit (for detached/daemon modes).
+  restart_on_exit: Boolean = false
+
+  /// System tools that must be available in PATH for this profile to
+  /// be usable (e.g., "kubectl", "helm", "docker", "podman").
+  /// Auspex validates these at startup and marks profiles whose
+  /// prerequisites are not met.
+  requires: Listing<String>?
+}
+
+/// Schema version.
+version: UInt
+
+/// Named deploy profile definitions.
+profiles: Mapping<String(length > 0), Profile>

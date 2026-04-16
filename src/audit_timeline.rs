@@ -331,6 +331,7 @@ mod tests {
         let transcript = TranscriptData {
             turns: vec![Turn {
                 number: 4,
+                user_prompt: None,
                 blocks: vec![
                     TurnBlock::Thinking(TurnBlockText {
                         text: "inspect state".into(),

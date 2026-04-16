@@ -30,6 +30,7 @@ pub struct RemoteHostSession {
     composer: ComposerState,
     pending_role: Option<MessageRole>,
     pending_text: String,
+    pending_user_prompt: Option<String>,
     run_active: bool,
     next_dispatcher_request_id: u64,
     latest_turn_telemetry: LatestTurnTelemetry,
@@ -108,6 +109,7 @@ impl RemoteHostSession {
             composer: ComposerState::default(),
             pending_role: None,
             pending_text: String::new(),
+            pending_user_prompt: None,
             run_active: false,
             next_dispatcher_request_id: 1,
             latest_turn_telemetry: LatestTurnTelemetry::default(),
@@ -255,14 +257,12 @@ impl RemoteHostSession {
         self.apply_session_event(event.into())
     }
 
-    #[allow(dead_code)]
     pub fn apply_snapshot(&mut self, snapshot: OmegonStateSnapshot) -> bool {
         self.apply_session_event(SessionEvent::StateSnapshot {
             data: Box::new(snapshot),
         })
     }
 
-    #[allow(dead_code)]
     pub fn refresh_from_ipc_state(&mut self, snapshot: &IpcStateSnapshot) -> bool {
         self.apply_snapshot(project_ipc_state_snapshot(
             snapshot,
@@ -270,7 +270,7 @@ impl RemoteHostSession {
         ))
     }
 
-    #[allow(dead_code)]
+    #[cfg(test)]
     pub fn apply_ipc_event(&mut self, event: omegon_traits::IpcEventPayload) -> bool {
         self.apply_session_event(event.into())
     }
@@ -309,12 +309,31 @@ impl RemoteHostSession {
                 true
             }
             SessionEvent::MessageDelta { text } => {
-                if self.pending_role.is_some() {
-                    self.pending_text.push_str(&text);
-                    true
-                } else {
-                    false
+                // IPC transport omits MessageStart — auto-initialize as
+                // assistant so deltas are not silently discarded.
+                if self.pending_role.is_none() {
+                    self.pending_role = Some(MessageRole::Assistant);
                 }
+                self.pending_text.push_str(&text);
+                // Stream text into the transcript live so the operator sees
+                // deltas as they arrive, not only on MessageCompleted.
+                if let Some(turn) = self.transcript.turns.last_mut() {
+                    match turn.blocks.last_mut() {
+                        Some(crate::fixtures::TurnBlock::Text(block)) if block.notice_kind.is_none() && block.origin.as_ref().is_none_or(|o| o.kind == OriginKind::Dispatcher) => {
+                            block.text = self.pending_text.trim().to_string();
+                        }
+                        _ => {
+                            turn.blocks.push(crate::fixtures::TurnBlock::Text(
+                                crate::fixtures::AttributedText {
+                                    text: self.pending_text.trim().to_string(),
+                                    origin: None,
+                                    notice_kind: None,
+                                },
+                            ));
+                        }
+                    }
+                }
+                true
             }
             SessionEvent::ThinkingDelta { text } => {
                 if let Some(turn) = self.transcript.turns.last_mut() {
@@ -340,7 +359,23 @@ impl RemoteHostSession {
                 };
                 let text = self.pending_text.trim().to_string();
                 self.push_chat_message(role, text.clone());
-                self.push_text_block(text, Some(dispatcher_origin(&self.dispatcher_binding)));
+                // The streaming block was already created by MessageDelta —
+                // finalize it with attribution instead of pushing a duplicate.
+                let origin = dispatcher_origin(&self.dispatcher_binding);
+                let finalized = if let Some(turn) = self.transcript.turns.last_mut() {
+                    if let Some(crate::fixtures::TurnBlock::Text(block)) = turn.blocks.last_mut() {
+                        block.text = text.clone();
+                        block.origin = Some(origin);
+                        true
+                    } else {
+                        false
+                    }
+                } else {
+                    false
+                };
+                if !finalized {
+                    self.push_text_block(text, Some(dispatcher_origin(&self.dispatcher_binding)));
+                }
                 self.pending_text.clear();
                 true
             }
@@ -355,6 +390,13 @@ impl RemoteHostSession {
                     );
                 }
                 if let Some(turn) = self.transcript.turns.last_mut() {
+                    // Replace the streaming Text block with Aborted.
+                    if matches!(
+                        turn.blocks.last(),
+                        Some(crate::fixtures::TurnBlock::Text(t)) if t.origin.is_none()
+                    ) {
+                        turn.blocks.pop();
+                    }
                     turn.blocks
                         .push(crate::fixtures::TurnBlock::Aborted(aborted));
                 }
@@ -409,6 +451,7 @@ impl RemoteHostSession {
                 self.summary.activity_kind = ActivityKind::Running;
                 self.transcript.turns.push(crate::fixtures::Turn {
                     number: turn,
+                    user_prompt: self.pending_user_prompt.take(),
                     blocks: vec![],
                 });
                 true
@@ -421,6 +464,29 @@ impl RemoteHostSession {
                 cache_read_tokens,
                 provider_telemetry,
             } => {
+                // Implicit abort: IPC transport omits MessageAbort, so if a
+                // message was in-flight when the turn ended, flush it as an
+                // aborted block rather than silently dropping the text.
+                if self.pending_role.is_some() {
+                    let aborted = self.pending_text.trim().to_string();
+                    if !aborted.is_empty() {
+                        if let Some(turn_data) = self.transcript.turns.last_mut() {
+                            // Replace the streaming Text block (if any) with Aborted.
+                            let replaced = matches!(
+                                turn_data.blocks.last(),
+                                Some(crate::fixtures::TurnBlock::Text(t)) if t.origin.is_none()
+                            );
+                            if replaced {
+                                turn_data.blocks.pop();
+                            }
+                            turn_data
+                                .blocks
+                                .push(crate::fixtures::TurnBlock::Aborted(aborted));
+                        }
+                    }
+                    self.pending_text.clear();
+                    self.pending_role = None;
+                }
                 self.transcript.active_turn = None;
                 self.run_active = false;
                 self.summary.activity = format!("Turn {turn} completed");
@@ -895,10 +961,13 @@ impl HostSessionModel for RemoteHostSession {
             return false;
         }
 
-        if self.composer.draft().trim().is_empty() {
+        let text = self.composer.draft().trim().to_string();
+        if text.is_empty() {
             return false;
         }
 
+        self.push_chat_message(MessageRole::User, text.clone());
+        self.pending_user_prompt = Some(text);
         self.summary.activity = "Submitting prompt to Omegon remote session".into();
         self.summary.activity_kind = ActivityKind::Waiting;
         self.composer.clear();
@@ -906,7 +975,6 @@ impl HostSessionModel for RemoteHostSession {
     }
 }
 
-#[allow(dead_code)]
 fn project_ipc_state_snapshot(
     snapshot: &IpcStateSnapshot,
     dispatcher: Option<crate::omegon_control::DispatcherBindingSnapshot>,
@@ -993,10 +1061,10 @@ fn project_ipc_state_snapshot(
         harness: Some(project_ipc_harness_snapshot(snapshot)),
         dispatcher,
         instance_descriptor: Some(project_ipc_instance_descriptor(snapshot)),
+        daemon_sessions: None,
     }
 }
 
-#[allow(dead_code)]
 fn project_ipc_harness_snapshot(
     snapshot: &IpcStateSnapshot,
 ) -> crate::omegon_control::HarnessStatusSnapshot {
@@ -1024,7 +1092,6 @@ fn project_ipc_harness_snapshot(
     }
 }
 
-#[allow(dead_code)]
 fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanceDescriptor {
     let instance = &snapshot.instance;
     let workspace_id = (!instance.identity.workspace_id.is_empty())
@@ -1076,6 +1143,10 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
             context_class: instance.runtime.context_class.clone(),
             thinking_level: instance.runtime.thinking_level.clone(),
             capability_tier: instance.runtime.capability_tier.clone(),
+            runtime_profile: Some(instance.runtime.runtime_profile.as_str().to_string()),
+            autonomy_mode: Some(format!("{:?}", instance.runtime.autonomy_mode).to_lowercase()),
+            active_persona: snapshot.harness.active_persona.clone(),
+            extensions: Vec::new(),
         }),
         session: Some(crate::omegon_control::OmegonSessionDescriptor { session_id }),
         policy: Some(crate::omegon_control::OmegonPolicyDescriptor {
@@ -1086,7 +1157,6 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
     }
 }
 
-#[allow(dead_code)]
 fn format_ipc_role(role: &omegon_traits::OmegonRole) -> String {
     match role {
         omegon_traits::OmegonRole::PrimaryDriver => "primary-driver",
@@ -1099,7 +1169,6 @@ fn format_ipc_role(role: &omegon_traits::OmegonRole) -> String {
     .into()
 }
 
-#[allow(dead_code)]
 fn format_ipc_health(health: &omegon_traits::IpcHealthState) -> String {
     match health {
         omegon_traits::IpcHealthState::Ready => "ready",
@@ -1110,7 +1179,6 @@ fn format_ipc_health(health: &omegon_traits::IpcHealthState) -> String {
     .into()
 }
 
-#[allow(dead_code)]
 fn format_ipc_runtime_health(health: &omegon_traits::OmegonRuntimeHealth) -> String {
     match health {
         omegon_traits::OmegonRuntimeHealth::Ready => "ready",
@@ -1121,7 +1189,6 @@ fn format_ipc_runtime_health(health: &omegon_traits::OmegonRuntimeHealth) -> Str
     .into()
 }
 
-#[allow(dead_code)]
 fn format_ipc_deployment_kind(kind: &omegon_traits::OmegonDeploymentKind) -> String {
     match kind {
         omegon_traits::OmegonDeploymentKind::InteractiveTui => "interactive-tui",
@@ -1741,6 +1808,7 @@ mod tests {
                 }),
                 ..OmegonInstanceDescriptor::default()
             }),
+            daemon_sessions: None,
         });
 
         let data = session.session_data();
@@ -1786,6 +1854,7 @@ mod tests {
                 }),
                 ..OmegonInstanceDescriptor::default()
             }),
+            daemon_sessions: None,
         });
 
         assert_eq!(session.shell_state(), ShellState::Degraded);
@@ -2411,5 +2480,96 @@ mod tests {
                 ..
             })
         ));
+    }
+
+    #[test]
+    fn ipc_message_delta_without_message_start_auto_initializes_as_assistant() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+
+        // IPC path: MessageDelta arrives without any preceding MessageStart.
+        assert!(session.apply_session_event(SessionEvent::MessageDelta {
+            text: "hello ".into(),
+        }));
+        assert!(session.apply_session_event(SessionEvent::MessageDelta {
+            text: "world".into(),
+        }));
+        assert!(session.apply_session_event(SessionEvent::MessageCompleted));
+
+        let blocks = &session.transcript.turns[0].blocks;
+        assert!(matches!(
+            &blocks[0],
+            crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText { text, .. })
+            if text == "hello world"
+        ));
+
+        // Verify the chat message was recorded as Assistant role.
+        let last_msg = session.messages().last().expect("should have a message");
+        assert!(matches!(last_msg.role, MessageRole::Assistant));
+    }
+
+    #[test]
+    fn turn_ended_with_pending_message_produces_implicit_abort() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(r#"{"type":"turn_start","turn":1}"#)
+            .unwrap();
+
+        // Simulate IPC path: deltas arrive, but no MessageCompleted before TurnEnded.
+        session.apply_session_event(SessionEvent::MessageDelta {
+            text: "partial response".into(),
+        });
+        session.apply_session_event(SessionEvent::TurnEnded {
+            turn: 1,
+            estimated_tokens: None,
+            actual_input_tokens: None,
+            actual_output_tokens: None,
+            cache_read_tokens: None,
+            provider_telemetry: None,
+        });
+
+        let blocks = &session.transcript.turns[0].blocks;
+        assert!(matches!(
+            &blocks[0],
+            crate::fixtures::TurnBlock::Aborted(text) if text == "partial response"
+        ));
+        assert!(!session.run_active);
+    }
+
+    #[test]
+    fn full_ipc_event_sequence_produces_correct_transcript() {
+        use omegon_traits::IpcEventPayload;
+
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        // Full IPC-only lifecycle: no MessageStart, no MessageAbort.
+        session.apply_ipc_event(IpcEventPayload::TurnStarted { turn: 1 });
+        session.apply_ipc_event(IpcEventPayload::MessageDelta {
+            text: "IPC says hello".into(),
+        });
+        session.apply_ipc_event(IpcEventPayload::MessageCompleted);
+        session.apply_ipc_event(IpcEventPayload::TurnEnded {
+            turn: 1,
+            estimated_tokens: 100,
+            actual_input_tokens: 50,
+            actual_output_tokens: 50,
+            cache_read_tokens: 0,
+            provider_telemetry: None,
+            streaks: Default::default(),
+        });
+        session.apply_ipc_event(IpcEventPayload::AgentCompleted);
+
+        assert_eq!(session.transcript.turns.len(), 1);
+        let blocks = &session.transcript.turns[0].blocks;
+        assert!(matches!(
+            &blocks[0],
+            crate::fixtures::TurnBlock::Text(crate::fixtures::AttributedText { text, .. })
+            if text == "IPC says hello"
+        ));
+        assert!(!session.run_active);
     }
 }

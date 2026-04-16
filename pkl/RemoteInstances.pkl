@@ -1,0 +1,62 @@
+/// Auspex remote instance registration schema.
+///
+/// Registers known remote Omegon instances that auspex can attach to
+/// without relying on local podman container discovery. Use this for
+/// agents deployed on remote infrastructure (e.g. a Discord community
+/// agent running on a homelab or cloud host).
+///
+/// Example:
+/// ```
+/// amends "RemoteInstances.pkl"
+///
+/// version = 1
+///
+/// instances {
+///   ["styrene-community-discord"] {
+///     label = "Styrene Community Agent"
+///     base_url = "https://agents.styrene.dev:7842"
+///     role = "detached-service"
+///     profile = "messaging-agent"
+///     token_ref = "secret://auspex/instances/styrene-community-discord/token"
+///     extensions { "vox" }
+///     tags { "discord"; "community" }
+///   }
+/// }
+/// ```
+module RemoteInstances
+
+/// A single remote instance registration entry.
+class Instance {
+  /// Human-readable label for the instance.
+  label: String
+
+  /// Base URL of the Omegon control plane (e.g. "https://host:7842").
+  base_url: String(length > 0)
+
+  /// Worker role: primary-driver, supervised-child, detached-service.
+  role: "primary-driver"|"supervised-child"|"detached-service" = "detached-service"
+
+  /// Worker profile name.
+  profile: String = "remote-agent"
+
+  /// Secret reference for the auth token (secret:// URI or inline for dev).
+  token_ref: String?
+
+  /// Extensions the remote instance is known to run (e.g. ["vox"]).
+  extensions: Listing<String>?
+
+  /// Freeform tags for filtering and display.
+  tags: Listing<String>?
+
+  /// Override auth mode (default: "ephemeral-bearer").
+  auth_mode: String = "ephemeral-bearer"
+
+  /// Whether to auto-attach on startup (default: true).
+  auto_attach: Boolean = true
+}
+
+/// Schema version.
+version: UInt
+
+/// Named remote instance registrations.
+instances: Mapping<String(length > 0), Instance>

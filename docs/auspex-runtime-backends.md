@@ -30,9 +30,40 @@ Auspex should instantiate logical workers through a backend-agnostic request sha
 
 The runtime API and registry model must not assume localhost PID+port is the only execution model.
 
+## Deploy profiles
+
+Deploy profiles define the backend, OCI image, resource requirements, and placement constraints. Schema lives in `pkl/DeployProfile.pkl`, config loaded from `~/.config/auspex/deploy-profiles.pkl` (toml fallback).
+
+```pkl
+amends "DeployProfile.pkl"
+
+version = 1
+
+profiles {
+  ["local-default"] {
+    backend = "local-process"
+  }
+  ["homelab-container"] {
+    backend = "oci-container"
+    image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+    namespace = "auspex"
+    resources { cpu = "1"; memory = "2Gi" }
+    restart_on_exit = true
+  }
+  ["k8s-worker"] {
+    backend = "kubernetes"
+    image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+    namespace = "agents"
+    max_instances = 8
+    resources { cpu = "500m"; memory = "1Gi" }
+    requires { "kubectl"; "helm" }
+  }
+}
+```
+
 ## Canonical instantiate request schema
 
-This is the shape Auspex should use internally regardless of backend.
+This is the internal shape Auspex uses regardless of backend. It combines a resolved worker profile with a deploy profile.
 
 ```json
 {
@@ -55,7 +86,7 @@ This is the shape Auspex should use internally regardless of backend.
     "model": "anthropic:claude-haiku",
     "thinking_level": "low",
     "max_runtime_seconds": 900,
-    "image": "ghcr.io/org/omegon:v0.15.7",
+    "image": "ghcr.io/styrene-lab/omegon:v0.15.25",
     "namespace": "auspex",
     "resources": {
       "cpu": "500m",
