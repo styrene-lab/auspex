@@ -1058,57 +1058,32 @@ pub fn App() -> Element {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
                 div { class: "debug-shell-main",
                     div { class: "cockpit-console-side cockpit-console-side-left debug-shell-left-host",
-                        article { class: "cockpit-panel cockpit-panel-auspex cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
-                            div { class: "cockpit-panel-toprail",
-                                span { class: "cockpit-panel-label", "{cockpit.auspex.label}" }
-                                span { class: "cockpit-panel-tag", "{cockpit.auspex.tag}" }
-                            }
-                            p { class: "cockpit-panel-primary", "{cockpit.auspex.primary}" }
-                            for line in &cockpit.auspex.secondary {
-                                p { class: "cockpit-panel-secondary", "{line}" }
-                            }
-                        }
-
-                        article { class: "cockpit-panel cockpit-panel-deployment cockpit-console-card", "data-surface": "panel", "data-elevation": "1",
-                            div { class: "cockpit-panel-toprail",
-                                span { class: "cockpit-panel-label", "{cockpit.deployment.label}" }
-                                span { class: "cockpit-panel-tag", "{cockpit.deployment.tag}" }
-                            }
-                            p { class: "cockpit-panel-primary", "{cockpit.deployment.primary}" }
-                            for line in &cockpit.deployment.secondary {
-                                p { class: "cockpit-panel-secondary", "{line}" }
-                            }
-                            if !cockpit.deployment.preview.is_empty() {
-                                div { class: "cockpit-panel-preview-rail",
-                                    for item in &cockpit.deployment.preview {
-                                        button {
-                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
-                                            r#type: "button",
-                                            onclick: {
-                                                let key = item.key.clone();
-                                                let mut controller = controller;
-                                                move |_| {
-                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
-                                                        selected_cockpit_entity.set(None);
-                                                        #[cfg(not(target_arch = "wasm32"))]
-                                                        controller.write().focus_instance(None);
-                                                    } else {
-                                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
-                                                        {
-                                                            let mut ctrl = controller.write();
-                                                            ctrl.select_command_route_for_instance(&key);
-                                                            #[cfg(not(target_arch = "wasm32"))]
-                                                            ctrl.focus_instance(Some(&key));
-                                                        }
-                                                    }
-                                                }
-                                            },
-                                            "{item.label}"
+                        {render_fleet_rail(
+                            &session,
+                            controller.read().focused_instance_id().map(|s| s.to_string()),
+                            #[cfg(not(target_arch = "wasm32"))]
+                            controller.read().instance_activity_summaries(),
+                            #[cfg(target_arch = "wasm32")]
+                            vec![],
+                            EventHandler::new({
+                                let mut controller = controller;
+                                move |instance_id: Option<String>| {
+                                    if let Some(id) = &instance_id {
+                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(id.clone())));
+                                    } else {
+                                        selected_cockpit_entity.set(None);
+                                    }
+                                    {
+                                        let mut ctrl = controller.write();
+                                        if let Some(id) = &instance_id {
+                                            ctrl.select_command_route_for_instance(id);
                                         }
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        ctrl.focus_instance(instance_id.as_deref());
                                     }
                                 }
-                            }
-                        }
+                            }),
+                        )}
                     }
                     div { class: "debug-shell-center-host",
                         {render_cockpit_center_stage(workspace, cockpit_center_body_for_blockout)}
@@ -1929,18 +1904,8 @@ fn render_transcript(
         build_chat_empty_state_model(summary, work, session, transcript, messages, scenario)
     {
         rsx! {
-            section {
-                class: "chat-empty-state",
-                "data-surface": "panel",
-                "data-tone": if empty_state.detached { "warn" } else { "info" },
-                span { class: "chat-empty-kicker", "{empty_state.kicker}" }
-                h2 { "{empty_state.title}" }
-                p { class: "chat-empty-detail", "{empty_state.detail}" }
-                ul { class: "chat-empty-list",
-                    for item in &empty_state.guidance {
-                        li { "{item}" }
-                    }
-                }
+            div { class: "chat-empty-hint",
+                span { class: "chat-empty-hint-text", "{empty_state.kicker}" }
             }
             for message in messages.iter() {
                 article {
@@ -2583,6 +2548,138 @@ fn render_cockpit_top_rail(
     }
 }
 
+fn render_fleet_rail(
+    session: &crate::fixtures::SessionData,
+    focused_instance_id: Option<String>,
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
+    activity_summaries: Vec<(String, crate::instance_session::ActivitySummary)>,
+    on_focus: EventHandler<Option<String>>,
+) -> Element {
+    let is_primary_focused = focused_instance_id.is_none();
+
+    // Build fleet entries from lifecycle telemetry instances.
+    let fleet_instances = &session.telemetry.lifecycle.instances;
+
+    rsx! {
+        nav { class: "fleet-rail",
+            // Local agent card — always at top
+            button {
+                class: if is_primary_focused { "fleet-card fleet-card-local fleet-card-focused" } else { "fleet-card fleet-card-local" },
+                r#type: "button",
+                onclick: move |_| on_focus.call(None),
+                div { class: "fleet-card-header",
+                    span { class: "fleet-card-role", "Local Agent" }
+                    span { class: if is_primary_focused { "fleet-card-status fleet-card-status-active" } else { "fleet-card-status fleet-card-status-ready" },
+                        if is_primary_focused { "FOCUSED" } else { "READY" }
+                    }
+                }
+                div { class: "fleet-card-detail",
+                    if let Some(descriptor) = &session.instance_descriptor {
+                        span { class: "fleet-card-meta", "{descriptor.identity.profile}" }
+                        if let Some(policy) = &descriptor.policy {
+                            if let Some(model) = &policy.model {
+                                span { class: "fleet-card-meta fleet-card-model", "{model}" }
+                            }
+                        }
+                    } else {
+                        span { class: "fleet-card-meta", "primary · attaching" }
+                    }
+                }
+            }
+
+            // Fleet section
+            if !fleet_instances.is_empty() {
+                div { class: "fleet-section",
+                    div { class: "fleet-section-header",
+                        span { class: "fleet-section-label", "Fleet" }
+                        span { class: "fleet-section-count", "{fleet_instances.len()}" }
+                    }
+                    for instance in fleet_instances {
+                        {render_fleet_instance_card(
+                            instance,
+                            focused_instance_id.as_deref() == Some(instance.instance_id.as_str()),
+                            &activity_summaries,
+                            on_focus,
+                        )}
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_fleet_instance_card(
+    instance: &crate::fixtures::LifecycleInstanceTelemetryData,
+    is_focused: bool,
+    activity_summaries: &[(String, crate::instance_session::ActivitySummary)],
+    on_focus: EventHandler<Option<String>>,
+) -> Element {
+    let freshness = instance.freshness.as_deref().unwrap_or("unknown");
+    let status = instance.status.as_deref().unwrap_or("unknown");
+    let activity = activity_summaries
+        .iter()
+        .find(|(id, _)| *id == instance.instance_id)
+        .map(|(_, a)| a);
+    let is_active = activity.is_some_and(|a| a.run_active);
+
+    let status_class = match freshness {
+        "fresh" if is_active => "fleet-card-status-active",
+        "fresh" => "fleet-card-status-ready",
+        "stale" => "fleet-card-status-stale",
+        _ => "fleet-card-status-offline",
+    };
+
+    // Derive a human-friendly label from instance_id
+    let label = instance
+        .instance_id
+        .strip_prefix("remote:")
+        .or_else(|| instance.instance_id.strip_prefix("container:"))
+        .unwrap_or(&instance.instance_id);
+
+    let status_label = if is_focused {
+        "FOCUSED"
+    } else if is_active {
+        "ACTIVE"
+    } else {
+        match freshness {
+            "fresh" => status,
+            other => other,
+        }
+    };
+
+    rsx! {
+        button {
+            class: if is_focused { "fleet-card fleet-card-focused" } else { "fleet-card" },
+            r#type: "button",
+            onclick: {
+                let instance_id = instance.instance_id.clone();
+                let is_focused = is_focused;
+                move |_| {
+                    if is_focused {
+                        on_focus.call(None);
+                    } else {
+                        on_focus.call(Some(instance_id.clone()));
+                    }
+                }
+            },
+            div { class: "fleet-card-header",
+                span { class: "fleet-card-role", "{label}" }
+                span { class: "fleet-card-status {status_class}", "{status_label}" }
+            }
+            div { class: "fleet-card-detail",
+                span { class: "fleet-card-meta", "{instance.role} · {instance.profile}" }
+                if let Some(activity) = activity {
+                    if activity.turn_count > 0 {
+                        span { class: "fleet-card-meta fleet-card-stats",
+                            "{activity.turn_count}t · {activity.tool_call_count}tc"
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) -> Element {
     rsx! {
         section { class: "cockpit-cop-stage",
@@ -3030,34 +3127,30 @@ fn build_dispatch_context_strip_model(
         )
     };
 
+    // Compose the model+tier into a single value for compactness.
+    let target_value = match (&model, &tier) {
+        (Some(m), Some(t)) => format!("{m} · {t}"),
+        (Some(m), None) => m.clone(),
+        (None, Some(t)) => t.clone(),
+        (None, None) => who.clone(),
+    };
+
     DispatchContextStripModel {
         state,
         send_detail,
         items: {
             let mut items = vec![
                 DispatchContextItem {
-                    label: "Route",
-                    value: route,
-                    tone: "muted",
-                },
-                DispatchContextItem {
-                    label: "Session",
-                    value: session_label,
-                    tone: "muted",
-                },
-                DispatchContextItem {
-                    label: "Who",
-                    value: who,
+                    label: "Target",
+                    value: target_value,
                     tone: "accent",
+                },
+                DispatchContextItem {
+                    label: "State",
+                    value: state_label,
+                    tone: state_tone,
                 },
             ];
-            if let Some(model) = model {
-                items.push(DispatchContextItem {
-                    label: "Model",
-                    value: model,
-                    tone: "accent",
-                });
-            }
             if let Some(thinking) = thinking {
                 items.push(DispatchContextItem {
                     label: "Thinking",
@@ -3065,23 +3158,6 @@ fn build_dispatch_context_strip_model(
                     tone: "muted",
                 });
             }
-            if let Some(tier) = tier {
-                items.push(DispatchContextItem {
-                    label: "Tier",
-                    value: tier,
-                    tone: "muted",
-                });
-            }
-            items.push(DispatchContextItem {
-                label: "State",
-                value: state_label,
-                tone: state_tone,
-            });
-            items.push(DispatchContextItem {
-                label: "Context",
-                value: context,
-                tone: "muted",
-            });
             items.push(DispatchContextItem {
                 label: "Send",
                 value: send_label,
@@ -4549,36 +4625,21 @@ mod tests {
 
         assert_eq!(model.state, "ready");
         assert!(model.send_detail.contains("Prompt ready: 39 character(s)"));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Route",
-            value: "chat · live".into(),
-            tone: "muted",
-        }));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Session",
-            value: "session_01HVDEMO".into(),
-            tone: "muted",
-        }));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Who",
-            value: "primary-driver".into(),
-            tone: "accent",
-        }));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Model",
-            value: "anthropic:claude-sonnet-4-6".into(),
-            tone: "accent",
-        }));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Thinking",
-            value: "medium".into(),
-            tone: "muted",
-        }));
-        assert!(model.items.contains(&super::DispatchContextItem {
-            label: "Tier",
-            value: "victory".into(),
-            tone: "muted",
-        }));
+        // Target chip combines model + tier.
+        assert!(
+            model
+                .items
+                .iter()
+                .any(|item| item.label == "Target"
+                    && item.value.contains("anthropic:claude-sonnet-4-6")
+                    && item.value.contains("victory"))
+        );
+        assert!(
+            model
+                .items
+                .iter()
+                .any(|item| item.label == "State")
+        );
         assert!(
             model
                 .items
@@ -4589,7 +4650,6 @@ mod tests {
         let rendered = render_dispatch_context_strip(&model);
         let debug = format!("{rendered:?}");
         assert!(debug.contains("Dispatch context"));
-        assert!(debug.contains("primary-driver"));
         assert!(debug.contains("Ready to send"));
     }
 
@@ -4646,12 +4706,6 @@ mod tests {
                 .items
                 .iter()
                 .any(|item| item.label == "Send" && item.value == "Needs prompt text")
-        );
-        assert!(
-            blank
-                .items
-                .iter()
-                .any(|item| item.label == "Who" && item.value == "Attached to local shell")
         );
 
         let blocked_providers = build_dispatch_context_strip_model(

@@ -74,3 +74,26 @@ Omegon 0.15.25 shipped with vox extension bridge for Discord/Slack agents. Styre
 - **Session stats for remote instances**: right panel shows 0 turns/tools because stats come from primary session. Per-instance stats need per-instance event stream.
 - Community agent token is ephemeral (changes on restart). Need stable auth for persistent remote instance config.
 
+## 2026-04-16 — Per-instance event streams + assessment cleanup
+
+### Context
+Follow-on from earlier session. Multi-instance event streams needed so operator can chat with remote agents directly. Assessment identified 7 issues to fix.
+
+### Completed
+- Per-instance event streams: InstanceSession bundles WebSocket + RemoteHostSession per instance. InstanceSessionMap in AppController. drain_all in app loop every 150ms tick.
+- Focused COP: clicking deployment chip switches center stage transcript and command routing to that instance. focused_* accessors delegate to instance or primary.
+- Community Discord agent transcript now streams live in COP — confirmed end-to-end prompt/response.
+- Assessment fixes: autonomy_mode serde format, token_ref→token rename, write guard merge, WebSocket cancel flag, JSON parse logging, base_url dedup, non-blockout handler sync.
+
+### Decisions
+- InstanceSessionMap uses manual PartialEq (skips EventStreamHandle internals) so AppController can still derive PartialEq/Eq for dioxus signal compatibility
+- WebSocket cancellation via AtomicBool flag instead of tokio CancellationToken to avoid new dependency
+- Container discovery deduplicates by base_url against config-registered remotes — config entry wins
+- connect_instance_session silently skips without tokio runtime (test safety) — documented behavior
+
+### Open Threads
+- **Fleet dashboard left rail**: needs redesign from flat deployment pills to hierarchical fleet view — local agent at top, remote fleet below with status indicators and drill-down
+- **Managed vs autonomous agent taxonomy**: not yet implemented. Need to distinguish instances that run independently (vox/trigger) from those directed by the local auspex agent (C2)
+- **Session stats for focused instance**: right panel stats still show primary session data when focused on remote. The per-instance session_data() is wired but the right panel session screen doesn't use focused_session_data() yet
+- **Stable auth tokens**: ephemeral tokens in remote config break on agent restart
+
