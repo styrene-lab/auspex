@@ -554,6 +554,9 @@ struct ProviderBlockedComposerModel {
     title: String,
     detail: String,
     action_label: String,
+    /// If set, show a re-auth button that runs `omegon auth login <provider>`
+    /// then restarts the owned omegon process.
+    expired_provider: Option<String>,
 }
 
 fn build_provider_blocked_composer_model(
@@ -561,6 +564,37 @@ fn build_provider_blocked_composer_model(
     can_submit: bool,
 ) -> Option<ProviderBlockedComposerModel> {
     if can_submit {
+        // Check if the active model's provider is expired/unauthenticated.
+        // This catches the case where can_submit is true (session is ready)
+        // but the LLM calls will abort because the specific provider is expired.
+        let active_model = session
+            .dispatcher_binding
+            .as_ref()
+            .and_then(|b| b.expected_model.as_deref())
+            .or_else(|| {
+                session
+                    .instance_descriptor
+                    .as_ref()
+                    .and_then(|d| d.policy.as_ref())
+                    .and_then(|p| p.model.as_deref())
+            });
+        if let Some(model) = active_model {
+            let provider_prefix = model.split(':').next().unwrap_or("");
+            let provider_expired = !provider_prefix.is_empty()
+                && session.providers.iter().any(|p| {
+                    p.name.to_lowercase().starts_with(provider_prefix) && !p.authenticated
+                });
+            if provider_expired {
+                return Some(ProviderBlockedComposerModel {
+                    title: format!("Provider expired: {provider_prefix}"),
+                    detail: format!(
+                        "The active model ({model}) requires {provider_prefix} authentication, but the token has expired. Re-authenticate to resume prompting."
+                    ),
+                    action_label: "Open Settings".into(),
+                    expired_provider: Some(provider_prefix.to_string()),
+                });
+            }
+        }
         return None;
     }
     let has_authenticated_provider = session.providers.iter().any(|p| p.authenticated);
@@ -572,6 +606,7 @@ fn build_provider_blocked_composer_model(
         detail:
             "Omegon has no authenticated providers. Authenticate a provider in Settings before sending prompts so Auspex can route work to a runnable model backend.".into(),
         action_label: "Open Settings".into(),
+        expired_provider: None,
     })
 }
 
@@ -3299,7 +3334,34 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                 div { class: "composer-blocked-callout",
                     h3 { class: "composer-blocked-title", "{blocked.title}" }
                     p { class: "composer-blocked-detail", "{blocked.detail}" }
-                    button { class: "composer-blocked-action", r#type: "button", onclick: move |_| on_open_settings.call(()), "{blocked.action_label}" }
+                    div { class: "composer-blocked-actions",
+                        if let Some(provider) = &blocked.expired_provider {
+                            button {
+                                class: "composer-blocked-action composer-blocked-action-primary",
+                                r#type: "button",
+                                onclick: {
+                                    let provider = provider.clone();
+                                    move |_| {
+                                        let provider = provider.clone();
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        spawn(async move {
+                                            eprintln!("auspex: running omegon auth login {provider}");
+                                            if let Err(e) = crate::bootstrap::run_auth_login(&provider).await {
+                                                eprintln!("auspex: auth login failed: {e}");
+                                            } else {
+                                                eprintln!("auspex: auth login succeeded, restarting omegon");
+                                                if let Some(_result) = crate::bootstrap::restart_owned_omegon().await {
+                                                    eprintln!("auspex: omegon restarted");
+                                                }
+                                            }
+                                        });
+                                    }
+                                },
+                                "Re-authenticate {provider}"
+                            }
+                        }
+                        button { class: "composer-blocked-action", r#type: "button", onclick: move |_| on_open_settings.call(()), "{blocked.action_label}" }
+                    }
                 }
             } else {
                 textarea {

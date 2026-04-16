@@ -119,6 +119,10 @@ impl InstanceSession {
                 self.activity.run_active = false;
                 self.activity.last_activity = Some("agent completed".into());
             }
+            SessionEvent::MessageAbort => {
+                self.activity.run_active = false;
+                self.activity.last_activity = Some("message aborted".into());
+            }
             _ => {}
         }
     }

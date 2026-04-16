@@ -402,6 +402,8 @@ impl RemoteHostSession {
                 }
                 self.pending_text.clear();
                 self.run_active = false;
+                self.summary.activity = "Message aborted".into();
+                self.summary.activity_kind = ActivityKind::Failure;
                 true
             }
             SessionEvent::SystemNotification { message } => {

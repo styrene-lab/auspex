@@ -1105,6 +1105,37 @@ fn reap_owned_omegon_child() {
     clear_owned_omegon_pid();
 }
 
+/// Kill the owned Omegon process and respawn it. Returns a new
+/// `BootstrapResult` that the app can use to reattach. Picks up
+/// fresh auth from disk.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn restart_owned_omegon() -> Option<BootstrapResult> {
+    reap_owned_omegon_child();
+    reap_conflicting_omegon_children();
+
+    let binary = find_omegon_binary()?;
+    Some(spawn_and_attach_omegon(&binary).await)
+}
+
+/// Run `omegon auth login <provider>` asynchronously. Returns the
+/// command's exit status. The auth result is written to disk by omegon;
+/// a subsequent restart picks it up.
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn run_auth_login(provider: &str) -> Result<(), String> {
+    let binary = find_omegon_binary()
+        .ok_or_else(|| "Omegon binary not found".to_string())?;
+    let status = tokio::process::Command::new(&binary)
+        .args(["auth", "login", provider])
+        .status()
+        .await
+        .map_err(|e| format!("failed to run omegon auth login: {e}"))?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(format!("omegon auth login {provider} failed with {status}"))
+    }
+}
+
 /// Ensure the persisted Omegon profile uses a model backed by an
 /// authenticated provider.  Omegon's `serve` mode honours the profile's
 /// `lastUsedModel` over the `--model` CLI flag, so if the profile points

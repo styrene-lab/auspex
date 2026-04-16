@@ -1395,6 +1395,22 @@ body {
   cursor: pointer;
 }
 
+.composer-blocked-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.composer-blocked-action-primary {
+  border-color: rgba(66, 153, 225, 0.6);
+  background: linear-gradient(180deg, rgba(20, 50, 80, 0.98), rgba(14, 35, 56, 0.98));
+  color: #82c8f0;
+}
+
+.composer-blocked-action-primary:hover {
+  background: linear-gradient(180deg, rgba(26, 60, 96, 0.98), rgba(18, 42, 66, 0.98));
+}
+
 .composer-blocked-action:hover {
   background: linear-gradient(180deg, rgba(84, 51, 19, 0.98), rgba(57, 35, 14, 0.98));
 }
