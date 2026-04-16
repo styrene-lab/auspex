@@ -8,6 +8,8 @@ mod config;
 mod container_discovery;
 mod controller;
 mod event_stream;
+#[cfg(not(target_arch = "wasm32"))]
+mod instance_session;
 mod fixtures;
 mod instance_registry;
 #[cfg(not(target_arch = "wasm32"))]

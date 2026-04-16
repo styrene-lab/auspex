@@ -199,6 +199,9 @@ impl SessionSource {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct AppController {
     session: SessionSource,
+    #[cfg(not(target_arch = "wasm32"))]
+    instance_sessions: crate::instance_session::InstanceSessionMap,
+    focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
     audit_timeline: AuditTimelineStore,
@@ -215,6 +218,9 @@ impl Default for AppController {
     fn default() -> Self {
         let mut controller = Self {
             session: SessionSource::default(),
+            #[cfg(not(target_arch = "wasm32"))]
+            instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
@@ -253,6 +259,9 @@ impl AppController {
         let session = RemoteHostSession::from_snapshot_json(json)?;
         let mut controller = Self {
             session: SessionSource::Remote(Box::new(session)),
+            #[cfg(not(target_arch = "wasm32"))]
+            instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
             audit_timeline: AuditTimelineStore::default(),
@@ -322,6 +331,166 @@ impl AppController {
         self.refresh_telemetry_snapshot();
     }
 
+    /// Find the command route associated with an instance_id and select it.
+    /// Returns true if a matching route was found and selected.
+    pub fn select_command_route_for_instance(&mut self, instance_id: &str) -> bool {
+        let route_id = self
+            .attached_instance_engine
+            .attached_instances()
+            .iter()
+            .find(|inst| inst.instance_id == instance_id)
+            .map(|inst| inst.route_id.clone());
+        if let Some(route_id) = route_id {
+            self.select_command_route(&route_id);
+            true
+        } else {
+            false
+        }
+    }
+
+    // ── Instance session focus management ────────────────────────────────
+
+    /// Set which instance the center COP shows. None = primary session.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn focus_instance(&mut self, instance_id: Option<&str>) {
+        self.focused_instance_id = instance_id.map(|s| s.to_string());
+        if let Some(id) = instance_id {
+            self.select_command_route_for_instance(id);
+        }
+    }
+
+    /// Which instance is currently focused. None = primary.
+    pub fn focused_instance_id(&self) -> Option<&str> {
+        self.focused_instance_id.as_deref()
+    }
+
+    /// Whether the primary session is focused (no instance override).
+    pub fn is_primary_focused(&self) -> bool {
+        self.focused_instance_id.is_none()
+    }
+
+    /// Transcript for the focused instance (or primary if none focused).
+    pub fn focused_transcript(&self) -> &crate::fixtures::TranscriptData {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if let Some(session) = self.instance_sessions.get(id) {
+                return session.transcript();
+            }
+        }
+        self.transcript()
+    }
+
+    /// Chat messages for the focused instance (or primary).
+    pub fn focused_messages(&self) -> &[crate::fixtures::ChatMessage] {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if let Some(session) = self.instance_sessions.get(id) {
+                return session.messages();
+            }
+        }
+        self.messages()
+    }
+
+    /// Whether the focused instance has an active turn.
+    pub fn focused_is_run_active(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if let Some(session) = self.instance_sessions.get(id) {
+                return session.is_run_active();
+            }
+        }
+        self.is_run_active()
+    }
+
+    /// Session data for the focused instance (or primary).
+    pub fn focused_session_data(&self) -> crate::fixtures::SessionData {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if let Some(session) = self.instance_sessions.get(id) {
+                return session.session_data();
+            }
+        }
+        self.session_data()
+    }
+
+    /// Summary for the focused instance (or primary).
+    pub fn focused_summary(&self) -> &crate::fixtures::HostSessionSummary {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if let Some(session) = self.instance_sessions.get(id) {
+                return session.summary();
+            }
+        }
+        self.summary()
+    }
+
+    /// Whether the operator can submit a prompt to the focused instance.
+    pub fn focused_can_submit(&self) -> bool {
+        #[cfg(not(target_arch = "wasm32"))]
+        if let Some(id) = &self.focused_instance_id {
+            if self.instance_sessions.get(id).is_some() {
+                // Remote instances are always submittable if connected.
+                return true;
+            }
+        }
+        self.can_submit()
+    }
+
+    // ── Instance session lifecycle ─────────────────────────────────────
+
+    /// Connect a WebSocket event stream for a remote instance.
+    /// Requires a tokio runtime for the WebSocket spawn. Silently
+    /// skips if no runtime is available (e.g. in sync test contexts).
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn connect_instance_session(&mut self, instance_id: &str, ws_url: &str) {
+        if self.instance_sessions.is_connected(instance_id) {
+            return;
+        }
+        if tokio::runtime::Handle::try_current().is_err() {
+            return;
+        }
+        self.instance_sessions.connect(instance_id, ws_url);
+    }
+
+    /// Disconnect a remote instance's session. Reverts focus if needed.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn disconnect_instance_session(&mut self, instance_id: &str) {
+        self.instance_sessions.disconnect(instance_id);
+        if self.focused_instance_id.as_deref() == Some(instance_id) {
+            self.focused_instance_id = None;
+        }
+    }
+
+    /// Drain all per-instance event streams and apply events.
+    /// Called from the app event loop every tick.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn drain_all_instance_sessions(&mut self) -> bool {
+        self.instance_sessions.drain_all()
+    }
+
+    /// Send a command to a specific instance's WebSocket.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn dispatch_to_instance(
+        &self,
+        instance_id: &str,
+        command: &crate::runtime_types::TargetedCommand,
+    ) -> Result<(), String> {
+        if let Some(session) = self.instance_sessions.get(instance_id) {
+            session.send_command(command);
+            Ok(())
+        } else {
+            Err(format!("no session for instance {instance_id}"))
+        }
+    }
+
+    /// Activity summaries for all connected instance sessions.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn instance_activity_summaries(
+        &self,
+    ) -> Vec<(String, crate::instance_session::ActivitySummary)> {
+        self.instance_sessions.activity_summaries()
+    }
+
     #[allow(dead_code)]
     pub fn attached_instances(&self) -> &[AttachedInstanceRecord] {
         self.attached_instance_engine.attached_instances()
@@ -333,6 +502,26 @@ impl AppController {
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
+
+        // Disconnect instance sessions for instances that are no longer healthy.
+        #[cfg(not(target_arch = "wasm32"))]
+        {
+            let attached_ids: std::collections::HashSet<String> = self
+                .attached_instance_engine
+                .attached_instances()
+                .iter()
+                .map(|i| i.instance_id.clone())
+                .collect();
+            let stale_session_ids: Vec<String> = self
+                .instance_sessions
+                .iter()
+                .filter(|(id, _)| !attached_ids.contains(*id))
+                .map(|(id, _)| id.to_string())
+                .collect();
+            for id in &stale_session_ids {
+                self.disconnect_instance_session(id);
+            }
+        }
     }
 
     pub fn attach_instance_record(&mut self, instance: AttachedInstanceRecord) {
@@ -502,12 +691,29 @@ impl AppController {
                     .map(|d| d.as_secs().to_string())
                     .unwrap_or_default();
 
-                // If newly ready, register as attached instance.
-                if *ready && !was_ready {
-                    let cloned = record.clone();
-                    self.register_remote_agent(&cloned);
-                }
                 changed = true;
+            }
+        }
+        // Connect newly-ready instances outside the mutable registry borrow.
+        for (instance_id, ready, _) in results {
+            if !ready {
+                continue;
+            }
+            let record_clone = self
+                .instance_registry
+                .find(instance_id)
+                .cloned();
+            if let Some(record) = record_clone {
+                if !self.attached_instance_engine.attached_instances().iter().any(|i| i.instance_id == *instance_id) {
+                    self.register_remote_agent(&record);
+                }
+                #[cfg(not(target_arch = "wasm32"))]
+                if !record.observed.control_plane.ws_url.is_empty() {
+                    self.connect_instance_session(
+                        instance_id,
+                        &record.observed.control_plane.ws_url,
+                    );
+                }
             }
         }
         if changed {

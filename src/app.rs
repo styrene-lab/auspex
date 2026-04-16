@@ -727,6 +727,11 @@ pub fn App() -> Element {
                         }
                     }
                 }
+                // Drain all per-instance WebSocket event streams.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    controller.write().drain_all_instance_sessions();
+                }
                 #[cfg(not(target_arch = "wasm32"))]
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                 #[cfg(target_arch = "wasm32")]
@@ -965,15 +970,15 @@ pub fn App() -> Element {
         } else {
             {render_chat_cop_host(
                 ChatCopHostModel {
-                    summary: controller.read().summary(),
+                    summary: controller.read().focused_summary(),
                     work: &controller.read().work_data(),
-                    session: &controller.read().session_data(),
-                    transcript: controller.read().transcript(),
-                    messages: controller.read().messages(),
+                    session: &controller.read().focused_session_data(),
+                    transcript: controller.read().focused_transcript(),
+                    messages: controller.read().focused_messages(),
                     scenario: controller.read().scenario(),
                     auto_expand: controller.read().transcript_auto_expand(),
-                    is_run_active: controller.read().is_run_active(),
-                    can_submit: controller.read().can_submit(),
+                    is_run_active: controller.read().focused_is_run_active(),
+                    can_submit: controller.read().focused_can_submit(),
                     draft: controller.read().composer().draft(),
                     dispatch_context: &dispatch_context,
                     provider_blocked_composer: provider_blocked_composer.as_ref(),
@@ -983,13 +988,20 @@ pub fn App() -> Element {
                     on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
                         event.prevent_default();
                         let command = controller.write().submit_prompt_command();
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if let (Some(command), Some(transport)) = (command, command_transport.read().clone()) {
-                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                        }
-                        #[cfg(target_arch = "wasm32")]
-                        if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                            dispatch_targeted_command(&stream, &command);
+                        if let Some(command) = command {
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                let focused = controller.read().focused_instance_id().map(|s| s.to_string());
+                                if let Some(instance_id) = focused {
+                                    let _ = controller.read().dispatch_to_instance(&instance_id, &command);
+                                } else if let Some(transport) = command_transport.read().clone() {
+                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                }
+                            }
+                            #[cfg(target_arch = "wasm32")]
+                            if let Some(stream) = event_stream.read().clone() {
+                                dispatch_targeted_command(&stream, &command);
+                            }
                         }
                     }),
                     on_update_draft: EventHandler::new(move |value: String| controller.write().update_draft(value)),
@@ -1001,13 +1013,20 @@ pub fn App() -> Element {
                         settings_open.set(true)
                     }),
                     on_cancel: EventHandler::new(move |_| {
-                        #[cfg(not(target_arch = "wasm32"))]
-                        if let Some(command) = controller.read().cancel_command() && let Some(transport) = command_transport.read().clone() {
-                            let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
-                        }
-                        #[cfg(target_arch = "wasm32")]
-                        if let Some(command) = controller.read().cancel_command() && let Some(stream) = event_stream.read().clone() {
-                            dispatch_targeted_command(&stream, &command);
+                        if let Some(command) = controller.read().cancel_command() {
+                            #[cfg(not(target_arch = "wasm32"))]
+                            {
+                                let focused = controller.read().focused_instance_id().map(|s| s.to_string());
+                                if let Some(instance_id) = focused {
+                                    let _ = controller.read().dispatch_to_instance(&instance_id, &command);
+                                } else if let Some(transport) = command_transport.read().clone() {
+                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                }
+                            }
+                            #[cfg(target_arch = "wasm32")]
+                            if let Some(stream) = event_stream.read().clone() {
+                                dispatch_targeted_command(&stream, &command);
+                            }
                         }
                     }),
                 },
@@ -1067,11 +1086,17 @@ pub fn App() -> Element {
                                             r#type: "button",
                                             onclick: {
                                                 let key = item.key.clone();
+                                                let mut controller = controller;
                                                 move |_| {
                                                     if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
                                                         selected_cockpit_entity.set(None);
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        controller.write().focus_instance(None);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
+                                                        controller.write().select_command_route_for_instance(&key);
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        controller.write().focus_instance(Some(&key));
                                                     }
                                                 }
                                             },
@@ -3224,9 +3249,27 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         }
     };
 
+    let cop_kicker = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|d| {
+            let profile = &d.expected_profile;
+            let model = d.expected_model.as_deref().unwrap_or("model pending");
+            format!("{profile} · {model}")
+        })
+        .or_else(|| {
+            session.instance_descriptor.as_ref().map(|d| {
+                let role = &d.identity.role;
+                let profile = &d.identity.profile;
+                format!("{role} · {profile}")
+            })
+        })
+        .unwrap_or_else(|| summary.connection.clone());
+    let cop_kicker_ref = cop_kicker.as_str();
+
     render_focus_host_shell(FocusHostShell {
         title: "Chat",
-        kicker: "Default COP occupant",
+        kicker: cop_kicker_ref,
         body,
         footer: Some(footer),
     })

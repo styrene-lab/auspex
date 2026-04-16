@@ -251,15 +251,9 @@ pub fn SessionScreen(
             {render_dispatcher_binding_widget(&data, on_dispatcher_switch, on_transcript_focus)}
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_session_stats_widget(&data, true)}
-            if provider_expanded {
-                {render_provider_status_widget(&data, true)}
-            }
-            if control_plane_expanded {
-                {render_control_plane_widget(&data, true)}
-            }
-            if shell_expanded {
-                {render_session_harness_widget(&data, true)}
-            }
+            {render_provider_status_widget(&data, provider_expanded)}
+            {render_control_plane_widget(&data, control_plane_expanded)}
+            {render_session_harness_widget(&data, shell_expanded)}
         }
     }
 }
@@ -332,25 +326,19 @@ fn render_provider_status_widget(data: &SessionData, expanded: bool) -> Element 
                     }
                 }
                 if !data.telemetry.provider_rollups.is_empty() {
-                    h3 { class: "screen-section-title widget-subsection-title", "Provider rollups" }
-                    for provider in &data.telemetry.provider_rollups {
-                        div { class: "kv-grid widget-kv-grid",
-                            {kv_row("Provider", &provider.provider)}
-                            {kv_row("Source", &provider.source)}
-                            if let Some(route_id) = provider.route_id.as_deref() {
-                                {kv_row("Route", route_id)}
-                            }
-                            if let Some(instance_id) = provider.instance_id.as_deref() {
-                                {kv_row("Instance", instance_id)}
-                            }
-                            if let Some(role) = provider.role.as_deref() {
-                                {kv_row("Role", role)}
-                            }
-                            if let Some(profile) = provider.profile.as_deref() {
-                                {kv_row("Profile", profile)}
-                            }
-                            if let Some(model) = provider.model.as_deref() {
-                                {kv_row("Model", model)}
+                    h3 { class: "screen-section-title widget-subsection-title", "Per-route providers" }
+                    div { class: "kv-grid widget-kv-grid",
+                        for provider in &data.telemetry.provider_rollups {
+                            div { class: "kv-row",
+                                span { class: "kv-key",
+                                    "{provider.instance_id.as_deref().unwrap_or(&provider.provider)}"
+                                }
+                                span { class: "kv-value",
+                                    "{provider.model.as_deref().unwrap_or(&provider.source)}"
+                                    if let Some(role) = provider.role.as_deref() {
+                                        " · {role}"
+                                    }
+                                }
                             }
                         }
                     }
@@ -372,51 +360,23 @@ fn render_control_plane_widget(data: &SessionData, expanded: bool) -> Element {
         rsx! {
             div { class: "kv-grid widget-kv-grid",
                 if let Some(base_url) = control_plane.base_url.as_deref() {
-                    {kv_row("Base URL", base_url)}
-                }
-                if let Some(startup_url) = control_plane.startup_url.as_deref() {
-                    {kv_row("Startup URL", startup_url)}
-                }
-                if let Some(health_url) = control_plane.health_url.as_deref() {
-                    {kv_row("Health URL", health_url)}
-                }
-                if let Some(ready_url) = control_plane.ready_url.as_deref() {
-                    {kv_row("Ready URL", ready_url)}
+                    {kv_row("Endpoint", base_url)}
                 }
                 if let Some(auth_mode) = control_plane.auth_mode.as_deref() {
-                    {kv_row("Auth mode", auth_mode)}
+                    {kv_row("Auth", auth_mode)}
                 }
             }
             if !data.telemetry.control_plane_rollups.is_empty() {
-                h3 { class: "screen-section-title widget-subsection-title", "Control-plane rollups" }
-                for rollup in &data.telemetry.control_plane_rollups {
-                    div { class: "kv-grid widget-kv-grid",
-                        if let Some(route_id) = rollup.route_id.as_deref() {
-                            {kv_row("Route", route_id)}
-                        }
-                        if let Some(instance_id) = rollup.instance_id.as_deref() {
-                            {kv_row("Instance", instance_id)}
-                        }
-                        if let Some(role) = rollup.role.as_deref() {
-                            {kv_row("Role", role)}
-                        }
-                        if let Some(profile) = rollup.profile.as_deref() {
-                            {kv_row("Profile", profile)}
-                        }
-                        if let Some(base_url) = rollup.base_url.as_deref() {
-                            {kv_row("Base URL", base_url)}
-                        }
-                        if let Some(startup_url) = rollup.startup_url.as_deref() {
-                            {kv_row("Startup URL", startup_url)}
-                        }
-                        if let Some(health_url) = rollup.health_url.as_deref() {
-                            {kv_row("Health URL", health_url)}
-                        }
-                        if let Some(ready_url) = rollup.ready_url.as_deref() {
-                            {kv_row("Ready URL", ready_url)}
-                        }
-                        if let Some(auth_mode) = rollup.auth_mode.as_deref() {
-                            {kv_row("Auth mode", auth_mode)}
+                h3 { class: "screen-section-title widget-subsection-title", "Per-route endpoints" }
+                div { class: "kv-grid widget-kv-grid",
+                    for rollup in &data.telemetry.control_plane_rollups {
+                        div { class: "kv-row",
+                            span { class: "kv-key",
+                                "{rollup.instance_id.as_deref().or(rollup.route_id.as_deref()).unwrap_or(\"unknown\")}"
+                            }
+                            span { class: "kv-value",
+                                "{rollup.base_url.as_deref().unwrap_or(\"—\")}"
+                            }
                         }
                     }
                 }
@@ -439,19 +399,13 @@ fn render_dispatcher_binding_widget(
         !data.active_delegates.is_empty(),
         rsx! {
             div { class: "kv-grid widget-kv-grid",
-                {kv_row("Canonical session", &dispatcher.session_id)}
-                {kv_row("Canonical instance", &dispatcher.dispatcher_instance_id)}
-                {kv_row("Control-plane role", &dispatcher.expected_role)}
-                {kv_row("Workspace target", &dispatcher.expected_profile)}
+                {kv_row("Instance", &dispatcher.dispatcher_instance_id)}
+                {kv_row("Profile", &dispatcher.expected_profile)}
                 if let Some(model) = &dispatcher.expected_model {
-                    {kv_row("Runtime target", model)}
+                    {kv_row("Model", model)}
                 }
-                {kv_row("Control-plane schema", &dispatcher.control_plane_schema.to_string())}
                 if let Some(base_url) = &dispatcher.observed_base_url {
-                    {kv_row("Observed endpoint", base_url)}
-                }
-                if let Some(last_verified_at) = &dispatcher.last_verified_at {
-                    {kv_row("Last verified", last_verified_at)}
+                    {kv_row("Endpoint", base_url)}
                 }
             }
             if !dispatcher.available_options.is_empty() {
