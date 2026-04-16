@@ -1880,7 +1880,7 @@ fn render_transcript_disclosure(disclosure: TranscriptDisclosure<'_>) -> Element
                             "Copy {copy_label}"
                         }
                     }
-                    p { class: content_class, "{content}" }
+                    p { class: content_class, "{decode_html_entities(content)}" }
                 }
             }
         }
