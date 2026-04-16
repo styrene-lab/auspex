@@ -1900,48 +1900,11 @@ fn render_transcript(
     auto_expand: bool,
     scenario: crate::fixtures::DevScenario,
 ) -> Element {
-    if let Some(empty_state) =
-        build_chat_empty_state_model(summary, work, session, transcript, messages, scenario)
-    {
+    if transcript.turns.is_empty() {
         rsx! {
             div { class: "chat-empty-hint",
-                span { class: "chat-empty-hint-text", "{empty_state.kicker}" }
-            }
-            for message in messages.iter() {
-                article {
-                    class: match message.role {
-                        MessageRole::User => "bubble bubble-user",
-                        MessageRole::Assistant => "bubble bubble-assistant",
-                        MessageRole::System => "bubble bubble-system",
-                    },
-                    h2 {
-                        match message.role {
-                            MessageRole::User => "You",
-                            MessageRole::Assistant => "Auspex",
-                            MessageRole::System => "System",
-                        }
-                    }
-                    p { "{message.text}" }
-                }
-            }
-        }
-    } else if transcript.turns.is_empty() {
-        rsx! {
-            for message in messages.iter() {
-                article {
-                    class: match message.role {
-                        MessageRole::User => "bubble bubble-user",
-                        MessageRole::Assistant => "bubble bubble-assistant",
-                        MessageRole::System => "bubble bubble-system",
-                    },
-                    h2 {
-                        match message.role {
-                            MessageRole::User => "You",
-                            MessageRole::Assistant => "Auspex",
-                            MessageRole::System => "System",
-                        }
-                    }
-                    p { "{message.text}" }
+                if let Some(empty_state) = build_chat_empty_state_model(summary, work, session, transcript, messages, scenario) {
+                    span { class: "chat-empty-hint-text", "{empty_state.kicker}" }
                 }
             }
         }
@@ -3292,9 +3255,10 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         on_cancel,
     } = actions;
 
+    let has_activity = session.session_turns > 0 || is_run_active || !can_submit;
     let body = rsx! {
         div { class: "cockpit-cop-body",
-            if provider_blocked_composer.is_none() {
+            if provider_blocked_composer.is_none() && has_activity {
                 {render_chat_status_banner(summary, session, is_run_active, can_submit)}
             }
             main { class: "transcript cockpit-transcript cockpit-cop-focus",

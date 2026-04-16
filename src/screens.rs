@@ -626,12 +626,10 @@ fn should_expand_session_harness_widget(data: &SessionData) -> bool {
     data.memory_warning.is_some() && !data.memory_warning.as_deref().unwrap_or_default().is_empty()
 }
 
-fn should_expand_provider_status_widget(data: &SessionData) -> bool {
-    !data.providers.is_empty()
-        && data
-            .providers
-            .iter()
-            .any(|provider| !provider.authenticated)
+fn should_expand_provider_status_widget(_data: &SessionData) -> bool {
+    // Always collapsed — operator expands on demand via disclosure toggle.
+    // Provider issues are visible in the dispatch strip's Send chip.
+    false
 }
 
 fn should_expand_control_plane_widget(
@@ -1428,7 +1426,7 @@ mod tests {
             ..Default::default()
         };
 
-        assert!(should_expand_provider_status_widget(&degraded));
+        assert!(!should_expand_provider_status_widget(&degraded));
         assert!(should_expand_control_plane_widget(&degraded, None));
         assert!(!should_expand_session_harness_widget(&degraded));
 
