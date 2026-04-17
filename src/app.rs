@@ -22,6 +22,7 @@ const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
+    Cop,
     Chat,
     Session,
     Scribe,
@@ -639,7 +640,7 @@ pub fn App() -> Element {
     #[cfg(not(target_arch = "wasm32"))]
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
-    let mut workspace = use_signal(|| Workspace::Chat);
+    let mut workspace = use_signal(|| Workspace::Cop);
     let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
@@ -926,7 +927,9 @@ pub fn App() -> Element {
     );
 
     let cockpit_center_body = rsx! {
-        if *workspace.read() == Workspace::Graph {
+        if *workspace.read() == Workspace::Cop {
+            {render_cop_surface(controller.read().cop_state())}
+        } else if *workspace.read() == Workspace::Graph {
             GraphScreen { data: controller.read().graph_data() }
         } else if *workspace.read() == Workspace::Audit {
             {render_audit_workspace(
@@ -2702,6 +2705,7 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
         section { class: "cockpit-cop-stage",
             section { class: "cockpit-cop-bay cockpit-focus-host",
                 nav { class: "cockpit-workspace-nav",
+                    button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
                     button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
@@ -2996,6 +3000,7 @@ fn cockpit_work_hint(summary: &crate::fixtures::HostSessionSummary) -> String {
 
 fn workspace_label(workspace: Workspace) -> &'static str {
     match workspace {
+        Workspace::Cop => "COP",
         Workspace::Chat => "Chat",
         Workspace::Session => "Session",
         Workspace::Scribe => "Scribe",
@@ -3028,6 +3033,7 @@ fn build_dispatch_context_strip_model(
     let route = format!(
         "{} · {}",
         match workspace {
+            Workspace::Cop => "cop",
             Workspace::Chat => "chat",
             Workspace::Session => "session",
             Workspace::Scribe => "scribe",
@@ -4011,6 +4017,275 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
         AuditEntryKind::System => "System",
         AuditEntryKind::Telemetry => "Telemetry",
         AuditEntryKind::Aborted => "Aborted",
+    }
+}
+
+// ── COP Display Surface rendering ───────────────────────────
+
+fn render_cop_surface(cop_state: &crate::cop_surface::CopDisplayState) -> Element {
+    use crate::cop_surface::{ContentType, CopRegion, RegionContent, default_segmenta_regions};
+
+    if cop_state.is_empty() {
+        return rsx! {
+            div { class: "cop-surface",
+                div { class: "cop-empty",
+                    div { class: "cop-empty-label", "Common Operating Picture" }
+                    div { "Awaiting agent display commands" }
+                }
+            }
+        };
+    }
+
+    let layout = if cop_state.active_regions().is_empty() {
+        default_segmenta_regions()
+    } else {
+        cop_state.active_regions().to_vec()
+    };
+
+    rsx! {
+        div { class: "cop-surface",
+            for region in layout {
+                {render_cop_region(&region, cop_state.region(&region))}
+            }
+        }
+    }
+}
+
+fn render_cop_region(
+    region: &crate::cop_surface::CopRegion,
+    content: Option<&crate::cop_surface::RegionContent>,
+) -> Element {
+    use crate::cop_surface::CopRegion;
+
+    let region_class = match region {
+        CopRegion::Center => "cop-region cop-region-center",
+        CopRegion::North => "cop-region cop-region-north",
+        CopRegion::South => "cop-region cop-region-south",
+        CopRegion::East => "cop-region cop-region-east",
+        CopRegion::West => "cop-region cop-region-west",
+        CopRegion::Named(_) => "cop-region",
+    };
+
+    match content {
+        Some(content) => rsx! {
+            div { class: "{region_class}",
+                if let Some(title) = &content.title {
+                    h3 { class: "cop-region-title", "{title}" }
+                }
+                {render_cop_content(content)}
+            }
+        },
+        None => rsx! {
+            div { class: "{region_class}" }
+        },
+    }
+}
+
+fn render_cop_content(content: &crate::cop_surface::RegionContent) -> Element {
+    use crate::cop_surface::ContentType;
+
+    match &content.content_type {
+        ContentType::Table => render_cop_table(&content.data),
+        ContentType::StatusCard => render_cop_status_card(&content.data),
+        ContentType::AlertFeed => render_cop_alert_feed(&content.data),
+        ContentType::KvGrid => render_cop_kv_grid(&content.data),
+        ContentType::TextBlock => render_cop_text_block(&content.data),
+        ContentType::CodeBlock => render_cop_code_block(&content.data),
+        ContentType::Metric => render_cop_metric(&content.data),
+    }
+}
+
+fn render_cop_table(data: &serde_json::Value) -> Element {
+    let columns: Vec<&str> = data
+        .get("columns")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_str()).collect())
+        .unwrap_or_default();
+    let rows: Vec<&Vec<serde_json::Value>> = data
+        .get("rows")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().filter_map(|v| v.as_array()).collect())
+        .unwrap_or_default();
+
+    rsx! {
+        table { class: "cop-table",
+            thead {
+                tr {
+                    for col in &columns {
+                        th { "{col}" }
+                    }
+                }
+            }
+            tbody {
+                for row in &rows {
+                    tr {
+                        for cell in row.iter() {
+                            { let v = json_display_value(cell); rsx! { td { "{v}" } } }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_cop_status_card(data: &serde_json::Value) -> Element {
+    let label = data.get("label").and_then(|v| v.as_str()).unwrap_or("—");
+    let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let detail = data.get("detail").and_then(|v| v.as_str());
+    let severity = data
+        .get("severity")
+        .and_then(|v| v.as_str())
+        .unwrap_or(status);
+
+    let indicator_class = format!("cop-status-indicator {}", severity.to_ascii_lowercase());
+
+    rsx! {
+        div { class: "cop-status-card",
+            span { class: "{indicator_class}" }
+            span { class: "cop-status-label", "{label}" }
+            if let Some(detail) = detail {
+                span { class: "cop-status-detail", "{detail}" }
+            }
+        }
+    }
+}
+
+fn render_cop_alert_feed(data: &serde_json::Value) -> Element {
+    let items: Vec<&serde_json::Value> = data
+        .get("items")
+        .and_then(|v| v.as_array())
+        .map(|arr| arr.iter().collect())
+        .unwrap_or_default();
+
+    rsx! {
+        div { class: "cop-alert-feed",
+            for (index, entry) in items.iter().rev().enumerate() {
+                {render_cop_alert_entry(entry, index)}
+            }
+        }
+    }
+}
+
+fn render_cop_alert_entry(entry: &serde_json::Value, key: usize) -> Element {
+    let message = entry
+        .get("message")
+        .and_then(|v| v.as_str())
+        .unwrap_or("—");
+    let severity = entry
+        .get("severity")
+        .and_then(|v| v.as_str())
+        .unwrap_or("info");
+    let source = entry.get("source").and_then(|v| v.as_str());
+    let timestamp = entry.get("timestamp").and_then(|v| v.as_str());
+
+    let severity_class = format!("cop-alert-severity {}", severity.to_ascii_lowercase());
+
+    rsx! {
+        div { class: "cop-alert-entry", key: "{key}",
+            span { class: "{severity_class}", "{severity}" }
+            span { class: "cop-alert-message", "{message}" }
+            if let Some(source) = source {
+                span { class: "cop-alert-source", "{source}" }
+            }
+            if let Some(ts) = timestamp {
+                span { class: "cop-alert-timestamp", "{ts}" }
+            }
+        }
+    }
+}
+
+fn render_cop_kv_grid(data: &serde_json::Value) -> Element {
+    // Accept either { "pairs": [{key, value}] } or { "key1": "val1", "key2": "val2" }
+    let pairs: Vec<(String, String)> = if let Some(arr) = data.get("pairs").and_then(|v| v.as_array()) {
+        arr.iter()
+            .filter_map(|pair| {
+                let key = pair.get("key").and_then(|v| v.as_str())?;
+                let value = pair.get("value").map(json_display_value)?;
+                Some((key.to_string(), value))
+            })
+            .collect()
+    } else if let Some(obj) = data.as_object() {
+        obj.iter()
+            .map(|(k, v)| (k.clone(), json_display_value(v)))
+            .collect()
+    } else {
+        vec![]
+    };
+
+    rsx! {
+        div { class: "cop-kv-grid",
+            for (key, value) in &pairs {
+                div { class: "cop-kv-row",
+                    span { class: "cop-kv-key", "{key}" }
+                    span { class: "cop-kv-value", "{value}" }
+                }
+            }
+        }
+    }
+}
+
+fn render_cop_text_block(data: &serde_json::Value) -> Element {
+    let text = data.get("text").and_then(|v| v.as_str()).unwrap_or("");
+
+    rsx! {
+        div { class: "cop-text-block", "{text}" }
+    }
+}
+
+fn render_cop_code_block(data: &serde_json::Value) -> Element {
+    let code = data.get("code").and_then(|v| v.as_str()).unwrap_or("");
+    let language = data.get("language").and_then(|v| v.as_str());
+
+    rsx! {
+        div {
+            if let Some(lang) = language {
+                div { class: "cop-code-lang", "{lang}" }
+            }
+            pre { class: "cop-code-block", "{code}" }
+        }
+    }
+}
+
+fn render_cop_metric(data: &serde_json::Value) -> Element {
+    let label = data.get("label").and_then(|v| v.as_str()).unwrap_or("");
+    let value = data
+        .get("value")
+        .map(json_display_value)
+        .unwrap_or_else(|| "—".into());
+    let unit = data.get("unit").and_then(|v| v.as_str());
+    let trend = data.get("trend").and_then(|v| v.as_str());
+
+    let trend_class = match trend {
+        Some("up") => "cop-metric-trend up",
+        Some("down") => "cop-metric-trend down",
+        _ => "cop-metric-trend flat",
+    };
+
+    rsx! {
+        div { class: "cop-metric",
+            span { class: "cop-metric-value", "{value}" }
+            if let Some(unit) = unit {
+                span { class: "cop-metric-unit", "{unit}" }
+            }
+            if !label.is_empty() {
+                span { class: "cop-metric-label", "{label}" }
+            }
+            if let Some(trend_text) = trend {
+                span { class: "{trend_class}", "{trend_text}" }
+            }
+        }
+    }
+}
+
+/// Format a serde_json::Value for display in the COP.
+fn json_display_value(value: &serde_json::Value) -> String {
+    match value {
+        serde_json::Value::String(s) => s.clone(),
+        serde_json::Value::Number(n) => n.to_string(),
+        serde_json::Value::Bool(b) => if *b { "true" } else { "false" }.to_string(),
+        serde_json::Value::Null => "—".to_string(),
+        other => other.to_string(),
     }
 }
 

@@ -7,6 +7,8 @@ mod config;
 #[cfg(not(target_arch = "wasm32"))]
 mod container_discovery;
 mod controller;
+mod cop_feature;
+mod cop_surface;
 mod event_stream;
 #[cfg(not(target_arch = "wasm32"))]
 mod instance_session;

@@ -196,7 +196,7 @@ impl SessionSource {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq)]
 pub struct AppController {
     session: SessionSource,
     #[cfg(not(target_arch = "wasm32"))]
@@ -212,6 +212,7 @@ pub struct AppController {
     telemetry_audit_sequence: u64,
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
+    cop_state: crate::cop_surface::CopDisplayState,
 }
 
 impl Default for AppController {
@@ -241,6 +242,7 @@ impl Default for AppController {
                 last_action: None,
                 inventory_refreshed: true,
             },
+            cop_state: crate::cop_surface::CopDisplayState::default(),
         };
         controller.refresh_telemetry_snapshot();
         controller
@@ -277,6 +279,7 @@ impl AppController {
                 last_action: None,
                 inventory_refreshed: false,
             },
+            cop_state: crate::cop_surface::CopDisplayState::default(),
         };
         controller.rebuild_attached_instances();
         controller.refresh_telemetry_snapshot();
@@ -367,6 +370,23 @@ impl AppController {
     /// Whether the primary session is focused (no instance override).
     pub fn is_primary_focused(&self) -> bool {
         self.focused_instance_id.is_none()
+    }
+
+    // ── COP display surface ────────────────────────────────
+
+    /// The fleet-wide COP display state.
+    pub fn cop_state(&self) -> &crate::cop_surface::CopDisplayState {
+        &self.cop_state
+    }
+
+    /// Check if a session event is a cop_* tool call and, if so,
+    /// apply it to the COP display state.  Called from both the
+    /// WebSocket and IPC event paths.
+    fn try_intercept_cop_tool_event(&mut self, event: &SessionEvent) {
+        if let SessionEvent::ToolStarted { name, args, .. } = event {
+            self.cop_state
+                .try_apply_tool_start(name, args.as_ref());
+        }
     }
 
     /// Transcript for the focused instance (or primary if none focused).
@@ -1580,6 +1600,13 @@ impl AppController {
     }
 
     pub fn apply_remote_event_json(&mut self, json: &str) -> Result<bool, serde_json::Error> {
+        // Intercept cop_* tool events for the COP display surface.
+        // We parse the event first so we can check the tool name, then
+        // let it flow through normal session processing (so it still
+        // appears in the transcript).
+        let event = serde_json::from_str::<crate::omegon_control::OmegonEvent>(json)?;
+        self.try_intercept_cop_tool_event(&SessionEvent::from(event));
+
         match &mut self.session {
             SessionSource::Remote(session) => {
                 let applied = session.apply_event_json(json)?;
@@ -1597,9 +1624,11 @@ impl AppController {
         &mut self,
         event: omegon_traits::IpcEventPayload,
     ) -> Result<bool, String> {
+        let normalized: SessionEvent = event.into();
+        self.try_intercept_cop_tool_event(&normalized);
+
         match &mut self.session {
             SessionSource::Remote(session) => {
-                let normalized: SessionEvent = event.into();
                 let applied = match &normalized {
                     SessionEvent::HarnessChanged | SessionEvent::StateChanged { .. } => false,
                     _ => session.apply_session_event(normalized),
@@ -3148,5 +3177,109 @@ mod tests {
 
         // Already ready + has version → no probe needed.
         assert!(controller.remote_instances_needing_probe().is_empty());
+    }
+
+    // ── COP display surface integration ────────────────────
+
+    #[test]
+    fn cop_tool_event_via_websocket_updates_cop_state() {
+        let json = r#"{
+            "design": {}, "openspec": {}, "cleave": {}, "session": {},
+            "dispatcher": {}, "instance_descriptor": null
+        }"#;
+        let mut controller = AppController::from_remote_snapshot_json(json).unwrap();
+        assert!(controller.cop_state().is_empty());
+
+        // Simulate a cop_write tool event arriving over WebSocket
+        let tool_event = serde_json::json!({
+            "type": "tool_start",
+            "id": "tool-cop-1",
+            "name": "cop_write",
+            "args": {
+                "region": "north",
+                "content_type": "status_card",
+                "title": "Fleet Status",
+                "data": {"label": "Primary", "status": "healthy"}
+            }
+        });
+        let _ = controller.apply_remote_event_json(&tool_event.to_string());
+
+        assert!(!controller.cop_state().is_empty());
+        let region = controller
+            .cop_state()
+            .region(&crate::cop_surface::CopRegion::North);
+        assert!(region.is_some());
+        let content = region.unwrap();
+        assert_eq!(content.content_type, crate::cop_surface::ContentType::StatusCard);
+        assert_eq!(content.data["label"], "Primary");
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn cop_tool_event_via_ipc_updates_cop_state() {
+        let json = r#"{
+            "design": {}, "openspec": {}, "cleave": {}, "session": {},
+            "dispatcher": {}, "instance_descriptor": null
+        }"#;
+        let mut controller = AppController::from_remote_snapshot_json(json).unwrap();
+
+        let ipc_event = omegon_traits::IpcEventPayload::ToolStarted {
+            id: "tool-cop-2".into(),
+            name: "cop_write".into(),
+            args: serde_json::json!({
+                "region": "center",
+                "content_type": "metric",
+                "title": "Active Agents",
+                "data": {"label": "Fleet Size", "value": 3, "unit": "agents"}
+            }),
+        };
+        let _ = controller.apply_ipc_event(ipc_event);
+
+        let region = controller
+            .cop_state()
+            .region(&crate::cop_surface::CopRegion::Center);
+        assert!(region.is_some());
+        assert_eq!(region.unwrap().data["value"], 3);
+    }
+
+    #[test]
+    fn cop_clear_removes_region_via_tool_event() {
+        let json = r#"{
+            "design": {}, "openspec": {}, "cleave": {}, "session": {},
+            "dispatcher": {}, "instance_descriptor": null
+        }"#;
+        let mut controller = AppController::from_remote_snapshot_json(json).unwrap();
+
+        // Write something
+        let write_event = serde_json::json!({
+            "type": "tool_start", "id": "t1", "name": "cop_write",
+            "args": {"region": "east", "content_type": "text_block", "data": {"text": "hello"}}
+        });
+        let _ = controller.apply_remote_event_json(&write_event.to_string());
+        assert!(controller.cop_state().region(&crate::cop_surface::CopRegion::East).is_some());
+
+        // Clear it
+        let clear_event = serde_json::json!({
+            "type": "tool_start", "id": "t2", "name": "cop_clear",
+            "args": {"region": "east"}
+        });
+        let _ = controller.apply_remote_event_json(&clear_event.to_string());
+        assert!(controller.cop_state().region(&crate::cop_surface::CopRegion::East).is_none());
+    }
+
+    #[test]
+    fn non_cop_tool_does_not_affect_cop_state() {
+        let json = r#"{
+            "design": {}, "openspec": {}, "cleave": {}, "session": {},
+            "dispatcher": {}, "instance_descriptor": null
+        }"#;
+        let mut controller = AppController::from_remote_snapshot_json(json).unwrap();
+
+        let tool_event = serde_json::json!({
+            "type": "tool_start", "id": "t1", "name": "read_file",
+            "args": {"path": "Cargo.toml"}
+        });
+        let _ = controller.apply_remote_event_json(&tool_event.to_string());
+        assert!(controller.cop_state().is_empty());
     }
 }

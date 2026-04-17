@@ -869,6 +869,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     reap_owned_omegon_child();
     ensure_omegon_profile_has_runnable_model();
     validate_deploy_prerequisites();
+    install_cop_plugin();
 
     let label = binary.display().to_string();
 
@@ -1201,6 +1202,53 @@ fn validate_deploy_prerequisites() {
         eprintln!(
             "auspex: deploy profile \"{profile}\" requires \"{tool}\" but it is not in PATH"
         );
+    }
+}
+
+/// Install the COP display surface armory plugin and skill into `.omegon/`
+/// so omegon discovers the cop_write/cop_clear/cop_layout tools and the
+/// COP usage instructions at startup.
+#[cfg(not(target_arch = "wasm32"))]
+fn install_cop_plugin() {
+    // ── Armory plugin (tools) ──────────────────────────────────────
+    let plugin_dir = std::path::PathBuf::from(".omegon/plugins/auspex-cop");
+    let tools_dir = plugin_dir.join("tools");
+
+    if let Err(error) = std::fs::create_dir_all(&tools_dir) {
+        eprintln!("auspex: could not create COP plugin directory: {error}");
+        return;
+    }
+
+    let manifest = include_str!("../assets/cop-plugin/plugin.toml");
+    let stub = include_str!("../assets/cop-plugin/tools/cop_stub.sh");
+
+    if let Err(error) = std::fs::write(plugin_dir.join("plugin.toml"), manifest) {
+        eprintln!("auspex: could not write COP plugin manifest: {error}");
+        return;
+    }
+
+    let stub_path = tools_dir.join("cop_stub.sh");
+    if let Err(error) = std::fs::write(&stub_path, stub) {
+        eprintln!("auspex: could not write COP stub script: {error}");
+        return;
+    }
+
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&stub_path, std::fs::Permissions::from_mode(0o755));
+    }
+
+    // ── Skill (agent instructions) ─────────────────────────────────
+    let skill_dir = std::path::PathBuf::from(".omegon/skills/cop-surface");
+    if let Err(error) = std::fs::create_dir_all(&skill_dir) {
+        eprintln!("auspex: could not create COP skill directory: {error}");
+        return;
+    }
+
+    let skill = include_str!("../assets/cop-skill/SKILL.md");
+    if let Err(error) = std::fs::write(skill_dir.join("SKILL.md"), skill) {
+        eprintln!("auspex: could not write COP skill: {error}");
     }
 }
 

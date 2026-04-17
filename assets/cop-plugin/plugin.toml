@@ -1,0 +1,67 @@
+[plugin]
+type = "extension"
+id = "dev.styrene.auspex.cop"
+name = "COP Display Surface"
+version = "0.1.0"
+description = "Tools for rendering structured content to the Common Operating Picture"
+
+[[tools]]
+name = "cop_write"
+description = "Write structured content to a named region of the Common Operating Picture. Content types: table, status_card, alert_feed, kv_grid, text_block, code_block, metric. Regions: center (dominant), north, south, east, west (quadrants). Data schema depends on content_type — table: {columns: [str], rows: [[val]]}; status_card: {label, status, detail?, severity?}; alert_feed: {items: [{message, severity?, source?, timestamp?}]}; kv_grid: {pairs: [{key, value}]} or flat {key: value}; text_block: {text}; code_block: {code, language?}; metric: {label, value, unit?, trend?}."
+runner = "bash"
+script = "tools/cop_stub.sh"
+timeout_secs = 5
+
+[tools.parameters]
+type = "object"
+required = ["content_type", "data"]
+
+[tools.parameters.properties.region]
+type = "string"
+description = "Target region: center, north, south, east, west"
+default = "center"
+
+[tools.parameters.properties.content_type]
+type = "string"
+enum = ["table", "status_card", "alert_feed", "kv_grid", "text_block", "code_block", "metric"]
+description = "The type of structured content to render"
+
+[tools.parameters.properties.title]
+type = "string"
+description = "Optional title displayed above the region content"
+
+[tools.parameters.properties.data]
+type = "object"
+description = "Content payload — schema depends on content_type"
+
+[[tools]]
+name = "cop_clear"
+description = "Clear a named COP region, or clear all regions if no region specified."
+runner = "bash"
+script = "tools/cop_stub.sh"
+timeout_secs = 5
+
+[tools.parameters]
+type = "object"
+
+[tools.parameters.properties.region]
+type = "string"
+description = "Region to clear. Omit to clear all regions."
+
+[[tools]]
+name = "cop_layout"
+description = "Configure which COP regions are active. Default segmenta layout: center with north/south/east/west quadrants."
+runner = "bash"
+script = "tools/cop_stub.sh"
+timeout_secs = 5
+
+[tools.parameters]
+type = "object"
+required = ["regions"]
+
+[tools.parameters.properties.regions]
+type = "array"
+description = "Ordered list of region names to activate"
+
+[tools.parameters.properties.regions.items]
+type = "string"
