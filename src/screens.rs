@@ -7,8 +7,8 @@
 /// but are tested and ready for right-rail / session inspector integration.
 use dioxus::prelude::*;
 
-use crate::controller::SessionMode;
-use crate::fixtures::{
+use auspex_core::controller::SessionMode;
+use auspex_core::fixtures::{
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, SessionData, WorkData,
 };
@@ -738,7 +738,7 @@ fn render_widget_section(title: &str, expanded: bool, body: Element) -> Element 
     }
 }
 
-fn provider_inventory_value(provider: &crate::fixtures::ProviderInfo) -> String {
+fn provider_inventory_value(provider: &auspex_core::fixtures::ProviderInfo) -> String {
     let mut value = if let Some(model) = &provider.model {
         model.clone()
     } else if provider.authenticated {
@@ -752,7 +752,7 @@ fn provider_inventory_value(provider: &crate::fixtures::ProviderInfo) -> String 
     value
 }
 
-fn delegate_summary(delegate: &crate::fixtures::DelegateSummaryData) -> String {
+fn delegate_summary(delegate: &auspex_core::fixtures::DelegateSummaryData) -> String {
     format!(
         "{} · {} · {} ms",
         delegate.status, delegate.task_id, delegate.elapsed_ms
@@ -826,7 +826,7 @@ fn render_dispatcher_switch_state(
 }
 
 #[allow(dead_code)]
-fn render_instance_descriptor(instance: &crate::fixtures::InstanceDescriptorData) -> Element {
+fn render_instance_descriptor(instance: &auspex_core::fixtures::InstanceDescriptorData) -> Element {
     let capability_summary = instance
         .control_plane
         .as_ref()
@@ -1237,7 +1237,7 @@ fn kv_row(key: &str, value: &str) -> Element {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::fixtures::InstanceControlPlaneData;
+    use auspex_core::fixtures::InstanceControlPlaneData;
 
     fn binding() -> DispatcherBindingData {
         DispatcherBindingData {
@@ -1349,7 +1349,7 @@ mod tests {
 
     #[test]
     fn provider_inventory_value_prefers_model_and_marks_unauthenticated() {
-        let modeled = provider_inventory_value(&crate::fixtures::ProviderInfo {
+        let modeled = provider_inventory_value(&auspex_core::fixtures::ProviderInfo {
             name: "Anthropic".into(),
             authenticated: true,
             auth_method: Some("oauth".into()),
@@ -1357,7 +1357,7 @@ mod tests {
         });
         assert_eq!(modeled, "claude-sonnet");
 
-        let unauthenticated = provider_inventory_value(&crate::fixtures::ProviderInfo {
+        let unauthenticated = provider_inventory_value(&auspex_core::fixtures::ProviderInfo {
             name: "OpenAI".into(),
             authenticated: false,
             auth_method: None,
@@ -1368,11 +1368,11 @@ mod tests {
 
     #[test]
     fn session_detail_widget_titles_reflect_contextual_role() {
-        let shell = render_session_harness_widget(&crate::fixtures::SessionData::default(), false);
+        let shell = render_session_harness_widget(&auspex_core::fixtures::SessionData::default(), false);
         let provider =
-            render_provider_status_widget(&crate::fixtures::SessionData::default(), false);
+            render_provider_status_widget(&auspex_core::fixtures::SessionData::default(), false);
         let session_detail =
-            render_session_stats_widget(&crate::fixtures::SessionData::default(), false);
+            render_session_stats_widget(&auspex_core::fixtures::SessionData::default(), false);
 
         let shell_debug = format!("{shell:?}");
         let provider_debug = format!("{provider:?}");
@@ -1389,15 +1389,15 @@ mod tests {
 
     #[test]
     fn session_detail_expansion_policy_responds_to_real_state() {
-        let degraded = crate::fixtures::SessionData {
-            providers: vec![crate::fixtures::ProviderInfo {
+        let degraded = auspex_core::fixtures::SessionData {
+            providers: vec![auspex_core::fixtures::ProviderInfo {
                 name: "Anthropic".into(),
                 authenticated: false,
                 auth_method: None,
                 model: None,
             }],
-            telemetry: crate::fixtures::SessionTelemetryData {
-                control_plane: Some(crate::fixtures::ControlPlaneTelemetryData {
+            telemetry: auspex_core::fixtures::SessionTelemetryData {
+                control_plane: Some(auspex_core::fixtures::ControlPlaneTelemetryData {
                     base_url: Some("http://127.0.0.1:7842".into()),
                     startup_url: None,
                     health_url: Some("http://127.0.0.1:7842/api/healthz".into()),
@@ -1405,14 +1405,14 @@ mod tests {
                     auth_mode: Some("ephemeral-bearer".into()),
                     ..Default::default()
                 }),
-                lifecycle: crate::fixtures::LifecycleTelemetryData {
-                    counts: crate::fixtures::LifecycleRollupCountsData {
+                lifecycle: auspex_core::fixtures::LifecycleTelemetryData {
+                    counts: auspex_core::fixtures::LifecycleRollupCountsData {
                         stale: 1,
                         ..Default::default()
                     },
                     ..Default::default()
                 },
-                latest_provider_telemetry: Some(crate::fixtures::ProviderTelemetryData {
+                latest_provider_telemetry: Some(auspex_core::fixtures::ProviderTelemetryData {
                     provider: "anthropic".into(),
                     source: "turn_end".into(),
                     retry_after_secs: Some(12),
@@ -1430,7 +1430,7 @@ mod tests {
         assert!(should_expand_control_plane_widget(&degraded, None));
         assert!(!should_expand_session_harness_widget(&degraded));
 
-        let warning = crate::fixtures::SessionData {
+        let warning = auspex_core::fixtures::SessionData {
             memory_warning: Some("Vault locked".into()),
             ..Default::default()
         };
@@ -1439,16 +1439,16 @@ mod tests {
 
     #[test]
     fn selected_entity_widget_renders_activity_and_deployment_detail() {
-        let data = crate::fixtures::SessionData {
-            active_delegates: vec![crate::fixtures::DelegateSummaryData {
+        let data = auspex_core::fixtures::SessionData {
+            active_delegates: vec![auspex_core::fixtures::DelegateSummaryData {
                 agent_name: "worker-a".into(),
                 status: "running".into(),
                 task_id: "task-1".into(),
                 elapsed_ms: 42,
             }],
-            telemetry: crate::fixtures::SessionTelemetryData {
-                lifecycle: crate::fixtures::LifecycleTelemetryData {
-                    instances: vec![crate::fixtures::LifecycleInstanceTelemetryData {
+            telemetry: auspex_core::fixtures::SessionTelemetryData {
+                lifecycle: auspex_core::fixtures::LifecycleTelemetryData {
+                    instances: vec![auspex_core::fixtures::LifecycleInstanceTelemetryData {
                         route_id: "session-dispatcher".into(),
                         instance_id: "omg_primary".into(),
                         role: "primary-driver".into(),
@@ -1505,7 +1505,7 @@ mod tests {
 
     #[test]
     fn delegate_summary_formats_status_task_and_elapsed() {
-        let delegate = crate::fixtures::DelegateSummaryData {
+        let delegate = auspex_core::fixtures::DelegateSummaryData {
             agent_name: "subtask-1".into(),
             status: "busy".into(),
             task_id: "task-42".into(),
@@ -1516,8 +1516,8 @@ mod tests {
 
     #[test]
     fn instance_descriptor_render_includes_capabilities() {
-        let element = render_instance_descriptor(&crate::fixtures::InstanceDescriptorData {
-            identity: crate::fixtures::InstanceIdentityData {
+        let element = render_instance_descriptor(&auspex_core::fixtures::InstanceDescriptorData {
+            identity: auspex_core::fixtures::InstanceIdentityData {
                 instance_id: "omg_primary_01HVDEMO".into(),
                 role: "primary-driver".into(),
                 profile: "primary-interactive".into(),
@@ -1528,7 +1528,7 @@ mod tests {
                 capabilities: vec!["state.snapshot".into(), "events.stream".into()],
                 ..InstanceControlPlaneData::default()
             }),
-            ..crate::fixtures::InstanceDescriptorData::default()
+            ..auspex_core::fixtures::InstanceDescriptorData::default()
         });
 
         let debug = format!("{element:?}");

@@ -152,3 +152,34 @@ Omegon 0.15.26 released with IPC socket in serve mode, auth over WebSocket, per-
 - **Self-improvement loop**: Common operator interactions tune the system toward useful COP layouts and presentations for operational contexts.
 - **Markdown rendering**: pulldown-cmark or similar needed for chat mode transcript. Raw markdown/tables currently render as plaintext.
 
+
+## 2026-04-18 — auspex-core Crate Extraction
+
+### Context
+Extract core logic from auspex monolith into a library crate to unblock the k8s operator and decouple from Dioxus UI.
+
+### Completed
+- Converted single-crate project to Cargo workspace: auspex, auspex-core, auspex-operator
+- Moved 20 modules to auspex-core (all logic, types, state machines, transport) — zero Dioxus dependencies
+- 3 files remain in UI crate: main.rs, app.rs, screens.rs
+- Fixed include_str! paths for new directory depth
+- Changed #[cfg(test)] to #[doc(hidden)] on debug_drain_outbox for cross-crate test access
+- 57/57 tests pass, zero clippy errors
+- Scaffolded auspex-operator crate with kube-rs:
+  - OmegonAgent CRD (styrene.sh/v1alpha1) with spec for agent, model, mode, vox, secrets
+  - Reconciler: watches CRDs, creates Deployment/CronJob + ConfigMap + Service with owner refs
+  - Fleet API on :8080 (/healthz, /api/fleet)
+  - CRD generation via --crd flag
+- All three crates compile clean
+
+### Decisions
+- Keep UI crate at workspace root (Dioxus.toml expects it there)
+- auspex-core has same feature flags (desktop/web) passed through from UI crate
+- Operator uses kube 0.99 + k8s-openapi 0.24 (v1_30)
+- Operator reconciles into JSON-patched k8s objects (server-side apply) rather than templated YAML
+
+### Open Threads
+- Operator not yet deployed — needs CRD installed, RBAC, ServiceAccount
+- auspex-core could be published to crates.io for third-party operator consumers
+- Fleet API needs WebSocket event aggregation for auspex UI to connect to operator instead of individual agents
+- omegon-traits path dependency (../../omegon/core/crates/omegon-traits) needs resolution for CI builds

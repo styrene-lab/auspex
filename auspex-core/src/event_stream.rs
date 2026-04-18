@@ -88,7 +88,7 @@ impl EventStreamHandle {
         self.outbox.push_raw(command.web_command_json());
     }
 
-    #[cfg(test)]
+    #[doc(hidden)]
     pub fn debug_drain_outbox(&self) -> Vec<String> {
         self.outbox.drain()
     }

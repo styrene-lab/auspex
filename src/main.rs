@@ -1,29 +1,5 @@
 mod app;
-mod audit_timeline;
-mod bootstrap;
-mod command_transport;
-#[cfg(not(target_arch = "wasm32"))]
-mod config;
-#[cfg(not(target_arch = "wasm32"))]
-mod container_discovery;
-mod controller;
-mod cop_feature;
-mod cop_surface;
-mod event_stream;
-#[cfg(not(target_arch = "wasm32"))]
-mod instance_session;
-mod fixtures;
-mod instance_registry;
-#[cfg(not(target_arch = "wasm32"))]
-mod ipc_client;
-mod omegon_control;
-mod remote_session;
-mod runtime_types;
 mod screens;
-mod session_event;
-mod session_model;
-mod state_engine;
-mod telemetry;
 
 #[cfg(not(target_arch = "wasm32"))]
 fn main() {
@@ -34,7 +10,7 @@ fn main() {
     #[cfg(target_os = "macos")]
     use dioxus::desktop::tao::platform::macos::WindowBuilderExtMacOS;
 
-    let bootstrap = bootstrap::bootstrap_controller_from_env();
+    let bootstrap = auspex_core::bootstrap::bootstrap_controller_from_env();
 
     // Embed the stylesheet at launch time so it is guaranteed to be in the
     // HTML head before the first render — the JS-eval injection path is

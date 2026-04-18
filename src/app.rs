@@ -1,15 +1,15 @@
 use dioxus::prelude::*;
 
-use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
-use crate::bootstrap::BootstrapResult;
+use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
+use auspex_core::bootstrap::BootstrapResult;
 #[cfg(not(target_arch = "wasm32"))]
-use crate::command_transport::CommandTransport;
-use crate::controller::{AppController, SessionMode};
-use crate::event_stream::EventStreamHandle;
-use crate::fixtures::{MessageRole, TranscriptData};
+use auspex_core::command_transport::CommandTransport;
+use auspex_core::controller::{AppController, SessionMode};
+use auspex_core::event_stream::EventStreamHandle;
+use auspex_core::fixtures::{MessageRole, TranscriptData};
 #[cfg(not(target_arch = "wasm32"))]
-use crate::ipc_client::IpcEventStreamHandle;
-use crate::runtime_types::TargetedCommand;
+use auspex_core::ipc_client::IpcEventStreamHandle;
+use auspex_core::runtime_types::TargetedCommand;
 use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -172,9 +172,9 @@ fn provider_command_name(name: &str) -> Option<String> {
 }
 
 fn merged_provider_inventory(
-    runtime_providers: &[crate::fixtures::ProviderInfo],
-    settings_providers: Option<&[crate::fixtures::ProviderInfo]>,
-) -> Vec<crate::fixtures::ProviderInfo> {
+    runtime_providers: &[auspex_core::fixtures::ProviderInfo],
+    settings_providers: Option<&[auspex_core::fixtures::ProviderInfo]>,
+) -> Vec<auspex_core::fixtures::ProviderInfo> {
     let Some(settings_providers) = settings_providers.filter(|providers| !providers.is_empty())
     else {
         return runtime_providers.to_vec();
@@ -191,7 +191,7 @@ fn merged_provider_inventory(
                 .unwrap_or_else(|| candidate.name.trim().to_ascii_lowercase())
                 == key
         });
-        merged.push(crate::fixtures::ProviderInfo {
+        merged.push(auspex_core::fixtures::ProviderInfo {
             name: runtime.name.clone(),
             authenticated: runtime.authenticated,
             auth_method: settings
@@ -217,9 +217,9 @@ fn merged_provider_inventory(
 }
 
 fn build_settings_panel_model(
-    controller: &crate::controller::AppController,
-    session: &crate::fixtures::SessionData,
-    auth_state: Option<&crate::controller::SettingsAuthState>,
+    controller: &auspex_core::controller::AppController,
+    session: &auspex_core::fixtures::SessionData,
+    auth_state: Option<&auspex_core::controller::SettingsAuthState>,
 ) -> SettingsPanelModel {
     let dispatcher_binding = session.dispatcher_binding.as_ref();
     let route_options = controller.available_command_routes();
@@ -561,7 +561,7 @@ struct ProviderBlockedComposerModel {
 }
 
 fn build_provider_blocked_composer_model(
-    session: &crate::fixtures::SessionData,
+    session: &auspex_core::fixtures::SessionData,
     can_submit: bool,
 ) -> Option<ProviderBlockedComposerModel> {
     if can_submit {
@@ -626,7 +626,7 @@ pub fn App() -> Element {
     // Extract spawning binary before bootstrap is consumed by use_signal.
     #[cfg(not(target_arch = "wasm32"))]
     let spawning_binary: Option<String> = bootstrap.as_ref().and_then(|b| {
-        if let crate::bootstrap::BootstrapSource::SpawningOmegon { binary } = &b.source {
+        if let auspex_core::bootstrap::BootstrapSource::SpawningOmegon { binary } = &b.source {
             Some(binary.clone())
         } else {
             None
@@ -699,13 +699,13 @@ pub fn App() -> Element {
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(targets) = remote_probe_targets {
                     let results =
-                        crate::controller::probe_remote_instances(&targets).await;
+                        auspex_core::controller::probe_remote_instances(&targets).await;
                     controller.write().apply_remote_probe_results(&results);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
                 if let (
                     Some(ipc_handle),
-                    Some(crate::command_transport::CommandTransport::Ipc(client)),
+                    Some(auspex_core::command_transport::CommandTransport::Ipc(client)),
                 ) = (
                     ipc_event_stream.read().clone(),
                     command_transport.read().clone(),
@@ -716,7 +716,7 @@ pub fn App() -> Element {
                         {
                             let mut controller = controller.write();
                             for event in ipc_events {
-                                needs_refresh |= crate::controller::AppController::ipc_event_requires_refresh(&event);
+                                needs_refresh |= auspex_core::controller::AppController::ipc_event_requires_refresh(&event);
                                 let _ = controller.apply_ipc_event(event);
                             }
                         }
@@ -733,7 +733,7 @@ pub fn App() -> Element {
                         for event in events {
                             #[cfg(not(target_arch = "wasm32"))]
                             if let Some(result) =
-                                crate::controller::AppController::parse_slash_command_result(&event)
+                                auspex_core::controller::AppController::parse_slash_command_result(&event)
                             {
                                 let message = if result.accepted {
                                     format!(
@@ -814,7 +814,7 @@ pub fn App() -> Element {
         async move {
             let Some(binary_str) = binary else { return };
             let binary_path = std::path::PathBuf::from(binary_str);
-            let result = crate::bootstrap::spawn_and_attach_omegon(&binary_path).await;
+            let result = auspex_core::bootstrap::spawn_and_attach_omegon(&binary_path).await;
             if let Some(stream) = result.event_stream {
                 event_stream.set(Some(stream));
             }
@@ -1204,7 +1204,7 @@ pub fn App() -> Element {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
             }
 
-            if !readiness.ready && !matches!(controller.read().shell_state(), crate::fixtures::ShellState::Failed) {
+            if !readiness.ready && !matches!(controller.read().shell_state(), auspex_core::fixtures::ShellState::Failed) {
                 div { class: "cockpit-layout cockpit-layout-readiness",
                     section {
                         class: "state-screen state-screen-starting",
@@ -1216,10 +1216,10 @@ pub fn App() -> Element {
                                 div {
                                     class: "startup-step-row",
                                     "data-state": match step.state {
-                                        crate::fixtures::ReadinessStepState::Pending => "pending",
-                                        crate::fixtures::ReadinessStepState::Active => "active",
-                                        crate::fixtures::ReadinessStepState::Complete => "complete",
-                                        crate::fixtures::ReadinessStepState::Blocked => "blocked",
+                                        auspex_core::fixtures::ReadinessStepState::Pending => "pending",
+                                        auspex_core::fixtures::ReadinessStepState::Active => "active",
+                                        auspex_core::fixtures::ReadinessStepState::Complete => "complete",
+                                        auspex_core::fixtures::ReadinessStepState::Blocked => "blocked",
                                     },
                                     strong { class: "startup-step-label", "{step.label}" }
                                     span { class: "startup-step-detail", "{step.detail}" }
@@ -1480,17 +1480,17 @@ pub fn App() -> Element {
                                                                     SettingsAuthAction::Login => {
                                                                         if let Some(transport) = command_transport.read().clone() {
                                                                             let provider_name = provider.clone().unwrap_or_else(|| "anthropic".into());
-                                                                            let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                            let slash = auspex_core::runtime_types::CanonicalSlashCommand {
                                                                                 name: "login".into(),
                                                                                 args: provider_name.clone(),
                                                                                 raw_input: format!("/login {provider_name}"),
                                                                             };
                                                                             let target = controller.read().current_command_target();
-                                                                            let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                            let command = auspex_core::runtime_types::TargetedCommand::canonical_slash(target, slash);
                                                                             dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
-                                                                                crate::bootstrap::DesktopAuthAction::Login,
+                                                                                auspex_core::bootstrap::DesktopAuthAction::Login,
                                                                                 provider.as_deref(),
                                                                             )
                                                                         }
@@ -1536,17 +1536,17 @@ pub fn App() -> Element {
                                                                             } else {
                                                                                 format!("/logout {provider_name}")
                                                                             };
-                                                                            let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                            let slash = auspex_core::runtime_types::CanonicalSlashCommand {
                                                                                 name: "logout".into(),
                                                                                 args: provider_name,
                                                                                 raw_input,
                                                                             };
                                                                             let target = controller.read().current_command_target();
-                                                                            let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                            let command = auspex_core::runtime_types::TargetedCommand::canonical_slash(target, slash);
                                                                             dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                         } else {
                                                                             controller.write().run_settings_auth_action(
-                                                                                crate::bootstrap::DesktopAuthAction::Logout,
+                                                                                auspex_core::bootstrap::DesktopAuthAction::Logout,
                                                                                 provider.as_deref(),
                                                                             )
                                                                         }
@@ -1627,17 +1627,17 @@ pub fn App() -> Element {
                                                             SettingsAuthAction::Logout => unreachable!(),
                                                             SettingsAuthAction::Unlock => {
                                                                 if let Some(transport) = command_transport.read().clone() {
-                                                                    let slash = crate::runtime_types::CanonicalSlashCommand {
+                                                                    let slash = auspex_core::runtime_types::CanonicalSlashCommand {
                                                                         name: "auth".into(),
                                                                         args: "unlock".into(),
                                                                         raw_input: "/auth unlock".into(),
                                                                     };
                                                                     let target = controller.read().current_command_target();
-                                                                    let command = crate::runtime_types::TargetedCommand::canonical_slash(target, slash);
+                                                                    let command = auspex_core::runtime_types::TargetedCommand::canonical_slash(target, slash);
                                                                     dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command)
                                                                 } else {
                                                                     controller.write().run_settings_auth_action(
-                                                                        crate::bootstrap::DesktopAuthAction::Unlock,
+                                                                        auspex_core::bootstrap::DesktopAuthAction::Unlock,
                                                                         provider.as_deref(),
                                                                     )
                                                                 }
@@ -1728,10 +1728,10 @@ fn transcript_block_dom_id(turn_number: u32, block_index: usize) -> String {
     format!("turn-{turn_number}-block-{block_index}")
 }
 
-fn transcript_block_matches_target(block: &crate::fixtures::TurnBlock, target: &str) -> bool {
+fn transcript_block_matches_target(block: &auspex_core::fixtures::TurnBlock, target: &str) -> bool {
     if let Some(task_id) = target.strip_prefix("delegate:") {
         return match block {
-            crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
+            auspex_core::fixtures::TurnBlock::Text(text) | auspex_core::fixtures::TurnBlock::System(text) => {
                 block_origin_label(text.origin.as_ref())
                     .is_some_and(|label| label.contains(task_id))
                     || text.text.contains(task_id)
@@ -1742,8 +1742,8 @@ fn transcript_block_matches_target(block: &crate::fixtures::TurnBlock, target: &
 
     if let Some(token) = target.strip_prefix("dispatcher-switch:") {
         return match block {
-            crate::fixtures::TurnBlock::System(text) => {
-                text.notice_kind == Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch)
+            auspex_core::fixtures::TurnBlock::System(text) => {
+                text.notice_kind == Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch)
                     && (token.is_empty() || text.text.contains(token))
             }
             _ => false,
@@ -1753,17 +1753,17 @@ fn transcript_block_matches_target(block: &crate::fixtures::TurnBlock, target: &
     transcript_block_search_text(block).contains(target)
 }
 
-fn transcript_block_search_text(block: &crate::fixtures::TurnBlock) -> String {
+fn transcript_block_search_text(block: &auspex_core::fixtures::TurnBlock) -> String {
     match block {
-        crate::fixtures::TurnBlock::Thinking(thinking) => thinking.text.clone(),
-        crate::fixtures::TurnBlock::Text(text) | crate::fixtures::TurnBlock::System(text) => {
+        auspex_core::fixtures::TurnBlock::Thinking(thinking) => thinking.text.clone(),
+        auspex_core::fixtures::TurnBlock::Text(text) | auspex_core::fixtures::TurnBlock::System(text) => {
             format!(
                 "{} {}",
                 block_origin_label(text.origin.as_ref()).unwrap_or_default(),
                 text.text
             )
         }
-        crate::fixtures::TurnBlock::Tool(tool) => format!(
+        auspex_core::fixtures::TurnBlock::Tool(tool) => format!(
             "{} {} {} {} {}",
             tool.id,
             tool.name,
@@ -1771,11 +1771,11 @@ fn transcript_block_search_text(block: &crate::fixtures::TurnBlock) -> String {
             tool.partial_output,
             tool.result.clone().unwrap_or_default()
         ),
-        crate::fixtures::TurnBlock::Aborted(text) => text.clone(),
+        auspex_core::fixtures::TurnBlock::Aborted(text) => text.clone(),
     }
 }
 
-fn block_origin_label(origin: Option<&crate::fixtures::BlockOrigin>) -> Option<&str> {
+fn block_origin_label(origin: Option<&auspex_core::fixtures::BlockOrigin>) -> Option<&str> {
     origin.map(|origin| origin.label.as_str())
 }
 
@@ -1848,14 +1848,14 @@ fn should_expand_transcript_content(
     content.lines().count() > line_threshold || content.chars().count() > char_threshold
 }
 
-fn system_notice_summary_label(text: &crate::fixtures::AttributedText) -> &'static str {
+fn system_notice_summary_label(text: &auspex_core::fixtures::AttributedText) -> &'static str {
     match text.notice_kind {
-        Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => "Dispatcher switch notice",
-        Some(crate::fixtures::SystemNoticeKind::CleaveStart) => "Cleave start notice",
-        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => "Cleave completion notice",
-        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => "Child status notice",
-        Some(crate::fixtures::SystemNoticeKind::Failure) => "Failure notice",
-        Some(crate::fixtures::SystemNoticeKind::Generic) | None => "System notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch) => "Dispatcher switch notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveStart) => "Cleave start notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveComplete) => "Cleave completion notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::ChildStatus) => "Child status notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::Failure) => "Failure notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::Generic) | None => "System notice",
     }
 }
 
@@ -1975,13 +1975,13 @@ fn transcript_disclosure_open(open_by_default: bool, auto_expand: bool) -> bool 
 }
 
 fn render_transcript(
-    summary: &crate::fixtures::HostSessionSummary,
-    work: &crate::fixtures::WorkData,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    work: &auspex_core::fixtures::WorkData,
+    session: &auspex_core::fixtures::SessionData,
     transcript: &TranscriptData,
-    messages: &[crate::fixtures::ChatMessage],
+    messages: &[auspex_core::fixtures::ChatMessage],
     auto_expand: bool,
-    scenario: crate::fixtures::DevScenario,
+    scenario: auspex_core::fixtures::DevScenario,
 ) -> Element {
     if transcript.turns.is_empty() {
         rsx! {
@@ -2007,7 +2007,7 @@ fn render_transcript(
                     "data-elevation": "1",
                     for (block_index, block) in turn.blocks.iter().enumerate() {
                         match block {
-                            crate::fixtures::TurnBlock::Thinking(thinking) => rsx! {
+                            auspex_core::fixtures::TurnBlock::Thinking(thinking) => rsx! {
                                 section {
                                     id: transcript_block_dom_id(turn.number, block_index),
                                     class: if thinking.collapsed { "block block-thinking block-collapsed" } else { "block block-thinking" },
@@ -2017,7 +2017,7 @@ fn render_transcript(
                                     p { "{decode_html_entities(&thinking.text)}" }
                                 }
                             },
-                            crate::fixtures::TurnBlock::Text(text) => rsx! {
+                            auspex_core::fixtures::TurnBlock::Text(text) => rsx! {
                                 section {
                                     id: transcript_block_dom_id(turn.number, block_index),
                                     class: text_block_class(text.origin.as_ref()),
@@ -2029,7 +2029,7 @@ fn render_transcript(
                                     p { "{decode_html_entities(&text.text)}" }
                                 }
                             },
-                            crate::fixtures::TurnBlock::Tool(tool) => rsx! {
+                            auspex_core::fixtures::TurnBlock::Tool(tool) => rsx! {
                                 section {
                                     id: transcript_block_dom_id(turn.number, block_index),
                                     class: tool_block_class(tool),
@@ -2107,7 +2107,7 @@ fn render_transcript(
                                     }
                                 }
                             },
-                            crate::fixtures::TurnBlock::System(text) => rsx! {
+                            auspex_core::fixtures::TurnBlock::System(text) => rsx! {
                                 section {
                                     id: transcript_block_dom_id(turn.number, block_index),
                                     class: system_block_class(text),
@@ -2136,7 +2136,7 @@ fn render_transcript(
                                     }
                                 }
                             },
-                            crate::fixtures::TurnBlock::Aborted(text) => {
+                            auspex_core::fixtures::TurnBlock::Aborted(text) => {
                                 let display_text = if text.is_empty() {
                                     "Message aborted by agent"
                                 } else {
@@ -2170,12 +2170,12 @@ struct ChatEmptyStateModel {
 }
 
 fn build_chat_empty_state_model(
-    summary: &crate::fixtures::HostSessionSummary,
-    work: &crate::fixtures::WorkData,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    work: &auspex_core::fixtures::WorkData,
+    session: &auspex_core::fixtures::SessionData,
     transcript: &TranscriptData,
-    messages: &[crate::fixtures::ChatMessage],
-    scenario: crate::fixtures::DevScenario,
+    messages: &[auspex_core::fixtures::ChatMessage],
+    scenario: auspex_core::fixtures::DevScenario,
 ) -> Option<ChatEmptyStateModel> {
     if !transcript.turns.is_empty() {
         return None;
@@ -2183,7 +2183,7 @@ fn build_chat_empty_state_model(
 
     let allow_starter_guidance = matches!(
         scenario,
-        crate::fixtures::DevScenario::Ready | crate::fixtures::DevScenario::LocalDevQuiet
+        auspex_core::fixtures::DevScenario::Ready | auspex_core::fixtures::DevScenario::LocalDevQuiet
     );
     if !allow_starter_guidance {
         return None;
@@ -2256,8 +2256,8 @@ fn build_chat_empty_state_model(
 }
 
 fn render_chat_status_banner(
-    summary: &crate::fixtures::HostSessionSummary,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    session: &auspex_core::fixtures::SessionData,
     is_run_active: bool,
     can_submit: bool,
 ) -> Element {
@@ -2287,7 +2287,7 @@ fn render_chat_status_banner(
             "Input paused",
             "Conversation input is unavailable in the current host state.",
         )
-    } else if no_work_yet && summary.activity_kind == crate::fixtures::ActivityKind::Idle {
+    } else if no_work_yet && summary.activity_kind == auspex_core::fixtures::ActivityKind::Idle {
         (
             "chat-status-banner",
             "ready",
@@ -2320,7 +2320,7 @@ fn render_chat_status_banner(
 }
 
 #[allow(dead_code)]
-fn render_compact_right_rail(session: &crate::fixtures::SessionData) -> Element {
+fn render_compact_right_rail(session: &auspex_core::fixtures::SessionData) -> Element {
     rsx! {
         section { class: "screen-section right-rail-compact-section",
             h2 { class: "screen-section-title", "Harness" }
@@ -2378,35 +2378,35 @@ fn render_compact_right_rail(session: &crate::fixtures::SessionData) -> Element 
 }
 
 #[allow(dead_code)]
-fn app_surface_surface(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+fn app_surface_surface(kind: auspex_core::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
-        crate::fixtures::AppSurfaceKind::Startup => "panel",
-        crate::fixtures::AppSurfaceKind::Reconnecting => "banner",
-        crate::fixtures::AppSurfaceKind::StartupFailure
-        | crate::fixtures::AppSurfaceKind::CompatibilityFailure => "panel",
-        crate::fixtures::AppSurfaceKind::BootstrapNote => "panel",
+        auspex_core::fixtures::AppSurfaceKind::Startup => "panel",
+        auspex_core::fixtures::AppSurfaceKind::Reconnecting => "banner",
+        auspex_core::fixtures::AppSurfaceKind::StartupFailure
+        | auspex_core::fixtures::AppSurfaceKind::CompatibilityFailure => "panel",
+        auspex_core::fixtures::AppSurfaceKind::BootstrapNote => "panel",
     }
 }
 
 #[allow(dead_code)]
-fn app_surface_state(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+fn app_surface_state(kind: auspex_core::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
-        crate::fixtures::AppSurfaceKind::Startup => "starting",
-        crate::fixtures::AppSurfaceKind::Reconnecting => "reconnecting",
-        crate::fixtures::AppSurfaceKind::StartupFailure => "startup-failure",
-        crate::fixtures::AppSurfaceKind::CompatibilityFailure => "compatibility-failure",
-        crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
+        auspex_core::fixtures::AppSurfaceKind::Startup => "starting",
+        auspex_core::fixtures::AppSurfaceKind::Reconnecting => "reconnecting",
+        auspex_core::fixtures::AppSurfaceKind::StartupFailure => "startup-failure",
+        auspex_core::fixtures::AppSurfaceKind::CompatibilityFailure => "compatibility-failure",
+        auspex_core::fixtures::AppSurfaceKind::BootstrapNote => "info",
     }
 }
 
 #[allow(dead_code)]
-fn app_surface_tone(kind: crate::fixtures::AppSurfaceKind) -> &'static str {
+fn app_surface_tone(kind: auspex_core::fixtures::AppSurfaceKind) -> &'static str {
     match kind {
-        crate::fixtures::AppSurfaceKind::Startup
-        | crate::fixtures::AppSurfaceKind::BootstrapNote => "info",
-        crate::fixtures::AppSurfaceKind::Reconnecting => "warn",
-        crate::fixtures::AppSurfaceKind::StartupFailure
-        | crate::fixtures::AppSurfaceKind::CompatibilityFailure => "danger",
+        auspex_core::fixtures::AppSurfaceKind::Startup
+        | auspex_core::fixtures::AppSurfaceKind::BootstrapNote => "info",
+        auspex_core::fixtures::AppSurfaceKind::Reconnecting => "warn",
+        auspex_core::fixtures::AppSurfaceKind::StartupFailure
+        | auspex_core::fixtures::AppSurfaceKind::CompatibilityFailure => "danger",
     }
 }
 
@@ -2436,12 +2436,12 @@ struct DispatchContextStripModel {
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct ChatCopHostModel<'a> {
-    summary: &'a crate::fixtures::HostSessionSummary,
-    work: &'a crate::fixtures::WorkData,
-    session: &'a crate::fixtures::SessionData,
+    summary: &'a auspex_core::fixtures::HostSessionSummary,
+    work: &'a auspex_core::fixtures::WorkData,
+    session: &'a auspex_core::fixtures::SessionData,
     transcript: &'a TranscriptData,
-    messages: &'a [crate::fixtures::ChatMessage],
-    scenario: crate::fixtures::DevScenario,
+    messages: &'a [auspex_core::fixtures::ChatMessage],
+    scenario: auspex_core::fixtures::DevScenario,
     auto_expand: bool,
     is_run_active: bool,
     can_submit: bool,
@@ -2602,10 +2602,10 @@ fn render_cockpit_top_rail(
 }
 
 fn render_fleet_rail(
-    session: &crate::fixtures::SessionData,
+    session: &auspex_core::fixtures::SessionData,
     focused_instance_id: Option<String>,
     #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
-    activity_summaries: Vec<(String, crate::instance_session::ActivitySummary)>,
+    activity_summaries: Vec<(String, auspex_core::instance_session::ActivitySummary)>,
     unread_counts: Vec<(String, u32)>,
     on_focus: EventHandler<Option<String>>,
 ) -> Element {
@@ -2664,9 +2664,9 @@ fn render_fleet_rail(
 }
 
 fn render_fleet_instance_card(
-    instance: &crate::fixtures::LifecycleInstanceTelemetryData,
+    instance: &auspex_core::fixtures::LifecycleInstanceTelemetryData,
     is_focused: bool,
-    activity_summaries: &[(String, crate::instance_session::ActivitySummary)],
+    activity_summaries: &[(String, auspex_core::instance_session::ActivitySummary)],
     unread_counts: &[(String, u32)],
     on_focus: EventHandler<Option<String>>,
 ) -> Element {
@@ -2762,7 +2762,7 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
 }
 
 fn render_cockpit_sidecar(
-    session: &crate::fixtures::SessionData,
+    session: &auspex_core::fixtures::SessionData,
     selected_entity: Option<SelectedCockpitEntity>,
     actions: CockpitSidecarActions,
 ) -> Element {
@@ -2790,16 +2790,16 @@ fn render_cockpit_sidecar(
 fn build_cockpit_summary_model(
     workspace: Workspace,
     session_mode: SessionMode,
-    summary: &crate::fixtures::HostSessionSummary,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    session: &auspex_core::fixtures::SessionData,
 ) -> CockpitSummaryModel {
     let shell_tag = match summary.activity_kind {
-        crate::fixtures::ActivityKind::Idle => "OK",
-        crate::fixtures::ActivityKind::Running => "LIVE",
-        crate::fixtures::ActivityKind::Waiting => "WAIT",
-        crate::fixtures::ActivityKind::Degraded => "DEGRADED",
-        crate::fixtures::ActivityKind::Completed => "OK",
-        crate::fixtures::ActivityKind::Failure => "FAILED",
+        auspex_core::fixtures::ActivityKind::Idle => "OK",
+        auspex_core::fixtures::ActivityKind::Running => "LIVE",
+        auspex_core::fixtures::ActivityKind::Waiting => "WAIT",
+        auspex_core::fixtures::ActivityKind::Degraded => "DEGRADED",
+        auspex_core::fixtures::ActivityKind::Completed => "OK",
+        auspex_core::fixtures::ActivityKind::Failure => "FAILED",
     };
 
     let attached_role = session
@@ -2882,17 +2882,17 @@ fn build_cockpit_summary_model(
     };
     let attached_tag = if primary_missing {
         match summary.activity_kind {
-            crate::fixtures::ActivityKind::Waiting => "ATTACHING",
-            crate::fixtures::ActivityKind::Running => "BOOTING",
-            crate::fixtures::ActivityKind::Failure => "FAILED",
-            crate::fixtures::ActivityKind::Degraded => "DEGRADED",
+            auspex_core::fixtures::ActivityKind::Waiting => "ATTACHING",
+            auspex_core::fixtures::ActivityKind::Running => "BOOTING",
+            auspex_core::fixtures::ActivityKind::Failure => "FAILED",
+            auspex_core::fixtures::ActivityKind::Degraded => "DEGRADED",
             _ => "BOOTING",
         }
     } else if session.telemetry.lifecycle.counts.stale > 0 {
         "DEGRADED"
     } else if matches!(
         summary.activity_kind,
-        crate::fixtures::ActivityKind::Failure
+        auspex_core::fixtures::ActivityKind::Failure
     ) {
         "FAILED"
     } else {
@@ -2960,19 +2960,19 @@ fn build_cockpit_summary_model(
         "RUNNING"
     } else {
         match summary.activity_kind {
-            crate::fixtures::ActivityKind::Degraded => "ALERT",
-            crate::fixtures::ActivityKind::Waiting => "WAITING",
-            crate::fixtures::ActivityKind::Completed => "COMPLETED",
-            crate::fixtures::ActivityKind::Failure => "FAILED",
-            crate::fixtures::ActivityKind::Running => "RUNNING",
-            crate::fixtures::ActivityKind::Idle => "IDLE",
+            auspex_core::fixtures::ActivityKind::Degraded => "ALERT",
+            auspex_core::fixtures::ActivityKind::Waiting => "WAITING",
+            auspex_core::fixtures::ActivityKind::Completed => "COMPLETED",
+            auspex_core::fixtures::ActivityKind::Failure => "FAILED",
+            auspex_core::fixtures::ActivityKind::Running => "RUNNING",
+            auspex_core::fixtures::ActivityKind::Idle => "IDLE",
         }
     };
     let activity_primary = if let Some(delegate) = session.active_delegates.first() {
         format!("{} · {}", delegate.agent_name, delegate.status)
     } else {
         match summary.activity_kind {
-            crate::fixtures::ActivityKind::Completed | crate::fixtures::ActivityKind::Failure => {
+            auspex_core::fixtures::ActivityKind::Completed | auspex_core::fixtures::ActivityKind::Failure => {
                 summary.activity.clone()
             }
             _ => summary
@@ -3034,7 +3034,7 @@ fn build_cockpit_summary_model(
     }
 }
 
-fn cockpit_work_hint(summary: &crate::fixtures::HostSessionSummary) -> String {
+fn cockpit_work_hint(summary: &auspex_core::fixtures::HostSessionSummary) -> String {
     if summary.work.trim().is_empty() {
         "no focused work".into()
     } else {
@@ -3053,7 +3053,7 @@ fn workspace_label(workspace: Workspace) -> &'static str {
     }
 }
 
-fn context_window_label(session: &crate::fixtures::SessionData) -> String {
+fn context_window_label(session: &auspex_core::fixtures::SessionData) -> String {
     if let Some(tokens) = session.context_tokens {
         if let Some(window) = session.context_window {
             format!("{tokens} / {window} tokens")
@@ -3068,8 +3068,8 @@ fn context_window_label(session: &crate::fixtures::SessionData) -> String {
 fn build_dispatch_context_strip_model(
     workspace: Workspace,
     session_mode: SessionMode,
-    summary: &crate::fixtures::HostSessionSummary,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    session: &auspex_core::fixtures::SessionData,
     draft: &str,
     is_run_active: bool,
     can_submit: bool,
@@ -3235,7 +3235,7 @@ fn build_dispatch_context_strip_model(
 }
 
 fn render_selected_deployment_cop(
-    session: &crate::fixtures::SessionData,
+    session: &auspex_core::fixtures::SessionData,
     instance_id: &str,
     on_return: EventHandler<()>,
 ) -> Element {
@@ -3269,7 +3269,7 @@ fn render_selected_deployment_cop(
 }
 
 fn render_selected_activity_cop(
-    session: &crate::fixtures::SessionData,
+    session: &auspex_core::fixtures::SessionData,
     task_id: &str,
     on_transcript_focus: Option<EventHandler<String>>,
     on_return: EventHandler<()>,
@@ -3395,11 +3395,11 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                                         #[cfg(not(target_arch = "wasm32"))]
                                         spawn(async move {
                                             eprintln!("auspex: running omegon auth login {provider}");
-                                            if let Err(e) = crate::bootstrap::run_auth_login(&provider).await {
+                                            if let Err(e) = auspex_core::bootstrap::run_auth_login(&provider).await {
                                                 eprintln!("auspex: auth login failed: {e}");
                                             } else {
                                                 eprintln!("auspex: auth login succeeded, restarting omegon");
-                                                if let Some(_result) = crate::bootstrap::restart_owned_omegon().await {
+                                                if let Some(_result) = auspex_core::bootstrap::restart_owned_omegon().await {
                                                     eprintln!("auspex: omegon restarted");
                                                 }
                                             }
@@ -3477,75 +3477,75 @@ fn render_dispatch_context_strip(model: &DispatchContextStripModel) -> Element {
     }
 }
 
-fn text_block_class(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static str {
+fn text_block_class(origin: Option<&auspex_core::fixtures::BlockOrigin>) -> &'static str {
     match origin.map(|origin| &origin.kind) {
-        Some(crate::fixtures::OriginKind::Dispatcher) => "block block-text",
-        Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
-        Some(crate::fixtures::OriginKind::System) => "block block-system",
+        Some(auspex_core::fixtures::OriginKind::Dispatcher) => "block block-text",
+        Some(auspex_core::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+        Some(auspex_core::fixtures::OriginKind::System) => "block block-system",
         None => "block block-text",
     }
 }
 
-fn text_block_tone(origin: Option<&crate::fixtures::BlockOrigin>) -> &'static str {
+fn text_block_tone(origin: Option<&auspex_core::fixtures::BlockOrigin>) -> &'static str {
     match origin.map(|origin| &origin.kind) {
-        Some(crate::fixtures::OriginKind::Child) => "accent",
-        Some(crate::fixtures::OriginKind::System) => "muted",
-        Some(crate::fixtures::OriginKind::Dispatcher) | None => "default",
+        Some(auspex_core::fixtures::OriginKind::Child) => "accent",
+        Some(auspex_core::fixtures::OriginKind::System) => "muted",
+        Some(auspex_core::fixtures::OriginKind::Dispatcher) | None => "default",
     }
 }
 
-fn system_block_class(text: &crate::fixtures::AttributedText) -> &'static str {
+fn system_block_class(text: &auspex_core::fixtures::AttributedText) -> &'static str {
     match text.notice_kind {
-        Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => {
+        Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch) => {
             "block block-system block-dispatcher-system"
         }
-        Some(crate::fixtures::SystemNoticeKind::CleaveStart) => {
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveStart) => {
             "block block-system block-dispatcher-system block-control-cleave"
         }
-        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => {
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveComplete) => {
             "block block-system block-dispatcher-system block-control-complete"
         }
-        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => {
+        Some(auspex_core::fixtures::SystemNoticeKind::ChildStatus) => {
             "block block-system block-child-origin block-control-child"
         }
-        Some(crate::fixtures::SystemNoticeKind::Failure) => {
+        Some(auspex_core::fixtures::SystemNoticeKind::Failure) => {
             match text.origin.as_ref().map(|origin| &origin.kind) {
-                Some(crate::fixtures::OriginKind::Child) => {
+                Some(auspex_core::fixtures::OriginKind::Child) => {
                     "block block-system block-child-origin block-control-failure"
                 }
-                Some(crate::fixtures::OriginKind::Dispatcher) => {
+                Some(auspex_core::fixtures::OriginKind::Dispatcher) => {
                     "block block-system block-dispatcher-system block-control-failure"
                 }
                 _ => "block block-system block-control-failure",
             }
         }
-        Some(crate::fixtures::SystemNoticeKind::Generic) | None => {
+        Some(auspex_core::fixtures::SystemNoticeKind::Generic) | None => {
             match text.origin.as_ref().map(|origin| &origin.kind) {
-                Some(crate::fixtures::OriginKind::Dispatcher) => {
+                Some(auspex_core::fixtures::OriginKind::Dispatcher) => {
                     "block block-system block-dispatcher-system"
                 }
-                Some(crate::fixtures::OriginKind::Child) => "block block-system block-child-origin",
-                Some(crate::fixtures::OriginKind::System) => "block block-system",
+                Some(auspex_core::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+                Some(auspex_core::fixtures::OriginKind::System) => "block block-system",
                 None => "block block-system",
             }
         }
     }
 }
 
-fn system_block_tone(text: &crate::fixtures::AttributedText) -> &'static str {
+fn system_block_tone(text: &auspex_core::fixtures::AttributedText) -> &'static str {
     match text.notice_kind {
-        Some(crate::fixtures::SystemNoticeKind::Failure) => "danger",
-        Some(crate::fixtures::SystemNoticeKind::CleaveStart)
-        | Some(crate::fixtures::SystemNoticeKind::DispatcherSwitch) => "info",
-        Some(crate::fixtures::SystemNoticeKind::CleaveComplete) => "success",
-        Some(crate::fixtures::SystemNoticeKind::ChildStatus) => "accent",
-        Some(crate::fixtures::SystemNoticeKind::Generic) | None => {
+        Some(auspex_core::fixtures::SystemNoticeKind::Failure) => "danger",
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveStart)
+        | Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch) => "info",
+        Some(auspex_core::fixtures::SystemNoticeKind::CleaveComplete) => "success",
+        Some(auspex_core::fixtures::SystemNoticeKind::ChildStatus) => "accent",
+        Some(auspex_core::fixtures::SystemNoticeKind::Generic) | None => {
             text_block_tone(text.origin.as_ref())
         }
     }
 }
 
-fn tool_block_class(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_block_class(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "block block-tool block-error"
     } else if tool.result.is_some() {
@@ -3555,7 +3555,7 @@ fn tool_block_class(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_block_tone(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_block_tone(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "danger"
     } else if tool.result.is_some() {
@@ -3567,7 +3567,7 @@ fn tool_block_tone(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_status_class(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_status_class(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "tool-status tool-status-error"
     } else if tool.result.is_some() {
@@ -3577,7 +3577,7 @@ fn tool_status_class(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_visual_state(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_visual_state(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "error"
     } else if tool.result.is_some() {
@@ -3589,7 +3589,7 @@ fn tool_visual_state(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_status_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_status_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "Error"
     } else if tool.result.is_some() {
@@ -3601,7 +3601,7 @@ fn tool_status_label(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_partial_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_partial_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.result.is_some() {
         "Streamed output"
     } else {
@@ -3609,7 +3609,7 @@ fn tool_partial_label(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn tool_result_label(tool: &crate::fixtures::ToolCard) -> &'static str {
+fn tool_result_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
     if tool.is_error {
         "Error result"
     } else {
@@ -3617,11 +3617,11 @@ fn tool_result_label(tool: &crate::fixtures::ToolCard) -> &'static str {
     }
 }
 
-fn origin_class(origin: &crate::fixtures::BlockOrigin) -> &'static str {
+fn origin_class(origin: &auspex_core::fixtures::BlockOrigin) -> &'static str {
     match origin.kind {
-        crate::fixtures::OriginKind::Dispatcher => "block-origin block-origin-dispatcher",
-        crate::fixtures::OriginKind::Child => "block-origin block-origin-child",
-        crate::fixtures::OriginKind::System => "block-origin block-origin-system",
+        auspex_core::fixtures::OriginKind::Dispatcher => "block-origin block-origin-dispatcher",
+        auspex_core::fixtures::OriginKind::Child => "block-origin block-origin-child",
+        auspex_core::fixtures::OriginKind::System => "block-origin block-origin-system",
     }
 }
 
@@ -3674,9 +3674,9 @@ struct AuditPanelModel {
 
 #[allow(dead_code)]
 fn build_left_rail_inventory(
-    summary: &crate::fixtures::HostSessionSummary,
-    work: &crate::fixtures::WorkData,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    work: &auspex_core::fixtures::WorkData,
+    session: &auspex_core::fixtures::SessionData,
     is_run_active: bool,
 ) -> LeftRailInventory {
     let workspace_label = session
@@ -3788,9 +3788,9 @@ fn build_left_rail_inventory(
 
 #[allow(dead_code)]
 fn render_left_rail_inventory(
-    summary: &crate::fixtures::HostSessionSummary,
-    work: &crate::fixtures::WorkData,
-    session: &crate::fixtures::SessionData,
+    summary: &auspex_core::fixtures::HostSessionSummary,
+    work: &auspex_core::fixtures::WorkData,
+    session: &auspex_core::fixtures::SessionData,
     is_run_active: bool,
     audit_timeline: &AuditTimelineStore,
 ) -> Element {
@@ -4066,8 +4066,8 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 
 // ── COP Display Surface rendering ───────────────────────────
 
-fn render_cop_surface(cop_state: &crate::cop_surface::CopDisplayState) -> Element {
-    use crate::cop_surface::{ContentType, CopRegion, RegionContent, default_segmenta_regions};
+fn render_cop_surface(cop_state: &auspex_core::cop_surface::CopDisplayState) -> Element {
+    use auspex_core::cop_surface::{ContentType, CopRegion, RegionContent, default_segmenta_regions};
 
     if cop_state.is_empty() {
         return rsx! {
@@ -4096,10 +4096,10 @@ fn render_cop_surface(cop_state: &crate::cop_surface::CopDisplayState) -> Elemen
 }
 
 fn render_cop_region(
-    region: &crate::cop_surface::CopRegion,
-    content: Option<&crate::cop_surface::RegionContent>,
+    region: &auspex_core::cop_surface::CopRegion,
+    content: Option<&auspex_core::cop_surface::RegionContent>,
 ) -> Element {
-    use crate::cop_surface::CopRegion;
+    use auspex_core::cop_surface::CopRegion;
 
     let region_class = match region {
         CopRegion::Center => "cop-region cop-region-center",
@@ -4125,8 +4125,8 @@ fn render_cop_region(
     }
 }
 
-fn render_cop_content(content: &crate::cop_surface::RegionContent) -> Element {
-    use crate::cop_surface::ContentType;
+fn render_cop_content(content: &auspex_core::cop_surface::RegionContent) -> Element {
+    use auspex_core::cop_surface::ContentType;
 
     match &content.content_type {
         ContentType::Table => render_cop_table(&content.data),
@@ -4349,25 +4349,25 @@ mod tests {
         tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
         transcript_disclosure_open,
     };
-    use crate::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
-    use crate::controller::{AppController, SessionMode};
-    use crate::event_stream::EventStreamHandle;
-    use crate::fixtures::{
+    use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
+    use auspex_core::controller::{AppController, SessionMode};
+    use auspex_core::event_stream::EventStreamHandle;
+    use auspex_core::fixtures::{
         ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
         MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
     };
     #[cfg(not(target_arch = "wasm32"))]
-    use crate::runtime_types::TargetedCommand;
-    use crate::session_model::HostSessionModel;
+    use auspex_core::runtime_types::TargetedCommand;
+    use auspex_core::session_model::HostSessionModel;
 
     #[test]
     fn transcript_anchor_lookup_matches_delegate_and_dispatcher_switch_targets() {
         let transcript = TranscriptData {
-            turns: vec![crate::fixtures::Turn {
+            turns: vec![auspex_core::fixtures::Turn {
                 number: 7,
                 user_prompt: None,
                 blocks: vec![
-                    crate::fixtures::TurnBlock::System(AttributedText {
+                    auspex_core::fixtures::TurnBlock::System(AttributedText {
                         text: "Dispatcher switch confirmed (dispatcher-switch-9): supervisor-heavy · openai:gpt-4.1".into(),
                         origin: Some(BlockOrigin {
                             kind: OriginKind::Dispatcher,
@@ -4375,7 +4375,7 @@ mod tests {
                         }),
                         notice_kind: Some(SystemNoticeKind::DispatcherSwitch),
                     }),
-                    crate::fixtures::TurnBlock::System(AttributedText {
+                    auspex_core::fixtures::TurnBlock::System(AttributedText {
                         text: "Cleave child child-b completed successfully".into(),
                         origin: Some(BlockOrigin {
                             kind: OriginKind::Child,
@@ -4681,10 +4681,10 @@ mod tests {
     fn chat_empty_state_hides_once_transcript_turns_exist() {
         let controller = AppController::default();
         let transcript = TranscriptData {
-            turns: vec![crate::fixtures::Turn {
+            turns: vec![auspex_core::fixtures::Turn {
                 number: 1,
                 user_prompt: None,
-                blocks: vec![crate::fixtures::TurnBlock::Text(AttributedText {
+                blocks: vec![auspex_core::fixtures::TurnBlock::Text(AttributedText {
                     text: "hello".into(),
                     origin: None,
                     notice_kind: None,
@@ -4831,12 +4831,12 @@ mod tests {
 
     #[test]
     fn context_window_label_formats_reported_usage() {
-        let session = crate::fixtures::SessionData {
+        let session = auspex_core::fixtures::SessionData {
             context_tokens: Some(640),
             context_window: Some(200_000),
             ..Default::default()
         };
-        let no_window = crate::fixtures::SessionData {
+        let no_window = auspex_core::fixtures::SessionData {
             context_tokens: Some(640),
             context_window: None,
             ..Default::default()
@@ -4845,7 +4845,7 @@ mod tests {
         assert_eq!(context_window_label(&session), "640 / 200000 tokens");
         assert_eq!(context_window_label(&no_window), "640 tokens");
         assert_eq!(
-            context_window_label(&crate::fixtures::SessionData::default()),
+            context_window_label(&auspex_core::fixtures::SessionData::default()),
             "Context usage not reported yet"
         );
     }
@@ -4881,13 +4881,13 @@ mod tests {
 
     #[test]
     fn cockpit_summary_model_uses_owned_runtime_states_for_unbound_primary() {
-        let summary = crate::fixtures::HostSessionSummary {
+        let summary = auspex_core::fixtures::HostSessionSummary {
             connection: "Starting owned runtime".into(),
             activity: "Launching omegon serve".into(),
-            activity_kind: crate::fixtures::ActivityKind::Waiting,
+            activity_kind: auspex_core::fixtures::ActivityKind::Waiting,
             work: "Attach to owned runtime".into(),
         };
-        let session = crate::fixtures::SessionData::default();
+        let session = auspex_core::fixtures::SessionData::default();
         let model = super::build_cockpit_summary_model(
             Workspace::Chat,
             SessionMode::Live,
@@ -4930,11 +4930,11 @@ mod tests {
         };
         let model = super::ChatCopHostModel {
             summary: &summary,
-            work: &crate::fixtures::WorkData::default(),
-            session: &crate::fixtures::SessionData::default(),
+            work: &auspex_core::fixtures::WorkData::default(),
+            session: &auspex_core::fixtures::SessionData::default(),
             transcript: &TranscriptData::default(),
             messages: &[],
-            scenario: crate::fixtures::DevScenario::Ready,
+            scenario: auspex_core::fixtures::DevScenario::Ready,
             auto_expand: false,
             is_run_active: false,
             can_submit: true,
@@ -4965,7 +4965,7 @@ mod tests {
             Workspace::Chat,
             SessionMode::Live,
             &summary,
-            &crate::fixtures::SessionData::default(),
+            &auspex_core::fixtures::SessionData::default(),
         );
 
         assert_eq!(model.activity.tag, "COMPLETED");
@@ -5024,11 +5024,11 @@ mod tests {
             activity_kind: ActivityKind::Idle,
             work: "No focused work".into(),
         };
-        let session = crate::fixtures::SessionData {
+        let session = auspex_core::fixtures::SessionData {
             git_branch: Some("main".into()),
             thinking_level: "low".into(),
             capability_tier: "retribution".into(),
-            providers: vec![crate::fixtures::ProviderInfo {
+            providers: vec![auspex_core::fixtures::ProviderInfo {
                 name: "Anthropic".into(),
                 authenticated: true,
                 auth_method: Some("oauth".into()),
@@ -5075,7 +5075,7 @@ mod tests {
             Workspace::Chat,
             SessionMode::Live,
             &summary,
-            &crate::fixtures::SessionData {
+            &auspex_core::fixtures::SessionData {
                 providers: vec![],
                 ..session.clone()
             },
@@ -5099,7 +5099,7 @@ mod tests {
     #[test]
     fn provider_blocked_composer_model_requires_actual_submit_readiness() {
         let blocked = build_provider_blocked_composer_model(
-            &crate::fixtures::SessionData {
+            &auspex_core::fixtures::SessionData {
                 providers: vec![],
                 ..Default::default()
             },
@@ -5119,8 +5119,8 @@ mod tests {
         // dispatch context strip instead.
         assert!(
             build_provider_blocked_composer_model(
-                &crate::fixtures::SessionData {
-                    providers: vec![crate::fixtures::ProviderInfo {
+                &auspex_core::fixtures::SessionData {
+                    providers: vec![auspex_core::fixtures::ProviderInfo {
                         name: "Anthropic".into(),
                         authenticated: true,
                         auth_method: Some("oauth".into()),
@@ -5135,8 +5135,8 @@ mod tests {
 
         assert!(
             build_provider_blocked_composer_model(
-                &crate::fixtures::SessionData {
-                    providers: vec![crate::fixtures::ProviderInfo {
+                &auspex_core::fixtures::SessionData {
+                    providers: vec![auspex_core::fixtures::ProviderInfo {
                         name: "Anthropic".into(),
                         authenticated: true,
                         auth_method: Some("oauth".into()),
@@ -5214,7 +5214,7 @@ mod tests {
               "session": {"turns": 0, "tool_calls": 0, "compactions": 0},
               "harness": {"git_branch":"main","git_detached":false,"thinking_level":"medium","capability_tier":"victory","providers":[],"memory_available":true,"cleave_available":true,"memory_warning":null,"active_delegates":[]}
             }"#,
-            crate::instance_registry::InstanceRegistryStore::default(),
+            auspex_core::instance_registry::InstanceRegistryStore::default(),
         )
         .unwrap();
         let model = build_settings_panel_model(
@@ -5235,15 +5235,15 @@ mod tests {
     #[test]
     fn settings_panel_model_merges_runtime_and_settings_provider_metadata() {
         let controller = AppController::remote_demo();
-        let auth_state = crate::controller::SettingsAuthState {
+        let auth_state = auspex_core::controller::SettingsAuthState {
             providers: vec![
-                crate::fixtures::ProviderInfo {
+                auspex_core::fixtures::ProviderInfo {
                     name: "Anthropic/Claude".into(),
                     authenticated: true,
                     auth_method: Some("oauth".into()),
                     model: None,
                 },
-                crate::fixtures::ProviderInfo {
+                auspex_core::fixtures::ProviderInfo {
                     name: "OpenAI/Codex".into(),
                     authenticated: true,
                     auth_method: Some("oauth".into()),
@@ -5276,7 +5276,7 @@ mod tests {
     #[test]
     fn settings_panel_model_disables_provider_actions_without_inventory() {
         let controller = AppController::default();
-        let session = crate::fixtures::SessionData::default();
+        let session = auspex_core::fixtures::SessionData::default();
         let model = build_settings_panel_model(&controller, &session, None);
 
         assert_eq!(model.auth_status_label, "No providers reported");
@@ -5294,13 +5294,13 @@ mod tests {
         assert_eq!(SettingsAuthAction::Logout.command_slug(), "auth.logout");
         assert_eq!(SettingsAuthAction::Unlock.command_slug(), "auth.unlock");
 
-        let slash = crate::runtime_types::CanonicalSlashCommand {
+        let slash = auspex_core::runtime_types::CanonicalSlashCommand {
             name: "login".into(),
             args: "anthropic".into(),
             raw_input: "/login anthropic".into(),
         };
-        let targeted = crate::runtime_types::TargetedCommand::canonical_slash(
-            crate::runtime_types::CommandTarget {
+        let targeted = auspex_core::runtime_types::TargetedCommand::canonical_slash(
+            auspex_core::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
@@ -5319,14 +5319,14 @@ mod tests {
     #[test]
     fn dispatch_targeted_command_requires_ipc_transport() {
         let command = TargetedCommand::prompt_submit(
-            crate::runtime_types::CommandTarget {
+            auspex_core::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
             "hello",
         );
-        let transport = crate::command_transport::CommandTransport::Ipc(
-            crate::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
+        let transport = auspex_core::command_transport::CommandTransport::Ipc(
+            auspex_core::ipc_client::IpcCommandClient::new("/tmp/nonexistent-omegon.sock"),
         );
 
         let result = dispatch_targeted_command(&transport, None, &command);
@@ -5338,13 +5338,13 @@ mod tests {
     fn dispatch_targeted_command_supports_websocket_transport_for_remote_control() {
         let handle = EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
         let command = TargetedCommand::prompt_submit(
-            crate::runtime_types::CommandTarget {
+            auspex_core::runtime_types::CommandTarget {
                 session_key: "remote:session_01HVDEMO".into(),
                 dispatcher_instance_id: Some("omg_primary_01HVDEMO".into()),
             },
             "hello",
         );
-        let transport = crate::command_transport::CommandTransport::EventStream;
+        let transport = auspex_core::command_transport::CommandTransport::EventStream;
 
         let result = dispatch_targeted_command(&transport, Some(&handle), &command);
 
@@ -5386,7 +5386,7 @@ mod tests {
             activity_kind: ActivityKind::Idle,
             work: "No focused work".into(),
         };
-        let session = crate::fixtures::SessionData::default();
+        let session = auspex_core::fixtures::SessionData::default();
         let banner = render_chat_status_banner(&summary, &session, true, false);
         let debug = format!("{banner:?}");
 
@@ -5399,7 +5399,7 @@ mod tests {
 
     #[test]
     fn app_surface_helpers_assign_semantic_state_and_tone() {
-        use crate::fixtures::AppSurfaceKind;
+        use auspex_core::fixtures::AppSurfaceKind;
 
         assert_eq!(app_surface_state(AppSurfaceKind::Startup), "starting");
         assert_eq!(app_surface_tone(AppSurfaceKind::Startup), "info");
@@ -5486,7 +5486,7 @@ mod tests {
         let controller = AppController::default();
         let model: &dyn HostSessionModel = controller.as_model();
 
-        assert_eq!(model.shell_state(), crate::fixtures::ShellState::Ready);
+        assert_eq!(model.shell_state(), auspex_core::fixtures::ShellState::Ready);
         assert_eq!(model.scenario(), DevScenario::Ready);
         assert_eq!(model.messages().len(), 1);
     }

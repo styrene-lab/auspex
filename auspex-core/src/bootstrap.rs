@@ -213,7 +213,7 @@ pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 #[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
-const CARGO_MANIFEST: &str = include_str!("../Cargo.toml");
+const CARGO_MANIFEST: &str = include_str!("../../Cargo.toml");
 
 #[cfg(not(target_arch = "wasm32"))]
 const OWNED_OMEGON_PID_FILE: &str = "auspex-owned-omegon.pid";
@@ -1219,8 +1219,8 @@ fn install_cop_plugin() {
         return;
     }
 
-    let manifest = include_str!("../assets/cop-plugin/plugin.toml");
-    let stub = include_str!("../assets/cop-plugin/tools/cop_stub.sh");
+    let manifest = include_str!("../../assets/cop-plugin/plugin.toml");
+    let stub = include_str!("../../assets/cop-plugin/tools/cop_stub.sh");
 
     if let Err(error) = std::fs::write(plugin_dir.join("plugin.toml"), manifest) {
         eprintln!("auspex: could not write COP plugin manifest: {error}");
@@ -1246,7 +1246,7 @@ fn install_cop_plugin() {
         return;
     }
 
-    let skill = include_str!("../assets/cop-skill/SKILL.md");
+    let skill = include_str!("../../assets/cop-skill/SKILL.md");
     if let Err(error) = std::fs::write(skill_dir.join("SKILL.md"), skill) {
         eprintln!("auspex: could not write COP skill: {error}");
     }
