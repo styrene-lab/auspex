@@ -3657,6 +3657,20 @@ body {
   color: var(--text-dim);
 }
 
+.fleet-card-unread {
+  font-family: var(--font-mono);
+  font-size: 0.58rem;
+  font-weight: 700;
+  min-width: 1.1rem;
+  height: 1.1rem;
+  line-height: 1.1rem;
+  text-align: center;
+  border-radius: var(--radius-pill);
+  background: var(--accent-info);
+  color: #fff;
+  flex-shrink: 0;
+}
+
 /* ── COP Display Surface ─────────────────────────────────── */
 
 .cop-surface {

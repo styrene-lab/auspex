@@ -641,6 +641,7 @@ pub fn App() -> Element {
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
     let mut workspace = use_signal(|| Workspace::Cop);
+    let mut chat_last_activity: Signal<Option<std::time::Instant>> = use_signal(|| None);
     let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
@@ -760,14 +761,38 @@ pub fn App() -> Element {
                                 }
                             }
                             let _ = controller.apply_remote_event_json(&event);
+                            // Primary session event — refresh chat timer if
+                            // focused on primary and in Chat mode.
+                            if *workspace.read() == Workspace::Chat
+                                && controller.is_primary_focused()
+                            {
+                                chat_last_activity.set(Some(std::time::Instant::now()));
+                            }
                         }
                     }
                 }
                 // Drain all per-instance WebSocket event streams.
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    controller.write().drain_all_instance_sessions();
+                    let had_events = controller.write().drain_all_instance_sessions();
+                    // Refresh chat inactivity timer when the focused agent
+                    // produces events while we're in Chat mode.
+                    if had_events && *workspace.read() == Workspace::Chat {
+                        chat_last_activity.set(Some(std::time::Instant::now()));
+                    }
                 }
+
+                // Auto-revert to COP after 60s of chat inactivity.
+                if *workspace.read() == Workspace::Chat {
+                    let should_revert = (*chat_last_activity.read())
+                        .map(|last| last.elapsed() >= std::time::Duration::from_secs(60))
+                        .unwrap_or(false);
+                    if should_revert {
+                        workspace.set(Workspace::Cop);
+                        chat_last_activity.set(None);
+                    }
+                }
+
                 #[cfg(not(target_arch = "wasm32"))]
                 tokio::time::sleep(std::time::Duration::from_millis(150)).await;
                 #[cfg(target_arch = "wasm32")]
@@ -1037,6 +1062,7 @@ pub fn App() -> Element {
                 ChatCopHostActions {
                     on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
                         event.prevent_default();
+                        chat_last_activity.set(Some(std::time::Instant::now()));
                         let command = controller.write().submit_prompt_command();
                         if let Some(command) = command {
                             #[cfg(not(target_arch = "wasm32"))]
@@ -1108,13 +1134,14 @@ pub fn App() -> Element {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
                 div { class: "debug-shell-main",
                     div { class: "cockpit-console-side cockpit-console-side-left debug-shell-left-host",
-                        {render_fleet_rail(
+                        { let unread_snapshot: Vec<(String, u32)> = controller.read().unread_snapshot(); render_fleet_rail(
                             &session,
                             controller.read().focused_instance_id().map(|s| s.to_string()),
                             #[cfg(not(target_arch = "wasm32"))]
                             controller.read().instance_activity_summaries(),
                             #[cfg(target_arch = "wasm32")]
                             vec![],
+                            unread_snapshot,
                             EventHandler::new({
                                 let mut controller = controller;
                                 move |instance_id: Option<String>| {
@@ -1131,6 +1158,9 @@ pub fn App() -> Element {
                                         #[cfg(not(target_arch = "wasm32"))]
                                         ctrl.focus_instance(instance_id.as_deref());
                                     }
+                                    // Switch to chat when focusing any agent.
+                                    workspace.set(Workspace::Chat);
+                                    chat_last_activity.set(Some(std::time::Instant::now()));
                                 }
                             }),
                         )}
@@ -1235,6 +1265,7 @@ pub fn App() -> Element {
                                                         selected_cockpit_entity.set(None);
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         controller.write().focus_instance(None);
+                                                        workspace.set(Workspace::Cop);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
                                                         {
@@ -1243,6 +1274,8 @@ pub fn App() -> Element {
                                                             #[cfg(not(target_arch = "wasm32"))]
                                                             ctrl.focus_instance(Some(&key));
                                                         }
+                                                        workspace.set(Workspace::Chat);
+                                                        chat_last_activity.set(Some(std::time::Instant::now()));
                                                     }
                                                 }
                                             },
@@ -2573,6 +2606,7 @@ fn render_fleet_rail(
     focused_instance_id: Option<String>,
     #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
     activity_summaries: Vec<(String, crate::instance_session::ActivitySummary)>,
+    unread_counts: Vec<(String, u32)>,
     on_focus: EventHandler<Option<String>>,
 ) -> Element {
     let is_primary_focused = focused_instance_id.is_none();
@@ -2619,6 +2653,7 @@ fn render_fleet_rail(
                             instance,
                             focused_instance_id.as_deref() == Some(instance.instance_id.as_str()),
                             &activity_summaries,
+                            &unread_counts,
                             on_focus,
                         )}
                     }
@@ -2632,6 +2667,7 @@ fn render_fleet_instance_card(
     instance: &crate::fixtures::LifecycleInstanceTelemetryData,
     is_focused: bool,
     activity_summaries: &[(String, crate::instance_session::ActivitySummary)],
+    unread_counts: &[(String, u32)],
     on_focus: EventHandler<Option<String>>,
 ) -> Element {
     let freshness = instance.freshness.as_deref().unwrap_or("unknown");
@@ -2641,6 +2677,11 @@ fn render_fleet_instance_card(
         .find(|(id, _)| *id == instance.instance_id)
         .map(|(_, a)| a);
     let is_active = activity.is_some_and(|a| a.run_active);
+    let unread = unread_counts
+        .iter()
+        .find(|(id, _)| *id == instance.instance_id)
+        .map(|(_, count)| *count)
+        .unwrap_or(0);
 
     let status_class = match freshness {
         "fresh" if is_active => "fleet-card-status-active",
@@ -2684,6 +2725,9 @@ fn render_fleet_instance_card(
             },
             div { class: "fleet-card-header",
                 span { class: "fleet-card-role", "{label}" }
+                if unread > 0 && !is_focused {
+                    span { class: "fleet-card-unread", "{unread}" }
+                }
                 span { class: "fleet-card-status {status_class}", "{status_label}" }
             }
             div { class: "fleet-card-detail",

@@ -200,14 +200,15 @@ impl InstanceSessionMap {
         self.sessions.contains_key(instance_id)
     }
 
-    /// Drain all instance inboxes and apply events. Returns true if any
-    /// instance had events.
-    pub fn drain_all(&mut self) -> bool {
-        let mut any = false;
-        for session in self.sessions.values_mut() {
-            any |= session.drain_and_apply();
+    /// Drain all instance inboxes, returning the IDs of instances that had events.
+    pub fn drain_all_with_ids(&mut self) -> Vec<String> {
+        let mut active = Vec::new();
+        for (id, session) in &mut self.sessions {
+            if session.drain_and_apply() {
+                active.push(id.clone());
+            }
         }
-        any
+        active
     }
 
     /// Look up a session by instance_id.

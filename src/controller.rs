@@ -213,6 +213,9 @@ pub struct AppController {
     #[cfg(not(target_arch = "wasm32"))]
     settings_auth_state: SettingsAuthState,
     cop_state: crate::cop_surface::CopDisplayState,
+    /// Per-instance unread event count. Incremented when events arrive for
+    /// non-focused instances; cleared when the operator focuses an instance.
+    unread_counts: std::collections::HashMap<String, u32>,
 }
 
 impl Default for AppController {
@@ -243,6 +246,7 @@ impl Default for AppController {
                 inventory_refreshed: true,
             },
             cop_state: crate::cop_surface::CopDisplayState::default(),
+            unread_counts: std::collections::HashMap::new(),
         };
         controller.refresh_telemetry_snapshot();
         controller
@@ -280,6 +284,7 @@ impl AppController {
                 inventory_refreshed: false,
             },
             cop_state: crate::cop_surface::CopDisplayState::default(),
+            unread_counts: std::collections::HashMap::new(),
         };
         controller.rebuild_attached_instances();
         controller.refresh_telemetry_snapshot();
@@ -354,11 +359,13 @@ impl AppController {
     // ── Instance session focus management ────────────────────────────────
 
     /// Set which instance the center COP shows. None = primary session.
+    /// Clears the unread badge for the newly focused instance.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn focus_instance(&mut self, instance_id: Option<&str>) {
         self.focused_instance_id = instance_id.map(|s| s.to_string());
         if let Some(id) = instance_id {
             self.select_command_route_for_instance(id);
+            self.unread_counts.remove(id);
         }
     }
 
@@ -387,6 +394,15 @@ impl AppController {
             self.cop_state
                 .try_apply_tool_start(name, args.as_ref());
         }
+    }
+
+    /// Snapshot of all unread counts for rendering.
+    pub fn unread_snapshot(&self) -> Vec<(String, u32)> {
+        self.unread_counts
+            .iter()
+            .filter(|(_, count)| **count > 0)
+            .map(|(id, count)| (id.clone(), *count))
+            .collect()
     }
 
     /// Transcript for the focused instance (or primary if none focused).
@@ -483,9 +499,16 @@ impl AppController {
 
     /// Drain all per-instance event streams and apply events.
     /// Called from the app event loop every tick.
+    /// Increments unread counts for non-focused instances that had events.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn drain_all_instance_sessions(&mut self) -> bool {
-        self.instance_sessions.drain_all()
+        let active_ids = self.instance_sessions.drain_all_with_ids();
+        for id in &active_ids {
+            if self.focused_instance_id.as_deref() != Some(id.as_str()) {
+                *self.unread_counts.entry(id.clone()).or_insert(0) += 1;
+            }
+        }
+        !active_ids.is_empty()
     }
 
     /// Send a command to a specific instance's WebSocket.
