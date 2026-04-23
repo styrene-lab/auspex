@@ -9,22 +9,33 @@ name = "auspex-operator"
 path = "src/main.rs"
 
 [dependencies]
-auspex-core = { path = "../auspex-core", default-features = false, features = ["desktop"] }
+# Styrene identity (HKDF key derivation + Ed25519/X25519)
+styrene-identity = { path = "../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["signing"] }
+sha2 = "0.10"
+zeroize = "1"
 
 # Kubernetes
 kube = { version = "0.99", features = ["runtime", "derive", "client"] }
-k8s-openapi = { version = "0.24", features = ["v1_32"] }
+# k8s API version: v1_30 is the safe floor for CNCF conformant distros
+# (EKS, GKE, AKS, OpenShift 4.15+, RKE2, k3s, Talos, kubeadm).
+# Our API surface uses only stable v1 resources (Deployment, Job, CronJob,
+# ConfigMap, Secret, Service) — no beta/alpha features.
+k8s-openapi = { version = "0.24", features = ["v1_30"] }
+
+# HTTP client for external agent probing
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 # Async runtime
-tokio = { version = "1", features = ["full"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
 futures-util = "0.3"
 
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 
-# HTTP server for fleet API
+# HTTP server for fleet API + web UI
 axum = "0.8"
+tower-http = { version = "0.6", features = ["fs", "set-header"] }
 
 # Logging
 tracing = "0.1"
@@ -33,6 +44,9 @@ tracing-subscriber = { version = "0.3", features = ["env-filter"] }
 # Error handling
 anyhow = "1"
 thiserror = "2"
+
+# URL parsing (endpoint validation)
+url = "2"
 
 # Schema generation
 schemars = "0.8"

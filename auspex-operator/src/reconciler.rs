@@ -7,11 +7,11 @@ use std::sync::Arc;
 
 use k8s_openapi::api::{
     apps::v1::Deployment,
-    batch::v1::CronJob,
+    batch::v1::{CronJob, Job},
     core::v1::{ConfigMap, Service},
 };
 use kube::{
-    Api, Client, Resource, ResourceExt,
+    Api, Client, ResourceExt,
     api::{Patch, PatchParams},
     runtime::controller::Action,
 };
@@ -20,9 +20,22 @@ use tracing::{info, warn};
 
 use crate::crd::{AgentMode, OmegonAgent};
 
+/// Default sidecar images. Override via AUSPEX_STYRENED_IMAGE / AUSPEX_AETHER_IMAGE env vars.
+fn styrened_image() -> String {
+    std::env::var("AUSPEX_STYRENED_IMAGE")
+        .unwrap_or_else(|_| "ghcr.io/styrene-lab/styrened:0.5".into())
+}
+
+fn aether_image() -> String {
+    std::env::var("AUSPEX_AETHER_IMAGE")
+        .unwrap_or_else(|_| "ghcr.io/styrene-lab/aether:0.3".into())
+}
+
 /// Shared state across reconcile calls.
 pub struct Context {
     pub client: Client,
+    /// When set, restricts all operations to this namespace.
+    pub watch_namespace: Option<String>,
 }
 
 /// Reconcile a single OmegonAgent resource.
@@ -33,10 +46,28 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
 
     info!(agent = %name, namespace = %ns, mode = ?agent.spec.mode, "reconciling");
 
+    // Provision StyreneID if identity is configured.
+    if agent.spec.identity.as_ref().is_some_and(|id| id.provision) {
+        match crate::identity::provision_identity(client, &agent, &ns, &name).await {
+            Ok(provisioned) => {
+                info!(
+                    agent = %name,
+                    rns_dest = %provisioned.rns_destination_hash,
+                    wg_pub = %provisioned.wireguard_pubkey,
+                    "identity provisioned"
+                );
+            }
+            Err(crate::identity::IdentityError::NotConfigured) => {}
+            Err(e) => {
+                warn!(agent = %name, error = %e, "identity provisioning failed");
+            }
+        }
+    }
+
     // Ensure ConfigMap for vox.toml
     reconcile_configmap(client, &agent, &ns, &name).await?;
 
-    // Ensure workload (Deployment or CronJob)
+    // Ensure workload
     match agent.spec.mode {
         AgentMode::Daemon => {
             reconcile_deployment(client, &agent, &ns, &name).await?;
@@ -45,6 +76,14 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
         AgentMode::Cronjob => {
             reconcile_cronjob(client, &agent, &ns, &name).await?;
         }
+        AgentMode::Job => {
+            reconcile_job(client, &agent, &ns, &name).await?;
+        }
+    }
+
+    // Ensure prompt ConfigMap for job/cronjob with inline prompt
+    if matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob) {
+        reconcile_prompt_configmap(client, &agent, &ns, &name).await?;
     }
 
     info!(agent = %name, "reconciliation complete");
@@ -120,6 +159,13 @@ async fn reconcile_deployment(
 ) -> Result<(), kube::Error> {
     let api: Api<Deployment> = Api::namespaced(client.clone(), ns);
 
+    let tpl = pod_spec(agent, name);
+    let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
+    if let Some(ref annotations) = tpl.annotations {
+        template_metadata.as_object_mut().unwrap()
+            .insert("annotations".into(), annotations.clone());
+    }
+
     let deploy = json!({
         "apiVersion": "apps/v1",
         "kind": "Deployment",
@@ -132,8 +178,8 @@ async fn reconcile_deployment(
             "replicas": 1,
             "selector": { "matchLabels": { "styrene.sh/agent": name } },
             "template": {
-                "metadata": { "labels": { "styrene.sh/agent": name } },
-                "spec": pod_spec(agent, name),
+                "metadata": template_metadata,
+                "spec": tpl.spec,
             }
         }
     });
@@ -152,8 +198,15 @@ async fn reconcile_cronjob(
     let api: Api<CronJob> = Api::namespaced(client.clone(), ns);
     let schedule = agent.spec.schedule.as_deref().unwrap_or("0 * * * *");
 
-    let mut spec = pod_spec(agent, name);
+    let tpl = pod_spec(agent, name);
+    let mut spec = tpl.spec;
     spec.as_object_mut().unwrap().insert("restartPolicy".into(), json!("Never"));
+
+    let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
+    if let Some(ref annotations) = tpl.annotations {
+        template_metadata.as_object_mut().unwrap()
+            .insert("annotations".into(), annotations.clone());
+    }
 
     let cj = json!({
         "apiVersion": "batch/v1",
@@ -172,7 +225,7 @@ async fn reconcile_cronjob(
                 "spec": {
                     "backoffLimit": 1,
                     "template": {
-                        "metadata": { "labels": { "styrene.sh/agent": name } },
+                        "metadata": template_metadata,
                         "spec": spec,
                     }
                 }
@@ -185,9 +238,111 @@ async fn reconcile_cronjob(
     Ok(())
 }
 
+async fn reconcile_job(
+    client: &Client,
+    agent: &OmegonAgent,
+    ns: &str,
+    name: &str,
+) -> Result<(), kube::Error> {
+    let api: Api<Job> = Api::namespaced(client.clone(), ns);
+
+    let tpl = pod_spec(agent, name);
+    let mut spec = tpl.spec;
+    spec.as_object_mut()
+        .unwrap()
+        .insert("restartPolicy".into(), json!("Never"));
+
+    let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
+    if let Some(ref annotations) = tpl.annotations {
+        template_metadata.as_object_mut().unwrap()
+            .insert("annotations".into(), annotations.clone());
+    }
+
+    let active_deadline = agent
+        .spec
+        .bounds
+        .as_ref()
+        .and_then(|b| b.active_deadline_seconds);
+
+    let mut job_spec = json!({
+        "backoffLimit": 0,
+        "template": {
+            "metadata": template_metadata,
+            "spec": spec,
+        }
+    });
+
+    if let Some(deadline) = active_deadline {
+        job_spec
+            .as_object_mut()
+            .unwrap()
+            .insert("activeDeadlineSeconds".into(), json!(deadline));
+    }
+
+    let job = json!({
+        "apiVersion": "batch/v1",
+        "kind": "Job",
+        "metadata": {
+            "name": name,
+            "namespace": ns,
+            "ownerReferences": [owner_ref(agent)],
+        },
+        "spec": job_spec,
+    });
+
+    api.patch(
+        name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(job),
+    )
+    .await?;
+    Ok(())
+}
+
+async fn reconcile_prompt_configmap(
+    client: &Client,
+    agent: &OmegonAgent,
+    ns: &str,
+    name: &str,
+) -> Result<(), kube::Error> {
+    let inline = agent
+        .spec
+        .prompt
+        .as_ref()
+        .and_then(|p| p.inline.as_deref());
+
+    let Some(prompt_text) = inline else {
+        return Ok(());
+    };
+
+    let api: Api<ConfigMap> = Api::namespaced(client.clone(), ns);
+    let cm_name = format!("{name}-prompt");
+
+    let cm = json!({
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": cm_name,
+            "namespace": ns,
+            "ownerReferences": [owner_ref(agent)],
+        },
+        "data": {
+            "prompt.txt": prompt_text,
+        }
+    });
+
+    api.patch(
+        &cm_name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(cm),
+    )
+    .await?;
+    Ok(())
+}
+
 async fn reconcile_service(
     client: &Client,
-    _agent: &OmegonAgent,
+    agent: &OmegonAgent,
     ns: &str,
     name: &str,
 ) -> Result<(), kube::Error> {
@@ -199,6 +354,7 @@ async fn reconcile_service(
         "metadata": {
             "name": name,
             "namespace": ns,
+            "ownerReferences": [owner_ref(agent)],
         },
         "spec": {
             "selector": { "styrene.sh/agent": name },
@@ -216,22 +372,94 @@ async fn reconcile_service(
     Ok(())
 }
 
-fn pod_spec(agent: &OmegonAgent, name: &str) -> serde_json::Value {
-    let mut env = vec![];
+fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
+    let is_bounded = matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob);
+    let has_aether = agent
+        .spec
+        .vox
+        .connectors
+        .iter()
+        .any(|c| c == "aether");
+
+    let mut env = vec![
+        json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
+    ];
     if let Some(ref discord) = agent.spec.vox.discord {
         if let Some(ref gid) = discord.guild_id {
             env.push(json!({"name": "VOX_DISCORD_GUILD_ID", "value": gid}));
         }
     }
 
+    // When aether is enabled, set the styrened socket path and extensions dir.
+    if has_aether {
+        env.push(json!({"name": "STYRENED_SOCKET", "value": "/shared/styrened.sock"}));
+        env.push(json!({"name": "OMEGON_EXTENSIONS_PATH", "value": "/extensions"}));
+    }
+
+    // Inject profile reference as annotation for SBOM tracking.
+    if let Some(ref profile) = agent.spec.profile {
+        env.push(json!({"name": "OMEGON_PROFILE", "value": profile}));
+    }
+
+    // StyreneID env vars (volumes mounted below after declaration).
+    if agent.spec.identity.as_ref().is_some_and(|id| id.provision) {
+        env.push(json!({
+            "name": "STYRENE_IDENTITY_PATH",
+            "value": "/run/styrene/identity/root-secret"
+        }));
+        let role = agent
+            .spec
+            .identity
+            .as_ref()
+            .map(|id| id.mesh_role.as_str())
+            .unwrap_or("operator");
+        env.push(json!({"name": "STYRENE_MESH_ROLE", "value": role}));
+    }
+
+    // Mount vox config at a well-known path that doesn't assume root home.
+    // Omegon reads VOX_CONFIG_PATH if set, falling back to ~/.config/vox.
     let mut volume_mounts = vec![json!({
         "name": "vox-config",
-        "mountPath": "/root/.config/vox",
+        "mountPath": "/config/vox",
     })];
     let mut volumes = vec![json!({
         "name": "vox-config",
         "configMap": { "name": format!("{name}-vox") },
     })];
+
+    if has_aether {
+        // Shared volume for Unix socket between agent and styrened sidecar.
+        volumes.push(json!({
+            "name": "shared",
+            "emptyDir": { "medium": "Memory", "sizeLimit": "10Mi" },
+        }));
+        volume_mounts.push(json!({
+            "name": "shared",
+            "mountPath": "/shared",
+        }));
+
+        // Extensions volume (populated by init container).
+        volumes.push(json!({
+            "name": "extensions",
+            "emptyDir": {},
+        }));
+        volume_mounts.push(json!({
+            "name": "extensions",
+            "mountPath": "/extensions",
+            "readOnly": true,
+        }));
+
+        // styrened sidecar config: use per-agent ConfigMap name so each
+        // agent can have its own mesh config. Falls back to a shared default.
+        let styrened_cm = format!("{name}-styrened");
+        volumes.push(json!({
+            "name": "styrened-config",
+            "configMap": {
+                "name": styrened_cm,
+                "optional": true,
+            },
+        }));
+    }
 
     if let Some(ref auth_secret) = agent.spec.secrets.auth_json_secret {
         volume_mounts.push(json!({
@@ -248,29 +476,300 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> serde_json::Value {
         }));
     }
 
+    // StyreneID secret volume for mesh identity.
+    if agent.spec.identity.as_ref().is_some_and(|id| id.provision) {
+        let secret_name = format!("{name}-styrene-id");
+        volumes.push(json!({
+            "name": "styrene-id",
+            "secret": {
+                "secretName": secret_name,
+                "items": [{"key": "root-secret", "path": "root-secret"}],
+            },
+        }));
+        volume_mounts.push(json!({
+            "name": "styrene-id",
+            "mountPath": "/run/styrene/identity",
+            "readOnly": true,
+        }));
+    }
+
     let mut env_from = vec![];
     if let Some(ref secret_name) = agent.spec.secrets.secret_name {
         env_from.push(json!({"secretRef": {"name": secret_name}}));
     }
 
-    json!({
-        "containers": [{
-            "name": "agent",
-            "image": &agent.spec.image,
-            "args": [
-                "--agent", &agent.spec.agent,
-                "--model", &agent.spec.model,
+    // Prompt/output mounts for bounded modes.
+    if is_bounded {
+        let prompt_mount_path = agent
+            .spec
+            .prompt
+            .as_ref()
+            .map(|p| p.mount_path.as_str())
+            .unwrap_or("/input/prompt.txt");
+        let prompt_dir = prompt_mount_path
+            .rsplit_once('/')
+            .map(|(d, _)| d)
+            .unwrap_or("/input");
+
+        // Prompt volume: from Secret (sensitive), ConfigMap (inline), or user-provided.
+        // Priority: secret > inline (stored as ConfigMap) > config_map reference.
+        let prompt_spec = agent.spec.prompt.as_ref();
+        if let Some(secret_name) = prompt_spec.and_then(|p| p.secret.as_ref()) {
+            volumes.push(json!({
+                "name": "prompt",
+                "secret": {
+                    "secretName": secret_name,
+                    "items": [{"key": "prompt.txt", "path": "prompt.txt"}],
+                },
+            }));
+            volume_mounts.push(json!({
+                "name": "prompt",
+                "mountPath": prompt_dir,
+                "readOnly": true,
+            }));
+        } else if prompt_spec.and_then(|p| p.inline.as_ref()).is_some() {
+            volumes.push(json!({
+                "name": "prompt",
+                "configMap": { "name": format!("{name}-prompt") },
+            }));
+            volume_mounts.push(json!({
+                "name": "prompt",
+                "mountPath": prompt_dir,
+                "readOnly": true,
+            }));
+        } else if let Some(cm) = prompt_spec.and_then(|p| p.config_map.as_ref()) {
+            volumes.push(json!({
+                "name": "prompt",
+                "configMap": { "name": cm },
+            }));
+            volume_mounts.push(json!({
+                "name": "prompt",
+                "mountPath": prompt_dir,
+                "readOnly": true,
+            }));
+        }
+
+        // Output volume for structured results.
+        volumes.push(json!({
+            "name": "output",
+            "emptyDir": {},
+        }));
+        volume_mounts.push(json!({
+            "name": "output",
+            "mountPath": "/output",
+        }));
+    }
+
+    // Build container args: `run` for bounded modes, `serve` for daemon.
+    let mut args: Vec<String> = if is_bounded {
+        vec!["run".into()]
+    } else {
+        vec!["serve".into()]
+    };
+
+    args.extend(["--agent".into(), agent.spec.agent.clone()]);
+    args.extend(["--model".into(), agent.spec.model.clone()]);
+
+    // Append resource bounds for bounded modes.
+    if let Some(ref bounds) = agent.spec.bounds {
+        if let Some(turns) = bounds.max_turns {
+            args.extend(["--max-turns".into(), turns.to_string()]);
+        }
+        if let Some(timeout) = bounds.timeout {
+            args.extend(["--timeout".into(), timeout.to_string()]);
+        }
+        if let Some(budget) = bounds.token_budget {
+            args.extend(["--token-budget".into(), budget.to_string()]);
+        }
+        if let Some(ref ctx_class) = bounds.context_class {
+            args.extend(["--context-class".into(), ctx_class.clone()]);
+        }
+    }
+
+    // Prompt and output paths for bounded modes.
+    if is_bounded {
+        if let Some(ref prompt) = agent.spec.prompt {
+            args.extend(["--prompt-file".into(), prompt.mount_path.clone()]);
+            args.extend(["--output".into(), prompt.output_path.clone()]);
+        }
+    }
+
+    // Build container list: agent + optional styrened sidecar.
+    let mut agent_container = json!({
+        "name": "agent",
+        "image": &agent.spec.image,
+        "args": args,
+        "env": env,
+        "envFrom": env_from,
+        "volumeMounts": volume_mounts,
+    });
+
+    // Daemon mode gets health probes and exposed ports.
+    if !is_bounded {
+        let container = agent_container.as_object_mut().unwrap();
+        container.insert("ports".into(), json!([{"containerPort": 7842}]));
+        container.insert(
+            "livenessProbe".into(),
+            json!({
+                "httpGet": { "path": "/api/healthz", "port": 7842 },
+                "initialDelaySeconds": 15,
+                "periodSeconds": 30,
+            }),
+        );
+        container.insert(
+            "readinessProbe".into(),
+            json!({
+                "httpGet": { "path": "/api/readyz", "port": 7842 },
+                "initialDelaySeconds": 10,
+                "periodSeconds": 10,
+            }),
+        );
+    }
+
+    // Resource limits from spec.
+    if let Some(ref res) = agent.spec.resources {
+        let mut requests = serde_json::Map::new();
+        let mut limits = serde_json::Map::new();
+        if let Some(ref cpu) = res.cpu {
+            requests.insert("cpu".into(), json!(cpu));
+            limits.insert("cpu".into(), json!(cpu));
+        }
+        if let Some(ref mem) = res.memory {
+            requests.insert("memory".into(), json!(mem));
+            limits.insert("memory".into(), json!(mem));
+        }
+        if !requests.is_empty() {
+            agent_container.as_object_mut().unwrap().insert(
+                "resources".into(),
+                json!({ "requests": requests, "limits": limits }),
+            );
+        }
+    }
+
+    let mut containers = vec![agent_container];
+
+    // styrened sidecar: provides mesh transport via Unix socket.
+    if has_aether {
+        containers.push(json!({
+            "name": "styrened",
+            "image": styrened_image(),
+            "env": [
+                { "name": "STYRENED_SOCKET", "value": "/shared/styrened.sock" },
             ],
-            "ports": [{"containerPort": 7842}],
-            "env": env,
-            "envFrom": env_from,
-            "volumeMounts": volume_mounts,
-        }],
+            "volumeMounts": [
+                { "name": "shared", "mountPath": "/shared" },
+                { "name": "styrened-config", "mountPath": "/etc/styrene", "readOnly": true },
+            ],
+            "resources": {
+                "requests": { "cpu": "50m", "memory": "64Mi" },
+                "limits": { "cpu": "200m", "memory": "128Mi" },
+            },
+        }));
+    }
+
+    // Init container: copy aether extension binary into shared volume.
+    let init_containers = if has_aether {
+        json!([{
+            "name": "install-aether",
+            "image": aether_image(),
+            "command": ["/bin/sh", "-c",
+                "mkdir -p /extensions/aether && \
+                 cp /usr/local/bin/aether /extensions/aether/aether && \
+                 cp /usr/local/lib/omegon/extensions/aether/manifest.toml /extensions/aether/manifest.toml"
+            ],
+            "volumeMounts": [
+                { "name": "extensions", "mountPath": "/extensions" },
+            ],
+        }])
+    } else {
+        json!([])
+    };
+
+    // Annotations for SBOM, profile, and Vault injection.
+    let mut annotations = serde_json::Map::new();
+    if let Some(ref profile) = agent.spec.profile {
+        annotations.insert("styrene.sh/profile".into(), json!(profile));
+    }
+    if let Some(ref sbom) = agent.spec.sbom {
+        if sbom.enabled {
+            annotations.insert("styrene.sh/sbom-format".into(), json!(&sbom.format));
+            if let Some(ref artifact) = sbom.artifact_ref {
+                annotations.insert("styrene.sh/sbom-ref".into(), json!(artifact));
+            }
+        }
+    }
+
+    // Vault Agent injector annotations: when vault secrets are configured,
+    // annotate the pod so the Vault Agent sidecar injects secrets directly.
+    // This means secrets never pass through the operator's memory or k8s Secrets.
+    if let Some(ref vault) = agent.spec.secrets.vault {
+        if vault.agent_inject {
+            annotations.insert(
+                "vault.hashicorp.com/agent-inject".into(),
+                json!("true"),
+            );
+            if let Some(ref role) = vault.role {
+                annotations.insert(
+                    "vault.hashicorp.com/role".into(),
+                    json!(role),
+                );
+            }
+            if let Some(ref addr) = vault.address {
+                annotations.insert(
+                    "vault.hashicorp.com/agent-inject-status".into(),
+                    json!("update"),
+                );
+                annotations.insert(
+                    "vault.hashicorp.com/agent-address".into(),
+                    json!(addr),
+                );
+            }
+            for mapping in &vault.secrets {
+                // The annotation suffix becomes the filename under /vault/secrets/.
+                // Sanitize the destination to a safe annotation key suffix.
+                let suffix = mapping
+                    .destination
+                    .trim_start_matches('/')
+                    .replace('/', "-");
+
+                annotations.insert(
+                    format!("vault.hashicorp.com/agent-inject-secret-{suffix}"),
+                    json!(&mapping.path),
+                );
+                if let Some(ref template) = mapping.template {
+                    annotations.insert(
+                        format!("vault.hashicorp.com/agent-inject-template-{suffix}"),
+                        json!(template),
+                    );
+                }
+            }
+        }
+    }
+
+    let pod_spec = json!({
+        "initContainers": init_containers,
+        "containers": containers,
         "volumes": volumes,
-    })
+        "terminationGracePeriodSeconds": if is_bounded { 30 } else { 60 },
+    });
+
+    PodTemplate {
+        spec: pod_spec,
+        annotations: if annotations.is_empty() {
+            None
+        } else {
+            Some(json!(annotations))
+        },
+    }
 }
 
-fn owner_ref(agent: &OmegonAgent) -> serde_json::Value {
+/// Pod template with spec and optional annotations for the template metadata.
+pub struct PodTemplate {
+    pub spec: serde_json::Value,
+    pub annotations: Option<serde_json::Value>,
+}
+
+pub fn owner_ref(agent: &OmegonAgent) -> serde_json::Value {
     json!({
         "apiVersion": "styrene.sh/v1alpha1",
         "kind": "OmegonAgent",
