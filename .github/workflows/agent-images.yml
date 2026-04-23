@@ -1,0 +1,196 @@
+name: Build Agent Images
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "profiles/**"
+  workflow_dispatch:
+    inputs:
+      profile:
+        description: "Profile to build (blank = all)"
+        required: false
+      tag:
+        description: "Image tag"
+        required: false
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/omegon
+
+jobs:
+  matrix:
+    name: Enumerate profiles
+    runs-on: ubuntu-latest
+    outputs:
+      profiles: ${{ steps.list.outputs.profiles }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - id: list
+        run: |
+          if [ -n "${{ inputs.profile }}" ]; then
+            echo "profiles=[\"${{ inputs.profile }}\"]" >> "$GITHUB_OUTPUT"
+          else
+            profiles=$(ls profiles/*.toml | xargs -I{} basename {} .toml | jq -R . | jq -s -c .)
+            echo "profiles=$profiles" >> "$GITHUB_OUTPUT"
+          fi
+
+  build:
+    name: Build ${{ matrix.profile }}
+    needs: matrix
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write   # cosign keyless signing
+      attestations: write
+    strategy:
+      matrix:
+        profile: ${{ fromJson(needs.matrix.outputs.profiles) }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Install nex
+        run: |
+          cargo install --git https://github.com/styrene-lab/nex nex-pkg
+
+      - name: Parse profile metadata
+        id: meta
+        run: |
+          name=$(grep -Po '(?<=^name = ")[^"]+' "profiles/${{ matrix.profile }}.toml" || echo "${{ matrix.profile }}")
+          echo "image_name=$name" >> "$GITHUB_OUTPUT"
+          tag="${{ inputs.tag || 'latest' }}"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+      - name: Build OCI image
+        run: |
+          nex build-image "profiles/${{ matrix.profile }}.toml" \
+            --name "${{ steps.meta.outputs.image_name }}" \
+            --tag "${{ steps.meta.outputs.tag }}"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Load and push image
+        id: push
+        run: |
+          image="${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}-${{ steps.meta.outputs.image_name }}"
+          tag="${{ steps.meta.outputs.tag }}"
+          tarball="${{ steps.meta.outputs.image_name }}-${tag}.tar.gz"
+
+          podman load -i "$tarball"
+          podman tag "${{ steps.meta.outputs.image_name }}:${tag}" "${image}:${tag}"
+          podman push "${image}:${tag}"
+
+          digest=$(podman inspect "${image}:${tag}" --format '{{.Digest}}')
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "full_ref=${image}@${digest}" >> "$GITHUB_OUTPUT"
+
+      # --- SBOM Generation ---
+
+      - name: Install SBOM tools
+        run: |
+          # syft for container SBOM generation
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          # grype for vulnerability scanning
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          # cosign for signing
+          nix profile install nixpkgs#cosign
+
+      - name: Generate CycloneDX SBOM
+        id: sbom
+        run: |
+          image="${{ steps.push.outputs.image }}"
+          tag="${{ steps.meta.outputs.tag }}"
+          name="${{ steps.meta.outputs.image_name }}"
+
+          # Generate CycloneDX JSON SBOM from the loaded image
+          syft "${image}:${tag}" \
+            --output cyclonedx-json="${name}.cdx.json" \
+            --output spdx-json="${name}.spdx.json"
+
+          # Count components for status reporting
+          count=$(jq '.components | length' "${name}.cdx.json")
+          echo "component_count=${count}" >> "$GITHUB_OUTPUT"
+          echo "cdx_file=${name}.cdx.json" >> "$GITHUB_OUTPUT"
+          echo "spdx_file=${name}.spdx.json" >> "$GITHUB_OUTPUT"
+
+      - name: Scan for vulnerabilities
+        id: vuln
+        continue-on-error: true
+        run: |
+          name="${{ steps.meta.outputs.image_name }}"
+          grype "sbom:${name}.cdx.json" \
+            --output json \
+            --file "${name}-vulns.json"
+
+          vuln_count=$(jq '.matches | length' "${name}-vulns.json")
+          echo "vulnerability_count=${vuln_count}" >> "$GITHUB_OUTPUT"
+
+          # Fail on critical vulnerabilities
+          critical=$(jq '[.matches[] | select(.vulnerability.severity == "Critical")] | length' "${name}-vulns.json")
+          if [ "$critical" -gt 0 ]; then
+            echo "::warning::${critical} critical vulnerabilities found in ${name}"
+          fi
+
+      - name: Sign SBOM with cosign
+        run: |
+          name="${{ steps.meta.outputs.image_name }}"
+
+          # Sign the CycloneDX SBOM (keyless, OIDC-based)
+          cosign sign-blob --yes \
+            --output-signature "${name}.cdx.json.sig" \
+            --output-certificate "${name}.cdx.json.cert" \
+            "${name}.cdx.json"
+
+      - name: Attach SBOM to OCI image
+        run: |
+          name="${{ steps.meta.outputs.image_name }}"
+          image="${{ steps.push.outputs.full_ref }}"
+
+          # Attach CycloneDX SBOM as OCI artifact
+          cosign attach sbom \
+            --sbom "${name}.cdx.json" \
+            --type cyclonedx \
+            "$image"
+
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+
+      - name: Upload SBOM artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: sbom-${{ matrix.profile }}
+          path: |
+            ${{ steps.sbom.outputs.cdx_file }}
+            ${{ steps.sbom.outputs.spdx_file }}
+            ${{ steps.meta.outputs.image_name }}-vulns.json
+            ${{ steps.meta.outputs.image_name }}.cdx.json.sig
+            ${{ steps.meta.outputs.image_name }}.cdx.json.cert
+
+      - name: Summary
+        run: |
+          name="${{ steps.meta.outputs.image_name }}"
+          echo "### ${name}" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Field | Value |" >> "$GITHUB_STEP_SUMMARY"
+          echo "|-------|-------|" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Image | \`${{ steps.push.outputs.image }}:${{ steps.meta.outputs.tag }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Digest | \`${{ steps.push.outputs.digest }}\` |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Components | ${{ steps.sbom.outputs.component_count }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Vulnerabilities | ${{ steps.vuln.outputs.vulnerability_count || 'n/a' }} |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| SBOM | CycloneDX 1.4 (signed) |" >> "$GITHUB_STEP_SUMMARY"
+          echo "| Profile | \`profiles/${{ matrix.profile }}.toml\` |" >> "$GITHUB_STEP_SUMMARY"

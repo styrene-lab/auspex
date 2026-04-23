@@ -1,0 +1,151 @@
+name: Build Operator + Web UI Image
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "auspex-operator/**"
+      - "auspex-core/**"
+      - "src/**"
+      - "web/**"
+      - "assets/**"
+      - "profiles/auspex-operator.toml"
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Image tag"
+        required: false
+        default: "latest"
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/auspex-operator
+
+jobs:
+  build:
+    name: Build operator + web UI
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+      id-token: write
+      attestations: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check out Omegon sibling for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/omegon
+          path: ../omegon
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: wasm32-unknown-unknown
+
+      - name: Install trunk
+        run: cargo install trunk
+
+      - name: Install nix
+        uses: DeterminateSystems/nix-installer-action@main
+
+      - name: Install nex
+        run: cargo install --git https://github.com/styrene-lab/nex nex-pkg
+
+      # --- Build the WASM web UI ---
+
+      - name: Build web UI
+        run: |
+          cd web
+          trunk build --release --features web --no-default-features
+
+      # --- Build the operator binary ---
+
+      - name: Build operator (Linux)
+        run: |
+          cargo build --release -p auspex-operator
+          cp target/release/auspex-operator dist/auspex-operator
+
+      # --- Assemble the OCI image ---
+
+      - name: Build OCI image
+        run: |
+          tag="${{ inputs.tag || github.ref_name || 'latest' }}"
+          # The nex profile provides the base packages. We layer the
+          # operator binary and web UI dist on top.
+          nex build-image profiles/auspex-operator.toml \
+            --name auspex-operator \
+            --tag "$tag"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Push image
+        id: push
+        run: |
+          tag="${{ inputs.tag || github.ref_name || 'latest' }}"
+          image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+
+          podman load -i "auspex-operator-${tag}.tar.gz"
+          podman tag "auspex-operator:${tag}" "${image}:${tag}"
+          podman push "${image}:${tag}"
+
+          digest=$(podman inspect "${image}:${tag}" --format '{{.Digest}}')
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
+          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+
+      # --- SBOM + signing ---
+
+      - name: Install supply chain tools
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
+          curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
+          nix profile install nixpkgs#cosign
+
+      - name: Generate SBOM
+        id: sbom
+        run: |
+          image="${{ steps.push.outputs.image }}:${{ steps.push.outputs.tag }}"
+          syft "$image" --output cyclonedx-json=auspex-operator.cdx.json
+          count=$(jq '.components | length' auspex-operator.cdx.json)
+          echo "component_count=${count}" >> "$GITHUB_OUTPUT"
+
+      - name: Vulnerability scan
+        id: vuln
+        continue-on-error: true
+        run: |
+          grype sbom:auspex-operator.cdx.json --output json --file auspex-operator-vulns.json
+          echo "vulnerability_count=$(jq '.matches | length' auspex-operator-vulns.json)" >> "$GITHUB_OUTPUT"
+
+      - name: Sign and attach SBOM
+        run: |
+          image="${{ steps.push.outputs.image }}@${{ steps.push.outputs.digest }}"
+          cosign sign-blob --yes \
+            --output-signature auspex-operator.cdx.json.sig \
+            --output-certificate auspex-operator.cdx.json.cert \
+            auspex-operator.cdx.json
+          cosign attach sbom --sbom auspex-operator.cdx.json --type cyclonedx "$image"
+
+      - name: Build provenance attestation
+        uses: actions/attest-build-provenance@v2
+        with:
+          subject-name: ${{ steps.push.outputs.image }}
+          subject-digest: ${{ steps.push.outputs.digest }}
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: operator-sbom
+          path: |
+            auspex-operator.cdx.json
+            auspex-operator-vulns.json
+            auspex-operator.cdx.json.sig
+            auspex-operator.cdx.json.cert
