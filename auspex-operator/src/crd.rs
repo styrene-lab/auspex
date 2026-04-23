@@ -108,6 +108,12 @@ pub struct OmegonAgentSpec {
     #[serde(default = "default_posture")]
     pub posture: String,
 
+    /// Worker role in swarm hierarchy: primary-driver (supervisor), supervised-child
+    /// (worker), or detached-service (sentry/monitor). Maps to aether's tier system
+    /// for RBAC and delegation authority.
+    #[serde(default = "default_role")]
+    pub role: String,
+
     /// "daemon" for long-lived bots, "cronjob" for scheduled, "job" for bounded oneshot.
     #[serde(default = "default_mode")]
     pub mode: AgentMode,
@@ -170,6 +176,10 @@ fn default_mode() -> AgentMode {
 
 fn default_posture() -> String {
     "fabricator".to_string()
+}
+
+fn default_role() -> String {
+    "supervised-child".to_string()
 }
 
 fn default_image() -> String {

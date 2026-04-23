@@ -383,6 +383,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
 
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
+        json!({"name": "AETHER_WORKER_ROLE", "value": &agent.spec.role}),
     ];
     if let Some(ref discord) = agent.spec.vox.discord {
         if let Some(ref gid) = discord.guild_id {
@@ -651,16 +652,38 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
 
     // styrened sidecar: provides mesh transport via Unix socket.
     if has_aether {
+        let has_identity = agent.spec.identity.as_ref().is_some_and(|id| id.provision);
+
+        let mut styrened_env = vec![
+            json!({"name": "STYRENED_SOCKET", "value": "/shared/styrened.sock"}),
+        ];
+        let mut styrened_mounts = vec![
+            json!({"name": "shared", "mountPath": "/shared"}),
+            json!({"name": "styrened-config", "mountPath": "/etc/styrene", "readOnly": true}),
+        ];
+
+        // Share the StyreneID with styrened so it can announce on RNS
+        // with the same identity the operator pre-authorized.
+        if has_identity {
+            styrened_mounts.push(json!({
+                "name": "styrene-id",
+                "mountPath": "/run/styrene/identity",
+                "readOnly": true,
+            }));
+            styrened_env.push(json!({
+                "name": "STYRENE_IDENTITY_PATH",
+                "value": "/run/styrene/identity/root-secret"
+            }));
+        }
+
         containers.push(json!({
             "name": "styrened",
             "image": styrened_image(),
-            "env": [
-                { "name": "STYRENED_SOCKET", "value": "/shared/styrened.sock" },
+            "env": styrened_env,
+            "ports": [
+                { "containerPort": 9101, "name": "metrics", "protocol": "TCP" },
             ],
-            "volumeMounts": [
-                { "name": "shared", "mountPath": "/shared" },
-                { "name": "styrened-config", "mountPath": "/etc/styrene", "readOnly": true },
-            ],
+            "volumeMounts": styrened_mounts,
             "resources": {
                 "requests": { "cpu": "50m", "memory": "64Mi" },
                 "limits": { "cpu": "200m", "memory": "128Mi" },
