@@ -5,8 +5,10 @@ use std::env;
 use std::fs;
 #[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
+#[cfg(not(target_arch = "wasm32"))]
 use crate::audit_timeline::{default_audit_timeline_path, load_or_default};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::command_transport::CommandTransport;
@@ -15,6 +17,7 @@ use crate::event_stream::{
     EventStreamHandle, apply_ws_auth_token, derive_authenticated_ws_url,
     spawn_websocket_event_stream,
 };
+#[cfg(not(target_arch = "wasm32"))]
 use crate::instance_registry::{
     default_instance_registry_path, load_or_default as load_registry_or_default,
 };
@@ -544,8 +547,13 @@ pub async fn bootstrap_from_http_state_async(
     url: &str,
     hints: &ConnectHints,
 ) -> Result<BootstrapResult, String> {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(10))
+    let mut builder = reqwest::Client::builder();
+    // reqwest on wasm32 uses browser fetch which doesn't support the timeout method.
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        builder = builder.timeout(Duration::from_secs(10));
+    }
+    let client = builder
         .build()
         .map_err(|e| format!("could not build HTTP client: {e}"))?;
 
@@ -573,9 +581,12 @@ pub async fn bootstrap_from_http_state_async(
         .text()
         .await
         .map_err(|error| format!("could not read response body: {error}"))?;
+    #[cfg(not(target_arch = "wasm32"))]
     let registry_store = default_instance_registry_path()
         .map(|path| load_registry_or_default(&path))
         .unwrap_or_default();
+    #[cfg(target_arch = "wasm32")]
+    let registry_store = crate::instance_registry::InstanceRegistryStore::default();
     let mut controller =
         AppController::from_remote_snapshot_json_with_registry(&body, registry_store)
             .map_err(|error| format!("invalid state payload: {error}"))?;
@@ -637,6 +648,7 @@ pub async fn bootstrap_from_http_state_async(
     let note = startup
         .as_ref()
         .map(|startup| {
+            #[cfg(not(target_arch = "wasm32"))]
             let control_mode = if command_transport
                 .as_ref()
                 .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
@@ -645,6 +657,8 @@ pub async fn bootstrap_from_http_state_async(
             } else {
                 "Control via degraded websocket bridge until Styrene RPC is established"
             };
+            #[cfg(target_arch = "wasm32")]
+            let control_mode = "Control via WebSocket";
             let mut note = format!(
                 "Attached via Omegon startup discovery at {} (auth: {} via {}). {}. Streaming events from {}",
                 startup_url_from_state_url(url),
@@ -723,6 +737,7 @@ pub async fn complete_http_bootstrap(url: &str, hints: &ConnectHints) -> Bootstr
 }
 
 /// Check if Omegon is already running at the default address (quick 2s timeout).
+#[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
 pub async fn omegon_is_running_async() -> bool {
     let client = reqwest::Client::builder()

@@ -30,6 +30,7 @@ web = [
     "dep:wasm-bindgen",
     "dep:wasm-bindgen-futures",
     "dep:gloo-timers",
+    "getrandom/wasm_js",
 ]
 
 [dependencies]
@@ -60,6 +61,10 @@ web-sys = { version = "0.3", optional = true, features = ["WebSocket", "MessageE
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
 gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
+
+# Entropy source — getrandom v0.3 requires explicit `wasm_js` feature on wasm32.
+# This is a transitive dep; we declare it here only to enable the feature.
+getrandom = "0.3"
 
 [dev-dependencies]
 pretty_assertions = "1"

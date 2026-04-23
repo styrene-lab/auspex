@@ -637,7 +637,6 @@ pub fn App() -> Element {
     let mut ipc_event_stream = use_signal(|| None::<IpcEventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
     let mut command_transport = use_signal(|| None::<CommandTransport>);
-    #[cfg(not(target_arch = "wasm32"))]
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
     let mut workspace = use_signal(|| Workspace::Cop);

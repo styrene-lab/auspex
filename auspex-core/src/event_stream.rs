@@ -1,8 +1,9 @@
 use std::sync::{Arc, Mutex};
+#[cfg(not(target_arch = "wasm32"))]
 use std::time::Duration;
 
 use crate::runtime_types::TargetedCommand;
-use reqwest::Url;
+use url::Url;
 
 #[derive(Clone, Debug, Default)]
 pub struct EventInbox {

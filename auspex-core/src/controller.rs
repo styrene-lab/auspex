@@ -3,8 +3,10 @@ use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
     HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
 };
+use crate::instance_registry::InstanceRegistryStore;
+#[cfg(not(target_arch = "wasm32"))]
 use crate::instance_registry::{
-    InstanceRegistryStore, default_instance_registry_path, persist as persist_instance_registry,
+    default_instance_registry_path, persist as persist_instance_registry,
 };
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
@@ -20,7 +22,6 @@ pub struct CommandRouteOption {
     pub target: CommandTarget,
 }
 
-#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct SettingsAuthState {
     pub providers: Vec<crate::fixtures::ProviderInfo>,
@@ -37,6 +38,7 @@ pub struct SlashCommandResult {
     pub output: String,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn provider_status_key(name: &str) -> Option<String> {
     let normalized: String = name
         .chars()
@@ -55,6 +57,7 @@ fn provider_status_key(name: &str) -> Option<String> {
         .map(ToOwned::to_owned)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn provider_inventory_key(name: &str) -> String {
     provider_status_key(name).unwrap_or_else(|| name.trim().to_ascii_lowercase())
 }
@@ -1050,6 +1053,7 @@ impl AppController {
             }
         };
 
+        #[cfg(not(target_arch = "wasm32"))]
         let auth_step = if !auth_inventory_refreshed {
             ReadinessStepData {
                 label: "Auth inventory".into(),
@@ -1072,6 +1076,12 @@ impl AppController {
                 detail: format!("{} provider record(s) loaded", session_data.providers.len()),
                 state: ReadinessStepState::Complete,
             }
+        };
+        #[cfg(target_arch = "wasm32")]
+        let auth_step = ReadinessStepData {
+            label: "Auth inventory".into(),
+            detail: "Auth managed by server".into(),
+            state: ReadinessStepState::Complete,
         };
 
         let prompt_step = if self.can_submit() {

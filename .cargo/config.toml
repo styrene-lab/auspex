@@ -1,0 +1,4 @@
+# getrandom v0.3+ requires this cfg for wasm32-unknown-unknown targets.
+# Without it, the crate refuses to compile (no default entropy source).
+[target.wasm32-unknown-unknown]
+rustflags = ['--cfg', 'getrandom_backend="wasm_js"']
