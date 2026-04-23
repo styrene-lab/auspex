@@ -1,0 +1,29 @@
+# Base profile for all omegon agent containers.
+#
+# Provides the omegon binary, git, and common CLI tools.
+# Agent-specific profiles extend this with [meta] extends.
+#
+# Build: nex build-image profiles/omegon-base.toml --tag <version>
+
+[meta]
+name = "omegon-base"
+description = "Minimal omegon agent runtime — shared base for all agent images"
+
+[container]
+packages = [
+    "git",
+    "openssh",
+    "curl",
+    "jq",
+    "cacert",
+]
+entrypoint = "/bin/omegon"
+workdir = "/workspace"
+expose = [7842]
+user = "agent"
+
+[shell.env]
+OMEGON_HOME = "/config/omegon"
+OMEGON_EXTENSIONS_PATH = "/extensions"
+RUST_LOG = "info"
+SSL_CERT_FILE = "/etc/ssl/certs/ca-bundle.crt"

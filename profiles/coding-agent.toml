@@ -1,0 +1,24 @@
+# Profile: styrene.coding-agent
+#
+# General-purpose software engineering agent for code review, feature
+# implementation, bug investigation, and refactoring.
+#
+# Build: nex build-image profiles/coding-agent.toml --tag <version>
+
+[meta]
+name = "omegon-coding-agent"
+description = "Software engineering agent with code analysis tools"
+extends = "styrene-lab/omegon-base"
+
+[container]
+packages = [
+    "ripgrep",
+    "fd",
+    "delta",
+    "tree-sitter",
+    "tokei",
+]
+cmd = ["serve", "--agent", "styrene.coding-agent"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.coding-agent"

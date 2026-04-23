@@ -1,0 +1,19 @@
+# Profile: omegon-overnight-reviewer
+#
+# Bounded Job agent for nightly code review. Runs `omegon run` (not serve),
+# processes a prompt, writes structured output, and exits.
+#
+# Build: nex build-image profiles/overnight-reviewer.toml --tag <version>
+#
+# k8s resource type: Job or CronJob (Phase 1 workload)
+
+[meta]
+name = "omegon-overnight-reviewer"
+description = "Nightly code review agent — bounded run, structured output"
+extends = "styrene-lab/omegon-coding-agent"
+
+[container]
+cmd = ["run", "--prompt-file", "/input/prompt.txt", "--output", "/output/result.json", "--max-turns", "100", "--timeout", "1800"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.coding-agent"

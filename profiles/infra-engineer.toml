@@ -1,0 +1,27 @@
+# Profile: omegon-infra-engineer
+#
+# Infrastructure-focused agent with cloud CLI tools, IaC tooling,
+# and cluster management utilities.
+#
+# Build: nex build-image profiles/infra-engineer.toml --tag <version>
+
+[meta]
+name = "omegon-infra-engineer"
+description = "Infrastructure agent with kubectl, terraform, and cloud CLIs"
+extends = "styrene-lab/omegon-coding-agent"
+
+[container]
+packages = [
+    "kubectl",
+    "kubernetes-helm",
+    "terraform",
+    "awscli2",
+    "google-cloud-sdk",
+    "kustomize",
+    "k9s",
+    "stern",
+]
+cmd = ["serve", "--agent", "styrene.infra-engineer"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.infra-engineer"

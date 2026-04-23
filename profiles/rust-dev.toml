@@ -1,0 +1,31 @@
+# Profile: omegon-rust-dev
+#
+# Rust-focused development agent with full toolchain, formatter, linter,
+# and analysis tools. For teams that want agents reviewing Rust PRs or
+# implementing Rust features.
+#
+# Build: nex build-image profiles/rust-dev.toml --tag <version>
+
+[meta]
+name = "omegon-rust-dev"
+description = "Rust development agent with cargo, clippy, and analysis tools"
+extends = "styrene-lab/omegon-coding-agent"
+
+[container]
+packages = [
+    "rustup",
+    "cargo-edit",
+    "cargo-deny",
+    "cargo-audit",
+    "cargo-cyclonedx",
+    "clippy",
+    "rustfmt",
+    "rust-analyzer",
+    "mold",
+]
+cmd = ["serve", "--agent", "styrene.coding-agent", "--model", "anthropic:claude-sonnet-4-6"]
+
+[shell.env]
+CARGO_HOME = "/cargo"
+RUSTUP_HOME = "/rustup"
+OMEGON_AGENT = "styrene.coding-agent"

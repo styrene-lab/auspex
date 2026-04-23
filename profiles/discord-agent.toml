@@ -1,0 +1,21 @@
+# Profile: omegon-discord-agent
+#
+# Discord community bot agent with aether extension for message transport
+# and styrened sidecar for mesh connectivity.
+#
+# Build: nex build-image profiles/discord-agent.toml --tag <version>
+
+[meta]
+name = "omegon-discord-agent"
+description = "Discord community agent with aether + styrened mesh transport"
+extends = "styrene-lab/omegon-base"
+
+[container]
+packages = [
+    "ripgrep",
+]
+cmd = ["serve", "--agent", "styrene.discord-agent"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.discord-agent"
+STYRENED_SOCKET = "/shared/styrened.sock"

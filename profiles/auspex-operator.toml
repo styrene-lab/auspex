@@ -1,0 +1,29 @@
+# Profile: auspex-operator
+#
+# Combined operator + web UI image. Serves the Auspex WASM bundle
+# alongside the fleet API, so operators get a single Deployment
+# that provides both the k8s controller and the web control surface.
+#
+# Build:
+#   trunk build --release (from web/)
+#   nex build-image profiles/auspex-operator.toml --tag <version>
+#
+# The WASM bundle is copied into /ui/dist at image build time.
+# The operator binary serves it via tower-http ServeDir.
+
+[meta]
+name = "auspex-operator"
+description = "Fleet operator + web UI — single image for the Auspex control plane"
+
+[container]
+packages = [
+    "cacert",
+]
+entrypoint = "/bin/auspex-operator"
+expose = [8080]
+workdir = "/workspace"
+user = "operator"
+
+[shell.env]
+RUST_LOG = "info,kube=warn"
+AUSPEX_WEB_UI_PATH = "/ui/dist"
