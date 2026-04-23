@@ -80,5 +80,9 @@ fn main() {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    dioxus::LaunchBuilder::web().launch(app::App);
+    let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
+
+    dioxus::LaunchBuilder::web()
+        .with_context(bootstrap)
+        .launch(app::App);
 }

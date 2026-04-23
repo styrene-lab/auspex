@@ -1,0 +1,13 @@
+[build]
+target = "index.html"
+dist = "../dist"
+release = true
+
+[watch]
+watch = ["../src", "../auspex-core/src", "../assets"]
+
+[[proxy]]
+# Proxy fleet API calls to the operator during local development.
+# In production, the operator serves both the WASM bundle and the API.
+rewrite = "/api/"
+backend = "http://localhost:8080/api/"

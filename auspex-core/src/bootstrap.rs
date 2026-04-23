@@ -247,6 +247,52 @@ impl ConnectHints {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+impl ConnectHints {
+    /// Build hints from browser URL query parameters.
+    ///
+    /// Expected params: `?ws=<url>&startup=<url>&token=<token>`
+    ///
+    /// When served by auspex-operator, the page origin is the fleet API.
+    /// The operator injects connection params for the target Omegon agent.
+    ///
+    /// SECURITY: The default startup URL is derived from `window.location.origin`.
+    /// This is safe when the WASM bundle is served by the operator (same origin).
+    /// If the bundle is served from a CDN or different origin, explicit `?startup=`
+    /// and `?ws=` params MUST be provided — the default would point at the CDN,
+    /// not the fleet API.
+    pub fn from_url_params() -> Self {
+        let window = web_sys::window();
+        let search = window
+            .as_ref()
+            .map(|w| w.location().search().unwrap_or_default())
+            .unwrap_or_default();
+        let params = web_sys::UrlSearchParams::new_with_str(&search).ok();
+
+        let get = |key: &str| -> Option<String> {
+            params
+                .as_ref()
+                .and_then(|p| p.get(key))
+                .filter(|s| !s.is_empty())
+        };
+
+        // When no explicit startup URL is provided, default to the page origin
+        // (auspex-operator fleet API) with the agent state path.
+        let startup_url = get("startup").or_else(|| {
+            window
+                .as_ref()
+                .and_then(|w| w.location().origin().ok())
+                .map(|origin| format!("{origin}/api/state"))
+        });
+
+        Self {
+            ws_url: get("ws"),
+            startup_url,
+            ws_token: get("token"),
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, serde::Deserialize)]
 struct CargoPackageMetadata {
     #[serde(default)]
@@ -465,6 +511,32 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
     BootstrapResult::startup_failure(
         "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
     )
+}
+
+/// Web bootstrap: reads connection params from URL and defers to async HTTP attach.
+///
+/// When served by auspex-operator, the page origin *is* the fleet API.
+/// Query params select the target agent: `?ns=default&agent=my-agent`
+/// The operator resolves the agent's WebSocket URL and proxies the connection.
+#[cfg(target_arch = "wasm32")]
+pub fn bootstrap_controller_for_web() -> BootstrapResult {
+    let hints = ConnectHints::from_url_params();
+
+    let url = hints
+        .startup_url
+        .clone()
+        .unwrap_or_else(|| DEFAULT_STATE_URL.into());
+
+    let mut controller = AppController::default();
+    controller.set_scenario(crate::fixtures::DevScenario::Booting);
+    controller.set_bootstrap_note(Some("Connecting to fleet control plane…".into()));
+
+    BootstrapResult {
+        controller,
+        source: BootstrapSource::HttpState { url },
+        note: None,
+        event_stream: None,
+    }
 }
 
 /// Async bootstrap from an HTTP state endpoint.
