@@ -99,8 +99,14 @@ pub struct OmegonAgentSpec {
     /// Agent bundle ID from the catalog (e.g. "styrene.overnight-reviewer").
     pub agent: String,
 
-    /// LLM provider and model (e.g. "openai-codex:gpt-5.4", "anthropic:claude-sonnet-4-6").
+    /// LLM provider and model (e.g. "openai-codex:gpt-5.4", "anthropic:claude-sonnet-4-6",
+    /// "google:gemini-2.5-flash").
     pub model: String,
+
+    /// Agent posture: explorator, fabricator (default), architect, devastator.
+    /// Controls behavioral mode — tool surface, delegation strategy, reasoning depth.
+    #[serde(default = "default_posture")]
+    pub posture: String,
 
     /// "daemon" for long-lived bots, "cronjob" for scheduled, "job" for bounded oneshot.
     #[serde(default = "default_mode")]
@@ -160,6 +166,10 @@ pub enum AgentMode {
 
 fn default_mode() -> AgentMode {
     AgentMode::Cronjob
+}
+
+fn default_posture() -> String {
+    "fabricator".to_string()
 }
 
 fn default_image() -> String {

@@ -224,6 +224,7 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
                 "namespace": a.metadata.namespace,
                 "agent": a.spec.agent,
                 "model": a.spec.model,
+                "posture": a.spec.posture,
                 "mode": a.spec.mode,
                 "image": a.spec.image,
                 "profile": a.spec.profile,

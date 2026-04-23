@@ -569,6 +569,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
 
     args.extend(["--agent".into(), agent.spec.agent.clone()]);
     args.extend(["--model".into(), agent.spec.model.clone()]);
+    args.extend(["--posture".into(), agent.spec.posture.clone()]);
 
     // Append resource bounds for bounded modes.
     if let Some(ref bounds) = agent.spec.bounds {

@@ -6,7 +6,7 @@ description = "Core logic, types, and state machines for Auspex — the operator
 
 [package.metadata.omegon]
 minimum_version = "0.15.20"
-maximum_tested_version = "0.15.26"
+maximum_tested_version = "0.16.0"
 control_plane_schema = 2
 
 [features]
