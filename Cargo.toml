@@ -1,5 +1,5 @@
 [workspace]
-members = [".", "auspex-core", "auspex-operator"]
+members = [".", "auspex-core", "auspex-operator", "tools/keygen"]
 resolver = "3"
 
 [package]

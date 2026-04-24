@@ -1,0 +1,17 @@
+[package]
+name = "auspex-keygen"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "auspex-keygen"
+path = "src/main.rs"
+
+[dependencies]
+styrene-identity = { path = "../../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["signing"] }
+ssh-key = { version = "0.6", features = ["ed25519", "std"] }
+ed25519-dalek = "=2.1.1"
+rand_core = { version = "0.6", features = ["getrandom"] }
+zeroize = "1"
+sha2 = "0.10"
