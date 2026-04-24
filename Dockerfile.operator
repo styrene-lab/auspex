@@ -1,0 +1,30 @@
+FROM rust:1.85-bookworm AS builder
+WORKDIR /build
+
+# Copy dependency crates first for layer caching
+COPY omegon-traits/ /build/omegon-traits/
+COPY styrene-identity/ /build/styrene-identity/
+
+# Copy auspex workspace
+COPY auspex/ /build/auspex/
+
+# Rewrite path deps to flat build context
+RUN sed -i 's|path = "../../omegon/core/crates/omegon-traits"|path = "/build/omegon-traits"|g' /build/auspex/auspex-core/Cargo.toml \
+    && sed -i 's|path = "../omegon/core/crates/omegon-traits"|path = "/build/omegon-traits"|g' /build/auspex/Cargo.toml \
+    && sed -i 's|path = "../../styrene-rs/crates/libs/styrene-identity"|path = "/build/styrene-identity"|g' /build/auspex/auspex-operator/Cargo.toml
+
+WORKDIR /build/auspex
+RUN cargo build --release -p auspex-operator
+
+# Runtime
+FROM debian:bookworm-slim
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+
+COPY --from=builder /build/auspex/target/release/auspex-operator /usr/local/bin/auspex-operator
+COPY dist/ /ui/dist/
+
+ENV AUSPEX_WEB_UI_PATH=/ui/dist
+ENV RUST_LOG=info,kube=warn
+EXPOSE 8080
+USER 65534:65534
+ENTRYPOINT ["auspex-operator"]
