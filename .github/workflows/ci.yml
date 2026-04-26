@@ -53,3 +53,10 @@ jobs:
       - name: Build Astro site
         working-directory: site
         run: npm run build
+
+  lipstyk:
+    name: lipstyk
+    uses: styrene-lab/lipstyk/.github/workflows/lipstyk.yml@main
+    with:
+      paths: "src/ auspex-core/src/ auspex-operator/src/"
+      threshold: 50
