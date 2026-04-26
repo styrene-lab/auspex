@@ -28,8 +28,8 @@ Auspex should copy Omegon's **release invariants** — explicit versioning, prer
 
 Auspex currently declares support for:
 
-- minimum Omegon version: `0.15.7`
-- maximum tested Omegon version: `0.15.7`
+- minimum Omegon version: `0.15.20`
+- maximum tested Omegon version: `0.16.0`
 - required control-plane schema: `2`
 
 Those values live in `Cargo.toml` under `[package.metadata.omegon]` and should move only with deliberate validation.
