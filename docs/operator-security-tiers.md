@@ -232,6 +232,53 @@ identity:
 # Client derives Ed25519 keypair, generates self-signed cert, connects with mTLS.
 ```
 
+## Canonical identity posture
+
+StyreneIdentity is the canonical cryptographic root-source for Auspex deployments. Keycloak is the default OIDC projection for human/operator sessions when an external OIDC provider is not supplied; it consumes StyreneIdentity-derived x509 identities rather than creating the underlying key material. Envoy Gateway is the edge enforcement point: it validates client certificates against the StyreneIdentity-derived CA, strips any incoming identity headers, and forwards only verified identity metadata to Keycloak and Auspex.
+
+The direction of trust is therefore:
+
+```text
+StyreneIdentity enrollment
+  -> x509 client certificate
+  -> Envoy mTLS verification
+  -> Keycloak x509 login / OIDC claims
+  -> Auspex authorization
+```
+
+Do not invert this flow by creating a Keycloak user first and importing that key into StyreneIdentity. Keycloak stores a projection of the identity (`styrene_id`, groups, roles, certificate fingerprint); StyreneIdentity owns durable registration, derivation, device/workload certificates, and revocation semantics.
+
+### Humans vs agents
+
+Humans and agents share the StyreneIdentity substrate, but they use different session and authorization paths.
+
+| Principal | Durable identity | Primary auth path | Authorization source | Keycloak projection |
+|-----------|------------------|-------------------|----------------------|---------------------|
+| Human | `human/<name>` | device cert -> Envoy mTLS -> Keycloak x509 -> OIDC | Keycloak groups/roles plus Auspex policy | default |
+| Human device | `device/<human>/<device>` | mTLS client certificate | device allow/revoke policy | linked to human user |
+| Agent | `agent/<name>` | pod/workload cert -> Envoy or mesh mTLS | Auspex agent policy / mesh policy | optional |
+| Agent requiring JWT | `agent/<name>` | mTLS-bound token exchange or client assertion | Keycloak client roles plus Auspex policy | service-account client |
+| Infrastructure service | `service/<name>` | service cert -> mTLS | infrastructure policy | optional |
+
+Human enrollment creates both the StyreneIdentity record and the Keycloak projection:
+
+```text
+styrene identity enroll human/chris --device chris-macbook --project-to-keycloak
+  -> StyreneIdentity: human/chris + device/chris-macbook cert
+  -> Keycloak: user human/chris, styrene_id attribute, Auspex groups
+```
+
+Agent enrollment is normally driven by `OmegonAgent` reconciliation. The operator derives an agent root from the operator root, writes the per-agent identity material to the configured backend, and the agent/styrened sidecar derives its protocol keys locally at startup:
+
+```text
+OmegonAgent/calorium-chef
+  -> Auspex derives agent/calorium-chef
+  -> styrened derives RNS, WireGuard, and x509 keys
+  -> agent authenticates to mesh/control-plane APIs by mTLS
+```
+
+Agents should not be forced through human login. Create a Keycloak service-account projection only when an agent must call an OIDC/JWT-protected service. Provider OAuth credentials such as `openai-codex` tokens remain separate workload credentials: Auspex may authorize `agent/<name>` to consume the current credential bundle, but the agent identity itself is StyreneIdentity/mTLS.
+
 ## Vault Secret Paths (Convention)
 
 ```
