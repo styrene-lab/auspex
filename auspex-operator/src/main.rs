@@ -9,13 +9,14 @@ mod identity;
 mod mtls;
 mod reconciler;
 
-use std::sync::Arc;
+use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Json, Router, extract::Path as AxumPath, routing::get};
 use tower_http::services::ServeDir;
 use k8s_openapi::api::{apps::v1::Deployment, batch::v1::{CronJob, Job}};
 use kube::{Api, Client, CustomResourceExt, runtime::Controller};
 use futures_util::StreamExt;
+use styrene_mqtt::{EmbeddedBrokerBuilder, EmbeddedBrokerConfig, broker::TcpListenerConfig};
 use tracing::{info, warn, error};
 
 use crd::{ExternalAgent, OmegonAgent};
@@ -56,6 +57,17 @@ async fn main() -> anyhow::Result<()> {
         client: client.clone(),
         watch_namespace: watch_namespace.clone(),
     });
+
+    let mqtt_bind_addr: SocketAddr = std::env::var("AUSPEX_MQTT_BIND_ADDR")
+        .unwrap_or_else(|_| "0.0.0.0:1883".into())
+        .parse()?;
+    let (_mqtt_broker, _mqtt_links) = EmbeddedBrokerBuilder::new(EmbeddedBrokerConfig {
+        tcp_listener: Some(TcpListenerConfig { bind_addr: mqtt_bind_addr }),
+        ..Default::default()
+    })
+    .add_link("auspex-operator")
+    .start()?;
+    info!(bind_addr = %mqtt_bind_addr, "Aether MQTT broker listening");
 
     let agents: Api<OmegonAgent> = match &watch_namespace {
         Some(ns) => Api::namespaced(client.clone(), ns),

@@ -11,6 +11,7 @@ path = "src/main.rs"
 [dependencies]
 # Styrene identity (HKDF key derivation + Ed25519/X25519)
 styrene-identity = { path = "../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["signing"] }
+styrene-mqtt = { path = "../../styrene-rs/crates/libs/styrene-mqtt", features = ["embedded-broker"] }
 sha2 = "0.10"
 zeroize = "1"
 
