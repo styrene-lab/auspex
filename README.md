@@ -8,7 +8,7 @@ Auspex is an active Rust application repo, not a design-only placeholder.
 
 Current reality:
 - desktop-first Dioxus app in `src/`
-- release-candidate line currently at `0.1.0-rc.6` in `Cargo.toml`
+- release-candidate line currently at `0.2.0-rc.1` in `Cargo.toml`
 - explicit RC/stable release workflow with changelog + release manifest
 - remote/bootstrap compatibility checks against Omegon schema + semver metadata
 - embedded/local IPC-first control path with remote/transitional websocket compatibility still present where required
@@ -16,8 +16,12 @@ Current reality:
 
 ## Repository layout
 
-- `src/` — application code
-- `docs/` — long-lived design docs and architecture notes
+- `src/` — Dioxus desktop/web shell and current operator workspaces: Cop, Chat, Session, Scribe, Graph, and Audit
+- `auspex-core/` — reusable control-plane types, fixtures, bootstrap/discovery, command transport, event streams, telemetry, and state machines
+- `auspex-operator/` — Kubernetes operator for Omegon agent fleet management, CRDs, reconciliation, fleet API, and embedded MQTT broker
+- `tools/keygen/` — key-generation utility
+- `pkl/` and `profiles/` — deployment/profile configuration inputs
+- `docs/` — long-lived design docs and architecture notes; start with `docs/README.md` for status and navigation
 - `openspec/changes/` — change proposals and delta specs
 - `scripts/` — release-manifest and preflight helpers
 - `.github/workflows/` — CI and release automation
@@ -67,8 +71,8 @@ Behavior summary:
 
 Auspex follows an explicit RC/stable process:
 - maintain `CHANGELOG.md`
-- cut RC tags like `v0.1.0-rc.7`
-- promote stable tags like `v0.1.0`
+- cut RC tags like `vX.Y.Z-rc.N` — current line is `v0.2.0-rc.N`
+- promote stable tags like `vX.Y.Z` — current stable target is `v0.2.0`
 - run `python3 scripts/release_preflight.py` before stable promotion
 - let GitHub Actions build archives, checksums, and `release-manifest.json`
 
