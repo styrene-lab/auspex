@@ -184,12 +184,15 @@ The smallest useful slice is SSH/shuttle plus local secret import:
 
 1. Define `SecretRef`, `SecretGrant`, `SecretSeedPlan`, `SealedBootstrapBundle`, and `SecretLease` in `auspex-core`. Done in `auspex_core::secret_grants`.
 2. Implement a file-backed grant broker for development. Done as `FileSecretGrantBroker`.
-3. Teach the remote deployment path to write a sealed bootstrap bundle.
-4. Teach Omegon to redeem the bundle over WSS/mTLS and import values into `styrene-secrets`.
-5. Surface grant state in Auspex as references, readiness, lease status, and rotation generation.
+3. Add an orchestration bridge from worker launch requests to grant/seed-plan creation. Done as `auspex_core::secret_orchestration::prepare_worker_security`.
+4. Teach the remote deployment path to write a sealed bootstrap bundle.
+5. Teach Omegon to redeem the bundle over WSS/mTLS and import values into `styrene-secrets`.
+6. Surface grant state in Auspex as references, readiness, lease status, and rotation generation. Started by projecting security bindings into lifecycle telemetry.
 
 Kubernetes VSO and Vault Agent then become adapters over the same objects rather than a separate conceptual model.
 
 Implementation has started in `auspex_core::secret_grants`. The module is intentionally a control-plane schema and broker trait, not a secret engine. OpenBao/Vault-compatible leases, SPIFFE/SPIRE workload identity, Kubernetes External Secrets, and sealed bootstrap bundles should be implemented as adapters behind this shape.
 
 `DesiredWorkerState` and `InstantiateRequest` now carry a `WorkerSecurityBinding` with optional principal, secret refs, grant ids, and seed-plan ids. That is the bridge from generic worker launch to auditable secret grants: every future deployment adapter should be able to answer which principal it launches and which secret references it expects to materialize.
+
+`prepare_worker_security` is the first execution bridge. It creates and redeems a grant through a `SecretGrantBroker`, returns the updated `InstantiateRequest`, and records the seed-plan id that a runtime adapter can materialize.

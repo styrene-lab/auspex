@@ -275,6 +275,9 @@ pub struct LifecycleInstanceTelemetryData {
     pub status: Option<String>,
     pub freshness: Option<String>,
     pub last_seen_at: Option<String>,
+    pub secret_refs: Vec<String>,
+    pub grant_ids: Vec<String>,
+    pub seed_plan_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]

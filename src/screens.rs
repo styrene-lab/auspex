@@ -1655,6 +1655,9 @@ mod tests {
                         freshness: Some("fresh".into()),
                         base_url: Some("http://127.0.0.1:7842".into()),
                         last_seen_at: None,
+                        secret_refs: Vec::new(),
+                        grant_ids: Vec::new(),
+                        seed_plan_ids: Vec::new(),
                     }],
                     ..Default::default()
                 },

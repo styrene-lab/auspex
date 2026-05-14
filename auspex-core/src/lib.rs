@@ -12,6 +12,7 @@ pub mod cop_surface;
 pub mod omegon_control;
 pub mod runtime_types;
 pub mod secret_grants;
+pub mod secret_orchestration;
 pub mod session_model;
 
 // Data layer

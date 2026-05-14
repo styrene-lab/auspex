@@ -402,6 +402,15 @@ fn project_lifecycle_instance(
         }),
         last_seen_at: registry_record
             .and_then(|record| record.observed.health.last_seen_at.clone()),
+        secret_refs: registry_record
+            .map(|record| record.desired.security.secret_refs.clone())
+            .unwrap_or_default(),
+        grant_ids: registry_record
+            .map(|record| record.desired.security.grant_ids.clone())
+            .unwrap_or_default(),
+        seed_plan_ids: registry_record
+            .map(|record| record.desired.security.seed_plan_ids.clone())
+            .unwrap_or_default(),
     }
 }
 
