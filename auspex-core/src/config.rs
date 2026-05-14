@@ -271,8 +271,8 @@ fn load_config_file<T: for<'de> Deserialize<'de>>(
     let toml_path = dir.join(format!("{stem}.toml"));
 
     if pkl_path.exists() {
-        let value: T = rpkl::from_config(&pkl_path)
-            .map_err(|e| format!("{}: {e}", pkl_path.display()))?;
+        let value: T =
+            rpkl::from_config(&pkl_path).map_err(|e| format!("{}: {e}", pkl_path.display()))?;
         return Ok((value, pkl_path));
     }
 
@@ -384,6 +384,7 @@ impl RemoteInstanceEntry {
                     health_url: self.health_url(),
                     ready_url: self.ready_url(),
                     ws_url: self.ws_url(),
+                    acp_url: None,
                     auth_mode: self.auth_mode.clone(),
                     token_ref: self.token.clone(),
                     last_ready_at: None,
@@ -460,7 +461,10 @@ memory = "1Gi"
             Some("ghcr.io/styrene-lab/omegon:v0.15.25")
         );
         assert!(homelab.restart_on_exit);
-        assert_eq!(homelab.resources.as_ref().unwrap().cpu.as_deref(), Some("1"));
+        assert_eq!(
+            homelab.resources.as_ref().unwrap().cpu.as_deref(),
+            Some("1")
+        );
         assert_eq!(
             homelab.resources.as_ref().unwrap().memory.as_deref(),
             Some("2Gi")
@@ -470,7 +474,10 @@ memory = "1Gi"
         assert_eq!(hc.failure_threshold, 5);
         assert_eq!(hc.initial_delay_secs, 20);
         let flags = homelab.omegon_flags.as_ref().unwrap();
-        assert_eq!(flags, &["--strict-port", "--model", "anthropic:claude-haiku"]);
+        assert_eq!(
+            flags,
+            &["--strict-port", "--model", "anthropic:claude-haiku"]
+        );
         let env = homelab.env.as_ref().unwrap();
         assert_eq!(env.get("OMEGON_LOG").unwrap(), "info");
 
@@ -516,12 +523,15 @@ max_cost_usd = 5.0
         assert_eq!(file.profiles.len(), 2);
 
         let bg = file.profiles.get("background-service").unwrap();
+        assert_eq!(bg.role, crate::runtime_types::WorkerRole::DetachedService);
         assert_eq!(
-            bg.role,
-            crate::runtime_types::WorkerRole::DetachedService
+            bg.thinking_level,
+            crate::runtime_types::ThinkingLevel::Minimal
         );
-        assert_eq!(bg.thinking_level, crate::runtime_types::ThinkingLevel::Minimal);
-        assert_eq!(bg.memory_mode, crate::runtime_types::MemoryMode::ProjectOnly);
+        assert_eq!(
+            bg.memory_mode,
+            crate::runtime_types::MemoryMode::ProjectOnly
+        );
         assert_eq!(bg.max_cost_usd, 5.0);
     }
 
@@ -591,9 +601,7 @@ max_cost_usd = 5.0
             "k8s".into(),
             DeployProfile {
                 backend: "kubernetes".into(),
-                requires: Some(vec![
-                    "auspex-test-nonexistent-binary-xyz".into(),
-                ]),
+                requires: Some(vec!["auspex-test-nonexistent-binary-xyz".into()]),
                 ..Default::default()
             },
         );
@@ -618,9 +626,7 @@ max_cost_usd = 5.0
             "needs-missing".into(),
             DeployProfile {
                 backend: "kubernetes".into(),
-                requires: Some(vec![
-                    "auspex-test-nonexistent-binary-xyz".into(),
-                ]),
+                requires: Some(vec!["auspex-test-nonexistent-binary-xyz".into()]),
                 ..Default::default()
             },
         );
@@ -744,16 +750,14 @@ base_url = "http://192.168.1.50:7842"
             record.observed.control_plane.startup_url,
             "https://agents.styrene.dev:7842/api/startup"
         );
-        assert!(record
-            .observed
-            .control_plane
-            .ws_url
-            .contains("wss://"));
-        assert!(record
-            .observed
-            .control_plane
-            .ws_url
-            .contains("token=tok_test"));
+        assert!(record.observed.control_plane.ws_url.contains("wss://"));
+        assert!(
+            record
+                .observed
+                .control_plane
+                .ws_url
+                .contains("token=tok_test")
+        );
         assert_eq!(
             record.observed.control_plane.token_ref.as_deref(),
             Some("tok_test")

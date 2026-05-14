@@ -7,81 +7,313 @@
 /// but are tested and ready for right-rail / session inspector integration.
 use dioxus::prelude::*;
 
-use auspex_core::controller::SessionMode;
 use auspex_core::fixtures::{
-    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
-    HostSessionSummary, SessionData, WorkData,
+    DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, SessionData, WorkData,
 };
 
-// ── Graph screen ──────────────────────────────────────────────────────────────
+// ── Workflow builder screen ─────────────────────────────────────────────────
 
 #[component]
-pub fn GraphScreen(data: GraphData) -> Element {
-    // Group nodes by status for display
-    let mut groups: Vec<(String, Vec<String>)> = Vec::new();
-    let mut seen: std::collections::HashMap<String, Vec<String>> = std::collections::HashMap::new();
-    for node in &data.nodes {
-        seen.entry(node.status.clone())
-            .or_default()
-            .push(node.title.clone());
-    }
-    // Render in a meaningful order
-    for status in &[
-        "implementing",
-        "decided",
-        "actionable",
-        "exploring",
-        "seed",
-        "blocked",
-    ] {
-        if let Some(titles) = seen.remove(*status) {
-            groups.push((status.to_string(), titles));
-        }
-    }
-    // Remaining statuses not in the priority list
-    let mut rest: Vec<_> = seen.into_iter().collect();
-    rest.sort_by(|a, b| a.0.cmp(&b.0));
-    groups.extend(rest);
+pub fn WorkflowBuilderScreen() -> Element {
+    let mut workflow = use_signal(crate::workflow::load_or_create_workflow);
+    let mut save_state = use_signal(|| workflow.read().status.clone());
 
-    rsx! {
-        div { class: "screen screen-graph",
-            if !data.is_full_inventory && !data.nodes.is_empty() {
-                p { class: "graph-partial-notice",
-                    "Showing implementing and actionable nodes only. A full inventory "
-                    "will be available once Omegon exposes the /api/graph endpoint."
+    use_effect(move || {
+        let data = workflow.read().flow_json.clone();
+        let escaped = serde_json::to_string(&data).unwrap_or_else(|_| "\"{}\"".to_string());
+        let script = format!(
+            r#"
+            (function() {{
+                window._auspexFlowSaveQueue = window._auspexFlowSaveQueue || [];
+                window._auspexFlowOnChange = function(body) {{
+                    window._auspexFlowSaveQueue.push(body);
+                }};
+
+                var attempts = 0;
+                function tryMount() {{
+                    attempts += 1;
+                    var container = document.getElementById('auspex-workflow-flow');
+                    if (!container) {{
+                        if (attempts < 100) setTimeout(tryMount, 50);
+                        return;
+                    }}
+                    if (!window.OmegonFlow) {{
+                        if (attempts < 100) setTimeout(tryMount, 100);
+                        return;
+                    }}
+                    try {{ window.OmegonFlow.unmount(); }} catch (e) {{}}
+                    window.OmegonFlow.mount('auspex-workflow-flow', {escaped}, {{
+                        readOnly: false,
+                        onChange: window._auspexFlowOnChange,
+                    }});
+                }}
+                tryMount();
+            }})();
+            "#
+        );
+        document::eval(&script);
+    });
+
+    use_effect(move || {
+        let mut bridge = document::eval(
+            r#"
+            window._auspexFlowDrainActive = true;
+            (async function drain() {
+                while (window._auspexFlowDrainActive) {
+                    if (window._auspexFlowSaveQueue && window._auspexFlowSaveQueue.length > 0) {
+                        var latest = window._auspexFlowSaveQueue[window._auspexFlowSaveQueue.length - 1];
+                        window._auspexFlowSaveQueue = [];
+                        try { dioxus.send(latest); } catch (e) { console.warn('[AuspexWorkflow] send failed', e); }
+                    } else {
+                        await new Promise(function(resolve) { setTimeout(resolve, 200); });
+                    }
+                }
+            })();
+            "#,
+        );
+
+        spawn(async move {
+            loop {
+                let Ok(body_json) = bridge.recv::<String>().await else {
+                    break;
+                };
+
+                save_state.set("saving".to_string());
+                let doc_id = workflow.read().doc_id;
+                match crate::workflow::state_from_json(&body_json, doc_id, "edited") {
+                    Ok(mut next) => {
+                        let parsed = serde_json::from_str::<omegon_flow::Flow>(&body_json);
+                        #[cfg(not(target_arch = "wasm32"))]
+                        if let Ok(flow) = parsed {
+                            match crate::workflow::save_workflow(&flow, next.doc_id) {
+                                Ok(saved_id) => next.doc_id = Some(saved_id),
+                                Err(error) => {
+                                    save_state.set(format!("save failed: {error}"));
+                                    continue;
+                                }
+                            }
+                        }
+                        workflow.set(next);
+                        save_state.set("saved".to_string());
+                    }
+                    Err(error) => save_state.set(error),
                 }
             }
+        });
+    });
 
-            if !data.counts.is_empty() {
-                section { class: "screen-section",
-                    h2 { class: "screen-section-title", "Counts" }
-                    div { class: "graph-counts",
-                        for (status, count) in &data.counts {
-                            div {
-                                class: "graph-count-chip",
-                                "data-surface": "panel",
-                                "data-state": status_badge_state(status),
-                                "data-tone": status_badge_tone(status),
-                                span { class: status_badge_class(status), "{status}" }
-                                span { class: "graph-count-num", "{count}" }
+    let validation = workflow.read().validation.clone();
+    let plan = workflow.read().plan.clone();
+    let path = workflow.read().path.clone();
+    let status = save_state.read().clone();
+    let mut catalog_groups: Vec<(String, Vec<crate::workflow::WorkflowCatalogNode>)> = Vec::new();
+    for node in crate::workflow::workflow_catalog_nodes() {
+        if let Some((_, nodes)) = catalog_groups
+            .iter_mut()
+            .find(|(category, _)| category == &node.category)
+        {
+            nodes.push(node);
+        } else {
+            catalog_groups.push((node.category.clone(), vec![node]));
+        }
+    }
+
+    rsx! {
+        div { class: "screen screen-workflow",
+            document::Script { src: asset!("/assets/vendor/flow.bundle.js") }
+            div { class: "workflow-builder-toolbar",
+                div { class: "workflow-toolbar-main",
+                    h2 { class: "screen-section-title", "Workflow builder" }
+                    p { class: "workflow-path", "{path}" }
+                }
+                div { class: "workflow-status-row",
+                    span { class: "workflow-save-state", "{status}" }
+                    if validation.errors.is_empty() {
+                        span { class: "workflow-status-chip workflow-status-ok", "Valid" }
+                    } else {
+                        span { class: "workflow-status-chip workflow-status-error", "{validation.errors.len()} errors" }
+                    }
+                }
+            }
+            div { class: "workflow-builder-layout",
+                section { class: "workflow-flow-panel",
+                    div { id: "auspex-workflow-flow", class: "workflow-flow-host" }
+                }
+                aside { class: "workflow-preview-panel",
+                    section { class: "screen-section workflow-palette-section",
+                        h2 { class: "screen-section-title", "Palette" }
+                        for (category, nodes) in catalog_groups {
+                            div { class: "workflow-palette-category",
+                                h3 { class: "workflow-palette-heading", "{category}" }
+                                div { class: "workflow-palette-grid",
+                                    for item in nodes {
+                                        button {
+                                            class: "workflow-palette-node",
+                                            title: "{item.description}",
+                                            onclick: move |_| {
+                                                save_state.set("saving".to_string());
+                                                let current = workflow.read().clone();
+                                                match crate::workflow::add_catalog_node(&current, &item.kind) {
+                                                    Ok(mut next) => {
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        if let Err(error) = crate::workflow::save_workflow_state(&mut next) {
+                                                            save_state.set(format!("save failed: {error}"));
+                                                            return;
+                                                        }
+                                                        workflow.set(next);
+                                                        save_state.set("saved".to_string());
+                                                    }
+                                                    Err(error) => save_state.set(error),
+                                                }
+                                            },
+                                            span { class: "workflow-palette-label", "{item.label}" }
+                                            span { class: "workflow-palette-kind", "{item.kind}" }
+                                        }
+                                    }
+                                }
                             }
+                        }
+                    }
+                    section { class: "screen-section",
+                        h2 { class: "screen-section-title", "Validation" }
+                        if validation.errors.is_empty() {
+                            p { class: "workflow-valid", "Valid basic workflow" }
+                        } else {
+                            div { class: "workflow-finding-list",
+                                for error in validation.errors {
+                                    p { class: "workflow-finding workflow-error", "{error}" }
+                                }
+                            }
+                        }
+                        if !validation.warnings.is_empty() {
+                            div { class: "workflow-finding-list",
+                                for warning in validation.warnings {
+                                    p { class: "workflow-finding workflow-warning", "{warning}" }
+                                }
+                            }
+                        }
+                    }
+                    section { class: "screen-section",
+                        h2 { class: "screen-section-title", "Dispatch plan" }
+                        if let Some(plan) = plan {
+                            div { class: "workflow-plan",
+                                div { class: "workflow-plan-row",
+                                    span { class: "workflow-plan-label", "Trigger" }
+                                    span { class: "workflow-plan-value", "{plan.trigger}" }
+                                }
+                                for step in plan.steps {
+                                    div { class: "workflow-plan-step",
+                                        span { class: "workflow-plan-kind", "{step.kind}" }
+                                        span { class: "workflow-plan-value", "{step.label}" }
+                                        span { class: "workflow-plan-action", "{step.action}" }
+                                    }
+                                }
+                                div { class: "workflow-plan-row",
+                                    span { class: "workflow-plan-label", "Output" }
+                                    span { class: "workflow-plan-value", "{plan.output}" }
+                                }
+                            }
+                        } else {
+                            p { class: "screen-empty", "Resolve validation errors to preview a dispatch plan." }
                         }
                     }
                 }
             }
+        }
+    }
+}
 
-            if groups.is_empty() {
-                p { class: "screen-empty", "No design-tree nodes in snapshot." }
+// ── Graph screen ──────────────────────────────────────────────────────────────
+
+#[component]
+pub fn GraphScreen(data: SessionData) -> Element {
+    let instances = data.telemetry.lifecycle.instances.clone();
+    let delegates = data.active_delegates.clone();
+    let attached_count = instances.len();
+    let active_count = delegates.len();
+    let fresh_count = data.telemetry.lifecycle.counts.fresh;
+    let stale_count = data.telemetry.lifecycle.counts.stale
+        + data.telemetry.lifecycle.counts.lost
+        + data.telemetry.lifecycle.counts.abandoned;
+    let dispatcher_id = data
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.dispatcher_instance_id.clone())
+        .or_else(|| {
+            instances
+                .first()
+                .map(|instance| instance.instance_id.clone())
+        })
+        .unwrap_or_else(|| "local".to_string());
+
+    rsx! {
+        div { class: "screen screen-graph",
+            section { class: "graph-topology-toolbar",
+                div {
+                    h2 { class: "screen-section-title", "Deployment graph" }
+                    p { class: "graph-topology-subtitle", "{data.telemetry.lifecycle.summary}" }
+                }
+                div { class: "graph-counts",
+                    div { class: "graph-count-chip",
+                        span { class: "graph-count-label", "Agents" }
+                        span { class: "graph-count-num", "{attached_count}" }
+                    }
+                    div { class: "graph-count-chip",
+                        span { class: "graph-count-label", "Active" }
+                        span { class: "graph-count-num", "{active_count}" }
+                    }
+                    div { class: "graph-count-chip",
+                        span { class: "graph-count-label", "Fresh" }
+                        span { class: "graph-count-num", "{fresh_count}" }
+                    }
+                    div { class: "graph-count-chip",
+                        span { class: "graph-count-label", "Stale" }
+                        span { class: "graph-count-num", "{stale_count}" }
+                    }
+                }
+            }
+            if instances.is_empty() && delegates.is_empty() {
+                p { class: "screen-empty", "No deployed agents are attached to this Auspex session." }
             } else {
-                for (status, titles) in &groups {
-                    section { class: "screen-section",
-                        h2 { class: "screen-section-title",
-                            span { class: status_badge_class(status), "{status}" }
-                            " ({titles.len()})"
+                section { class: "graph-topology-canvas",
+                    div { class: "graph-hub-node",
+                        span { class: "graph-node-kicker", "AUSPEX" }
+                        span { class: "graph-node-title", "Operator control" }
+                        span { class: "graph-node-meta", "dispatcher {dispatcher_id}" }
+                    }
+                    div { class: "graph-agent-grid",
+                        for instance in instances {
+                            div { class: "graph-agent-node",
+                                "data-freshness": instance.freshness.clone().unwrap_or_else(|| "unknown".to_string()),
+                                div { class: "graph-agent-edge" }
+                                div { class: "graph-node-kicker", "{instance.role} · {instance.profile}" }
+                                div { class: "graph-node-title", "{instance.instance_id}" }
+                                div { class: "graph-node-meta",
+                                    "{instance.route_id}"
+                                    if let Some(status) = &instance.status {
+                                        " · {status}"
+                                    }
+                                }
+                                if let Some(base_url) = &instance.base_url {
+                                    div { class: "graph-node-link", "{base_url}" }
+                                }
+                                if let Some(last_seen) = &instance.last_seen_at {
+                                    div { class: "graph-node-meta", "seen {last_seen}" }
+                                }
+                            }
                         }
-                        div { class: "graph-node-list",
-                            for title in titles {
-                                div { class: "graph-node-row", "{title}" }
+                    }
+                }
+                if !delegates.is_empty() {
+                    section { class: "graph-activity-band",
+                        h2 { class: "screen-section-title", "Runtime activity" }
+                        div { class: "graph-activity-grid",
+                            for delegate in delegates {
+                                div { class: "graph-activity-node",
+                                    span { class: "graph-node-kicker", "{delegate.status}" }
+                                    span { class: "graph-node-title", "{delegate.agent_name}" }
+                                    span { class: "graph-node-meta", "{delegate.task_id} · {delegate.elapsed_ms} ms" }
+                                }
                             }
                         }
                     }
@@ -183,46 +415,6 @@ pub fn WorkScreen(data: WorkData) -> Element {
                     if data.openspec_total == 0 && data.cleave_total == 0 {
                         p { class: "screen-empty", "No tracked progress." }
                     }
-                }
-            }
-        }
-    }
-}
-
-// ── Scribe screen ─────────────────────────────────────────────────────────────
-
-#[component]
-pub fn ScribeScreen(
-    summary: HostSessionSummary,
-    data: SessionData,
-    session_mode: SessionMode,
-    scenario_key: String,
-    transcript_auto_expand: bool,
-    on_set_session_mode: Option<EventHandler<String>>,
-    on_set_scenario: Option<EventHandler<String>>,
-    on_set_transcript_auto_expand: Option<EventHandler<bool>>,
-    on_dispatcher_switch: Option<EventHandler<(String, Option<String>)>>,
-    on_transcript_focus: Option<EventHandler<String>>,
-) -> Element {
-    let _ = (
-        summary,
-        data,
-        session_mode,
-        scenario_key,
-        transcript_auto_expand,
-        on_set_session_mode,
-        on_set_scenario,
-        on_set_transcript_auto_expand,
-        on_dispatcher_switch,
-        on_transcript_focus,
-    );
-
-    rsx! {
-        div { class: "screen screen-scribe",
-            section { class: "screen-section",
-                h2 { class: "screen-section-title", "Scribe" }
-                p { class: "screen-empty",
-                    "Scribe is reserved for the cross-repo work coordination platform and embedded Scribe integration. Generic session and control-plane inspection now lives in the Session workspace."
                 }
             }
         }
@@ -623,7 +815,12 @@ fn render_session_stats_widget(data: &SessionData, expanded: bool) -> Element {
 }
 
 fn should_expand_session_harness_widget(data: &SessionData) -> bool {
-    data.memory_warning.is_some() && !data.memory_warning.as_deref().unwrap_or_default().is_empty()
+    data.memory_warning.is_some()
+        && !data
+            .memory_warning
+            .as_deref()
+            .unwrap_or_default()
+            .is_empty()
 }
 
 fn should_expand_provider_status_widget(_data: &SessionData) -> bool {
@@ -1368,7 +1565,8 @@ mod tests {
 
     #[test]
     fn session_detail_widget_titles_reflect_contextual_role() {
-        let shell = render_session_harness_widget(&auspex_core::fixtures::SessionData::default(), false);
+        let shell =
+            render_session_harness_widget(&auspex_core::fixtures::SessionData::default(), false);
         let provider =
             render_provider_status_widget(&auspex_core::fixtures::SessionData::default(), false);
         let session_detail =

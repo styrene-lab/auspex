@@ -9,7 +9,7 @@ This is the bridge between product design and implementation.
 ## Sources
 
 - HTTP snapshot: `ControlPlaneStateV1`
-- Graph route: `/api/graph`
+- Deployment lifecycle telemetry from the control-plane snapshot
 - Live event stream and commands: `/ws`
 
 ## Screen bindings
@@ -63,21 +63,24 @@ This is the bridge between product design and implementation.
 ### Power mode: Chat
 
 **Uses:**
-- same transcript stream as Simple mode
-- richer tool event rendering
-- optional thinking events
-- selected current-run state from snapshot
+- ACP endpoint from Omegon startup/control-plane metadata (`/acp`)
+- ACP session updates: assistant deltas, thoughts, plans, tool calls, available commands, and config options
+- selected current-run state from snapshot while ACP is not yet attached
+
+**Update model:**
+- ACP stream is primary for the interactive session surface
+- snapshot state remains the readiness and fallback layer
 
 ### Power mode: Graph
 
 **Uses:**
-- `/api/graph`
-- selected node detail from `designTree.nodes`
-- focused node from `designTree.focused`
+- attached deployment instances from lifecycle telemetry
+- active delegate/runtime activity summaries
+- dispatcher binding and route identity
 
 **Update model:**
-- fetch graph on connect and when graph-invalidating lifecycle changes occur
-- use snapshot data for detail panels
+- snapshot-driven topology with event-triggered refresh on lifecycle/activity changes
+- use Session and Audit for deeper per-instance and lifecycle detail
 
 ### Power mode: Work
 

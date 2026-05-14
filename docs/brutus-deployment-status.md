@@ -10,11 +10,12 @@
 - **Status:** Running (1/1)
 - **Image:** `docker.io/library/auspex-operator:latest` (built on Brutus via nix, imported into k3s containerd)
 - **Service:** `auspex-operator.omegon-agents.svc:8080`
-- **Fleet API:** `/api/fleet` returns `{"agents":[]}` (no OmegonAgent CRDs yet)
+- **Fleet API:** `/api/fleet` returns managed and external agents, including daemon control-plane endpoints
 - **Health:** `/healthz` → `ok`
 - **Scoped to:** `omegon-agents` namespace via `AUSPEX_WATCH_NAMESPACE`
 - **Web UI:** Not baked into image yet (nix image doesn't include dist/)
 - **RBAC:** ClusterRole with Deployments, Jobs, CronJobs, ConfigMaps, Services, Secrets, OmegonAgents
+- **Primary driver bootstrap:** creates `OmegonAgent/auspex-primary` by default unless `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false`
 
 ### CRDs installed
 - `omegonagents.styrene.sh` (v1alpha1) — installed and working
@@ -27,8 +28,8 @@
 
 ## What's NOT deployed yet
 
-### Agent CRDs
-No `OmegonAgent` CRDs exist. The operator is running but has nothing to reconcile.
+### Primary driver credentials
+`OmegonAgent/auspex-primary` needs a provider credential Secret before the agent can complete useful Chat/ACP work. Set `AUSPEX_PRIMARY_AGENT_SECRET` on the operator to attach that Secret to the bootstrapped primary agent, or disable bootstrap and manage the manifest through GitOps.
 
 ### Web UI
 The WASM bundle (`trunk build` produces 1.5MB optimized) is built locally but not in the deployed image. The nix-built image only contains the operator binary + cacert. To add the web UI, either:
@@ -103,14 +104,15 @@ Source repos cloned at `/tmp/auspex-build/{auspex,omegon,styrene-rs}` on Brutus.
 
 ## Next steps
 
-1. **Create first OmegonAgent CRD** — migrate overnight-reviewer from hand-deployed CronJob to CRD-managed
-2. **Fix --crd output** — split into individual CRD documents for kubectl apply
-3. **Install ExternalAgent CRD** — enables monitoring of off-cluster agents
-4. **Bake web UI into image** — include dist/ in nix image for browser-based fleet management
-5. **Deploy styrened** — mesh transport for aether-connected agents
-6. **Seed operator identity** — create `styrene-operator-identity` Secret for StyreneID provisioning
-7. **Expose fleet API** — HTTPRoute via Envoy Gateway at fleet.styrene.dev
-8. **Wire into ArgoCD** — move from manual deployment to GitOps
+1. **Seed primary driver credentials** — create the provider Secret referenced by `AUSPEX_PRIMARY_AGENT_SECRET`
+2. **Migrate overnight-reviewer** — convert the hand-deployed CronJob to a CRD-managed `OmegonAgent`
+3. **Fix --crd output** — split into individual CRD documents for kubectl apply
+4. **Install ExternalAgent CRD** — enables monitoring of off-cluster agents
+5. **Bake web UI into image** — include dist/ in nix image for browser-based fleet management
+6. **Deploy styrened** — mesh transport for aether-connected agents
+7. **Seed operator identity** — create `styrene-operator-identity` Secret for StyreneID provisioning
+8. **Expose fleet API** — HTTPRoute via Envoy Gateway at fleet.styrene.dev
+9. **Wire into ArgoCD** — move from manual deployment to GitOps
 
 ## Session work summary (11 commits)
 

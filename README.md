@@ -16,7 +16,7 @@ Current reality:
 
 ## Repository layout
 
-- `src/` — Dioxus desktop/web shell and current operator workspaces: Cop, Chat, Session, Scribe, Graph, and Audit
+- `src/` — Dioxus desktop/web shell and current operator workspaces: Cop, Chat, Session, Graph, Workflow, and Audit
 - `auspex-core/` — reusable control-plane types, fixtures, bootstrap/discovery, command transport, event streams, telemetry, and state machines
 - `auspex-operator/` — Kubernetes operator for Omegon agent fleet management, CRDs, reconciliation, fleet API, and embedded MQTT broker
 - `tools/keygen/` — key-generation utility

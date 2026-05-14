@@ -27,8 +27,7 @@ fn styrened_image() -> String {
 }
 
 fn aether_image() -> String {
-    std::env::var("AUSPEX_AETHER_IMAGE")
-        .unwrap_or_else(|_| "ghcr.io/styrene-lab/aether:0.3".into())
+    std::env::var("AUSPEX_AETHER_IMAGE").unwrap_or_else(|_| "ghcr.io/styrene-lab/aether:0.3".into())
 }
 
 /// Shared state across reconcile calls.
@@ -113,10 +112,7 @@ async fn reconcile_configmap(
 
     if let Some(ref discord) = agent.spec.vox.discord {
         vox_toml.push_str("\n[discord]\n");
-        vox_toml.push_str(&format!(
-            "require_mention = {}\n",
-            discord.require_mention
-        ));
+        vox_toml.push_str(&format!("require_mention = {}\n", discord.require_mention));
         if let Some(ref gid) = discord.guild_id {
             vox_toml.push_str(&format!("guild_id = \"{gid}\"\n"));
         }
@@ -162,7 +158,9 @@ async fn reconcile_deployment(
     let tpl = pod_spec(agent, name);
     let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
     if let Some(ref annotations) = tpl.annotations {
-        template_metadata.as_object_mut().unwrap()
+        template_metadata
+            .as_object_mut()
+            .unwrap()
             .insert("annotations".into(), annotations.clone());
     }
 
@@ -184,8 +182,12 @@ async fn reconcile_deployment(
         }
     });
 
-    api.patch(name, &PatchParams::apply("auspex-operator"), &Patch::Apply(deploy))
-        .await?;
+    api.patch(
+        name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(deploy),
+    )
+    .await?;
     Ok(())
 }
 
@@ -200,11 +202,15 @@ async fn reconcile_cronjob(
 
     let tpl = pod_spec(agent, name);
     let mut spec = tpl.spec;
-    spec.as_object_mut().unwrap().insert("restartPolicy".into(), json!("Never"));
+    spec.as_object_mut()
+        .unwrap()
+        .insert("restartPolicy".into(), json!("Never"));
 
     let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
     if let Some(ref annotations) = tpl.annotations {
-        template_metadata.as_object_mut().unwrap()
+        template_metadata
+            .as_object_mut()
+            .unwrap()
             .insert("annotations".into(), annotations.clone());
     }
 
@@ -233,8 +239,12 @@ async fn reconcile_cronjob(
         }
     });
 
-    api.patch(name, &PatchParams::apply("auspex-operator"), &Patch::Apply(cj))
-        .await?;
+    api.patch(
+        name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(cj),
+    )
+    .await?;
     Ok(())
 }
 
@@ -254,7 +264,9 @@ async fn reconcile_job(
 
     let mut template_metadata = json!({ "labels": { "styrene.sh/agent": name } });
     if let Some(ref annotations) = tpl.annotations {
-        template_metadata.as_object_mut().unwrap()
+        template_metadata
+            .as_object_mut()
+            .unwrap()
             .insert("annotations".into(), annotations.clone());
     }
 
@@ -305,11 +317,7 @@ async fn reconcile_prompt_configmap(
     ns: &str,
     name: &str,
 ) -> Result<(), kube::Error> {
-    let inline = agent
-        .spec
-        .prompt
-        .as_ref()
-        .and_then(|p| p.inline.as_deref());
+    let inline = agent.spec.prompt.as_ref().and_then(|p| p.inline.as_deref());
 
     let Some(prompt_text) = inline else {
         return Ok(());
@@ -367,19 +375,18 @@ async fn reconcile_service(
         }
     });
 
-    api.patch(name, &PatchParams::apply("auspex-operator"), &Patch::Apply(svc))
-        .await?;
+    api.patch(
+        name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(svc),
+    )
+    .await?;
     Ok(())
 }
 
 fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let is_bounded = matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob);
-    let has_aether = agent
-        .spec
-        .vox
-        .connectors
-        .iter()
-        .any(|c| c == "aether");
+    let has_aether = agent.spec.vox.connectors.iter().any(|c| c == "aether");
 
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
@@ -565,7 +572,12 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let mut args: Vec<String> = if is_bounded {
         vec!["run".into()]
     } else {
-        vec!["serve".into()]
+        vec![
+            "serve".into(),
+            "--control-port".into(),
+            "7842".into(),
+            "--strict-port".into(),
+        ]
     };
 
     args.extend(["--agent".into(), agent.spec.agent.clone()]);
@@ -654,9 +666,8 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     if has_aether {
         let has_identity = agent.spec.identity.as_ref().is_some_and(|id| id.provision);
 
-        let mut styrened_env = vec![
-            json!({"name": "STYRENED_SOCKET", "value": "/shared/styrened.sock"}),
-        ];
+        let mut styrened_env =
+            vec![json!({"name": "STYRENED_SOCKET", "value": "/shared/styrened.sock"})];
         let mut styrened_mounts = vec![
             json!({"name": "shared", "mountPath": "/shared"}),
             json!({"name": "styrened-config", "mountPath": "/etc/styrene", "readOnly": true}),
@@ -728,25 +739,16 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     // This means secrets never pass through the operator's memory or k8s Secrets.
     if let Some(ref vault) = agent.spec.secrets.vault {
         if vault.agent_inject {
-            annotations.insert(
-                "vault.hashicorp.com/agent-inject".into(),
-                json!("true"),
-            );
+            annotations.insert("vault.hashicorp.com/agent-inject".into(), json!("true"));
             if let Some(ref role) = vault.role {
-                annotations.insert(
-                    "vault.hashicorp.com/role".into(),
-                    json!(role),
-                );
+                annotations.insert("vault.hashicorp.com/role".into(), json!(role));
             }
             if let Some(ref addr) = vault.address {
                 annotations.insert(
                     "vault.hashicorp.com/agent-inject-status".into(),
                     json!("update"),
                 );
-                annotations.insert(
-                    "vault.hashicorp.com/agent-address".into(),
-                    json!(addr),
-                );
+                annotations.insert("vault.hashicorp.com/agent-address".into(), json!(addr));
             }
             for mapping in &vault.secrets {
                 // The annotation suffix becomes the filename under /vault/secrets/.

@@ -1,32 +1,31 @@
 use dioxus::prelude::*;
+use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
+use crate::screens::{GraphScreen, SessionScreen, WorkflowBuilderScreen};
 use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use auspex_core::bootstrap::BootstrapResult;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::command_transport::CommandTransport;
 use auspex_core::controller::{AppController, SessionMode};
 use auspex_core::event_stream::EventStreamHandle;
-use auspex_core::fixtures::{MessageRole, TranscriptData};
+use auspex_core::fixtures::TranscriptData;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::ipc_client::IpcEventStreamHandle;
 use auspex_core::runtime_types::TargetedCommand;
-use crate::screens::{GraphScreen, ScribeScreen, SessionScreen};
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = true;
 const SHELL_BLOCKOUT_MODE: bool = true;
-const COCKPIT_BG_SVG: &str = include_str!("../assets/bg.svg");
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
-
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
     Cop,
     Chat,
     Session,
-    Scribe,
     Graph,
+    Workflow,
     Audit,
 }
 
@@ -150,7 +149,10 @@ fn parse_layout_debug_snapshot(raw: &str) -> Option<LayoutDebugSnapshot> {
             })
         })
         .collect::<Vec<_>>();
-    Some(LayoutDebugSnapshot { inner_height, boxes })
+    Some(LayoutDebugSnapshot {
+        inner_height,
+        boxes,
+    })
 }
 
 fn provider_command_name(name: &str) -> Option<String> {
@@ -620,6 +622,35 @@ fn decode_html_entities(text: &str) -> String {
         .replace("&#39;", "'")
 }
 
+fn escape_html_text(text: &str) -> String {
+    text.replace('&', "&amp;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+        .replace('"', "&quot;")
+        .replace('\'', "&#39;")
+}
+
+fn render_markdown_html(markdown: &str) -> String {
+    let decoded = decode_html_entities(markdown);
+    let mut options = Options::empty();
+    options.insert(Options::ENABLE_TABLES);
+    options.insert(Options::ENABLE_STRIKETHROUGH);
+    options.insert(Options::ENABLE_TASKLISTS);
+    let parser = Parser::new_ext(&decoded, options).map(|event| match event {
+        Event::Html(raw) | Event::InlineHtml(raw) => {
+            Event::Text(CowStr::from(escape_html_text(&raw)))
+        }
+        Event::Start(Tag::Image { dest_url, .. }) => {
+            Event::Text(CowStr::from(format!("[image: {dest_url}]")))
+        }
+        Event::End(TagEnd::Image) => Event::Text(CowStr::from("")),
+        other => other,
+    });
+    let mut output = String::new();
+    html::push_html(&mut output, parser);
+    output
+}
+
 #[component]
 pub fn App() -> Element {
     let bootstrap = try_consume_context::<BootstrapResult>();
@@ -689,7 +720,11 @@ pub fn App() -> Element {
                     }
                     if container_reconcile_tick % 100 == 50 {
                         let targets = ctrl.remote_instances_needing_probe();
-                        if targets.is_empty() { None } else { Some(targets) }
+                        if targets.is_empty() {
+                            None
+                        } else {
+                            Some(targets)
+                        }
                     } else {
                         None
                     }
@@ -697,8 +732,7 @@ pub fn App() -> Element {
                 };
                 #[cfg(not(target_arch = "wasm32"))]
                 if let Some(targets) = remote_probe_targets {
-                    let results =
-                        auspex_core::controller::probe_remote_instances(&targets).await;
+                    let results = auspex_core::controller::probe_remote_instances(&targets).await;
                     controller.write().apply_remote_probe_results(&results);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -732,7 +766,9 @@ pub fn App() -> Element {
                         for event in events {
                             #[cfg(not(target_arch = "wasm32"))]
                             if let Some(result) =
-                                auspex_core::controller::AppController::parse_slash_command_result(&event)
+                                auspex_core::controller::AppController::parse_slash_command_result(
+                                    &event,
+                                )
                             {
                                 let message = if result.accepted {
                                     format!(
@@ -830,7 +866,8 @@ pub fn App() -> Element {
         }
     });
 
-    // Auto-scroll the transcript pane to the latest message whenever messages change.
+    // Auto-scroll only while the operator is already pinned near the bottom.
+    // Once they scroll upward, preserve their read position during streaming updates.
     use_effect(move || {
         let _ = controller.read().messages().len();
         spawn(async move {
@@ -838,7 +875,45 @@ pub fn App() -> Element {
                 r#"
                 var transcript = document.querySelector('.cockpit-transcript');
                 if (transcript) {
-                  transcript.scrollTop = transcript.scrollHeight;
+                  if (!window.__auspexTranscriptScroll) {
+                    window.__auspexTranscriptScroll = {
+                      element: null,
+                      pinned: true,
+                      userLockedUntil: 0
+                    };
+                  }
+                  var state = window.__auspexTranscriptScroll;
+                  var now = Date.now();
+                  if (state.element !== transcript) {
+                    state.element = transcript;
+                    state.pinned = true;
+                    state.userLockedUntil = 0;
+                    transcript.addEventListener('wheel', function (event) {
+                      if (event.deltaY < 0) {
+                        state.pinned = false;
+                        state.userLockedUntil = Date.now() + 12000;
+                      }
+                    }, { passive: true });
+                    transcript.addEventListener('touchstart', function () {
+                      state.pinned = false;
+                      state.userLockedUntil = Date.now() + 12000;
+                    }, { passive: true });
+                    transcript.addEventListener('pointerdown', function () {
+                      state.userLockedUntil = Date.now() + 12000;
+                    }, { passive: true });
+                    transcript.addEventListener('scroll', function () {
+                      var distance = transcript.scrollHeight - transcript.scrollTop - transcript.clientHeight;
+                      if (distance < 48) {
+                        state.pinned = true;
+                        state.userLockedUntil = 0;
+                      } else if (Date.now() < state.userLockedUntil) {
+                        state.pinned = false;
+                      }
+                    }, { passive: true });
+                  }
+                  if (state.pinned && now >= state.userLockedUntil) {
+                    transcript.scrollTop = transcript.scrollHeight;
+                  }
                 }
             "#,
             )
@@ -935,7 +1010,10 @@ pub fn App() -> Element {
                     eprintln!("=== LAYOUT DEBUG ===");
                     eprintln!("  innerHeight: {}", snapshot.inner_height);
                     for item in &snapshot.boxes {
-                        eprintln!("  {} → left={} w={} h={}", item.selector, item.left, item.width, item.height);
+                        eprintln!(
+                            "  {} → left={} w={} h={}",
+                            item.selector, item.left, item.width, item.height
+                        );
                     }
                     layout_debug_snapshot.set(Some(snapshot));
                 }
@@ -954,7 +1032,9 @@ pub fn App() -> Element {
         if *workspace.read() == Workspace::Cop {
             {render_cop_surface(controller.read().cop_state())}
         } else if *workspace.read() == Workspace::Graph {
-            GraphScreen { data: controller.read().graph_data() }
+            GraphScreen { data: controller.read().session_data() }
+        } else if *workspace.read() == Workspace::Workflow {
+            WorkflowBuilderScreen {}
         } else if *workspace.read() == Workspace::Audit {
             {render_audit_workspace(
                 controller.read().audit_timeline(),
@@ -979,32 +1059,6 @@ pub fn App() -> Element {
             SessionScreen {
                 data: controller.read().session_data(),
                 selected_entity: selected_cockpit_entity.read().clone(),
-                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
-                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
-                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                        dispatch_targeted_command(&stream, &command);
-                    }
-                })),
-                on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                    focus_transcript_target(controller.read().transcript(), &target);
-                }))
-            }
-        } else if *workspace.read() == Workspace::Scribe {
-            ScribeScreen {
-                summary: controller.read().summary().clone(),
-                data: controller.read().session_data(),
-                session_mode: controller.read().session_mode(),
-                scenario_key: controller.read().scenario().key().to_string(),
-                transcript_auto_expand: controller.read().transcript_auto_expand(),
-                on_set_session_mode: Some(EventHandler::new(move |mode: String| controller.write().switch_session_mode(mode.as_str()))),
-                on_set_scenario: Some(EventHandler::new(move |scenario: String| controller.write().select_scenario(scenario.as_str()))),
-                on_set_transcript_auto_expand: Some(EventHandler::new(move |enabled: bool| controller.write().set_transcript_auto_expand(enabled))),
                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
                     #[cfg(not(target_arch = "wasm32"))]
@@ -1059,8 +1113,7 @@ pub fn App() -> Element {
                     composer_ready_notice: composer_ready_notice.read().as_deref(),
                 },
                 ChatCopHostActions {
-                    on_submit: EventHandler::new(move |event: dioxus::events::FormEvent| {
-                        event.prevent_default();
+                    on_submit: EventHandler::new(move |_| {
                         chat_last_activity.set(Some(std::time::Instant::now()));
                         let command = controller.write().submit_prompt_command();
                         if let Some(command) = command {
@@ -1730,7 +1783,8 @@ fn transcript_block_dom_id(turn_number: u32, block_index: usize) -> String {
 fn transcript_block_matches_target(block: &auspex_core::fixtures::TurnBlock, target: &str) -> bool {
     if let Some(task_id) = target.strip_prefix("delegate:") {
         return match block {
-            auspex_core::fixtures::TurnBlock::Text(text) | auspex_core::fixtures::TurnBlock::System(text) => {
+            auspex_core::fixtures::TurnBlock::Text(text)
+            | auspex_core::fixtures::TurnBlock::System(text) => {
                 block_origin_label(text.origin.as_ref())
                     .is_some_and(|label| label.contains(task_id))
                     || text.text.contains(task_id)
@@ -1755,7 +1809,8 @@ fn transcript_block_matches_target(block: &auspex_core::fixtures::TurnBlock, tar
 fn transcript_block_search_text(block: &auspex_core::fixtures::TurnBlock) -> String {
     match block {
         auspex_core::fixtures::TurnBlock::Thinking(thinking) => thinking.text.clone(),
-        auspex_core::fixtures::TurnBlock::Text(text) | auspex_core::fixtures::TurnBlock::System(text) => {
+        auspex_core::fixtures::TurnBlock::Text(text)
+        | auspex_core::fixtures::TurnBlock::System(text) => {
             format!(
                 "{} {}",
                 block_origin_label(text.origin.as_ref()).unwrap_or_default(),
@@ -1809,6 +1864,35 @@ fn should_expand_system_notice(content: &str) -> bool {
     )
 }
 
+fn should_collapse_agent_payload(content: &str) -> bool {
+    if !looks_like_structured_payload(content) {
+        return false;
+    }
+
+    let lower = content.to_ascii_lowercase();
+    let is_capability_catalog = lower.contains("capabilities");
+    let is_tool_catalog = lower.contains("tool")
+        && (lower.contains("slash")
+            || lower.contains("available commands")
+            || lower.contains("tool-call")
+            || lower.contains("tool call"));
+
+    is_capability_catalog || is_tool_catalog
+}
+
+fn collapsed_agent_payload_label(content: &str) -> &'static str {
+    let lower = content.to_ascii_lowercase();
+    if lower.contains("capabilities") || lower.contains("search_documents") {
+        "Capabilities updated"
+    } else if lower.contains("available commands") || lower.contains("slash") {
+        "Commands updated"
+    } else if lower.contains("tool") {
+        "Tool catalog updated"
+    } else {
+        "Agent event payload"
+    }
+}
+
 fn should_expand_tool_payload(content: &str) -> bool {
     !looks_like_structured_payload(content)
         && !should_expand_transcript_content(
@@ -1849,7 +1933,9 @@ fn should_expand_transcript_content(
 
 fn system_notice_summary_label(text: &auspex_core::fixtures::AttributedText) -> &'static str {
     match text.notice_kind {
-        Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch) => "Dispatcher switch notice",
+        Some(auspex_core::fixtures::SystemNoticeKind::DispatcherSwitch) => {
+            "Dispatcher switch notice"
+        }
         Some(auspex_core::fixtures::SystemNoticeKind::CleaveStart) => "Cleave start notice",
         Some(auspex_core::fixtures::SystemNoticeKind::CleaveComplete) => "Cleave completion notice",
         Some(auspex_core::fixtures::SystemNoticeKind::ChildStatus) => "Child status notice",
@@ -1984,9 +2070,20 @@ fn render_transcript(
 ) -> Element {
     if transcript.turns.is_empty() {
         rsx! {
-            div { class: "chat-empty-hint",
+            div { class: "chat-empty-state chat-empty-state-acp",
                 if let Some(empty_state) = build_chat_empty_state_model(summary, work, session, transcript, messages, scenario) {
-                    span { class: "chat-empty-hint-text", "{empty_state.kicker}" }
+                    div { class: "chat-empty-state-copy",
+                        span { class: "chat-empty-hint-text", "{empty_state.kicker}" }
+                        h2 { "{empty_state.title}" }
+                        p { "{empty_state.detail}" }
+                    }
+                    if !empty_state.guidance.is_empty() {
+                        div { class: "chat-empty-suggestions",
+                            for item in &empty_state.guidance {
+                                span { class: "chat-empty-suggestion", "{item}" }
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -2016,16 +2113,47 @@ fn render_transcript(
                                     p { "{decode_html_entities(&thinking.text)}" }
                                 }
                             },
-                            auspex_core::fixtures::TurnBlock::Text(text) => rsx! {
-                                section {
-                                    id: transcript_block_dom_id(turn.number, block_index),
-                                    class: text_block_class(text.origin.as_ref()),
-                                    "data-surface": "panel",
-                                    "data-tone": text_block_tone(text.origin.as_ref()),
-                                    if let Some(origin) = &text.origin {
-                                        h3 { class: origin_class(origin), "{origin.label}" }
+                            auspex_core::fixtures::TurnBlock::Text(text) => {
+                                if should_collapse_agent_payload(&text.text) {
+                                    rsx! {
+                                        section {
+                                            id: transcript_block_dom_id(turn.number, block_index),
+                                            class: "block block-agent-event",
+                                            "data-surface": "panel",
+                                            "data-tone": "muted",
+                                            if let Some(origin) = &text.origin {
+                                                h3 { class: origin_class(origin), "{origin.label}" }
+                                            }
+                                            {render_transcript_disclosure(TranscriptDisclosure {
+                                                section_class: "agent-event-section",
+                                                details_class: "agent-event-details",
+                                                summary_class: "agent-event-summary",
+                                                summary_label_class: "agent-event-summary-label",
+                                                summary_meta_class: Some("agent-event-summary-meta"),
+                                                body_class: "agent-event-body",
+                                                content_class: "agent-event-payload",
+                                                label: collapsed_agent_payload_label(&text.text),
+                                                content: &text.text,
+                                                meta: transcript_disclosure_meta(&text.text),
+                                                open: false,
+                                                copy_label: "payload",
+                                            })}
+                                        }
                                     }
-                                    p { "{decode_html_entities(&text.text)}" }
+                                } else {
+                                    let html = render_markdown_html(&text.text);
+                                    rsx! {
+                                        section {
+                                            id: transcript_block_dom_id(turn.number, block_index),
+                                            class: text_block_class(text.origin.as_ref()),
+                                            "data-surface": "panel",
+                                            "data-tone": text_block_tone(text.origin.as_ref()),
+                                            if let Some(origin) = &text.origin {
+                                                h3 { class: origin_class(origin), "{origin.label}" }
+                                            }
+                                            div { class: "markdown-body transcript-markdown", dangerous_inner_html: "{html}" }
+                                        }
+                                    }
                                 }
                             },
                             auspex_core::fixtures::TurnBlock::Tool(tool) => rsx! {
@@ -2109,13 +2237,28 @@ fn render_transcript(
                             auspex_core::fixtures::TurnBlock::System(text) => rsx! {
                                 section {
                                     id: transcript_block_dom_id(turn.number, block_index),
-                                    class: system_block_class(text),
+                                    class: if should_collapse_agent_payload(&text.text) { "block block-agent-event" } else { system_block_class(text) },
                                     "data-surface": "panel",
                                     "data-tone": system_block_tone(text),
                                     if let Some(origin) = &text.origin {
                                         h3 { class: origin_class(origin), "{origin.label}" }
                                     }
-                                    if should_expand_system_notice(&text.text) {
+                                    if should_collapse_agent_payload(&text.text) {
+                                        {render_transcript_disclosure(TranscriptDisclosure {
+                                            section_class: "agent-event-section",
+                                            details_class: "agent-event-details",
+                                            summary_class: "agent-event-summary",
+                                            summary_label_class: "agent-event-summary-label",
+                                            summary_meta_class: Some("agent-event-summary-meta"),
+                                            body_class: "agent-event-body",
+                                            content_class: "agent-event-payload",
+                                            label: collapsed_agent_payload_label(&text.text),
+                                            content: &text.text,
+                                            meta: transcript_disclosure_meta(&text.text),
+                                            open: false,
+                                            copy_label: "payload",
+                                        })}
+                                    } else if should_expand_system_notice(&text.text) {
                                         {render_transcript_disclosure(TranscriptDisclosure {
                                             section_class: "system-section",
                                             details_class: "system-details",
@@ -2168,6 +2311,299 @@ struct ChatEmptyStateModel {
     detached: bool,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ChatAcpSurfaceModel {
+    target_label: String,
+    target_detail: String,
+    endpoint_label: String,
+    status: &'static str,
+    detail: String,
+    config_items: Vec<DispatchContextItem>,
+    stream_items: Vec<DispatchContextItem>,
+}
+
+fn build_chat_acp_surface_model(
+    session: &auspex_core::fixtures::SessionData,
+) -> ChatAcpSurfaceModel {
+    let control_plane = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.instance_descriptor.as_ref())
+        .and_then(|descriptor| descriptor.control_plane.as_ref())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|descriptor| descriptor.control_plane.as_ref())
+        });
+    let descriptor = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.instance_descriptor.as_ref())
+        .or(session.instance_descriptor.as_ref());
+    let acp_url = control_plane
+        .and_then(|control_plane| control_plane.acp_url.as_deref())
+        .filter(|url| !url.trim().is_empty())
+        .map(str::to_string)
+        .or_else(|| {
+            control_plane
+                .and_then(|control_plane| control_plane.ws_url.as_deref())
+                .and_then(derive_acp_url_from_ws)
+        });
+    let model = session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.expected_model.as_deref())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|descriptor| descriptor.policy.as_ref())
+                .and_then(|policy| policy.model.as_deref())
+        })
+        .unwrap_or("model pending")
+        .to_string();
+    let target_label = session
+        .dispatcher_binding
+        .as_ref()
+        .map(|binding| binding.expected_role.as_str())
+        .filter(|role| !role.trim().is_empty())
+        .or_else(|| descriptor.map(|descriptor| descriptor.identity.role.as_str()))
+        .unwrap_or("agent")
+        .to_string();
+    let target_detail = descriptor
+        .map(agent_direct_line_detail)
+        .or_else(|| {
+            session.dispatcher_binding.as_ref().map(|binding| {
+                format!(
+                    "{} · {}",
+                    binding.dispatcher_instance_id, binding.expected_profile
+                )
+            })
+        })
+        .unwrap_or_else(|| "waiting for instance descriptor".to_string());
+    let endpoint_label = acp_url
+        .as_deref()
+        .map(redact_ws_token)
+        .unwrap_or_else(|| "no ACP endpoint reported".to_string());
+    let backend_unavailable = control_plane.is_none()
+        && session.dispatcher_binding.is_none()
+        && session.telemetry.lifecycle.instances.is_empty();
+    let status = if acp_url.is_some() {
+        "ready"
+    } else if backend_unavailable {
+        "failed"
+    } else {
+        "pending"
+    };
+    let detail = if acp_url.is_some() {
+        "Direct ACP stream available.".to_string()
+    } else if backend_unavailable {
+        "No control-plane descriptor is attached.".to_string()
+    } else {
+        "Waiting for Omegon to report an ACP endpoint.".to_string()
+    };
+    let backend = descriptor
+        .and_then(|descriptor| descriptor.runtime.as_ref())
+        .and_then(|runtime| runtime.backend.as_deref())
+        .or_else(|| infer_backend_from_endpoint(control_plane))
+        .unwrap_or("backend pending")
+        .to_string();
+    let skills = capability_summary(control_plane, &["skill", "mcp", "plugin"])
+        .unwrap_or_else(|| "skills pending".to_string());
+    let armory = capability_summary(control_plane, &["armory", "tool", "command"])
+        .unwrap_or_else(|| "armory pending".to_string());
+    let config_items = vec![
+        DispatchContextItem {
+            label: "Tier",
+            value: non_empty_or(&session.capability_tier, "pending"),
+            tone: "accent",
+        },
+        DispatchContextItem {
+            label: "Model",
+            value: model,
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Thinking",
+            value: non_empty_or(&session.thinking_level, "pending"),
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Backend",
+            value: backend,
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Skills",
+            value: skills,
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Armory",
+            value: armory,
+            tone: "muted",
+        },
+    ];
+    let stream_items = vec![
+        DispatchContextItem {
+            label: "Config",
+            value: if control_plane.is_some() {
+                "bound".to_string()
+            } else {
+                "pending".to_string()
+            },
+            tone: if control_plane.is_some() {
+                "success"
+            } else {
+                "muted"
+            },
+        },
+        DispatchContextItem {
+            label: "Commands",
+            value: "slash menu pending".to_string(),
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Plan",
+            value: "turn plan pending".to_string(),
+            tone: "muted",
+        },
+        DispatchContextItem {
+            label: "Tools",
+            value: "tool stream pending".to_string(),
+            tone: "muted",
+        },
+    ];
+
+    ChatAcpSurfaceModel {
+        target_label,
+        target_detail,
+        endpoint_label,
+        status,
+        detail,
+        config_items,
+        stream_items,
+    }
+}
+
+fn agent_direct_line_detail(descriptor: &auspex_core::fixtures::InstanceDescriptorData) -> String {
+    let profile = descriptor.identity.profile.as_str();
+    let runtime = descriptor
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.backend.as_deref())
+        .unwrap_or("runtime pending");
+    let workspace = descriptor
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.branch.as_deref())
+        .unwrap_or("workspace unknown");
+    format!("{profile} · {runtime} · {workspace}")
+}
+
+fn infer_backend_from_endpoint(
+    control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
+) -> Option<&'static str> {
+    let base = control_plane.and_then(|control_plane| control_plane.base_url.as_deref())?;
+    if base.contains(".svc") {
+        Some("kubernetes")
+    } else if base.contains("127.0.0.1") || base.contains("localhost") {
+        Some("local")
+    } else {
+        Some("remote")
+    }
+}
+
+fn capability_summary(
+    control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
+    needles: &[&str],
+) -> Option<String> {
+    let capabilities = &control_plane?.capabilities;
+    let count = capabilities
+        .iter()
+        .filter(|capability| {
+            let capability = capability.to_ascii_lowercase();
+            needles.iter().any(|needle| capability.contains(needle))
+        })
+        .count();
+    (count > 0).then(|| count.to_string())
+}
+
+fn non_empty_or(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() {
+        fallback.to_string()
+    } else {
+        value.to_string()
+    }
+}
+
+fn derive_acp_url_from_ws(ws_url: &str) -> Option<String> {
+    if ws_url.trim().is_empty() {
+        return None;
+    }
+    if ws_url.contains("/ws") {
+        Some(ws_url.replacen("/ws", "/acp", 1))
+    } else {
+        None
+    }
+}
+
+fn redact_ws_token(url: &str) -> String {
+    if let Some((prefix, _)) = url.split_once("token=") {
+        format!("{prefix}token=...")
+    } else {
+        url.to_string()
+    }
+}
+
+fn render_chat_acp_surface(model: &ChatAcpSurfaceModel) -> Element {
+    rsx! {
+        section {
+            class: "chat-acp-surface",
+            "data-state": model.status,
+            div { class: "agent-direct-deck",
+                div { class: "agent-direct-primary",
+                    div { class: "agent-direct-id",
+                        span { class: "chat-acp-state", "{model.status}" }
+                        div { class: "agent-direct-nameplate",
+                            strong { "{model.target_label}" }
+                            span { "{model.target_detail}" }
+                        }
+                    }
+                    div { class: "agent-direct-transport",
+                        span { class: "agent-acp-endpoint", title: model.endpoint_label.clone(), "{model.endpoint_label}" }
+                        span { class: "agent-acp-detail", "{model.detail}" }
+                    }
+                }
+                div { class: "agent-config-strip", "aria-label": "Agent configuration",
+                    for item in &model.config_items {
+                        div { class: "agent-config-chip", "data-tone": item.tone,
+                            span { class: "agent-config-label", "{item.label}" }
+                            span { class: "agent-config-value", title: item.value.clone(), "{item.value}" }
+                        }
+                    }
+                }
+            }
+            details { class: "agent-acp-diagnostics",
+                summary { class: "agent-acp-summary",
+                    span { "ACP streams" }
+                    span { "config, commands, plan, and tool lifecycle" }
+                }
+                div { class: "agent-stream-grid",
+                    for item in &model.stream_items {
+                        div { class: "agent-stream-chip", "data-tone": item.tone,
+                            span { class: "agent-stream-label", "{item.label}" }
+                            span { class: "agent-stream-value", "{item.value}" }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn build_chat_empty_state_model(
     summary: &auspex_core::fixtures::HostSessionSummary,
     work: &auspex_core::fixtures::WorkData,
@@ -2182,7 +2618,8 @@ fn build_chat_empty_state_model(
 
     let allow_starter_guidance = matches!(
         scenario,
-        auspex_core::fixtures::DevScenario::Ready | auspex_core::fixtures::DevScenario::LocalDevQuiet
+        auspex_core::fixtures::DevScenario::Ready
+            | auspex_core::fixtures::DevScenario::LocalDevQuiet
     );
     if !allow_starter_guidance {
         return None;
@@ -2214,35 +2651,27 @@ fn build_chat_empty_state_model(
     let (kicker, title, detail) = if session.git_detached {
         (
             format!("Detached workspace · {branch}"),
-            "New Project starter".into(),
+            "No transcript yet".into(),
             format!(
-                "Auspex is attached to {session_label}, but the workspace is detached from {branch}. Re-anchor the branch or state the project goal before the first run so dispatch stays grounded."
+                "{session_label}. Detached from {branch}; start by anchoring intent or branch posture."
             ),
         )
     } else {
         (
             format!("{session_label} · {branch}"),
-            "New Project starter".into(),
-            format!(
-                "No transcript history is attached yet. Start with the smallest directive that establishes project intent, validates dispatcher posture, or confirms the next work item around {work_title}."
-            ),
+            "No transcript yet".into(),
+            format!("Start with a small directive for {work_title}."),
         )
     };
 
-    let mut guidance = vec![format!(
-        "Summarize the current session, branch, and work focus around {work_title}."
-    )];
-    guidance.push(format!(
-        "Confirm whether {dispatcher_target} is the right model before starting implementation."
-    ));
+    let mut guidance = vec![
+        format!("Summarize {work_title}."),
+        format!("Validate {dispatcher_target}."),
+    ];
     if session.git_detached {
-        guidance.push(format!(
-            "Explain whether to reattach the workspace or continue detached from {branch}."
-        ));
+        guidance.push(format!("Resolve detached branch {branch}."));
     } else {
-        guidance.push(format!(
-            "Plan the first concrete step that advances {work_title} without over-scoping the run."
-        ));
+        guidance.push("Plan first concrete step.".to_string());
     }
 
     Some(ChatEmptyStateModel {
@@ -2451,7 +2880,7 @@ struct ChatCopHostModel<'a> {
 }
 
 struct ChatCopHostActions {
-    on_submit: EventHandler<dioxus::events::FormEvent>,
+    on_submit: EventHandler<()>,
     on_update_draft: EventHandler<String>,
     on_open_settings: EventHandler<()>,
     on_cancel: EventHandler<()>,
@@ -2603,8 +3032,10 @@ fn render_cockpit_top_rail(
 fn render_fleet_rail(
     session: &auspex_core::fixtures::SessionData,
     focused_instance_id: Option<String>,
-    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))]
-    activity_summaries: Vec<(String, auspex_core::instance_session::ActivitySummary)>,
+    #[cfg_attr(target_arch = "wasm32", allow(unused_variables))] activity_summaries: Vec<(
+        String,
+        auspex_core::instance_session::ActivitySummary,
+    )>,
     unread_counts: Vec<(String, u32)>,
     on_focus: EventHandler<Option<String>>,
 ) -> Element {
@@ -2612,49 +3043,137 @@ fn render_fleet_rail(
 
     // Build fleet entries from lifecycle telemetry instances.
     let fleet_instances = &session.telemetry.lifecycle.instances;
+    let primary_instance_id = session
+        .instance_descriptor
+        .as_ref()
+        .map(|descriptor| descriptor.identity.instance_id.as_str())
+        .filter(|id| !id.is_empty());
+    let primary_fleet_instance = primary_instance_id.and_then(|id| {
+        fleet_instances
+            .iter()
+            .find(|instance| instance.instance_id == id)
+    });
+    let fleet_count = fleet_instances
+        .iter()
+        .filter(|instance| Some(instance.instance_id.as_str()) != primary_instance_id)
+        .count();
 
     rsx! {
         nav { class: "fleet-rail",
-            // Local agent card — always at top
-            button {
-                class: if is_primary_focused { "fleet-card fleet-card-local fleet-card-focused" } else { "fleet-card fleet-card-local" },
-                r#type: "button",
-                onclick: move |_| on_focus.call(None),
-                div { class: "fleet-card-header",
-                    span { class: "fleet-card-role", "Local Agent" }
-                    span { class: if is_primary_focused { "fleet-card-status fleet-card-status-active" } else { "fleet-card-status fleet-card-status-ready" },
-                        if is_primary_focused { "FOCUSED" } else { "READY" }
-                    }
-                }
-                div { class: "fleet-card-detail",
-                    if let Some(descriptor) = &session.instance_descriptor {
-                        span { class: "fleet-card-meta", "{descriptor.identity.profile}" }
-                        if let Some(policy) = &descriptor.policy {
-                            if let Some(model) = &policy.model {
-                                span { class: "fleet-card-meta fleet-card-model", "{model}" }
-                            }
+            if let Some(instance) = primary_fleet_instance {
+                {render_primary_fleet_instance_card(
+                    instance,
+                    is_primary_focused,
+                    &activity_summaries,
+                    &unread_counts,
+                    on_focus,
+                )}
+            } else {
+                button {
+                    class: if is_primary_focused { "fleet-card fleet-card-local fleet-card-focused" } else { "fleet-card fleet-card-local" },
+                    r#type: "button",
+                    onclick: move |_| on_focus.call(None),
+                    div { class: "fleet-card-header",
+                        span { class: "fleet-card-role", "Primary Coordinator" }
+                        span { class: if is_primary_focused { "fleet-card-status fleet-card-status-active" } else { "fleet-card-status fleet-card-status-ready" },
+                            if is_primary_focused { "FOCUSED" } else { "READY" }
                         }
-                    } else {
-                        span { class: "fleet-card-meta", "primary · attaching" }
+                    }
+                    div { class: "fleet-card-detail",
+                        if let Some(descriptor) = &session.instance_descriptor {
+                            span { class: "fleet-card-meta", "{descriptor.identity.instance_id} · {descriptor.identity.profile}" }
+                            if let Some(policy) = &descriptor.policy {
+                                if let Some(model) = &policy.model {
+                                    span { class: "fleet-card-meta fleet-card-model", "{model}" }
+                                }
+                            }
+                        } else {
+                            span { class: "fleet-card-meta", "primary · attaching" }
+                        }
                     }
                 }
             }
 
             // Fleet section
-            if !fleet_instances.is_empty() {
+            if fleet_count > 0 {
                 div { class: "fleet-section",
                     div { class: "fleet-section-header",
                         span { class: "fleet-section-label", "Fleet" }
-                        span { class: "fleet-section-count", "{fleet_instances.len()}" }
+                        span { class: "fleet-section-count", "{fleet_count}" }
                     }
                     for instance in fleet_instances {
-                        {render_fleet_instance_card(
-                            instance,
-                            focused_instance_id.as_deref() == Some(instance.instance_id.as_str()),
-                            &activity_summaries,
-                            &unread_counts,
-                            on_focus,
-                        )}
+                        if Some(instance.instance_id.as_str()) != primary_instance_id {
+                            {render_fleet_instance_card(
+                                instance,
+                                focused_instance_id.as_deref() == Some(instance.instance_id.as_str()),
+                                &activity_summaries,
+                                &unread_counts,
+                                on_focus,
+                            )}
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn render_primary_fleet_instance_card(
+    instance: &auspex_core::fixtures::LifecycleInstanceTelemetryData,
+    is_focused: bool,
+    activity_summaries: &[(String, auspex_core::instance_session::ActivitySummary)],
+    unread_counts: &[(String, u32)],
+    on_focus: EventHandler<Option<String>>,
+) -> Element {
+    let freshness = instance.freshness.as_deref().unwrap_or("unknown");
+    let status = instance.status.as_deref().unwrap_or("unknown");
+    let activity = activity_summaries
+        .iter()
+        .find(|(id, _)| *id == instance.instance_id)
+        .map(|(_, a)| a);
+    let is_active = activity.is_some_and(|a| a.run_active);
+    let unread = unread_counts
+        .iter()
+        .find(|(id, _)| *id == instance.instance_id)
+        .map(|(_, count)| *count)
+        .unwrap_or(0);
+
+    let status_class = match freshness {
+        "fresh" if is_focused || is_active => "fleet-card-status-active",
+        "fresh" => "fleet-card-status-ready",
+        "stale" => "fleet-card-status-stale",
+        _ => "fleet-card-status-offline",
+    };
+    let status_label = if is_focused {
+        "FOCUSED"
+    } else if is_active {
+        "ACTIVE"
+    } else {
+        match freshness {
+            "fresh" => status,
+            other => other,
+        }
+    };
+
+    rsx! {
+        button {
+            class: if is_focused { "fleet-card fleet-card-local fleet-card-focused" } else { "fleet-card fleet-card-local" },
+            r#type: "button",
+            onclick: move |_| on_focus.call(None),
+            div { class: "fleet-card-header",
+                span { class: "fleet-card-role", "Primary Coordinator" }
+                if unread > 0 && !is_focused {
+                    span { class: "fleet-card-unread", "{unread}" }
+                }
+                span { class: "fleet-card-status {status_class}", "{status_label}" }
+            }
+            div { class: "fleet-card-detail",
+                span { class: "fleet-card-meta", "{instance.instance_id} · {instance.profile}" }
+                if let Some(activity) = activity {
+                    if activity.turn_count > 0 {
+                        span { class: "fleet-card-meta fleet-card-stats",
+                            "{activity.turn_count}t · {activity.tool_call_count}tc"
+                        }
                     }
                 }
             }
@@ -2750,8 +3269,8 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
                 nav { class: "cockpit-workspace-nav",
                     button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
-                    button { class: if *workspace.read() == Workspace::Scribe { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Scribe), "Scribe" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
+                    button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
                     button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
                 }
                 {body}
@@ -2971,9 +3490,8 @@ fn build_cockpit_summary_model(
         format!("{} · {}", delegate.agent_name, delegate.status)
     } else {
         match summary.activity_kind {
-            auspex_core::fixtures::ActivityKind::Completed | auspex_core::fixtures::ActivityKind::Failure => {
-                summary.activity.clone()
-            }
+            auspex_core::fixtures::ActivityKind::Completed
+            | auspex_core::fixtures::ActivityKind::Failure => summary.activity.clone(),
             _ => summary
                 .activity_kind
                 .label()
@@ -3046,8 +3564,8 @@ fn workspace_label(workspace: Workspace) -> &'static str {
         Workspace::Cop => "COP",
         Workspace::Chat => "Chat",
         Workspace::Session => "Session",
-        Workspace::Scribe => "Scribe",
         Workspace::Graph => "Graph",
+        Workspace::Workflow => "Workflow",
         Workspace::Audit => "Audit",
     }
 }
@@ -3065,40 +3583,14 @@ fn context_window_label(session: &auspex_core::fixtures::SessionData) -> String 
 }
 
 fn build_dispatch_context_strip_model(
-    workspace: Workspace,
-    session_mode: SessionMode,
+    _workspace: Workspace,
+    _session_mode: SessionMode,
     summary: &auspex_core::fixtures::HostSessionSummary,
     session: &auspex_core::fixtures::SessionData,
     draft: &str,
     is_run_active: bool,
     can_submit: bool,
 ) -> DispatchContextStripModel {
-    let route = format!(
-        "{} · {}",
-        match workspace {
-            Workspace::Cop => "cop",
-            Workspace::Chat => "chat",
-            Workspace::Session => "session",
-            Workspace::Scribe => "scribe",
-            Workspace::Graph => "graph",
-            Workspace::Audit => "audit",
-        },
-        session_mode.label().to_ascii_lowercase()
-    );
-
-    let session_label = session
-        .dispatcher_binding
-        .as_ref()
-        .map(|binding| binding.session_id.clone())
-        .filter(|value| !value.is_empty())
-        .unwrap_or_else(|| {
-            if session_mode == SessionMode::Live {
-                "host-session".into()
-            } else {
-                "local-session".into()
-            }
-        });
-
     let who = session
         .dispatcher_binding
         .as_ref()
@@ -3135,8 +3627,6 @@ fn build_dispatch_context_strip_model(
 
     let tier =
         (!session.capability_tier.trim().is_empty()).then(|| session.capability_tier.clone());
-
-    let context = context_window_label(session);
 
     let (state, state_label, state_tone) = if is_run_active {
         ("running", "Run active".to_string(), "info")
@@ -3358,12 +3848,20 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
     } = actions;
 
     let has_activity = session.session_turns > 0 || is_run_active || !can_submit;
+    let acp_surface = build_chat_acp_surface_model(session);
+    let transcript_class = if transcript.turns.is_empty() {
+        "transcript cockpit-transcript cockpit-cop-focus cockpit-transcript-empty"
+    } else {
+        "transcript cockpit-transcript cockpit-cop-focus"
+    };
+    let can_send = can_submit && !draft.trim().is_empty();
     let body = rsx! {
-        div { class: "cockpit-cop-body",
+        div { class: "cockpit-cop-body chat-acp-body",
             if provider_blocked_composer.is_none() && has_activity {
                 {render_chat_status_banner(summary, session, is_run_active, can_submit)}
             }
-            main { class: "transcript cockpit-transcript cockpit-cop-focus",
+            {render_chat_acp_surface(&acp_surface)}
+            main { class: transcript_class,
                 {render_transcript(summary, work, session, transcript, messages, auto_expand, scenario)}
                 div { id: "transcript-end" }
             }
@@ -3373,8 +3871,10 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
     let footer = rsx! {
         form {
             class: "composer cockpit-composer cockpit-composer-docked",
-            onsubmit: move |event| on_submit.call(event),
-            {render_dispatch_context_strip(dispatch_context)}
+            onsubmit: move |event| {
+                event.prevent_default();
+                on_submit.call(());
+            },
             if let Some(message) = composer_ready_notice {
                 div { class: "composer-ready-notice", "{message}" }
             }
@@ -3417,45 +3917,37 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                     rows: "3",
                     value: draft.to_string(),
                     disabled: !can_submit,
-                    placeholder: if can_submit { "Start with the smallest useful prompt…" } else { "Conversation input is unavailable in the current host state." },
+                    placeholder: if can_submit { "Message agent..." } else { "Conversation input is unavailable in the current host state." },
                     oninput: move |event| on_update_draft.call(event.value()),
+                    onkeydown: move |event| {
+                        if event.key() == Key::Enter && !event.modifiers().shift() {
+                            event.prevent_default();
+                            if can_send {
+                                on_submit.call(());
+                            }
+                        }
+                    },
                 }
             }
             div { class: "composer-actions",
                 if is_run_active {
                     button { class: "composer-cancel", r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
                 }
-                button { class: "composer-submit", r#type: "submit", disabled: !can_submit, title: dispatch_context.send_detail.clone(), "Send" }
+                button { class: "composer-submit", r#type: "submit", disabled: !can_send, title: dispatch_context.send_detail.clone(), "Send" }
+                span { class: "composer-shortcut", "Enter" }
             }
         }
     };
 
-    let cop_kicker = session
-        .dispatcher_binding
-        .as_ref()
-        .map(|d| {
-            let profile = &d.expected_profile;
-            let model = d.expected_model.as_deref().unwrap_or("model pending");
-            format!("{profile} · {model}")
-        })
-        .or_else(|| {
-            session.instance_descriptor.as_ref().map(|d| {
-                let role = &d.identity.role;
-                let profile = &d.identity.profile;
-                format!("{role} · {profile}")
-            })
-        })
-        .unwrap_or_else(|| summary.connection.clone());
-    let cop_kicker_ref = cop_kicker.as_str();
-
     render_focus_host_shell(FocusHostShell {
-        title: "Chat",
-        kicker: cop_kicker_ref,
+        title: acp_surface.target_label.as_str(),
+        kicker: acp_surface.target_detail.as_str(),
         body,
         footer: Some(footer),
     })
 }
 
+#[allow(dead_code)]
 fn render_dispatch_context_strip(model: &DispatchContextStripModel) -> Element {
     rsx! {
         section {
@@ -3523,7 +4015,9 @@ fn system_block_class(text: &auspex_core::fixtures::AttributedText) -> &'static 
                 Some(auspex_core::fixtures::OriginKind::Dispatcher) => {
                     "block block-system block-dispatcher-system"
                 }
-                Some(auspex_core::fixtures::OriginKind::Child) => "block block-system block-child-origin",
+                Some(auspex_core::fixtures::OriginKind::Child) => {
+                    "block block-system block-child-origin"
+                }
                 Some(auspex_core::fixtures::OriginKind::System) => "block block-system",
                 None => "block block-system",
             }
@@ -4066,7 +4560,7 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 // ── COP Display Surface rendering ───────────────────────────
 
 fn render_cop_surface(cop_state: &auspex_core::cop_surface::CopDisplayState) -> Element {
-    use auspex_core::cop_surface::{ContentType, CopRegion, RegionContent, default_segmenta_regions};
+    use auspex_core::cop_surface::default_segmenta_regions;
 
     if cop_state.is_empty() {
         return rsx! {
@@ -4174,7 +4668,10 @@ fn render_cop_table(data: &serde_json::Value) -> Element {
 
 fn render_cop_status_card(data: &serde_json::Value) -> Element {
     let label = data.get("label").and_then(|v| v.as_str()).unwrap_or("—");
-    let status = data.get("status").and_then(|v| v.as_str()).unwrap_or("unknown");
+    let status = data
+        .get("status")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
     let detail = data.get("detail").and_then(|v| v.as_str());
     let severity = data
         .get("severity")
@@ -4211,10 +4708,7 @@ fn render_cop_alert_feed(data: &serde_json::Value) -> Element {
 }
 
 fn render_cop_alert_entry(entry: &serde_json::Value, key: usize) -> Element {
-    let message = entry
-        .get("message")
-        .and_then(|v| v.as_str())
-        .unwrap_or("—");
+    let message = entry.get("message").and_then(|v| v.as_str()).unwrap_or("—");
     let severity = entry
         .get("severity")
         .and_then(|v| v.as_str())
@@ -4240,21 +4734,22 @@ fn render_cop_alert_entry(entry: &serde_json::Value, key: usize) -> Element {
 
 fn render_cop_kv_grid(data: &serde_json::Value) -> Element {
     // Accept either { "pairs": [{key, value}] } or { "key1": "val1", "key2": "val2" }
-    let pairs: Vec<(String, String)> = if let Some(arr) = data.get("pairs").and_then(|v| v.as_array()) {
-        arr.iter()
-            .filter_map(|pair| {
-                let key = pair.get("key").and_then(|v| v.as_str())?;
-                let value = pair.get("value").map(json_display_value)?;
-                Some((key.to_string(), value))
-            })
-            .collect()
-    } else if let Some(obj) = data.as_object() {
-        obj.iter()
-            .map(|(k, v)| (k.clone(), json_display_value(v)))
-            .collect()
-    } else {
-        vec![]
-    };
+    let pairs: Vec<(String, String)> =
+        if let Some(arr) = data.get("pairs").and_then(|v| v.as_array()) {
+            arr.iter()
+                .filter_map(|pair| {
+                    let key = pair.get("key").and_then(|v| v.as_str())?;
+                    let value = pair.get("value").map(json_display_value)?;
+                    Some((key.to_string(), value))
+                })
+                .collect()
+        } else if let Some(obj) = data.as_object() {
+            obj.iter()
+                .map(|(k, v)| (k.clone(), json_display_value(v)))
+                .collect()
+        } else {
+            vec![]
+        };
 
     rsx! {
         div { class: "cop-kv-grid",
@@ -4339,10 +4834,11 @@ mod tests {
         audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
         build_chat_empty_state_model, build_dispatch_context_strip_model,
         build_left_rail_inventory, build_provider_blocked_composer_model,
-        build_settings_panel_model, chat_status_tone, context_window_label,
+        build_settings_panel_model, chat_status_tone, context_window_label, derive_acp_url_from_ws,
         dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
-        render_chat_status_banner, render_dispatch_context_strip, should_expand_system_notice,
-        should_expand_tool_args, should_expand_tool_output, system_block_class, system_block_tone,
+        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
+        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
+        should_expand_tool_output, system_block_class, system_block_tone,
         system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
         tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
         tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
@@ -4358,6 +4854,34 @@ mod tests {
     #[cfg(not(target_arch = "wasm32"))]
     use auspex_core::runtime_types::TargetedCommand;
     use auspex_core::session_model::HostSessionModel;
+
+    #[test]
+    fn acp_url_derives_from_authenticated_ws_url() {
+        assert_eq!(
+            derive_acp_url_from_ws("ws://127.0.0.1:7842/ws?token=secret"),
+            Some("ws://127.0.0.1:7842/acp?token=secret".into())
+        );
+        assert_eq!(
+            redact_ws_token("ws://127.0.0.1:7842/acp?token=secret"),
+            "ws://127.0.0.1:7842/acp?token=..."
+        );
+    }
+
+    #[test]
+    fn agent_payload_classifier_renders_human_markdown_capability_catalogs() {
+        let payload = "**Capabilities** | **Version Control** | Git operations || **Container & OCI** | Build, tag, push || **Delegation** | Route sub-tasks to local models";
+        assert!(!should_collapse_agent_payload(payload));
+        assert!(!should_collapse_agent_payload(
+            "The branch is clean and the next step is implementation."
+        ));
+    }
+
+    #[test]
+    fn agent_payload_classifier_collapses_structured_capability_payloads() {
+        let payload =
+            r#"{"capabilities":["version_control","container_oci"],"tools":["tool-call"]}"#;
+        assert!(should_collapse_agent_payload(payload));
+    }
 
     #[test]
     fn transcript_anchor_lookup_matches_delegate_and_dispatcher_switch_targets() {
@@ -4988,20 +5512,10 @@ mod tests {
         assert_eq!(model.state, "ready");
         assert!(model.send_detail.contains("Prompt ready: 39 character(s)"));
         // Target chip combines model + tier.
-        assert!(
-            model
-                .items
-                .iter()
-                .any(|item| item.label == "Target"
-                    && item.value.contains("anthropic:claude-sonnet-4-6")
-                    && item.value.contains("victory"))
-        );
-        assert!(
-            model
-                .items
-                .iter()
-                .any(|item| item.label == "State")
-        );
+        assert!(model.items.iter().any(|item| item.label == "Target"
+            && item.value.contains("anthropic:claude-sonnet-4-6")
+            && item.value.contains("victory")));
+        assert!(model.items.iter().any(|item| item.label == "State"));
         assert!(
             model
                 .items
@@ -5485,7 +5999,10 @@ mod tests {
         let controller = AppController::default();
         let model: &dyn HostSessionModel = controller.as_model();
 
-        assert_eq!(model.shell_state(), auspex_core::fixtures::ShellState::Ready);
+        assert_eq!(
+            model.shell_state(),
+            auspex_core::fixtures::ShellState::Ready
+        );
         assert_eq!(model.scenario(), DevScenario::Ready);
         assert_eq!(model.messages().len(), 1);
     }

@@ -117,7 +117,7 @@ Pilot surface for the redesign.
 - filters: inset controls
 - selected detail: strongest local elevation
 
-### Session / Scribe
+### Session
 - grouped raised panels
 - canonical Instance panel before Dispatcher binding
 - warnings remain sharper and flatter than decorative panels

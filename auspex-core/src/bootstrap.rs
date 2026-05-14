@@ -170,7 +170,11 @@ fn parse_desktop_auth_status(stdout: &str) -> Result<DesktopAuthSnapshot, String
             } else if trimmed.contains('✓') || trimmed.contains('✗') {
                 // New tabular format: "name   ✓ status (method)"
                 let (name_part, rest, is_auth) = if let Some(idx) = trimmed.find('✓') {
-                    (&trimmed[..idx], trimmed[idx + '✓'.len_utf8()..].trim(), true)
+                    (
+                        &trimmed[..idx],
+                        trimmed[idx + '✓'.len_utf8()..].trim(),
+                        true,
+                    )
                 } else if let Some(idx) = trimmed.find('✗') {
                     (
                         &trimmed[..idx],
@@ -216,10 +220,16 @@ pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 #[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_TLS_STATE_URL: &str = "https://127.0.0.1:7842/api/state";
 const CARGO_MANIFEST: &str = include_str!("../../Cargo.toml");
 
 #[cfg(not(target_arch = "wasm32"))]
 const OWNED_OMEGON_PID_FILE: &str = "auspex-owned-omegon.pid";
+#[cfg(not(target_arch = "wasm32"))]
+const AUSPEX_OMEGON_POSTURE: &str = "architect";
+#[cfg(not(target_arch = "wasm32"))]
+const AUSPEX_OMEGON_THINKING: &str = "medium";
 
 #[cfg(not(target_arch = "wasm32"))]
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -552,6 +562,7 @@ pub async fn bootstrap_from_http_state_async(
     #[cfg(not(target_arch = "wasm32"))]
     {
         builder = builder.timeout(Duration::from_secs(10));
+        builder = crate::tls_config::apply_reqwest_roots(builder)?;
     }
     let client = builder
         .build()
@@ -740,13 +751,22 @@ pub async fn complete_http_bootstrap(url: &str, hints: &ConnectHints) -> Bootstr
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
 pub async fn omegon_is_running_async() -> bool {
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(2))
-        .build()
-        .ok();
+    let client = crate::tls_config::apply_reqwest_roots(
+        reqwest::Client::builder().timeout(Duration::from_secs(2)),
+    )
+    .ok()
+    .and_then(|builder| builder.build().ok());
     let Some(client) = client else { return false };
+    let state_url = if crate::tls_config::omegon_control_tls_args_from_env()
+        .map(|args| !args.is_empty())
+        .unwrap_or(false)
+    {
+        DEFAULT_TLS_STATE_URL
+    } else {
+        DEFAULT_STATE_URL
+    };
     client
-        .get(DEFAULT_STATE_URL)
+        .get(state_url)
         .send()
         .await
         .map(|r| r.status().is_success())
@@ -890,6 +910,18 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
         }
     }
 
+    for cwd in auspex_workspace_roots() {
+        for rel in &[
+            "../omegon/target/debug/omegon",
+            "../omegon/target/release/omegon",
+        ] {
+            let p = cwd.join(rel);
+            if p.exists() {
+                return Some(p);
+            }
+        }
+    }
+
     for abs in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
         let p = PathBuf::from(abs);
         if p.exists() {
@@ -910,6 +942,31 @@ pub fn find_omegon_binary() -> Option<PathBuf> {
     }
 
     None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn auspex_workspace_roots() -> Vec<PathBuf> {
+    let mut roots = Vec::new();
+    if let Ok(cwd) = std::env::current_dir() {
+        roots.push(cwd);
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        for ancestor in exe.ancestors() {
+            if ancestor.join("Cargo.toml").exists() && ancestor.join("auspex-core").exists() {
+                roots.push(ancestor.to_path_buf());
+                break;
+            }
+        }
+    }
+    roots.dedup();
+    roots
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn auspex_workspace_root() -> Option<PathBuf> {
+    auspex_workspace_roots()
+        .into_iter()
+        .find(|root| root.join("Cargo.toml").exists() && root.join("auspex-core").exists())
 }
 
 /// Spawn the owned Omegon backend, verify the launcher contract,
@@ -942,11 +999,19 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
 
     if omegon_is_running_async().await {
         clear_owned_omegon_pid();
-        match bootstrap_from_http_state_async(DEFAULT_STATE_URL, &ConnectHints::from_env()).await {
+        let default_state_url = if crate::tls_config::omegon_control_tls_args_from_env()
+            .map(|args| !args.is_empty())
+            .unwrap_or(false)
+        {
+            DEFAULT_TLS_STATE_URL
+        } else {
+            DEFAULT_STATE_URL
+        };
+        match bootstrap_from_http_state_async(default_state_url, &ConnectHints::from_env()).await {
             Ok(result) => return result,
             Err(error) => {
                 eprintln!(
-                    "auspex: existing local Omegon at {DEFAULT_STATE_URL} failed bootstrap ({error}); reaping conflicting owned instances and spawning fresh one"
+                    "auspex: existing local Omegon at {default_state_url} failed bootstrap ({error}); reaping conflicting owned instances and spawning fresh one"
                 );
                 reap_conflicting_omegon_children();
             }
@@ -954,19 +1019,36 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     }
 
     reap_owned_omegon_child();
-    ensure_omegon_profile_has_runnable_model();
+    ensure_omegon_profile_for_auspex();
     validate_deploy_prerequisites();
-    install_cop_plugin();
+    install_auspex_omegon_assets();
 
     let label = binary.display().to_string();
+    let model = preferred_authenticated_omegon_model()
+        .map(|(provider, model)| format!("{provider}:{model}"))
+        .unwrap_or_else(|| "anthropic:claude-sonnet-4-6".to_string());
+    let tls_args = match crate::tls_config::omegon_control_tls_args_from_env() {
+        Ok(args) => args,
+        Err(error) => return BootstrapResult::startup_failure(error),
+    };
 
-    let mut child = match tokio::process::Command::new(binary)
+    let mut command = tokio::process::Command::new(binary);
+    if let Some(root) = auspex_workspace_root() {
+        command.current_dir(root);
+    }
+    command
+        .arg("--posture")
+        .arg(AUSPEX_OMEGON_POSTURE)
         .arg("serve")
         .arg("--control-port")
         .arg("7842")
         .arg("--strict-port")
         .arg("--model")
-        .arg("anthropic:claude-sonnet-4-6")
+        .arg(model);
+    for arg in tls_args {
+        command.arg(arg);
+    }
+    let mut child = match command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
         .spawn()
@@ -1040,10 +1122,14 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         state_url.replace("/api/state", "/api/readyz")
     };
 
-    let client = match reqwest::Client::builder()
-        .timeout(Duration::from_secs(1))
-        .build()
-    {
+    let client = match crate::tls_config::apply_reqwest_roots(
+        reqwest::Client::builder().timeout(Duration::from_secs(1)),
+    )
+    .and_then(|builder| {
+        builder
+            .build()
+            .map_err(|error| format!("could not build HTTP client: {error}"))
+    }) {
         Ok(client) => client,
         Err(error) => {
             return BootstrapResult::startup_failure(format!(
@@ -1210,8 +1296,7 @@ pub async fn restart_owned_omegon() -> Option<BootstrapResult> {
 /// a subsequent restart picks it up.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn run_auth_login(provider: &str) -> Result<(), String> {
-    let binary = find_omegon_binary()
-        .ok_or_else(|| "Omegon binary not found".to_string())?;
+    let binary = find_omegon_binary().ok_or_else(|| "Omegon binary not found".to_string())?;
     let status = tokio::process::Command::new(&binary)
         .args(["auth", "login", provider])
         .status()
@@ -1230,14 +1315,47 @@ pub async fn run_auth_login(provider: &str) -> Result<(), String> {
 /// at an unauthenticated provider (e.g. openai when only anthropic is
 /// configured) the daemon starts with a NullBridge and all prompts hang.
 #[cfg(not(target_arch = "wasm32"))]
-fn ensure_omegon_profile_has_runnable_model() {
-    const FALLBACK_PROVIDER: &str = "anthropic";
-    const FALLBACK_MODEL: &str = "claude-sonnet-4-6";
+fn ensure_omegon_profile_for_auspex() {
+    let preferred_model = preferred_authenticated_omegon_model();
 
-    let Some(home) = std::env::var("HOME").ok() else {
-        return;
-    };
-    let profile_path = std::path::PathBuf::from(&home).join(".omegon/profile.json");
+    let mut profile_paths = Vec::new();
+    if let Some(home) = std::env::var("HOME").ok() {
+        profile_paths.push(std::path::PathBuf::from(home).join(".omegon/profile.json"));
+    }
+    if let Some(root) = auspex_workspace_root() {
+        profile_paths.push(root.join(".omegon/profile.json"));
+    }
+    profile_paths.dedup();
+
+    for profile_path in profile_paths {
+        ensure_profile_path_uses_model(&profile_path, preferred_model);
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn preferred_authenticated_omegon_model() -> Option<(&'static str, &'static str)> {
+    let snapshot = load_desktop_auth_snapshot().ok()?;
+    for (provider, model) in [
+        ("anthropic", "claude-sonnet-4-6"),
+        ("openai-codex", "gpt-5.4"),
+        ("ollama-cloud", "gpt-oss:120b-cloud"),
+    ] {
+        if snapshot
+            .providers
+            .iter()
+            .any(|p| p.authenticated && provider_status_key(&p.name) == provider)
+        {
+            return Some((provider, model));
+        }
+    }
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn ensure_profile_path_uses_model(
+    profile_path: &std::path::Path,
+    preferred_model: Option<(&str, &str)>,
+) {
     let Ok(contents) = fs::read_to_string(&profile_path) else {
         return;
     };
@@ -1245,33 +1363,40 @@ fn ensure_omegon_profile_has_runnable_model() {
         return;
     };
 
-    let needs_fix = profile
-        .get("lastUsedModel")
-        .and_then(|model| model.get("provider"))
-        .and_then(|provider| provider.as_str())
-        .is_some_and(|provider| {
-            // Check if the provider is one we know is authenticated via
-            // `omegon auth status`.  If the status check fails we can't
-            // verify, so leave the profile alone.
-            let Ok(snapshot) = load_desktop_auth_snapshot() else {
-                return false;
-            };
-            !snapshot
-                .providers
-                .iter()
-                .any(|p| p.authenticated && provider_status_key(&p.name) == provider)
-        });
+    let needs_model_fix = preferred_model.is_some_and(|(fallback_provider, _)| {
+        profile
+            .get("lastUsedModel")
+            .and_then(|model| model.get("provider"))
+            .and_then(|provider| provider.as_str())
+            .is_none_or(|provider| provider != fallback_provider)
+    });
+    let needs_posture_fix = profile
+        .get("defaultPosture")
+        .and_then(|posture| posture.as_str())
+        .is_none_or(|posture| posture != AUSPEX_OMEGON_POSTURE);
+    let needs_thinking_fix = profile
+        .get("thinkingLevel")
+        .and_then(|thinking| thinking.as_str())
+        .is_none_or(|thinking| thinking != AUSPEX_OMEGON_THINKING);
 
-    if needs_fix {
-        let model_value = serde_json::json!({
-            "provider": FALLBACK_PROVIDER,
-            "modelId": FALLBACK_MODEL,
-        });
-        profile["lastUsedModel"] = model_value;
+    if needs_model_fix || needs_posture_fix || needs_thinking_fix {
+        if needs_model_fix && let Some((fallback_provider, fallback_model)) = preferred_model {
+            profile["lastUsedModel"] = serde_json::json!({
+                "provider": fallback_provider,
+                "modelId": fallback_model,
+            });
+        }
+        if needs_posture_fix {
+            profile["defaultPosture"] = serde_json::json!(AUSPEX_OMEGON_POSTURE);
+        }
+        if needs_thinking_fix {
+            profile["thinkingLevel"] = serde_json::json!(AUSPEX_OMEGON_THINKING);
+        }
         if let Ok(json) = serde_json::to_string_pretty(&profile) {
             let _ = fs::write(&profile_path, json);
             eprintln!(
-                "auspex: updated Omegon profile to use {FALLBACK_PROVIDER}:{FALLBACK_MODEL} (previous model provider was not authenticated)"
+                "auspex: updated Omegon profile {} for Auspex coordinator posture {AUSPEX_OMEGON_POSTURE}, thinking {AUSPEX_OMEGON_THINKING}",
+                profile_path.display()
             );
         }
     }
@@ -1286,17 +1411,14 @@ fn validate_deploy_prerequisites() {
     let config = crate::config::load_config();
 
     for (profile, tool) in config.missing_tools() {
-        eprintln!(
-            "auspex: deploy profile \"{profile}\" requires \"{tool}\" but it is not in PATH"
-        );
+        eprintln!("auspex: deploy profile \"{profile}\" requires \"{tool}\" but it is not in PATH");
     }
 }
 
-/// Install the COP display surface armory plugin and skill into `.omegon/`
-/// so omegon discovers the cop_write/cop_clear/cop_layout tools and the
-/// COP usage instructions at startup.
+/// Install Auspex-owned Omegon assets into `.omegon/` so the embedded
+/// coordinator starts with the right tool surface and behavioral posture.
 #[cfg(not(target_arch = "wasm32"))]
-fn install_cop_plugin() {
+fn install_auspex_omegon_assets() {
     // ── Armory plugin (tools) ──────────────────────────────────────
     let plugin_dir = std::path::PathBuf::from(".omegon/plugins/auspex-cop");
     let tools_dir = plugin_dir.join("tools");
@@ -1336,6 +1458,19 @@ fn install_cop_plugin() {
     let skill = include_str!("../../assets/cop-skill/SKILL.md");
     if let Err(error) = std::fs::write(skill_dir.join("SKILL.md"), skill) {
         eprintln!("auspex: could not write COP skill: {error}");
+    }
+
+    // ── Primary coordinator posture skill ─────────────────────────
+    let coordinator_skill_dir =
+        std::path::PathBuf::from(".omegon/skills/auspex-primary-coordinator");
+    if let Err(error) = std::fs::create_dir_all(&coordinator_skill_dir) {
+        eprintln!("auspex: could not create primary coordinator skill directory: {error}");
+        return;
+    }
+
+    let coordinator_skill = include_str!("../../assets/primary-coordinator-skill/SKILL.md");
+    if let Err(error) = std::fs::write(coordinator_skill_dir.join("SKILL.md"), coordinator_skill) {
+        eprintln!("auspex: could not write primary coordinator skill: {error}");
     }
 }
 
@@ -1458,10 +1593,7 @@ mod tests {
         assert_eq!(snapshot.providers.len(), 3);
         assert_eq!(snapshot.providers[0].name, "anthropic");
         assert!(snapshot.providers[0].authenticated);
-        assert_eq!(
-            snapshot.providers[0].auth_method.as_deref(),
-            Some("oauth")
-        );
+        assert_eq!(snapshot.providers[0].auth_method.as_deref(), Some("oauth"));
         assert_eq!(snapshot.providers[1].name, "openai");
         assert!(!snapshot.providers[1].authenticated);
         assert_eq!(snapshot.providers[2].name, "ollama-cloud");
@@ -1516,7 +1648,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.15.99".into());
+            .omegon_version = Some("0.16.99".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning

@@ -319,7 +319,13 @@ impl RemoteHostSession {
                 // deltas as they arrive, not only on MessageCompleted.
                 if let Some(turn) = self.transcript.turns.last_mut() {
                     match turn.blocks.last_mut() {
-                        Some(crate::fixtures::TurnBlock::Text(block)) if block.notice_kind.is_none() && block.origin.as_ref().is_none_or(|o| o.kind == OriginKind::Dispatcher) => {
+                        Some(crate::fixtures::TurnBlock::Text(block))
+                            if block.notice_kind.is_none()
+                                && block
+                                    .origin
+                                    .as_ref()
+                                    .is_none_or(|o| o.kind == OriginKind::Dispatcher) =>
+                        {
                             block.text = self.pending_text.trim().to_string();
                         }
                         _ => {
@@ -1121,6 +1127,7 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
             health_url: None,
             ready_url: None,
             ws_url: instance.control_plane.ws_url.clone(),
+            acp_url: None,
             auth_mode: instance.control_plane.auth_mode.clone(),
             token_ref: None,
             last_ready_at: None,
@@ -1232,6 +1239,7 @@ fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> Instanc
                 health_url: control_plane.health_url.clone(),
                 ready_url: control_plane.ready_url.clone(),
                 ws_url: control_plane.ws_url.clone(),
+                acp_url: control_plane.acp_url.clone(),
                 auth_mode: control_plane.auth_mode.clone(),
                 token_ref: control_plane.token_ref.clone(),
                 last_ready_at: control_plane.last_ready_at.clone(),
@@ -2124,7 +2132,10 @@ mod tests {
                 runtime_profile: "primary-interactive".into(),
                 autonomy_mode: "operator-driven".into(),
                 dispatcher: omegon_traits::IpcDispatcherSnapshot {
-                    available_options: vec!["primary-interactive".into(), "supervisor-heavy".into()],
+                    available_options: vec![
+                        "primary-interactive".into(),
+                        "supervisor-heavy".into(),
+                    ],
                     switch_state: "idle".into(),
                     request_id: None,
                     expected_profile: Some("primary-interactive".into()),

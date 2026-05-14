@@ -12,6 +12,8 @@ related:
   - auspex-detached-service-lifecycle
   - auspex-worker-inheritance
   - auspex-session-dispatcher
+  - auspex-primary-coordinator
+  - librefang-peer-runtime-positioning
 ---
 
 # Auspex multi-agent runtime and Omegon instance orchestration
@@ -144,6 +146,18 @@ Escalation to expensive models should be explicit rather than the default.
 **Status:** accepted
 
 **Rationale:** The existing primary-driver role is underspecified as merely powering the main UI. In practice, the operator-facing worker needs a clearer semantic contract: it is the per-session dispatcher/orchestrator that decides whether to answer directly, invoke tools, decompose work, or delegate to child workers. This refines the role without changing the accepted architecture that Auspex remains the supervisor/gateway and Omegon workers remain isolated runtimes.
+
+### Primary Coordinator is the operator-facing product posture for primary-driver
+
+**Status:** proposed
+
+**Rationale:** The low-level `primary-driver` role remains for control-plane compatibility, but Auspex should present the integrated primary as **Primary Coordinator**. The coordinator manages work from operator prompts, workflows, queues, deployments, and agent escalations, not just one coding conversation. See [[auspex-primary-coordinator]] for the fleet-control posture, execution-lane primitives, tool phases, UI implications, and second-order effects.
+
+### External agent OSes are peer runtimes, not worker implementations
+
+**Status:** proposed
+
+**Rationale:** LibreFang is a concrete example of a parallel agent OS with its own daemon, agents, workflows, Hands, MCP, A2A, memory, dashboard, OpenAI-compatible API, and telemetry. Auspex should not vendor or embed that runtime, but it should be able to supervise it as an external peer runtime. This keeps Auspex positioned as the operator control plane above heterogeneous agent systems rather than as a single-runtime dashboard. See [[librefang-peer-runtime-positioning]] for the adapter model and phased path.
 
 ## First-pass runtime model
 

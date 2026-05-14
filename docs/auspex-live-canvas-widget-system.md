@@ -58,7 +58,7 @@ The existing shell-frame decisions remain valid:
 - top/bottom bars still carry global chrome and durable identity
 - the center remains the cognitively primary workspace region
 - rails retain stable meaning during migration
-- Chat / Scribe / Graph remain the major workspace taxonomy unless superseded elsewhere
+- COP / Chat / Graph / Workflow / Audit are the active center workspaces; historical Scribe concepts are superseded by Workflow handoffs and task observability.
 
 The canvas system therefore **extends** the current shell instead of replacing it.
 
@@ -701,7 +701,7 @@ Examples:
 - `AttachedOmegonStatusSurface` → visible in simple, power, and mobile
 - `DeploymentInventorySurface` → hidden in simple, visible in power, collapsed/expandable on mobile
 - `TemporaryDispatchesSurface` → escalates when active; summary-first on mobile
-- `GraphOverviewSurface` → power-only by default; explicit override on mobile
+- `DeploymentGraphSurface` → power-only by default; explicit override on mobile
 
 ### Escalation rule
 
@@ -992,7 +992,7 @@ Core workspace surfaces:
 - `FocusedNodeSurface`
 - `ImplementingNodesSurface`
 - `ActionableNodesSurface`
-- `GraphOverviewSurface`
+- `DeploymentGraphSurface`
 - `OpenSpecSummarySurface`
 - `CleaveSummarySurface`
 
@@ -1058,9 +1058,8 @@ Current routed workspaces still exist:
 - Chat
 - Session
 - Audit
-- Scribe
 - Graph
-- Work
+- Workflow
 
 But those routed workspaces should increasingly be understood as **surface hosts** rather than monolithic screens.
 
@@ -1397,7 +1396,7 @@ Representative selection kinds:
 - `SelectedActivityActor(actor_id)`
 - `SelectedAuditEntry(block_id)`
 - `SelectedTranscriptTarget(target)`
-- `SelectedGraphNode(node_id)`
+- `SelectedDeploymentGraphNode(instance_id)`
 - `SelectedRoute(route_id)`
 - `SelectedAuthority(instance_id | route_id)`
 

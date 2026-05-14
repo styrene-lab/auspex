@@ -25,6 +25,7 @@ impl Feature for CopFeature {
                 description: "Write structured content to a named region of the Common Operating Picture. \
                     Content types: table, status_card, alert_feed, kv_grid, text_block, code_block, metric. \
                     Regions: center (dominant), north, south, east, west (quadrants).".into(),
+                capabilities: Vec::new(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -61,6 +62,7 @@ impl Feature for CopFeature {
                 name: "cop_clear".into(),
                 label: "COP Clear".into(),
                 description: "Clear a named COP region, or clear all regions if no region specified.".into(),
+                capabilities: Vec::new(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {
@@ -75,6 +77,7 @@ impl Feature for CopFeature {
                 name: "cop_layout".into(),
                 label: "COP Layout".into(),
                 description: "Configure which COP regions are active. Default segmenta: center with north/south/east/west quadrants.".into(),
+                capabilities: Vec::new(),
                 parameters: serde_json::json!({
                     "type": "object",
                     "properties": {

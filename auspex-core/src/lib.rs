@@ -8,34 +8,37 @@
 //! - Bootstrap and discovery
 
 // Foundation (no internal deps)
-pub mod runtime_types;
-pub mod omegon_control;
 pub mod cop_surface;
+pub mod omegon_control;
+pub mod runtime_types;
+pub mod secret_grants;
 pub mod session_model;
 
 // Data layer
-pub mod fixtures;
-pub mod session_event;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod config;
+pub mod fixtures;
+pub mod session_event;
 
 // Infrastructure
-pub mod instance_registry;
-pub mod event_stream;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod ipc_client;
-pub mod command_transport;
 pub mod audit_timeline;
+pub mod command_transport;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod container_discovery;
+pub mod event_stream;
+pub mod instance_registry;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod ipc_client;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod tls_config;
 
 // State machines
-pub mod state_engine;
-pub mod telemetry;
-pub mod remote_session;
 pub mod cop_feature;
 pub mod instance_session;
+pub mod remote_session;
+pub mod state_engine;
+pub mod telemetry;
 
 // Orchestration
-pub mod controller;
 pub mod bootstrap;
+pub mod controller;

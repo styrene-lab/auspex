@@ -7,6 +7,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+- Removed the inactive Scribe workspace from active navigation; Flynt remains the task board, Sentry remains execution, and Auspex focuses on workflow handoff, command, and observability surfaces.
+- Reframed the active Graph workspace around deployed-agent topology instead of design-tree/tasking state, preserving Flynt as the task/board owner.
+- Added ACP endpoint plumbing and reframed the Chat workspace as an ACP session surface for config, commands, plans, tool calls, and assistant deltas.
+
 ## [0.2.0-rc.1] - 2026-04-07
 
 ### Changed

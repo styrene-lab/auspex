@@ -35,6 +35,7 @@ web = [
 
 [dependencies]
 auspex-core = { path = "auspex-core", default-features = false }
+omegon-flow = "0.9.1"
 dioxus = { version = "0.7", features = ["launch", "devtools", "logger", "lib"] }
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
@@ -49,6 +50,8 @@ futures-util = "0.3"
 tungstenite = { version = "0.28", default-features = false }
 rmp-serde = "1"
 omegon-traits = { path = "../omegon/core/crates/omegon-traits" }
+uuid = { version = "1", features = ["serde", "v4"] }
+pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 # Desktop-only: async WebSocket via tokio
 tokio-tungstenite = { version = "0.28", optional = true, default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }

@@ -71,7 +71,8 @@ impl EventStreamHandle {
 
     /// Signal the background WebSocket task to stop.
     pub fn cancel(&self) {
-        self.cancelled.store(true, std::sync::atomic::Ordering::Relaxed);
+        self.cancelled
+            .store(true, std::sync::atomic::Ordering::Relaxed);
     }
 
     /// Whether this stream has been cancelled.
@@ -172,7 +173,22 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
             }
             first_attempt = false;
 
-            let connect_result = tokio_tungstenite::connect_async(&url).await;
+            let connect_result = match crate::tls_config::websocket_connector_from_env() {
+                Ok(Some(connector)) => {
+                    tokio_tungstenite::connect_async_tls_with_config(
+                        &url,
+                        None,
+                        false,
+                        Some(connector),
+                    )
+                    .await
+                }
+                Ok(None) => tokio_tungstenite::connect_async(&url).await,
+                Err(error) => Err(tungstenite::Error::Io(std::io::Error::new(
+                    std::io::ErrorKind::InvalidInput,
+                    error,
+                ))),
+            };
 
             match connect_result {
                 Err(error) => {

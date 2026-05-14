@@ -59,8 +59,8 @@ The default experience feels like a usable local chat client, not an internal te
 ## Phase 4 — Power-user MVP
 
 ### Deliverables
-- Chat screen with richer tool visibility
-- Graph screen bound to `/api/graph`
+- Chat screen oriented around ACP session events, config options, plans, tool calls, and commands
+- Graph screen bound to deployed-agent lifecycle topology
 - Work screen bound to design/OpenSpec/cleave state
 - Session screen bound to `harness`
 - desktop-hosted remote session path for phone clients

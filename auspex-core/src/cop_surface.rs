@@ -327,10 +327,7 @@ impl CopDisplayState {
             .get("title")
             .and_then(|v| v.as_str())
             .map(|s| s.to_string());
-        let data = args
-            .get("data")
-            .cloned()
-            .unwrap_or(serde_json::Value::Null);
+        let data = args.get("data").cloned().unwrap_or(serde_json::Value::Null);
 
         let region = CopRegion::from_str_lossy(region_str);
         if let Some(content_type) = ContentType::from_str_lossy(content_type_str) {

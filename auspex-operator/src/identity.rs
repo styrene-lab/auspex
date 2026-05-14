@@ -15,8 +15,8 @@
 //! from the injected secret and is immediately admitted.
 
 use k8s_openapi::api::core::v1::Secret;
-use kube::{Api, api::PatchParams};
 use kube::api::Patch;
+use kube::{Api, api::PatchParams};
 use serde_json::json;
 use sha2::Digest;
 use styrene_identity::{KeyDeriver, KeyPurpose, pubkey};
@@ -73,18 +73,17 @@ pub async fn provision_identity(
     let operator_secret = secrets_api
         .get(&identity_spec.operator_secret)
         .await
-        .map_err(|e| IdentityError::OperatorSecretMissing(format!(
-            "could not read operator secret '{}': {e}",
-            identity_spec.operator_secret
-        )))?;
+        .map_err(|e| {
+            IdentityError::OperatorSecretMissing(format!(
+                "could not read operator secret '{}': {e}",
+                identity_spec.operator_secret
+            ))
+        })?;
 
     // Verify the operator secret carries the expected identity label.
     // This prevents a malicious CRD from reading arbitrary secrets by
     // pointing operator_secret at another service's secret.
-    let secret_labels = operator_secret
-        .metadata
-        .labels
-        .as_ref();
+    let secret_labels = operator_secret.metadata.labels.as_ref();
     let is_identity_secret = secret_labels
         .and_then(|l| l.get("styrene.sh/identity"))
         .is_some_and(|v| v == "operator");
@@ -99,18 +98,16 @@ pub async fn provision_identity(
         .data
         .as_ref()
         .and_then(|d| d.get(&identity_spec.operator_secret_key))
-        .ok_or_else(|| IdentityError::OperatorSecretMissing(format!(
-            "key '{}' not found in operator secret",
-            identity_spec.operator_secret_key
-        )))?;
+        .ok_or_else(|| {
+            IdentityError::OperatorSecretMissing(format!(
+                "key '{}' not found in operator secret",
+                identity_spec.operator_secret_key
+            ))
+        })?;
 
-    let mut root_array: [u8; 32] = root_bytes
-        .0
-        .as_slice()
-        .try_into()
-        .map_err(|_| IdentityError::OperatorSecretMissing(
-            "root secret must be exactly 32 bytes".into(),
-        ))?;
+    let mut root_array: [u8; 32] = root_bytes.0.as_slice().try_into().map_err(|_| {
+        IdentityError::OperatorSecretMissing("root secret must be exactly 32 bytes".into())
+    })?;
 
     // 2. Two-level HKDF via styrene-identity's KeyDeriver.
     //    operator_root → agent_master → per-agent root.

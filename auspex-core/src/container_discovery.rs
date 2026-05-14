@@ -231,12 +231,17 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                         format!("?token={token}")
                     }
                 ),
+                acp_url: Some(format!(
+                    "ws://127.0.0.1:{}/acp{}",
+                    container.host_port,
+                    if token.is_empty() {
+                        String::new()
+                    } else {
+                        format!("?token={token}")
+                    }
+                )),
                 auth_mode: "ephemeral-bearer".into(),
-                token_ref: if token.is_empty() {
-                    None
-                } else {
-                    Some(token)
-                },
+                token_ref: if token.is_empty() { None } else { Some(token) },
                 last_ready_at: if ready { Some(now.clone()) } else { None },
             },
             health: ObservedHealth {

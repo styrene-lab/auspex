@@ -159,6 +159,7 @@ mod tests {
                     health_url: format!("http://127.0.0.1/{instance_id}/api/healthz"),
                     ready_url: format!("http://127.0.0.1/{instance_id}/api/readyz"),
                     ws_url: format!("ws://127.0.0.1/{instance_id}/ws"),
+                    acp_url: Some(format!("ws://127.0.0.1/{instance_id}/acp")),
                     auth_mode: "ephemeral-bearer".into(),
                     token_ref: Some("secret://auspex/instances/token".into()),
                     last_ready_at: Some("2026-04-03T12:00:11Z".into()),
@@ -234,7 +235,10 @@ mod tests {
         store.upsert(updated);
 
         assert_eq!(store.instances.len(), 1);
-        assert_eq!(store.instances[0].identity.status, WorkerLifecycleState::Busy);
+        assert_eq!(
+            store.instances[0].identity.status,
+            WorkerLifecycleState::Busy
+        );
     }
 
     #[test]

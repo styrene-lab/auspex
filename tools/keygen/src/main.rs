@@ -133,12 +133,12 @@ fn cmd_ssh(label: &str, export: bool) {
     let verifying_key = signing_key.verifying_key();
 
     // Format as OpenSSH public key.
-    let ssh_pubkey = ssh_key::public::KeyData::Ed25519(Ed25519PublicKey(
-        verifying_key.to_bytes(),
-    ));
+    let ssh_pubkey = ssh_key::public::KeyData::Ed25519(Ed25519PublicKey(verifying_key.to_bytes()));
     let comment = format!("styrene-{label}");
     let public_key = ssh_key::PublicKey::new(ssh_pubkey, &comment);
-    let pubkey_str = public_key.to_openssh().expect("could not format public key");
+    let pubkey_str = public_key
+        .to_openssh()
+        .expect("could not format public key");
 
     println!("{pubkey_str}");
 
@@ -150,11 +150,8 @@ fn cmd_ssh(label: &str, export: bool) {
         };
         seed.zeroize();
 
-        let private_key = ssh_key::PrivateKey::new(
-            KeypairData::Ed25519(keypair),
-            &comment,
-        )
-        .expect("could not build private key");
+        let private_key = ssh_key::PrivateKey::new(KeypairData::Ed25519(keypair), &comment)
+            .expect("could not build private key");
 
         let private_openssh = private_key
             .to_openssh(ssh_key::LineEnding::LF)
@@ -182,8 +179,7 @@ fn cmd_ssh(label: &str, export: bool) {
         }
 
         // Write public key.
-        fs::write(&pub_path, pubkey_str.as_bytes())
-            .expect("could not write public key");
+        fs::write(&pub_path, pubkey_str.as_bytes()).expect("could not write public key");
 
         eprintln!("Private key: {}", priv_path.display());
         eprintln!("Public key:  {}", pub_path.display());

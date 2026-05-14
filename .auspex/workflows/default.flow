@@ -1,0 +1,139 @@
++++
+id = "9f84ae87-9212-4d7b-80c6-cca39b77d156"
+kind = "flow"
+
+[data]
+title = "Auspex starter workflow"
+schema_version = 1
++++
+{
+  "meta": {
+    "title": "Auspex starter workflow",
+    "description": "Webhook to fleet dispatch to Sentry submit."
+  },
+  "nodes": [
+    {
+      "id": "11111111-1111-4111-8111-111111111111",
+      "kind": "webhook_input",
+      "position": [
+        0.0,
+        80.0
+      ],
+      "data": {
+        "label": "Webhook input",
+        "method": "POST",
+        "path": "/api/workflows/default"
+      },
+      "sockets": [
+        {
+          "name": "event",
+          "direction": "output",
+          "ty": "json"
+        }
+      ]
+    },
+    {
+      "id": "22222222-2222-4222-8222-222222222222",
+      "kind": "fleet_dispatch",
+      "position": [
+        310.0,
+        0.0
+      ],
+      "data": {
+        "endpoint": "/api/fleet/dispatch",
+        "label": "Dispatch to fleet",
+        "target": "detached-service"
+      },
+      "sockets": [
+        {
+          "name": "event",
+          "direction": "input",
+          "ty": "json"
+        },
+        {
+          "name": "task",
+          "direction": "output",
+          "ty": "json"
+        }
+      ]
+    },
+    {
+      "id": "33333333-3333-4333-8333-333333333333",
+      "kind": "sentry_submit",
+      "position": [
+        580.0,
+        80.0
+      ],
+      "data": {
+        "endpoint": "/api/sentry/submit",
+        "label": "Submit Sentry task"
+      },
+      "sockets": [
+        {
+          "name": "task",
+          "direction": "input",
+          "ty": "json"
+        },
+        {
+          "name": "result",
+          "direction": "output",
+          "ty": "json"
+        }
+      ]
+    },
+    {
+      "id": "44444444-4444-4444-8444-444444444444",
+      "kind": "result_output",
+      "position": [
+        880.0,
+        80.0
+      ],
+      "data": {
+        "label": "Result output",
+        "topic": "aether.task.result"
+      },
+      "sockets": [
+        {
+          "name": "result",
+          "direction": "input",
+          "ty": "json"
+        }
+      ]
+    }
+  ],
+  "edges": [
+    {
+      "id": "3148a242-9038-45e0-adfd-6d4b6519c801",
+      "source": {
+        "node": "11111111-1111-4111-8111-111111111111",
+        "socket": "event"
+      },
+      "target": {
+        "node": "22222222-2222-4222-8222-222222222222",
+        "socket": "event"
+      }
+    },
+    {
+      "id": "5009b5ce-d8bd-4121-b4d2-00eae1055abc",
+      "source": {
+        "node": "22222222-2222-4222-8222-222222222222",
+        "socket": "task"
+      },
+      "target": {
+        "node": "33333333-3333-4333-8333-333333333333",
+        "socket": "task"
+      }
+    },
+    {
+      "id": "91e812fc-dc42-4307-a5b9-0d9d12a3b10e",
+      "source": {
+        "node": "33333333-3333-4333-8333-333333333333",
+        "socket": "result"
+      },
+      "target": {
+        "node": "44444444-4444-4444-8444-444444444444",
+        "socket": "result"
+      }
+    }
+  ]
+}

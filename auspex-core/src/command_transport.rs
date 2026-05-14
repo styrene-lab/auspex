@@ -83,7 +83,9 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
                     Ok(result) => {
                         eprintln!(
                             "auspex: IPC slash command rejected: {}",
-                            result.output.unwrap_or_else(|| "unknown rejection".to_string())
+                            result
+                                .output
+                                .unwrap_or_else(|| "unknown rejection".to_string())
                         );
                     }
                     Err(error) => eprintln!("auspex: IPC slash command failed: {error}"),

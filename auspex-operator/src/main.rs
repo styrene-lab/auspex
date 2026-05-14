@@ -12,14 +12,22 @@ mod reconciler;
 use std::{net::SocketAddr, sync::Arc};
 
 use axum::{Json, Router, extract::Path as AxumPath, routing::get};
-use tower_http::services::ServeDir;
-use k8s_openapi::api::{apps::v1::Deployment, batch::v1::{CronJob, Job}};
-use kube::{Api, Client, CustomResourceExt, runtime::Controller};
 use futures_util::StreamExt;
+use k8s_openapi::api::{
+    apps::v1::Deployment,
+    batch::v1::{CronJob, Job},
+};
+use kube::{
+    Api, Client, CustomResourceExt, ResourceExt,
+    api::{Patch, PatchParams},
+    runtime::Controller,
+};
+use serde_json::Value;
 use styrene_mqtt::{EmbeddedBrokerBuilder, EmbeddedBrokerConfig, broker::TcpListenerConfig};
-use tracing::{info, warn, error};
+use tower_http::services::ServeDir;
+use tracing::{error, info, warn};
 
-use crd::{ExternalAgent, OmegonAgent};
+use crd::{AgentMode, ExternalAgent, OmegonAgent};
 use reconciler::Context;
 
 #[tokio::main]
@@ -39,7 +47,10 @@ async fn main() -> anyhow::Result<()> {
     if std::env::args().any(|a| a == "--crd") {
         let managed = OmegonAgent::crd();
         let external = ExternalAgent::crd();
-        println!("{}", serde_json::to_string_pretty(&serde_json::json!([managed, external]))?);
+        println!(
+            "{}",
+            serde_json::to_string_pretty(&serde_json::json!([managed, external]))?
+        );
         return Ok(());
     }
 
@@ -58,11 +69,15 @@ async fn main() -> anyhow::Result<()> {
         watch_namespace: watch_namespace.clone(),
     });
 
+    ensure_primary_agent(&client, watch_namespace.as_deref()).await?;
+
     let mqtt_bind_addr: SocketAddr = std::env::var("AUSPEX_MQTT_BIND_ADDR")
         .unwrap_or_else(|_| "0.0.0.0:1883".into())
         .parse()?;
     let (_mqtt_broker, _mqtt_links) = EmbeddedBrokerBuilder::new(EmbeddedBrokerConfig {
-        tcp_listener: Some(TcpListenerConfig { bind_addr: mqtt_bind_addr }),
+        tcp_listener: Some(TcpListenerConfig {
+            bind_addr: mqtt_bind_addr,
+        }),
         ..Default::default()
     })
     .add_link("auspex-operator")
@@ -92,10 +107,8 @@ async fn main() -> anyhow::Result<()> {
         // Serve the Auspex web UI from the dist directory.
         // In the container image, the WASM bundle is at /ui/dist.
         // Locally, fall back to the workspace dist directory.
-        let web_ui_path = std::env::var("AUSPEX_WEB_UI_PATH")
-            .unwrap_or_else(|_| "/ui/dist".into());
-        let serve_dir = ServeDir::new(&web_ui_path)
-            .append_index_html_on_directories(true);
+        let web_ui_path = std::env::var("AUSPEX_WEB_UI_PATH").unwrap_or_else(|_| "/ui/dist".into());
+        let serve_dir = ServeDir::new(&web_ui_path).append_index_html_on_directories(true);
 
         // Fleet API token: required for /api/* routes.
         // Set via AUSPEX_API_TOKEN env var or k8s Secret mount.
@@ -106,46 +119,55 @@ async fn main() -> anyhow::Result<()> {
         }
 
         let api_routes = Router::new()
-            .route("/fleet", get({
-                let ctx = api_ctx.clone();
-                move || fleet_handler(ctx)
-            }))
-            .route("/fleet/{ns}/{name}/sbom", get({
-                let ctx = api_ctx.clone();
-                move |path: AxumPath<(String, String)>| sbom_handler(ctx, path)
-            }));
+            .route(
+                "/fleet",
+                get({
+                    let ctx = api_ctx.clone();
+                    move || fleet_handler(ctx)
+                }),
+            )
+            .route(
+                "/fleet/{ns}/{name}/sbom",
+                get({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>| sbom_handler(ctx, path)
+                }),
+            );
 
         // Wrap API routes with bearer token validation when configured.
         let api_routes = if let Some(token) = api_token {
             let expected_value = format!("Bearer {token}");
-            api_routes.layer(axum::middleware::from_fn(move |req: axum::extract::Request, next: axum::middleware::Next| {
-                let expected = expected_value.clone();
-                async move {
-                    let auth_header = req.headers()
-                        .get("authorization")
-                        .and_then(|v| v.to_str().ok())
-                        .unwrap_or("");
-                    // Constant-time comparison to prevent timing attacks.
-                    // Always iterate the full expected length regardless of
-                    // header length, comparing against zero-padding for short
-                    // inputs so the loop duration doesn't leak length info.
-                    let header_bytes = auth_header.as_bytes();
-                    let expected_bytes = expected.as_bytes();
-                    let mut diff = (header_bytes.len() ^ expected_bytes.len()) as u8;
-                    for i in 0..expected_bytes.len() {
-                        let h = header_bytes.get(i).copied().unwrap_or(0xff);
-                        diff |= h ^ expected_bytes[i];
+            api_routes.layer(axum::middleware::from_fn(
+                move |req: axum::extract::Request, next: axum::middleware::Next| {
+                    let expected = expected_value.clone();
+                    async move {
+                        let auth_header = req
+                            .headers()
+                            .get("authorization")
+                            .and_then(|v| v.to_str().ok())
+                            .unwrap_or("");
+                        // Constant-time comparison to prevent timing attacks.
+                        // Always iterate the full expected length regardless of
+                        // header length, comparing against zero-padding for short
+                        // inputs so the loop duration doesn't leak length info.
+                        let header_bytes = auth_header.as_bytes();
+                        let expected_bytes = expected.as_bytes();
+                        let mut diff = (header_bytes.len() ^ expected_bytes.len()) as u8;
+                        for i in 0..expected_bytes.len() {
+                            let h = header_bytes.get(i).copied().unwrap_or(0xff);
+                            diff |= h ^ expected_bytes[i];
+                        }
+                        if diff == 0 {
+                            next.run(req).await
+                        } else {
+                            axum::http::Response::builder()
+                                .status(401)
+                                .body(axum::body::Body::from("unauthorized"))
+                                .unwrap()
+                        }
                     }
-                    if diff == 0 {
-                        next.run(req).await
-                    } else {
-                        axum::http::Response::builder()
-                            .status(401)
-                            .body(axum::body::Body::from("unauthorized"))
-                            .unwrap()
-                    }
-                }
-            }))
+                },
+            ))
         } else {
             api_routes
         };
@@ -207,6 +229,104 @@ async fn main() -> anyhow::Result<()> {
     Ok(())
 }
 
+async fn ensure_primary_agent(
+    client: &Client,
+    watch_namespace: Option<&str>,
+) -> anyhow::Result<()> {
+    if !env_flag("AUSPEX_BOOTSTRAP_PRIMARY_AGENT", true) {
+        return Ok(());
+    }
+
+    let config = PrimaryAgentBootstrapConfig::from_env(watch_namespace);
+
+    let agents: Api<OmegonAgent> = Api::namespaced(client.clone(), &config.namespace);
+    if agents.get_opt(&config.name).await?.is_some() {
+        info!(namespace = %config.namespace, name = %config.name, "primary OmegonAgent already exists");
+        return Ok(());
+    }
+
+    agents
+        .patch(
+            &config.name,
+            &PatchParams::apply("auspex-operator").force(),
+            &Patch::Apply(primary_agent_manifest(&config)),
+        )
+        .await?;
+    info!(namespace = %config.namespace, name = %config.name, "bootstrapped primary OmegonAgent");
+    Ok(())
+}
+
+struct PrimaryAgentBootstrapConfig {
+    namespace: String,
+    name: String,
+    image: String,
+    model: String,
+    secret_name: Option<String>,
+}
+
+impl PrimaryAgentBootstrapConfig {
+    fn from_env(watch_namespace: Option<&str>) -> Self {
+        Self {
+            namespace: std::env::var("AUSPEX_PRIMARY_AGENT_NAMESPACE")
+                .ok()
+                .or_else(|| watch_namespace.map(str::to_string))
+                .unwrap_or_else(|| "omegon-agents".to_string()),
+            name: std::env::var("AUSPEX_PRIMARY_AGENT_NAME")
+                .unwrap_or_else(|_| "auspex-primary".into()),
+            image: std::env::var("AUSPEX_PRIMARY_AGENT_IMAGE")
+                .unwrap_or_else(|_| "ghcr.io/styrene-lab/omegon-agents:latest".into()),
+            model: std::env::var("AUSPEX_PRIMARY_AGENT_MODEL")
+                .unwrap_or_else(|_| "anthropic:claude-sonnet-4-6".into()),
+            secret_name: std::env::var("AUSPEX_PRIMARY_AGENT_SECRET").ok(),
+        }
+    }
+}
+
+fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
+    let mut secrets = serde_json::json!({});
+    if let Some(secret_name) = config.secret_name.as_ref() {
+        secrets["secretName"] = serde_json::json!(secret_name);
+    }
+
+    serde_json::json!({
+        "apiVersion": "styrene.sh/v1alpha1",
+        "kind": "OmegonAgent",
+        "metadata": {
+            "name": config.name,
+            "namespace": config.namespace,
+            "labels": {
+                "app.kubernetes.io/part-of": "auspex",
+                "styrene.sh/agent-role": "primary-driver",
+            },
+        },
+        "spec": {
+            "agent": "styrene.auspex-primary",
+            "model": config.model,
+            "posture": "architect",
+            "role": "primary-driver",
+            "mode": "daemon",
+            "image": config.image,
+            "secrets": secrets,
+            "resources": {
+                "cpu": "1",
+                "memory": "2Gi",
+            },
+        },
+    })
+}
+
+fn env_flag(name: &str, default: bool) -> bool {
+    std::env::var(name)
+        .ok()
+        .map(|value| {
+            matches!(
+                value.to_ascii_lowercase().as_str(),
+                "1" | "true" | "yes" | "on"
+            )
+        })
+        .unwrap_or(default)
+}
+
 async fn fleet_handler(ctx: Arc<Context>) -> (axum::http::HeaderMap, Json<serde_json::Value>) {
     let mut headers = axum::http::HeaderMap::new();
     // Prevent excessive polling — fleet data is only as fresh as the last reconcile.
@@ -231,9 +351,11 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
         .items
         .iter()
         .map(|a| {
+            let name = a.name_any();
+            let namespace = a.namespace().unwrap_or_else(|| "default".into());
             serde_json::json!({
-                "name": a.metadata.name,
-                "namespace": a.metadata.namespace,
+                "name": name,
+                "namespace": namespace,
                 "agent": a.spec.agent,
                 "model": a.spec.model,
                 "posture": a.spec.posture,
@@ -241,6 +363,8 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
                 "mode": a.spec.mode,
                 "image": a.spec.image,
                 "profile": a.spec.profile,
+                "is_primary": is_primary_agent(a),
+                "control_plane": managed_agent_control_plane(a),
                 "status": a.status.as_ref().map(|s| &s.phase),
                 "sbom": a.status.as_ref().and_then(|s| s.sbom.as_ref()).map(|sb| {
                     serde_json::json!({
@@ -296,6 +420,39 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "agents": fleet }))
 }
 
+fn is_primary_agent(agent: &OmegonAgent) -> bool {
+    agent.spec.role == "primary-driver"
+        || agent
+            .labels()
+            .get("styrene.sh/agent-role")
+            .map(String::as_str)
+            == Some("primary-driver")
+}
+
+fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
+    if agent.spec.mode != AgentMode::Daemon {
+        return None;
+    }
+
+    let name = agent.name_any();
+    let namespace = agent.namespace().unwrap_or_else(|| "default".into());
+    let base_url = format!("http://{name}.{namespace}.svc:7842");
+
+    Some(serde_json::json!({
+        "schema_version": 2,
+        "service": format!("{name}.{namespace}.svc"),
+        "http_base": base_url,
+        "base_url": base_url,
+        "startup_url": format!("http://{name}.{namespace}.svc:7842/api/startup"),
+        "state_url": format!("http://{name}.{namespace}.svc:7842/api/state"),
+        "health_url": format!("http://{name}.{namespace}.svc:7842/api/healthz"),
+        "ready_url": format!("http://{name}.{namespace}.svc:7842/api/readyz"),
+        "ws_url": format!("ws://{name}.{namespace}.svc:7842/ws"),
+        "acp_url": format!("ws://{name}.{namespace}.svc:7842/acp"),
+        "auth_mode": "cluster-internal",
+    }))
+}
+
 /// Return SBOM status and artifact pointer for a specific agent.
 async fn sbom_handler(
     ctx: Arc<Context>,
@@ -318,10 +475,7 @@ async fn sbom_handler(
         }
     };
 
-    let sbom_status = agent
-        .status
-        .as_ref()
-        .and_then(|s| s.sbom.as_ref());
+    let sbom_status = agent.status.as_ref().and_then(|s| s.sbom.as_ref());
 
     Json(serde_json::json!({
         "name": name,
@@ -348,4 +502,68 @@ async fn sbom_handler(
             })
         }),
     }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn primary_agent_manifest_marks_dedicated_daemon_driver() {
+        let manifest = primary_agent_manifest(&PrimaryAgentBootstrapConfig {
+            namespace: "omegon-agents".into(),
+            name: "auspex-primary".into(),
+            image: "example.com/omegon:dev".into(),
+            model: "anthropic:claude-sonnet-4-6".into(),
+            secret_name: Some("auspex-primary-secrets".into()),
+        });
+
+        assert_eq!(manifest["metadata"]["name"], "auspex-primary");
+        assert_eq!(
+            manifest["metadata"]["labels"]["styrene.sh/agent-role"],
+            "primary-driver"
+        );
+        assert_eq!(manifest["spec"]["agent"], "styrene.auspex-primary");
+        assert_eq!(manifest["spec"]["role"], "primary-driver");
+        assert_eq!(manifest["spec"]["mode"], "daemon");
+        assert_eq!(
+            manifest["spec"]["secrets"]["secretName"],
+            "auspex-primary-secrets"
+        );
+    }
+
+    #[test]
+    fn daemon_agents_publish_cluster_control_plane_urls() {
+        let agent: OmegonAgent = serde_json::from_value(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "auspex-primary",
+                "namespace": "omegon-agents",
+                "labels": {
+                    "styrene.sh/agent-role": "primary-driver"
+                }
+            },
+            "spec": {
+                "agent": "styrene.auspex-primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon"
+            }
+        }))
+        .expect("valid OmegonAgent");
+
+        let control_plane = managed_agent_control_plane(&agent).expect("daemon control plane");
+
+        assert!(is_primary_agent(&agent));
+        assert_eq!(control_plane["schema_version"], 2);
+        assert_eq!(
+            control_plane["base_url"],
+            "http://auspex-primary.omegon-agents.svc:7842"
+        );
+        assert_eq!(
+            control_plane["acp_url"],
+            "ws://auspex-primary.omegon-agents.svc:7842/acp"
+        );
+    }
 }

@@ -19,9 +19,13 @@ pub struct CanonicalSlashCommand {
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OperatorCommand {
-    PromptSubmit { text: String },
+    PromptSubmit {
+        text: String,
+    },
     TurnCancel,
-    CanonicalSlash { slash: CanonicalSlashCommand },
+    CanonicalSlash {
+        slash: CanonicalSlashCommand,
+    },
     DispatcherSwitch {
         request_id: String,
         profile: String,
@@ -225,6 +229,8 @@ pub struct ObservedControlPlane {
     pub health_url: String,
     pub ready_url: String,
     pub ws_url: String,
+    #[serde(default)]
+    pub acp_url: Option<String>,
     pub auth_mode: String,
     #[serde(default)]
     pub token_ref: Option<String>,

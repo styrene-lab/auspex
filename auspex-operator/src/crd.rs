@@ -366,7 +366,6 @@ pub struct IdentitySpec {
     pub derivation_label: Option<String>,
 
     // --- Tier 1 (file) fields ---
-
     /// Name of the k8s Secret containing the operator's root secret.
     /// Used when security_tier=file.
     #[serde(default = "default_operator_secret")]
@@ -377,7 +376,6 @@ pub struct IdentitySpec {
     pub operator_secret_key: String,
 
     // --- Tier 2 (vault) fields ---
-
     /// Vault path for the operator's root secret.
     /// Used when security_tier=vault.
     #[serde(default)]
@@ -389,14 +387,12 @@ pub struct IdentitySpec {
     pub vault_agent_prefix: Option<String>,
 
     // --- Tier 3 (hsm) fields ---
-
     /// PKCS#11 URI or device path for the HSM.
     /// Used when security_tier=hsm.
     #[serde(default)]
     pub hsm_slot: Option<String>,
 
     // --- Common fields ---
-
     /// Whether to rotate the agent's identity on the next reconciliation.
     #[serde(default)]
     pub rotate: bool,

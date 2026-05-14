@@ -30,6 +30,27 @@ Auspex should instantiate logical workers through a backend-agnostic request sha
 
 The runtime API and registry model must not assume localhost PID+port is the only execution model.
 
+### Cluster deployments need an Auspex primary driver
+
+**Status:** implemented in `auspex-operator`
+
+When Auspex runs as a Kubernetes backend, the operator bootstraps a dedicated long-running `OmegonAgent` for the operator-facing session dispatcher. This is not a generic fleet member and not another local embedded runtime. It is the cluster-resident `primary-driver` that Chat, COP decisions, delegation, and future handoff surfaces attach to.
+
+Defaults:
+
+- `metadata.name`: `auspex-primary`
+- `metadata.namespace`: `AUSPEX_PRIMARY_AGENT_NAMESPACE`, else `AUSPEX_WATCH_NAMESPACE`, else `omegon-agents`
+- `spec.agent`: `styrene.auspex-primary`
+- `spec.role`: `primary-driver`
+- `spec.mode`: `daemon`
+- `spec.posture`: `architect`
+- `spec.model`: `AUSPEX_PRIMARY_AGENT_MODEL`, else `anthropic:claude-sonnet-4-6`
+- `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:latest`
+
+Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns the primary agent manifest. Set `AUSPEX_PRIMARY_AGENT_SECRET` to attach the Kubernetes Secret that carries provider credentials and runtime tokens.
+
+The operator advertises daemon `OmegonAgent` control planes through `/api/fleet`, including the in-cluster service URL and ACP websocket URL. The UI can therefore distinguish the single operator-facing primary from supervised children and detached services.
+
 ## Deploy profiles
 
 Deploy profiles define the backend, OCI image, resource requirements, and placement constraints. Schema lives in `pkl/DeployProfile.pkl`, config loaded from `~/.config/auspex/deploy-profiles.pkl` (toml fallback).
@@ -115,7 +136,7 @@ This is the internal shape Auspex uses regardless of backend. It combines a reso
 
 ### `kubernetes`
 - creates pod/job/deployment-backed runtime
-- returns placement id, namespace, and reconciliation handle
+- returns placement id, namespace, reconciliation handle, and daemon control-plane endpoints
 - readiness becomes asynchronous and must update the registry later
 
 ## Reconciliation contract

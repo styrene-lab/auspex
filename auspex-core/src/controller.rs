@@ -394,8 +394,7 @@ impl AppController {
     /// WebSocket and IPC event paths.
     fn try_intercept_cop_tool_event(&mut self, event: &SessionEvent) {
         if let SessionEvent::ToolStarted { name, args, .. } = event {
-            self.cop_state
-                .try_apply_tool_start(name, args.as_ref());
+            self.cop_state.try_apply_tool_start(name, args.as_ref());
         }
     }
 
@@ -630,8 +629,8 @@ impl AppController {
         for (name, entry) in config.auto_attach_instances() {
             let record = entry.to_instance_record(name);
             let instance_id = record.identity.instance_id.clone();
-            let base_url = Some(record.observed.control_plane.base_url.clone())
-                .filter(|url| !url.is_empty());
+            let base_url =
+                Some(record.observed.control_plane.base_url.clone()).filter(|url| !url.is_empty());
 
             self.instance_registry.upsert(record.clone());
             self.attached_instance_engine
@@ -707,10 +706,7 @@ impl AppController {
 
     /// Apply probe results for remote instances. Each entry is
     /// `(instance_id, ready, omegon_version)`.
-    pub fn apply_remote_probe_results(
-        &mut self,
-        results: &[(String, bool, String)],
-    ) {
+    pub fn apply_remote_probe_results(&mut self, results: &[(String, bool, String)]) {
         let mut changed = false;
         for (instance_id, ready, omegon_version) in results {
             if let Some(record) = self
@@ -722,8 +718,7 @@ impl AppController {
                 let was_ready = record.observed.health.ready;
                 record.observed.health.ready = *ready;
                 if *ready {
-                    record.identity.status =
-                        crate::runtime_types::WorkerLifecycleState::Ready;
+                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Ready;
                     let now = std::time::SystemTime::now()
                         .duration_since(std::time::UNIX_EPOCH)
                         .map(|d| d.as_secs().to_string())
@@ -734,14 +729,12 @@ impl AppController {
                         Some(crate::runtime_types::InstanceFreshness::Fresh);
                     record.observed.control_plane.last_ready_at = Some(now);
                 } else if was_ready {
-                    record.identity.status =
-                        crate::runtime_types::WorkerLifecycleState::Lost;
+                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Lost;
                     record.observed.health.freshness =
                         Some(crate::runtime_types::InstanceFreshness::Stale);
                 }
                 if !omegon_version.is_empty() {
-                    record.observed.control_plane.omegon_version =
-                        omegon_version.clone();
+                    record.observed.control_plane.omegon_version = omegon_version.clone();
                 }
                 record.identity.updated_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -756,12 +749,14 @@ impl AppController {
             if !ready {
                 continue;
             }
-            let record_clone = self
-                .instance_registry
-                .find(instance_id)
-                .cloned();
+            let record_clone = self.instance_registry.find(instance_id).cloned();
             if let Some(record) = record_clone {
-                if !self.attached_instance_engine.attached_instances().iter().any(|i| i.instance_id == *instance_id) {
+                if !self
+                    .attached_instance_engine
+                    .attached_instances()
+                    .iter()
+                    .any(|i| i.instance_id == *instance_id)
+                {
                     self.register_remote_agent(&record);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
@@ -785,8 +780,7 @@ impl AppController {
                 {
                     record.observed.health.ready = *ready;
                     if !omegon_version.is_empty() {
-                        record.observed.control_plane.omegon_version =
-                            omegon_version.clone();
+                        record.observed.control_plane.omegon_version = omegon_version.clone();
                     }
                 }
             }
@@ -1916,6 +1910,7 @@ mod tests {
                         health_url: "http://127.0.0.1:7842/api/healthz".into(),
                         ready_url: "http://127.0.0.1:7842/api/readyz".into(),
                         ws_url: "ws://127.0.0.1:7842/ws".into(),
+                        acp_url: Some("ws://127.0.0.1:7842/acp".into()),
                         auth_mode: "ephemeral-bearer".into(),
                         token_ref: None,
                         last_ready_at: Some("2026-04-06T00:00:02Z".into()),
@@ -2278,9 +2273,11 @@ mod tests {
         assert!(AppController::ipc_event_requires_refresh(
             &omegon_traits::IpcEventPayload::HarnessChanged
         ));
-        assert!(!controller
-            .apply_ipc_event(omegon_traits::IpcEventPayload::HarnessChanged)
-            .expect("invalidation event handling should not fail immediately"));
+        assert!(
+            !controller
+                .apply_ipc_event(omegon_traits::IpcEventPayload::HarnessChanged)
+                .expect("invalidation event handling should not fail immediately")
+        );
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -3081,8 +3078,7 @@ mod tests {
             }],
         };
 
-        let mut controller = AppController::default()
-            .with_instance_registry(registry);
+        let mut controller = AppController::default().with_instance_registry(registry);
         controller.reattach_container_agents();
 
         assert!(
@@ -3106,11 +3102,10 @@ mod tests {
         };
         let record = entry.to_instance_record("styrene-discord");
 
-        let mut controller = AppController::default()
-            .with_instance_registry(InstanceRegistryStore {
-                schema_version: 1,
-                instances: vec![record],
-            });
+        let controller = AppController::default().with_instance_registry(InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![record],
+        });
 
         let targets = controller.remote_instances_needing_probe();
         assert_eq!(targets.len(), 1);
@@ -3130,8 +3125,8 @@ mod tests {
         };
         let record = entry.to_instance_record("styrene-discord");
 
-        let mut controller = AppController::default()
-            .with_instance_registry(InstanceRegistryStore {
+        let mut controller =
+            AppController::default().with_instance_registry(InstanceRegistryStore {
                 schema_version: 1,
                 instances: vec![record],
             });
@@ -3171,8 +3166,8 @@ mod tests {
         record.identity.status = crate::runtime_types::WorkerLifecycleState::Ready;
         record.observed.control_plane.omegon_version = "0.15.25".into();
 
-        let mut controller = AppController::default()
-            .with_instance_registry(InstanceRegistryStore {
+        let mut controller =
+            AppController::default().with_instance_registry(InstanceRegistryStore {
                 schema_version: 1,
                 instances: vec![record],
             });
@@ -3181,11 +3176,7 @@ mod tests {
         assert!(controller.remote_instances_needing_probe().is_empty());
 
         // Simulate failed probe.
-        controller.apply_remote_probe_results(&[(
-            "remote:test".into(),
-            false,
-            String::new(),
-        )]);
+        controller.apply_remote_probe_results(&[("remote:test".into(), false, String::new())]);
 
         // Now needs probing again (lost health).
         assert_eq!(controller.remote_instances_needing_probe().len(), 1);
@@ -3202,11 +3193,10 @@ mod tests {
         record.observed.health.ready = true;
         record.observed.control_plane.omegon_version = "0.15.25".into();
 
-        let controller = AppController::default()
-            .with_instance_registry(InstanceRegistryStore {
-                schema_version: 1,
-                instances: vec![record],
-            });
+        let controller = AppController::default().with_instance_registry(InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![record],
+        });
 
         // Already ready + has version → no probe needed.
         assert!(controller.remote_instances_needing_probe().is_empty());
@@ -3243,7 +3233,10 @@ mod tests {
             .region(&crate::cop_surface::CopRegion::North);
         assert!(region.is_some());
         let content = region.unwrap();
-        assert_eq!(content.content_type, crate::cop_surface::ContentType::StatusCard);
+        assert_eq!(
+            content.content_type,
+            crate::cop_surface::ContentType::StatusCard
+        );
         assert_eq!(content.data["label"], "Primary");
     }
 
@@ -3289,7 +3282,12 @@ mod tests {
             "args": {"region": "east", "content_type": "text_block", "data": {"text": "hello"}}
         });
         let _ = controller.apply_remote_event_json(&write_event.to_string());
-        assert!(controller.cop_state().region(&crate::cop_surface::CopRegion::East).is_some());
+        assert!(
+            controller
+                .cop_state()
+                .region(&crate::cop_surface::CopRegion::East)
+                .is_some()
+        );
 
         // Clear it
         let clear_event = serde_json::json!({
@@ -3297,7 +3295,12 @@ mod tests {
             "args": {"region": "east"}
         });
         let _ = controller.apply_remote_event_json(&clear_event.to_string());
-        assert!(controller.cop_state().region(&crate::cop_surface::CopRegion::East).is_none());
+        assert!(
+            controller
+                .cop_state()
+                .region(&crate::cop_surface::CopRegion::East)
+                .is_none()
+        );
     }
 
     #[test]

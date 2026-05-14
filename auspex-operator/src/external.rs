@@ -179,8 +179,7 @@ async fn probe_external_agent(endpoint: &str) -> Result<ProbeInfo, String> {
 
 /// Validate that an endpoint is not pointing at cluster-internal or metadata services.
 fn validate_endpoint(endpoint: &str) -> Result<(), String> {
-    let url = url::Url::parse(endpoint)
-        .map_err(|e| format!("invalid endpoint URL: {e}"))?;
+    let url = url::Url::parse(endpoint).map_err(|e| format!("invalid endpoint URL: {e}"))?;
 
     // Must be http or https.
     match url.scheme() {
@@ -196,14 +195,16 @@ fn validate_endpoint(endpoint: &str) -> Result<(), String> {
         || host == "kubernetes"
         || host == "kubernetes.default"
     {
-        return Err(format!("endpoint must not target cluster-internal services: {host}"));
+        return Err(format!(
+            "endpoint must not target cluster-internal services: {host}"
+        ));
     }
 
     // Block cloud metadata endpoints.
     let blocked_hosts = [
-        "169.254.169.254",   // AWS/GCP/Azure metadata
+        "169.254.169.254", // AWS/GCP/Azure metadata
         "metadata.google.internal",
-        "100.100.100.200",   // Alibaba metadata
+        "100.100.100.200", // Alibaba metadata
     ];
     if blocked_hosts.contains(&host) {
         return Err(format!("endpoint blocked (metadata service): {host}"));

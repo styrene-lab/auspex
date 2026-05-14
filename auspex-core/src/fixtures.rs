@@ -105,7 +105,8 @@ pub struct DelegateSummaryData {
     pub elapsed_ms: u64,
 }
 
-/// Snapshot of design-tree state for the Graph power-mode screen.
+/// Legacy design-tree snapshot retained for host/control-plane compatibility.
+/// The active Auspex Graph workspace renders deployment topology instead.
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub struct GraphData {
     /// All nodes, or the best available subset (implementing + actionable fallback).
@@ -175,6 +176,7 @@ pub struct InstanceControlPlaneData {
     pub health_url: Option<String>,
     pub ready_url: Option<String>,
     pub ws_url: Option<String>,
+    pub acp_url: Option<String>,
     pub auth_mode: Option<String>,
     pub token_ref: Option<String>,
     pub last_ready_at: Option<String>,
@@ -855,7 +857,8 @@ impl MockHostSession {
 
     pub fn enterprise_incident_session() -> Self {
         let mut composer = ComposerState::default();
-        composer.set_draft("Summarize the enterprise incident state and propose a triage sequence.");
+        composer
+            .set_draft("Summarize the enterprise incident state and propose a triage sequence.");
         Self {
             shell_state: ShellState::Degraded,
             scenario: DevScenario::EnterpriseIncident,
@@ -1499,8 +1502,10 @@ mod tests {
         assert!(quiet.messages().len() < busy.messages().len());
         assert!(busy.transcript().turns.len() >= 4);
         assert!(homelab.transcript().turns.len() >= 2);
-        assert!(enterprise.transcript().context_tokens.unwrap_or_default()
-            > homelab.transcript().context_tokens.unwrap_or_default());
+        assert!(
+            enterprise.transcript().context_tokens.unwrap_or_default()
+                > homelab.transcript().context_tokens.unwrap_or_default()
+        );
     }
 
     #[test]
@@ -1548,7 +1553,8 @@ mod tests {
             Some("primary-interactive")
         );
         assert_eq!(
-            enterprise.session_data()
+            enterprise
+                .session_data()
                 .dispatcher_binding
                 .as_ref()
                 .map(|binding| binding.expected_model.as_deref()),

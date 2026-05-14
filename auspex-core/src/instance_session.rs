@@ -251,9 +251,9 @@ impl PartialEq for InstanceSessionMap {
         if self.sessions.len() != other.sessions.len() {
             return false;
         }
-        self.sessions.iter().all(|(k, v)| {
-            other.sessions.get(k).is_some_and(|other_v| v == other_v)
-        })
+        self.sessions
+            .iter()
+            .all(|(k, v)| other.sessions.get(k).is_some_and(|other_v| v == other_v))
     }
 }
 
@@ -284,16 +284,13 @@ mod tests {
     #[test]
     fn drain_and_apply_processes_events() {
         let handle = mock_handle("ws://localhost:7843/ws");
-        let mut session = InstanceSession::with_handle(
-            "test-instance",
-            "ws://localhost:7843/ws",
-            handle.clone(),
-        );
+        let mut session =
+            InstanceSession::with_handle("test-instance", "ws://localhost:7843/ws", handle.clone());
 
         // Inject a turn_start event.
-        handle.inbox.push(
-            serde_json::json!({"type": "turn_start", "turn": 1}).to_string(),
-        );
+        handle
+            .inbox
+            .push(serde_json::json!({"type": "turn_start", "turn": 1}).to_string());
 
         assert!(session.drain_and_apply());
         assert!(session.is_run_active());
@@ -304,11 +301,8 @@ mod tests {
     #[test]
     fn drain_and_apply_returns_false_when_empty() {
         let handle = mock_handle("ws://localhost:7843/ws");
-        let mut session = InstanceSession::with_handle(
-            "test-instance",
-            "ws://localhost:7843/ws",
-            handle,
-        );
+        let mut session =
+            InstanceSession::with_handle("test-instance", "ws://localhost:7843/ws", handle);
 
         assert!(!session.drain_and_apply());
     }
@@ -316,19 +310,20 @@ mod tests {
     #[test]
     fn activity_summary_tracks_tools() {
         let handle = mock_handle("ws://localhost:7843/ws");
-        let mut session = InstanceSession::with_handle(
-            "test",
-            "ws://localhost:7843/ws",
-            handle.clone(),
-        );
+        let mut session =
+            InstanceSession::with_handle("test", "ws://localhost:7843/ws", handle.clone());
 
         handle.inbox.push(
-            serde_json::json!({"type": "tool_start", "id": "t1", "name": "read", "args": {}}).to_string(),
+            serde_json::json!({"type": "tool_start", "id": "t1", "name": "read", "args": {}})
+                .to_string(),
         );
         session.drain_and_apply();
 
         assert_eq!(session.activity.tool_call_count, 1);
-        assert_eq!(session.activity.last_activity.as_deref(), Some("tool: read"));
+        assert_eq!(
+            session.activity.last_activity.as_deref(),
+            Some("tool: read")
+        );
     }
 
     #[test]
@@ -339,11 +334,19 @@ mod tests {
         // Use with_handle to avoid tokio runtime requirement in tests.
         map.sessions.insert(
             "agent-1".into(),
-            InstanceSession::with_handle("agent-1", "ws://host1:7843/ws", mock_handle("ws://host1:7843/ws")),
+            InstanceSession::with_handle(
+                "agent-1",
+                "ws://host1:7843/ws",
+                mock_handle("ws://host1:7843/ws"),
+            ),
         );
         map.sessions.insert(
             "agent-2".into(),
-            InstanceSession::with_handle("agent-2", "ws://host2:7843/ws", mock_handle("ws://host2:7843/ws")),
+            InstanceSession::with_handle(
+                "agent-2",
+                "ws://host2:7843/ws",
+                mock_handle("ws://host2:7843/ws"),
+            ),
         );
         assert_eq!(map.len(), 2);
         assert!(map.is_connected("agent-1"));
@@ -372,11 +375,11 @@ mod tests {
         );
 
         // Only agent-1 has events.
-        handle1.inbox.push(
-            serde_json::json!({"type": "turn_start", "turn": 1}).to_string(),
-        );
+        handle1
+            .inbox
+            .push(serde_json::json!({"type": "turn_start", "turn": 1}).to_string());
 
-        assert!(map.drain_all());
+        assert_eq!(map.drain_all_with_ids(), vec!["agent-1".to_string()]);
 
         let s1 = map.get("agent-1").unwrap();
         assert!(s1.is_run_active());
@@ -392,11 +395,19 @@ mod tests {
         let mut map = InstanceSessionMap::default();
         map.sessions.insert(
             "agent-1".into(),
-            InstanceSession::with_handle("agent-1", "ws://host1:7843/ws", mock_handle("ws://host1:7843/ws")),
+            InstanceSession::with_handle(
+                "agent-1",
+                "ws://host1:7843/ws",
+                mock_handle("ws://host1:7843/ws"),
+            ),
         );
         map.sessions.insert(
             "agent-2".into(),
-            InstanceSession::with_handle("agent-2", "ws://host2:7843/ws", mock_handle("ws://host2:7843/ws")),
+            InstanceSession::with_handle(
+                "agent-2",
+                "ws://host2:7843/ws",
+                mock_handle("ws://host2:7843/ws"),
+            ),
         );
 
         let summaries = map.activity_summaries();
@@ -406,11 +417,8 @@ mod tests {
     #[test]
     fn send_command_queues_to_outbox() {
         let handle = mock_handle("ws://localhost:7843/ws");
-        let session = InstanceSession::with_handle(
-            "test",
-            "ws://localhost:7843/ws",
-            handle.clone(),
-        );
+        let session =
+            InstanceSession::with_handle("test", "ws://localhost:7843/ws", handle.clone());
 
         let command = TargetedCommand::prompt_submit(
             crate::runtime_types::CommandTarget {

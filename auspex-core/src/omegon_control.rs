@@ -47,6 +47,7 @@ pub struct OmegonControlPlaneDescriptor {
     pub health_url: Option<String>,
     pub ready_url: Option<String>,
     pub ws_url: Option<String>,
+    pub acp_url: Option<String>,
     pub auth_mode: Option<String>,
     pub token_ref: Option<String>,
     pub last_ready_at: Option<String>,
@@ -119,6 +120,8 @@ pub struct OmegonStartupInfo {
     pub ready_url: String,
     #[serde(default)]
     pub ws_url: String,
+    #[serde(default)]
+    pub acp_url: Option<String>,
     #[serde(default)]
     pub token: String,
     #[serde(default)]
@@ -798,7 +801,10 @@ mod tests {
 
         let runtime: OmegonRuntimeDescriptor = serde_json::from_str(json).unwrap();
 
-        assert_eq!(runtime.runtime_profile.as_deref(), Some("long-running-daemon"));
+        assert_eq!(
+            runtime.runtime_profile.as_deref(),
+            Some("long-running-daemon")
+        );
         assert_eq!(runtime.autonomy_mode.as_deref(), Some("guarded-autonomous"));
         assert_eq!(runtime.active_persona.as_deref(), Some("styrene-community"));
         assert_eq!(runtime.extensions, vec!["vox"]);
