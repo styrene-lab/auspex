@@ -1892,6 +1892,7 @@ mod tests {
                         model: Some("openai:gpt-4.1".into()),
                         ..Default::default()
                     },
+                    security: Default::default(),
                 },
                 observed: crate::runtime_types::ObservedWorkerState {
                     placement: crate::runtime_types::ObservedPlacement {

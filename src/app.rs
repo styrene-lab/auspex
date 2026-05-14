@@ -5164,17 +5164,13 @@ mod tests {
         )
         .expect("default controller should expose the starter state");
 
-        assert_eq!(model.title, "New Project starter");
+        assert_eq!(model.title, "No transcript yet");
         assert!(!model.detached);
         assert!(model.kicker.contains("main"));
-        assert!(
-            model
-                .detail
-                .contains("No transcript history is attached yet")
-        );
+        assert!(model.detail.contains("Start with a small directive"));
         assert_eq!(model.guidance.len(), 3);
-        assert!(model.guidance[0].contains("Summarize the current session"));
-        assert!(model.guidance[1].contains("right model"));
+        assert!(model.guidance[0].contains("Summarize"));
+        assert!(model.guidance[1].contains("Validate"));
     }
 
     #[test]
@@ -5196,8 +5192,8 @@ mod tests {
 
         assert!(model.detached);
         assert!(model.kicker.contains("Detached workspace"));
-        assert!(model.detail.contains("detached from feature/prototype"));
-        assert!(model.guidance[2].contains("reattach the workspace"));
+        assert!(model.detail.contains("Detached from feature/prototype"));
+        assert!(model.guidance[2].contains("Resolve detached branch"));
     }
 
     #[test]

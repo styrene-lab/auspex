@@ -2,6 +2,8 @@
 
 use serde::{Deserialize, Serialize};
 
+use crate::secret_grants::SecretGrantPrincipal;
+
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 pub struct CommandTarget {
     pub session_key: String,
@@ -158,6 +160,8 @@ pub struct DesiredWorkerState {
     pub task: Option<TaskBinding>,
     #[serde(default)]
     pub policy: PolicyOverrides,
+    #[serde(default)]
+    pub security: WorkerSecurityBinding,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -287,6 +291,8 @@ pub struct InstantiateRequest {
     #[serde(default)]
     pub overrides: InstantiateOverrides,
     #[serde(default)]
+    pub security: WorkerSecurityBinding,
+    #[serde(default)]
     pub propagation: Option<WorkerPropagation>,
 }
 
@@ -322,6 +328,18 @@ pub struct ResourceRequirements {
     pub cpu: Option<String>,
     #[serde(default)]
     pub memory: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+pub struct WorkerSecurityBinding {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub principal: Option<SecretGrantPrincipal>,
+    #[serde(default)]
+    pub secret_refs: Vec<String>,
+    #[serde(default)]
+    pub grant_ids: Vec<String>,
+    #[serde(default)]
+    pub seed_plan_ids: Vec<String>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -623,6 +641,14 @@ mod tests {
               "memory": "1Gi"
             }
           },
+          "security": {
+            "principal": {
+              "kind": "spiffe",
+              "id": "spiffe://styrene.dev/agents/clv-child-2"
+            },
+            "secret_refs": ["provider.anthropic"],
+            "grant_ids": ["grant_clv_child_2"]
+          },
           "propagation": {
             "workspace": {
               "cwd": "/repo/path",
@@ -663,6 +689,11 @@ mod tests {
             request.propagation.as_ref().unwrap().auth.provider_refs,
             vec!["anthropic", "openai"]
         );
+        assert_eq!(
+            request.security.principal.as_ref().unwrap().id,
+            "spiffe://styrene.dev/agents/clv-child-2"
+        );
+        assert_eq!(request.security.secret_refs, vec!["provider.anthropic"]);
     }
 
     #[test]

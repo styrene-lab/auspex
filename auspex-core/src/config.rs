@@ -369,6 +369,7 @@ impl RemoteInstanceEntry {
                 },
                 policy: crate::runtime_types::PolicyOverrides::default(),
                 task: None,
+                security: Default::default(),
             },
             observed: crate::runtime_types::ObservedWorkerState {
                 placement: crate::runtime_types::ObservedPlacement {

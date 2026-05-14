@@ -207,6 +207,7 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
             },
             policy: PolicyOverrides::default(),
             task: None,
+            security: Default::default(),
         },
         observed: ObservedWorkerState {
             placement: ObservedPlacement {

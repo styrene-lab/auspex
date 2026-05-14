@@ -507,6 +507,7 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                 },
                 task: None,
                 policy: crate::runtime_types::PolicyOverrides::default(),
+                security: Default::default(),
             },
             observed: crate::runtime_types::ObservedWorkerState {
                 placement: crate::runtime_types::ObservedPlacement {
@@ -816,6 +817,7 @@ mod tests {
                         model: Some("anthropic:claude-sonnet-4-6".into()),
                         ..Default::default()
                     },
+                    security: Default::default(),
                 },
                 observed: crate::runtime_types::ObservedWorkerState {
                     placement: crate::runtime_types::ObservedPlacement {
@@ -1213,6 +1215,7 @@ mod tests {
                         model: Some("anthropic:claude-haiku".into()),
                         ..Default::default()
                     },
+                    security: Default::default(),
                 },
                 observed: crate::runtime_types::ObservedWorkerState {
                     placement: crate::runtime_types::ObservedPlacement {

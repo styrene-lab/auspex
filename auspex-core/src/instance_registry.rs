@@ -141,6 +141,7 @@ mod tests {
                     model: Some("anthropic:claude-haiku".into()),
                     ..Default::default()
                 },
+                security: Default::default(),
             },
             observed: ObservedWorkerState {
                 placement: ObservedPlacement {
