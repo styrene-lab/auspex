@@ -51,6 +51,8 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
             Ok(provisioned) => {
                 info!(
                     agent = %name,
+                    secret = %provisioned.secret_name,
+                    mesh_role = %provisioned.mesh_role,
                     rns_dest = %provisioned.rns_destination_hash,
                     wg_pub = %provisioned.wireguard_pubkey,
                     "identity provisioned"

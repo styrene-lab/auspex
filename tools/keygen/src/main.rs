@@ -11,10 +11,10 @@ use std::io::Write;
 use std::path::PathBuf;
 
 use ed25519_dalek::SigningKey;
-use rand_core::{OsRng, RngCore};
+use rand_core::RngCore;
 use ssh_key::private::{Ed25519Keypair, KeypairData};
 use ssh_key::public::Ed25519PublicKey;
-use styrene_identity::{KeyDeriver, pubkey};
+use styrene_identity::{KeyDeriver, KeyPurpose, pubkey};
 use zeroize::Zeroize;
 
 fn identity_dir() -> PathBuf {
@@ -107,7 +107,7 @@ fn cmd_pubkey() {
     let deriver = KeyDeriver::new(&root);
     root.zeroize();
 
-    let signing_seed = deriver.derive(styrene_identity::KeyPurpose::RnsSigning);
+    let signing_seed = deriver.derive(KeyPurpose::Signing);
     let pubkey = pubkey::ed25519_verifying_key(&signing_seed);
 
     let hex: String = pubkey

@@ -34,10 +34,9 @@ pub struct DerivedTlsMaterial {
     pub server_pubkey: [u8; 32],
 }
 
-/// HKDF info string for the TLS CA key.
-const TLS_CA_INFO: &[u8] = b"styrene-tls-ca-v1";
-/// HKDF info string for the TLS server key.
-const TLS_SERVER_INFO: &[u8] = b"styrene-tls-server-v1";
+const TLS_CA_LABEL: &str = "_tls-ca";
+const TLS_SERVER_LABEL: &str = "_tls-server";
+const TLS_CLIENT_PREFIX: &str = "_tls-client";
 
 /// Derive TLS CA and server key material from an operator root secret.
 ///
@@ -51,12 +50,12 @@ pub fn derive_tls_material(operator_root: &[u8; 32]) -> DerivedTlsMaterial {
     // since TLS CA is specific to the operator, not a general identity key).
     // We use the agent key derivation with a reserved label.
     let ca_seed = deriver
-        .derive_agent_key("_tls-ca")
+        .derive_agent_key(TLS_CA_LABEL)
         .expect("reserved label should not fail validation");
     let ca_pubkey = pubkey::ed25519_verifying_key(&ca_seed);
 
     let server_seed = deriver
-        .derive_agent_key("_tls-server")
+        .derive_agent_key(TLS_SERVER_LABEL)
         .expect("reserved label should not fail validation");
     let server_pubkey = pubkey::ed25519_verifying_key(&server_seed);
 
@@ -81,7 +80,7 @@ pub fn derive_tls_material(operator_root: &[u8; 32]) -> DerivedTlsMaterial {
 pub fn derive_client_seed(operator_root: &[u8; 32], client_label: &str) -> [u8; 32] {
     let deriver = KeyDeriver::new(operator_root);
     deriver
-        .derive_agent_key(&format!("_tls-client/{client_label}"))
+        .derive_agent_key(&format!("{TLS_CLIENT_PREFIX}/{client_label}"))
         .expect("client label should not fail validation")
 }
 
@@ -91,4 +90,35 @@ fn hex_encode(data: &[u8]) -> String {
         s.push_str(&format!("{byte:02x}"));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn derives_stable_distinct_tls_material() {
+        let root = [7u8; 32];
+
+        let first = derive_tls_material(&root);
+        let second = derive_tls_material(&root);
+
+        assert_eq!(first.ca_seed, second.ca_seed);
+        assert_eq!(first.ca_pubkey, second.ca_pubkey);
+        assert_eq!(first.server_seed, second.server_seed);
+        assert_eq!(first.server_pubkey, second.server_pubkey);
+        assert_ne!(first.ca_seed, first.server_seed);
+        assert_ne!(first.ca_pubkey, first.server_pubkey);
+    }
+
+    #[test]
+    fn derives_client_seed_from_label() {
+        let root = [11u8; 32];
+
+        let auspex = derive_client_seed(&root, "auspex");
+        let control = derive_client_seed(&root, "control-plane");
+
+        assert_eq!(auspex, derive_client_seed(&root, "auspex"));
+        assert_ne!(auspex, control);
+    }
 }

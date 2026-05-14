@@ -125,7 +125,7 @@ pub async fn provision_identity(
     let agent_deriver = KeyDeriver::new(&agent_root);
 
     // RNS signing: Ed25519 public key.
-    let mut rns_signing_seed = agent_deriver.derive(KeyPurpose::RnsSigning);
+    let mut rns_signing_seed = agent_deriver.derive(KeyPurpose::Signing);
     let rns_signing_pubkey = pubkey::ed25519_verifying_key(&rns_signing_seed);
     rns_signing_seed.zeroize();
 
