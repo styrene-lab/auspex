@@ -24,6 +24,9 @@ instances through secure control planes.
 1. Secure managed daemon contract.
    `OmegonAgent` declares control-plane TLS material; the operator mounts it,
    passes Omegon the TLS listener flags, and publishes secure fleet descriptors.
+   Certificate material is derived through `styrene_identity::pki` so Auspex
+   follows the ecosystem StyreneID PKI hierarchy instead of carrying a separate
+   X.509 implementation.
 
 2. Deployment creation flow.
    Auspex creates `OmegonAgent` resources from profiles, requested posture,

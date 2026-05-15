@@ -19,6 +19,8 @@ use kube::api::Patch;
 use kube::{Api, api::PatchParams};
 use serde_json::json;
 use sha2::Digest;
+use styrene_identity::pki::{StyreneCertificateChain, derive_server_certificate_chain};
+use styrene_identity::signer::RootSecret;
 use styrene_identity::{KeyDeriver, KeyPurpose, pubkey};
 use tracing::info;
 use zeroize::Zeroize;
@@ -105,14 +107,14 @@ pub async fn provision_identity(
             ))
         })?;
 
-    let mut root_array: [u8; 32] = root_bytes.0.as_slice().try_into().map_err(|_| {
+    let root_array: [u8; 32] = root_bytes.0.as_slice().try_into().map_err(|_| {
         IdentityError::OperatorSecretMissing("root secret must be exactly 32 bytes".into())
     })?;
+    let operator_root = RootSecret::new(root_array);
 
     // 2. Two-level HKDF via styrene-identity's KeyDeriver.
     //    operator_root → agent_master → per-agent root.
-    let deriver = KeyDeriver::new(&root_array);
-    root_array.zeroize();
+    let deriver = KeyDeriver::new(operator_root.as_bytes());
 
     let mut agent_root = deriver
         .derive_agent_key(derivation_label)
@@ -185,10 +187,21 @@ pub async fn provision_identity(
         .await
         .map_err(|e| IdentityError::SecretCreationFailed(e.to_string()))?;
 
+    let control_tls = if crate::reconciler::control_plane_tls_enabled(agent) {
+        Some(
+            provision_control_tls_secret(&secrets_api, agent, ns, name, &operator_root)
+                .await
+                .map_err(|e| IdentityError::ControlTlsSecretCreationFailed(e.to_string()))?,
+        )
+    } else {
+        None
+    };
+
     info!(
         agent = %name,
         rns_dest = %rns_dest_hex,
         wg_pubkey = %wg_pubkey_b64,
+        control_tls_secret = control_tls.as_ref().map(|tls| tls.secret_name.as_str()).unwrap_or("disabled"),
         "provisioned StyreneID"
     );
 
@@ -197,6 +210,7 @@ pub async fn provision_identity(
         rns_destination_hash: rns_dest_hex,
         wireguard_pubkey: wg_pubkey_b64,
         mesh_role: identity_spec.mesh_role.clone(),
+        control_tls,
     })
 }
 
@@ -206,6 +220,14 @@ pub struct ProvisionedIdentity {
     pub rns_destination_hash: String,
     pub wireguard_pubkey: String,
     pub mesh_role: String,
+    pub control_tls: Option<ProvisionedControlTls>,
+}
+
+/// Derived control-plane TLS material for status/log reporting.
+pub struct ProvisionedControlTls {
+    pub secret_name: String,
+    pub ca_fingerprint_sha256: String,
+    pub server_fingerprint_sha256: String,
 }
 
 #[derive(Debug)]
@@ -214,6 +236,7 @@ pub enum IdentityError {
     OperatorSecretMissing(String),
     DerivationFailed(String),
     SecretCreationFailed(String),
+    ControlTlsSecretCreationFailed(String),
 }
 
 impl std::fmt::Display for IdentityError {
@@ -223,8 +246,112 @@ impl std::fmt::Display for IdentityError {
             Self::OperatorSecretMissing(e) => write!(f, "operator secret: {e}"),
             Self::DerivationFailed(e) => write!(f, "key derivation failed: {e}"),
             Self::SecretCreationFailed(e) => write!(f, "secret creation failed: {e}"),
+            Self::ControlTlsSecretCreationFailed(e) => {
+                write!(f, "control-plane TLS secret creation failed: {e}")
+            }
         }
     }
+}
+
+async fn provision_control_tls_secret(
+    secrets_api: &Api<Secret>,
+    agent: &OmegonAgent,
+    ns: &str,
+    name: &str,
+    operator_root: &RootSecret,
+) -> Result<ProvisionedControlTls, ControlTlsProvisionError> {
+    let tls = crate::reconciler::resolved_control_tls(agent, name)
+        .ok_or(ControlTlsProvisionError::NotConfigured)?;
+    let ca_scope = control_tls_ca_scope(ns);
+    let agent_label = format!("{ns}/{name}");
+    let chain = derive_server_certificate_chain(
+        operator_root,
+        &ca_scope,
+        &agent_label,
+        control_tls_subject_alt_names(ns, name),
+    )?;
+    let secret = control_tls_secret_manifest(agent, ns, &tls, &chain);
+
+    secrets_api
+        .patch(
+            &tls.secret_name,
+            &PatchParams::apply("auspex-operator"),
+            &Patch::Apply(secret),
+        )
+        .await?;
+
+    Ok(ProvisionedControlTls {
+        secret_name: tls.secret_name,
+        ca_fingerprint_sha256: chain.ca_fingerprint_sha256,
+        server_fingerprint_sha256: chain.leaf.fingerprint_sha256,
+    })
+}
+
+fn control_tls_secret_manifest(
+    agent: &OmegonAgent,
+    ns: &str,
+    tls: &crate::reconciler::ResolvedControlTls,
+    chain: &StyreneCertificateChain,
+) -> serde_json::Value {
+    let mut data = serde_json::Map::new();
+    data.insert(
+        tls.cert_key.clone(),
+        json!(base64_encode(chain.cert_chain_pem().as_bytes())),
+    );
+    data.insert(
+        tls.key_key.clone(),
+        json!(base64_encode(chain.leaf.private_key_pem().as_bytes())),
+    );
+    if let Some(client_ca_key) = tls.client_ca_key.as_ref() {
+        data.insert(
+            client_ca_key.clone(),
+            json!(base64_encode(chain.ca_bundle_pem().as_bytes())),
+        );
+    }
+
+    json!({
+        "apiVersion": "v1",
+        "kind": "Secret",
+        "metadata": {
+            "name": tls.secret_name,
+            "namespace": ns,
+            "ownerReferences": [crate::reconciler::owner_ref(agent)],
+            "labels": {
+                "styrene.sh/control-plane-tls": "true",
+                "styrene.sh/agent": agent.metadata.name.as_deref().unwrap_or(""),
+            },
+            "annotations": {
+                "styrene.sh/ca-fingerprint-sha256": chain.ca_fingerprint_sha256,
+                "styrene.sh/server-fingerprint-sha256": chain.leaf.fingerprint_sha256,
+                "styrene.sh/certificate-uri": chain.leaf.uri_san,
+            },
+        },
+        "type": "kubernetes.io/tls",
+        "data": data,
+    })
+}
+
+fn control_tls_ca_scope(ns: &str) -> String {
+    format!("auspex-control/{ns}")
+}
+
+fn control_tls_subject_alt_names(ns: &str, name: &str) -> Vec<String> {
+    vec![
+        name.to_string(),
+        format!("{name}.{ns}"),
+        format!("{name}.{ns}.svc"),
+        format!("{name}.{ns}.svc.cluster.local"),
+    ]
+}
+
+#[derive(Debug, thiserror::Error)]
+enum ControlTlsProvisionError {
+    #[error("control-plane TLS is not configured")]
+    NotConfigured,
+    #[error("certificate derivation failed: {0}")]
+    Certificate(#[from] styrene_identity::pki::StyrenePkiError),
+    #[error("kubernetes secret patch failed: {0}")]
+    Kubernetes(#[from] kube::Error),
 }
 
 /// RNS destination hash: truncated SHA-256(signing_pubkey || encryption_pubkey).
@@ -270,4 +397,82 @@ fn hex_encode(data: &[u8]) -> String {
         s.push_str(&format!("{byte:02x}"));
     }
     s
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn agent() -> OmegonAgent {
+        serde_json::from_value(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "secure-primary",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.secure-primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "controlPlane": {
+                    "tls": {
+                        "enabled": true,
+                        "secretName": "secure-primary-control-tls"
+                    }
+                }
+            }
+        }))
+        .expect("valid OmegonAgent")
+    }
+
+    #[test]
+    fn control_tls_manifest_uses_styrene_pki_material() {
+        let agent = agent();
+        let tls = crate::reconciler::resolved_control_tls(&agent, "secure-primary")
+            .expect("resolved TLS");
+        let root = RootSecret::new([0x42; 32]);
+        let chain = derive_server_certificate_chain(
+            &root,
+            &control_tls_ca_scope("omegon-agents"),
+            "omegon-agents/secure-primary",
+            control_tls_subject_alt_names("omegon-agents", "secure-primary"),
+        )
+        .expect("certificate chain");
+
+        let manifest = control_tls_secret_manifest(&agent, "omegon-agents", &tls, &chain);
+
+        assert_eq!(manifest["metadata"]["name"], "secure-primary-control-tls");
+        assert_eq!(manifest["type"], "kubernetes.io/tls");
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/ca-fingerprint-sha256"],
+            chain.ca_fingerprint_sha256
+        );
+        assert_eq!(
+            manifest["data"]["tls.crt"],
+            base64_encode(chain.cert_chain_pem().as_bytes())
+        );
+        assert_eq!(
+            manifest["data"]["tls.key"],
+            base64_encode(chain.leaf.private_key_pem().as_bytes())
+        );
+        assert_eq!(
+            manifest["data"]["ca.crt"],
+            base64_encode(chain.ca_bundle_pem().as_bytes())
+        );
+    }
+
+    #[test]
+    fn control_tls_subject_alt_names_cover_cluster_service_forms() {
+        assert_eq!(
+            control_tls_subject_alt_names("omegon-agents", "secure-primary"),
+            vec![
+                "secure-primary",
+                "secure-primary.omegon-agents",
+                "secure-primary.omegon-agents.svc",
+                "secure-primary.omegon-agents.svc.cluster.local",
+            ]
+        );
+    }
 }

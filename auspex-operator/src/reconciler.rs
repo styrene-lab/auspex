@@ -57,6 +57,21 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
                     mesh_role = %provisioned.mesh_role,
                     rns_dest = %provisioned.rns_destination_hash,
                     wg_pub = %provisioned.wireguard_pubkey,
+                    control_tls_secret = provisioned
+                        .control_tls
+                        .as_ref()
+                        .map(|tls| tls.secret_name.as_str())
+                        .unwrap_or("disabled"),
+                    control_tls_ca_fingerprint = provisioned
+                        .control_tls
+                        .as_ref()
+                        .map(|tls| tls.ca_fingerprint_sha256.as_str())
+                        .unwrap_or(""),
+                    control_tls_server_fingerprint = provisioned
+                        .control_tls
+                        .as_ref()
+                        .map(|tls| tls.server_fingerprint_sha256.as_str())
+                        .unwrap_or(""),
                     "identity provisioned"
                 );
             }

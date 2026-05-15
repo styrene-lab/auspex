@@ -6,7 +6,6 @@
 mod crd;
 mod external;
 mod identity;
-mod mtls;
 mod reconciler;
 
 use std::{net::SocketAddr, sync::Arc};
