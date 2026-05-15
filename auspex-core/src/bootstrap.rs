@@ -1460,17 +1460,15 @@ fn install_auspex_omegon_assets() {
         eprintln!("auspex: could not write COP skill: {error}");
     }
 
-    // ── Primary coordinator posture skill ─────────────────────────
-    let coordinator_skill_dir =
+    // The primary coordinator posture is an Auspex-managed runtime contract,
+    // not a workspace-global Omegon skill. Remove older installs so ordinary
+    // local Omegon sessions launched from this repo remain normal coding agents.
+    let stale_coordinator_skill =
         std::path::PathBuf::from(".omegon/skills/auspex-primary-coordinator");
-    if let Err(error) = std::fs::create_dir_all(&coordinator_skill_dir) {
-        eprintln!("auspex: could not create primary coordinator skill directory: {error}");
-        return;
-    }
-
-    let coordinator_skill = include_str!("../../assets/primary-coordinator-skill/SKILL.md");
-    if let Err(error) = std::fs::write(coordinator_skill_dir.join("SKILL.md"), coordinator_skill) {
-        eprintln!("auspex: could not write primary coordinator skill: {error}");
+    if stale_coordinator_skill.exists()
+        && let Err(error) = std::fs::remove_dir_all(&stale_coordinator_skill)
+    {
+        eprintln!("auspex: could not remove stale primary coordinator skill: {error}");
     }
 }
 
