@@ -149,6 +149,10 @@ pub struct OmegonAgentSpec {
     #[serde(default)]
     pub identity: Option<IdentitySpec>,
 
+    /// Control-plane listener and transport configuration.
+    #[serde(default, rename = "controlPlane", alias = "control_plane")]
+    pub control_plane: ControlPlaneSpec,
+
     /// Resource bounds for bounded execution (job/cronjob modes).
     #[serde(default)]
     pub bounds: Option<BoundsSpec>,
@@ -422,6 +426,70 @@ fn default_operator_secret() -> String {
 
 fn default_operator_secret_key() -> String {
     "root-secret".to_string()
+}
+
+/// Control-plane listener configuration for managed Omegon daemons.
+#[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlPlaneSpec {
+    /// TLS material for the HTTP/WebSocket control plane.
+    #[serde(default)]
+    pub tls: ControlPlaneTlsSpec,
+}
+
+/// TLS settings for the managed Omegon control-plane listener.
+///
+/// The operator mounts this Secret into the agent pod and passes Omegon the
+/// corresponding `--control-tls-*` flags. The Secret is expected to contain a
+/// server certificate and key, plus an optional client CA bundle for mTLS.
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlPlaneTlsSpec {
+    /// Enable HTTPS/WSS control-plane serving.
+    #[serde(default)]
+    pub enabled: bool,
+
+    /// Secret containing the TLS material. Defaults to
+    /// `{agent-name}-control-tls` when TLS is enabled.
+    #[serde(default)]
+    pub secret_name: Option<String>,
+
+    /// Secret key containing the server certificate PEM.
+    #[serde(default = "default_tls_cert_key")]
+    pub cert_key: String,
+
+    /// Secret key containing the server private key PEM.
+    #[serde(default = "default_tls_key_key")]
+    pub key_key: String,
+
+    /// Secret key containing the client CA PEM. When omitted, Omegon serves TLS
+    /// without requiring client certificates.
+    #[serde(default = "default_tls_client_ca_key")]
+    pub client_ca_key: Option<String>,
+}
+
+impl Default for ControlPlaneTlsSpec {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            secret_name: None,
+            cert_key: default_tls_cert_key(),
+            key_key: default_tls_key_key(),
+            client_ca_key: default_tls_client_ca_key(),
+        }
+    }
+}
+
+fn default_tls_cert_key() -> String {
+    "tls.crt".to_string()
+}
+
+fn default_tls_key_key() -> String {
+    "tls.key".to_string()
+}
+
+fn default_tls_client_ca_key() -> Option<String> {
+    Some("ca.crt".to_string())
 }
 
 /// Resource bounds for bounded agent execution (job/cronjob modes).

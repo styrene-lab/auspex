@@ -20,6 +20,8 @@ use tracing::{info, warn};
 
 use crate::crd::{AgentMode, OmegonAgent};
 
+const CONTROL_TLS_MOUNT_PATH: &str = "/run/omegon/control-tls";
+
 /// Default sidecar images. Override via AUSPEX_STYRENED_IMAGE / AUSPEX_AETHER_IMAGE env vars.
 fn styrened_image() -> String {
     std::env::var("AUSPEX_STYRENED_IMAGE")
@@ -389,6 +391,7 @@ async fn reconcile_service(
 fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let is_bounded = matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob);
     let has_aether = agent.spec.vox.connectors.iter().any(|c| c == "aether");
+    let control_tls = resolved_control_tls(agent, name);
 
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
@@ -503,6 +506,28 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         }));
     }
 
+    if let Some(tls) = control_tls.as_ref() {
+        let mut items = vec![
+            json!({"key": tls.cert_key, "path": "tls.crt"}),
+            json!({"key": tls.key_key, "path": "tls.key"}),
+        ];
+        if let Some(client_ca_key) = tls.client_ca_key.as_ref() {
+            items.push(json!({"key": client_ca_key, "path": "ca.crt"}));
+        }
+        volumes.push(json!({
+            "name": "control-tls",
+            "secret": {
+                "secretName": tls.secret_name,
+                "items": items,
+            },
+        }));
+        volume_mounts.push(json!({
+            "name": "control-tls",
+            "mountPath": CONTROL_TLS_MOUNT_PATH,
+            "readOnly": true,
+        }));
+    }
+
     let mut env_from = vec![];
     if let Some(ref secret_name) = agent.spec.secrets.secret_name {
         env_from.push(json!({"secretRef": {"name": secret_name}}));
@@ -582,6 +607,21 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         ]
     };
 
+    if !is_bounded && let Some(tls) = control_tls.as_ref() {
+        args.extend([
+            "--control-tls-cert".into(),
+            format!("{CONTROL_TLS_MOUNT_PATH}/tls.crt"),
+            "--control-tls-key".into(),
+            format!("{CONTROL_TLS_MOUNT_PATH}/tls.key"),
+        ]);
+        if tls.client_ca_key.is_some() {
+            args.extend([
+                "--control-tls-client-ca".into(),
+                format!("{CONTROL_TLS_MOUNT_PATH}/ca.crt"),
+            ]);
+        }
+    }
+
     args.extend(["--agent".into(), agent.spec.agent.clone()]);
     args.extend(["--model".into(), agent.spec.model.clone()]);
     args.extend(["--posture".into(), agent.spec.posture.clone()]);
@@ -624,10 +664,15 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     if !is_bounded {
         let container = agent_container.as_object_mut().unwrap();
         container.insert("ports".into(), json!([{"containerPort": 7842}]));
+        let probe_scheme = if control_tls.is_some() {
+            "HTTPS"
+        } else {
+            "HTTP"
+        };
         container.insert(
             "livenessProbe".into(),
             json!({
-                "httpGet": { "path": "/api/healthz", "port": 7842 },
+                "httpGet": { "path": "/api/healthz", "port": 7842, "scheme": probe_scheme },
                 "initialDelaySeconds": 15,
                 "periodSeconds": 30,
             }),
@@ -635,7 +680,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         container.insert(
             "readinessProbe".into(),
             json!({
-                "httpGet": { "path": "/api/readyz", "port": 7842 },
+                "httpGet": { "path": "/api/readyz", "port": 7842, "scheme": probe_scheme },
                 "initialDelaySeconds": 10,
                 "periodSeconds": 10,
             }),
@@ -797,6 +842,35 @@ pub struct PodTemplate {
     pub annotations: Option<serde_json::Value>,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedControlTls {
+    pub secret_name: String,
+    pub cert_key: String,
+    pub key_key: String,
+    pub client_ca_key: Option<String>,
+}
+
+pub fn control_plane_tls_enabled(agent: &OmegonAgent) -> bool {
+    agent.spec.control_plane.tls.enabled || agent.spec.identity.as_ref().is_some_and(|id| id.mtls)
+}
+
+pub fn resolved_control_tls(agent: &OmegonAgent, name: &str) -> Option<ResolvedControlTls> {
+    if !control_plane_tls_enabled(agent) {
+        return None;
+    }
+
+    let tls = &agent.spec.control_plane.tls;
+    Some(ResolvedControlTls {
+        secret_name: tls
+            .secret_name
+            .clone()
+            .unwrap_or_else(|| format!("{name}-control-tls")),
+        cert_key: tls.cert_key.clone(),
+        key_key: tls.key_key.clone(),
+        client_ca_key: tls.client_ca_key.clone(),
+    })
+}
+
 pub fn owner_ref(agent: &OmegonAgent) -> serde_json::Value {
     json!({
         "apiVersion": "styrene.sh/v1alpha1",
@@ -806,4 +880,89 @@ pub fn owner_ref(agent: &OmegonAgent) -> serde_json::Value {
         "controller": true,
         "blockOwnerDeletion": true,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn daemon_agent(value: serde_json::Value) -> OmegonAgent {
+        serde_json::from_value(value).expect("valid OmegonAgent")
+    }
+
+    #[test]
+    fn pod_spec_mounts_tls_secret_and_passes_control_tls_args() {
+        let agent = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "secure-primary",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.secure-primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "controlPlane": {
+                    "tls": {
+                        "enabled": true,
+                        "secretName": "secure-primary-control-tls"
+                    }
+                }
+            }
+        }));
+
+        let template = pod_spec(&agent, "secure-primary");
+        let agent_container = &template.spec["containers"][0];
+        let args = agent_container["args"].as_array().expect("args array");
+        let args: Vec<_> = args.iter().filter_map(|value| value.as_str()).collect();
+
+        assert!(args.contains(&"--control-tls-cert"));
+        assert!(args.contains(&"/run/omegon/control-tls/tls.crt"));
+        assert!(args.contains(&"--control-tls-key"));
+        assert!(args.contains(&"/run/omegon/control-tls/tls.key"));
+        assert!(args.contains(&"--control-tls-client-ca"));
+        assert!(args.contains(&"/run/omegon/control-tls/ca.crt"));
+        assert_eq!(
+            agent_container["readinessProbe"]["httpGet"]["scheme"],
+            "HTTPS"
+        );
+        assert_eq!(
+            template.spec["volumes"]
+                .as_array()
+                .expect("volumes")
+                .iter()
+                .find(|volume| volume["name"] == "control-tls")
+                .expect("control TLS volume")["secret"]["secretName"],
+            "secure-primary-control-tls"
+        );
+    }
+
+    #[test]
+    fn identity_mtls_uses_default_control_tls_secret() {
+        let agent = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "primary-driver",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "identity": {
+                    "provision": true,
+                    "mtls": true
+                }
+            }
+        }));
+
+        let tls = resolved_control_tls(&agent, "primary-driver").expect("resolved TLS");
+
+        assert_eq!(tls.secret_name, "primary-driver-control-tls");
+        assert_eq!(tls.client_ca_key.as_deref(), Some("ca.crt"));
+    }
 }

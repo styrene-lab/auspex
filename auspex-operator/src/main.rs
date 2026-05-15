@@ -262,6 +262,7 @@ struct PrimaryAgentBootstrapConfig {
     image: String,
     model: String,
     secret_name: Option<String>,
+    control_tls_secret: Option<String>,
 }
 
 impl PrimaryAgentBootstrapConfig {
@@ -278,6 +279,7 @@ impl PrimaryAgentBootstrapConfig {
             model: std::env::var("AUSPEX_PRIMARY_AGENT_MODEL")
                 .unwrap_or_else(|_| "anthropic:claude-sonnet-4-6".into()),
             secret_name: std::env::var("AUSPEX_PRIMARY_AGENT_SECRET").ok(),
+            control_tls_secret: std::env::var("AUSPEX_PRIMARY_AGENT_CONTROL_TLS_SECRET").ok(),
         }
     }
 }
@@ -288,7 +290,7 @@ fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
         secrets["secretName"] = serde_json::json!(secret_name);
     }
 
-    serde_json::json!({
+    let mut manifest = serde_json::json!({
         "apiVersion": "styrene.sh/v1alpha1",
         "kind": "OmegonAgent",
         "metadata": {
@@ -312,7 +314,18 @@ fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
                 "memory": "2Gi",
             },
         },
-    })
+    });
+
+    if let Some(secret) = config.control_tls_secret.as_ref() {
+        manifest["spec"]["controlPlane"] = serde_json::json!({
+            "tls": {
+                "enabled": true,
+                "secretName": secret,
+            }
+        });
+    }
+
+    manifest
 }
 
 fn env_flag(name: &str, default: bool) -> bool {
@@ -436,20 +449,34 @@ fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
 
     let name = agent.name_any();
     let namespace = agent.namespace().unwrap_or_else(|| "default".into());
-    let base_url = format!("http://{name}.{namespace}.svc:7842");
+    let service = format!("{name}.{namespace}.svc");
+    let tls = reconciler::resolved_control_tls(agent, &name);
+    let http_scheme = if tls.is_some() { "https" } else { "http" };
+    let ws_scheme = if tls.is_some() { "wss" } else { "ws" };
+    let base_url = format!("{http_scheme}://{service}:7842");
+    let auth_mode = if tls.as_ref().is_some_and(|t| t.client_ca_key.is_some()) {
+        "mtls"
+    } else if tls.is_some() {
+        "cluster-internal-tls"
+    } else {
+        "cluster-internal"
+    };
 
     Some(serde_json::json!({
         "schema_version": 2,
-        "service": format!("{name}.{namespace}.svc"),
+        "service": service,
         "http_base": base_url,
         "base_url": base_url,
-        "startup_url": format!("http://{name}.{namespace}.svc:7842/api/startup"),
-        "state_url": format!("http://{name}.{namespace}.svc:7842/api/state"),
-        "health_url": format!("http://{name}.{namespace}.svc:7842/api/healthz"),
-        "ready_url": format!("http://{name}.{namespace}.svc:7842/api/readyz"),
-        "ws_url": format!("ws://{name}.{namespace}.svc:7842/ws"),
-        "acp_url": format!("ws://{name}.{namespace}.svc:7842/acp"),
-        "auth_mode": "cluster-internal",
+        "startup_url": format!("{http_scheme}://{service}:7842/api/startup"),
+        "state_url": format!("{http_scheme}://{service}:7842/api/state"),
+        "health_url": format!("{http_scheme}://{service}:7842/api/healthz"),
+        "ready_url": format!("{http_scheme}://{service}:7842/api/readyz"),
+        "ws_url": format!("{ws_scheme}://{service}:7842/ws"),
+        "acp_url": format!("{ws_scheme}://{service}:7842/acp"),
+        "auth_mode": auth_mode,
+        "transport_security": if tls.is_some() { "tls" } else { "plaintext" },
+        "mtls": tls.as_ref().is_some_and(|t| t.client_ca_key.is_some()),
+        "tls_secret": tls.as_ref().map(|t| t.secret_name.as_str()),
     }))
 }
 
@@ -516,6 +543,7 @@ mod tests {
             image: "example.com/omegon:dev".into(),
             model: "anthropic:claude-sonnet-4-6".into(),
             secret_name: Some("auspex-primary-secrets".into()),
+            control_tls_secret: None,
         });
 
         assert_eq!(manifest["metadata"]["name"], "auspex-primary");
@@ -565,5 +593,47 @@ mod tests {
             control_plane["acp_url"],
             "ws://auspex-primary.omegon-agents.svc:7842/acp"
         );
+        assert_eq!(control_plane["transport_security"], "plaintext");
+        assert_eq!(control_plane["mtls"], false);
+    }
+
+    #[test]
+    fn daemon_agents_publish_wss_control_plane_when_tls_enabled() {
+        let agent: OmegonAgent = serde_json::from_value(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "secure-primary",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.secure-primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "controlPlane": {
+                    "tls": {
+                        "enabled": true,
+                        "secretName": "secure-primary-control-tls"
+                    }
+                }
+            }
+        }))
+        .expect("valid OmegonAgent");
+
+        let control_plane = managed_agent_control_plane(&agent).expect("daemon control plane");
+
+        assert_eq!(
+            control_plane["base_url"],
+            "https://secure-primary.omegon-agents.svc:7842"
+        );
+        assert_eq!(
+            control_plane["acp_url"],
+            "wss://secure-primary.omegon-agents.svc:7842/acp"
+        );
+        assert_eq!(control_plane["auth_mode"], "mtls");
+        assert_eq!(control_plane["transport_security"], "tls");
+        assert_eq!(control_plane["mtls"], true);
+        assert_eq!(control_plane["tls_secret"], "secure-primary-control-tls");
     }
 }
