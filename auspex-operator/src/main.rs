@@ -10,15 +10,20 @@ mod reconciler;
 
 use std::{net::SocketAddr, sync::Arc};
 
-use axum::{Json, Router, extract::Path as AxumPath, routing::get};
+use axum::{
+    Json, Router,
+    extract::Path as AxumPath,
+    routing::{get, post},
+};
 use futures_util::StreamExt;
 use k8s_openapi::api::{
     apps::v1::Deployment,
     batch::v1::{CronJob, Job},
+    core::v1::{Event, Secret},
 };
 use kube::{
     Api, Client, CustomResourceExt, ResourceExt,
-    api::{Patch, PatchParams},
+    api::{ListParams, Patch, PatchParams},
     runtime::Controller,
 };
 use serde_json::Value;
@@ -130,6 +135,56 @@ async fn main() -> anyhow::Result<()> {
                 get({
                     let ctx = api_ctx.clone();
                     move |path: AxumPath<(String, String)>| sbom_handler(ctx, path)
+                }),
+            )
+            .route(
+                "/agents",
+                post({
+                    let ctx = api_ctx.clone();
+                    move |body: Json<Value>| deploy_agent_handler(ctx, body)
+                }),
+            )
+            .route(
+                "/agents/{ns}/{name}",
+                get({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>| agent_detail_handler(ctx, path)
+                })
+                .patch({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>, body: Json<Value>| {
+                        patch_agent_handler(ctx, path, body)
+                    }
+                }),
+            )
+            .route(
+                "/agents/{ns}/{name}/control-plane",
+                get({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>| agent_control_plane_handler(ctx, path)
+                }),
+            )
+            .route(
+                "/agents/{ns}/{name}/rotate-control-tls",
+                post({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>, body: Option<Json<Value>>| {
+                        rotate_control_tls_handler(ctx, path, body)
+                    }
+                }),
+            )
+            .route(
+                "/audit",
+                get({
+                    let ctx = api_ctx.clone();
+                    move || audit_handler(ctx)
+                }),
+            )
+            .route(
+                "/secrets/grants",
+                get({
+                    let ctx = api_ctx.clone();
+                    move || secret_grants_handler(ctx)
                 }),
             );
 
@@ -432,6 +487,234 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
     Json(serde_json::json!({ "agents": fleet }))
 }
 
+async fn agent_detail_handler(
+    ctx: Arc<Context>,
+    AxumPath((ns, name)): AxumPath<(String, String)>,
+) -> Json<Value> {
+    if let Some(error) = namespace_scope_error(&ctx, &ns) {
+        return Json(error);
+    }
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);
+    match api.get(&name).await {
+        Ok(agent) => Json(managed_agent_detail(&agent)),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn agent_control_plane_handler(
+    ctx: Arc<Context>,
+    AxumPath((ns, name)): AxumPath<(String, String)>,
+) -> Json<Value> {
+    if let Some(error) = namespace_scope_error(&ctx, &ns) {
+        return Json(error);
+    }
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);
+    match api.get(&name).await {
+        Ok(agent) => Json(serde_json::json!({
+            "name": name,
+            "namespace": ns,
+            "control_plane": managed_agent_control_plane(&agent),
+        })),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn deploy_agent_handler(ctx: Arc<Context>, Json(mut manifest): Json<Value>) -> Json<Value> {
+    manifest["apiVersion"] = serde_json::json!("styrene.sh/v1alpha1");
+    manifest["kind"] = serde_json::json!("OmegonAgent");
+
+    let name = manifest
+        .pointer("/metadata/name")
+        .and_then(Value::as_str)
+        .unwrap_or("")
+        .trim()
+        .to_string();
+    if name.is_empty() {
+        return Json(serde_json::json!({ "error": "metadata.name is required" }));
+    }
+
+    let ns = manifest
+        .pointer("/metadata/namespace")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| ctx.watch_namespace.clone())
+        .unwrap_or_else(|| "default".to_string());
+    manifest["metadata"]["namespace"] = serde_json::json!(ns.clone());
+
+    if let Some(error) = namespace_scope_error(&ctx, &ns) {
+        return Json(error);
+    }
+    if let Err(error) = serde_json::from_value::<OmegonAgent>(manifest.clone()) {
+        return Json(
+            serde_json::json!({ "error": format!("invalid OmegonAgent manifest: {error}") }),
+        );
+    }
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);
+    match api
+        .patch(
+            &name,
+            &PatchParams::apply("auspex-webui").force(),
+            &Patch::Apply(manifest),
+        )
+        .await
+    {
+        Ok(agent) => Json(serde_json::json!({ "agent": managed_agent_detail(&agent) })),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn patch_agent_handler(
+    ctx: Arc<Context>,
+    AxumPath((ns, name)): AxumPath<(String, String)>,
+    Json(patch_body): Json<Value>,
+) -> Json<Value> {
+    if let Some(error) = namespace_scope_error(&ctx, &ns) {
+        return Json(error);
+    }
+    if let Err(error) = validate_webui_agent_patch(&patch_body) {
+        return Json(serde_json::json!({ "error": error }));
+    }
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);
+    match api
+        .patch(&name, &PatchParams::default(), &Patch::Merge(&patch_body))
+        .await
+    {
+        Ok(agent) => Json(serde_json::json!({ "agent": managed_agent_detail(&agent) })),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn rotate_control_tls_handler(
+    ctx: Arc<Context>,
+    AxumPath((ns, name)): AxumPath<(String, String)>,
+    body: Option<Json<Value>>,
+) -> Json<Value> {
+    if let Some(error) = namespace_scope_error(&ctx, &ns) {
+        return Json(error);
+    }
+
+    let body = body
+        .map(|Json(value)| value)
+        .unwrap_or_else(|| serde_json::json!({}));
+    let leaf_epoch = body
+        .get("leafEpoch")
+        .or_else(|| body.get("leaf_epoch"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .unwrap_or_else(rotation_epoch);
+    let ca_epoch = body
+        .get("caEpoch")
+        .or_else(|| body.get("ca_epoch"))
+        .and_then(Value::as_str)
+        .map(str::to_string);
+    let profile = body
+        .get("profile")
+        .and_then(Value::as_str)
+        .map(str::to_string);
+
+    let mut tls_patch = serde_json::json!({
+        "enabled": true,
+        "leafEpoch": leaf_epoch,
+    });
+    if let Some(ca_epoch) = ca_epoch {
+        tls_patch["caEpoch"] = serde_json::json!(ca_epoch);
+    }
+    if let Some(profile) = profile {
+        tls_patch["profile"] = serde_json::json!(profile);
+    }
+
+    let patch_body = serde_json::json!({
+        "spec": {
+            "controlPlane": {
+                "tls": tls_patch
+            }
+        }
+    });
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);
+    match api
+        .patch(&name, &PatchParams::default(), &Patch::Merge(&patch_body))
+        .await
+    {
+        Ok(agent) => Json(serde_json::json!({
+            "agent": managed_agent_detail(&agent),
+            "rotation": reconciler::resolved_control_tls(&agent, &name).map(|tls| serde_json::json!({
+                "profile": tls.profile,
+                "ca_epoch": tls.ca_epoch,
+                "leaf_epoch": tls.leaf_epoch,
+                "secret": tls.secret_name,
+            })),
+        })),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn audit_handler(ctx: Arc<Context>) -> Json<Value> {
+    let api: Api<Event> = match &ctx.watch_namespace {
+        Some(ns) => Api::namespaced(ctx.client.clone(), ns),
+        None => Api::all(ctx.client.clone()),
+    };
+    let params = ListParams::default().limit(100);
+    match api.list(&params).await {
+        Ok(events) => {
+            let entries: Vec<_> = events
+                .items
+                .iter()
+                .filter(|event| {
+                    event.involved_object.kind.as_deref() == Some("OmegonAgent")
+                        || event
+                            .metadata
+                            .labels
+                            .as_ref()
+                            .is_some_and(|labels| labels.contains_key("styrene.sh/agent"))
+                })
+                .map(|event| {
+                    serde_json::json!({
+                        "namespace": event.namespace(),
+                        "name": event.name_any(),
+                        "type": event.type_,
+                        "reason": event.reason,
+                        "message": event.message,
+                        "count": event.count,
+                        "first_timestamp": event.first_timestamp.as_ref().map(|t| t.0.to_rfc3339()),
+                        "last_timestamp": event.last_timestamp.as_ref().map(|t| t.0.to_rfc3339()),
+                        "involved_object": {
+                            "kind": event.involved_object.kind,
+                            "namespace": event.involved_object.namespace,
+                            "name": event.involved_object.name,
+                        },
+                    })
+                })
+                .collect();
+            Json(serde_json::json!({ "entries": entries }))
+        }
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn secret_grants_handler(ctx: Arc<Context>) -> Json<Value> {
+    let api: Api<Secret> = match &ctx.watch_namespace {
+        Some(ns) => Api::namespaced(ctx.client.clone(), ns),
+        None => Api::all(ctx.client.clone()),
+    };
+    let params = ListParams::default().limit(250);
+    match api.list(&params).await {
+        Ok(secrets) => {
+            let grants: Vec<_> = secrets
+                .items
+                .iter()
+                .filter_map(secret_grant_projection)
+                .collect();
+            Json(serde_json::json!({ "grants": grants }))
+        }
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
 fn is_primary_agent(agent: &OmegonAgent) -> bool {
     agent.spec.role == "primary-driver"
         || agent
@@ -439,6 +722,21 @@ fn is_primary_agent(agent: &OmegonAgent) -> bool {
             .get("styrene.sh/agent-role")
             .map(String::as_str)
             == Some("primary-driver")
+}
+
+fn managed_agent_detail(agent: &OmegonAgent) -> Value {
+    serde_json::json!({
+        "name": agent.name_any(),
+        "namespace": agent.namespace().unwrap_or_else(|| "default".into()),
+        "metadata": {
+            "labels": agent.labels(),
+            "annotations": agent.annotations(),
+        },
+        "spec": agent.spec,
+        "status": agent.status,
+        "is_primary": is_primary_agent(agent),
+        "control_plane": managed_agent_control_plane(agent),
+    })
 }
 
 fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
@@ -485,6 +783,77 @@ fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
             t.validity.leaf_not_after_year
         )),
     }))
+}
+
+fn namespace_scope_error(ctx: &Context, ns: &str) -> Option<Value> {
+    ctx.watch_namespace.as_ref().and_then(|allowed| {
+        (ns != allowed).then(|| {
+            serde_json::json!({
+                "error": format!("namespace '{ns}' is outside operator scope '{allowed}'")
+            })
+        })
+    })
+}
+
+fn rotation_epoch() -> String {
+    let seconds = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|duration| duration.as_secs())
+        .unwrap_or(0);
+    format!("manual-{seconds}")
+}
+
+fn secret_grant_projection(secret: &Secret) -> Option<Value> {
+    let labels = secret.metadata.labels.as_ref()?;
+    let has_grant_label = labels.contains_key("styrene.sh/secret-grant")
+        || labels.contains_key("styrene.sh/identity")
+        || labels.contains_key("styrene.sh/control-plane-tls");
+    if !has_grant_label {
+        return None;
+    }
+
+    let data_keys: Vec<_> = secret
+        .data
+        .as_ref()
+        .map(|data| data.keys().cloned().collect())
+        .unwrap_or_default();
+
+    Some(serde_json::json!({
+        "name": secret.name_any(),
+        "namespace": secret.namespace(),
+        "type": secret.type_,
+        "labels": labels,
+        "annotations": secret.annotations(),
+        "data_keys": data_keys,
+        "redacted": true,
+    }))
+}
+
+fn validate_webui_agent_patch(patch_body: &Value) -> Result<(), &'static str> {
+    let object = patch_body
+        .as_object()
+        .ok_or("agent patch must be a JSON object")?;
+    for key in object.keys() {
+        match key.as_str() {
+            "spec" => {}
+            "metadata" => validate_patch_metadata(object.get(key).expect("key exists"))?,
+            _ => return Err("agent patch may only update spec or metadata labels/annotations"),
+        }
+    }
+    Ok(())
+}
+
+fn validate_patch_metadata(metadata: &Value) -> Result<(), &'static str> {
+    let object = metadata
+        .as_object()
+        .ok_or("metadata patch must be a JSON object")?;
+    for key in object.keys() {
+        match key.as_str() {
+            "labels" | "annotations" => {}
+            _ => return Err("metadata patch may only update labels or annotations"),
+        }
+    }
+    Ok(())
 }
 
 /// Return SBOM status and artifact pointer for a specific agent.
@@ -646,5 +1015,105 @@ mod tests {
         assert_eq!(control_plane["tls_ca_epoch"], "0");
         assert_eq!(control_plane["tls_leaf_epoch"], "0");
         assert_eq!(control_plane["tls_leaf_validity"], "2026-2031");
+    }
+
+    #[test]
+    fn managed_agent_detail_includes_webui_control_metadata() {
+        let agent: OmegonAgent = serde_json::from_value(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "primary",
+                "namespace": "ops"
+            },
+            "spec": {
+                "agent": "styrene.primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon"
+            }
+        }))
+        .expect("valid OmegonAgent");
+
+        let detail = managed_agent_detail(&agent);
+
+        assert_eq!(detail["name"], "primary");
+        assert_eq!(detail["namespace"], "ops");
+        assert_eq!(detail["is_primary"], true);
+        assert_eq!(
+            detail["control_plane"]["acp_url"],
+            "ws://primary.ops.svc:7842/acp"
+        );
+    }
+
+    #[test]
+    fn secret_grant_projection_redacts_secret_values() {
+        use k8s_openapi::ByteString;
+        use k8s_openapi::apimachinery::pkg::apis::meta::v1::ObjectMeta;
+        use std::collections::BTreeMap;
+
+        let secret = Secret {
+            metadata: ObjectMeta {
+                name: Some("primary-control-tls".into()),
+                namespace: Some("ops".into()),
+                labels: Some(BTreeMap::from([(
+                    "styrene.sh/control-plane-tls".into(),
+                    "true".into(),
+                )])),
+                ..Default::default()
+            },
+            type_: Some("kubernetes.io/tls".into()),
+            data: Some(BTreeMap::from([(
+                "tls.key".into(),
+                ByteString(b"do-not-return".to_vec()),
+            )])),
+            ..Default::default()
+        };
+
+        let projection = secret_grant_projection(&secret).expect("projected");
+
+        assert_eq!(projection["name"], "primary-control-tls");
+        assert_eq!(projection["redacted"], true);
+        assert_eq!(projection["data_keys"], serde_json::json!(["tls.key"]));
+        assert!(!projection.to_string().contains("do-not-return"));
+    }
+
+    #[test]
+    fn webui_agent_patch_rejects_status_and_arbitrary_metadata() {
+        assert!(
+            validate_webui_agent_patch(&serde_json::json!({
+                "spec": {
+                    "controlPlane": {
+                        "tls": {
+                            "enabled": true
+                        }
+                    }
+                },
+                "metadata": {
+                    "annotations": {
+                        "styrene.sh/requested-by": "webui"
+                    }
+                }
+            }))
+            .is_ok()
+        );
+
+        assert!(
+            validate_webui_agent_patch(&serde_json::json!({
+                "status": {
+                    "phase": "Ready"
+                }
+            }))
+            .is_err()
+        );
+
+        assert!(
+            validate_webui_agent_patch(&serde_json::json!({
+                "metadata": {
+                    "ownerReferences": []
+                }
+            }))
+            .is_err()
+        );
     }
 }
