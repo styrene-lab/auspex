@@ -863,6 +863,10 @@ pub struct ResolvedControlTls {
     pub cert_key: String,
     pub key_key: String,
     pub client_ca_key: Option<String>,
+    pub profile: String,
+    pub ca_epoch: String,
+    pub leaf_epoch: String,
+    pub validity: crate::crd::ControlPlaneTlsValiditySpec,
 }
 
 pub fn control_plane_tls_enabled(agent: &OmegonAgent) -> bool {
@@ -883,6 +887,10 @@ pub fn resolved_control_tls(agent: &OmegonAgent, name: &str) -> Option<ResolvedC
         cert_key: tls.cert_key.clone(),
         key_key: tls.key_key.clone(),
         client_ca_key: tls.client_ca_key.clone(),
+        profile: tls.profile.clone(),
+        ca_epoch: tls.ca_epoch.clone(),
+        leaf_epoch: tls.leaf_epoch.clone(),
+        validity: tls.validity.clone(),
     })
 }
 
@@ -979,5 +987,48 @@ mod tests {
 
         assert_eq!(tls.secret_name, "primary-driver-control-tls");
         assert_eq!(tls.client_ca_key.as_deref(), Some("ca.crt"));
+        assert_eq!(tls.profile, "default");
+        assert_eq!(tls.ca_epoch, "0");
+        assert_eq!(tls.leaf_epoch, "0");
+        assert_eq!(tls.validity.leaf_not_after_year, 2031);
+    }
+
+    #[test]
+    fn control_tls_rotation_fields_resolve_from_spec() {
+        let agent: OmegonAgent = serde_json::from_value(json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "primary-driver",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "mode": "daemon",
+                "controlPlane": {
+                    "tls": {
+                        "enabled": true,
+                        "profile": "prod",
+                        "caEpoch": "2026h1",
+                        "leafEpoch": "2026w20",
+                        "validity": {
+                            "caNotBeforeYear": 2026,
+                            "caNotAfterYear": 2030,
+                            "leafNotBeforeYear": 2026,
+                            "leafNotAfterYear": 2027
+                        }
+                    }
+                }
+            }
+        }))
+        .expect("valid OmegonAgent");
+
+        let tls = resolved_control_tls(&agent, "primary-driver").expect("resolved TLS");
+        assert_eq!(tls.profile, "prod");
+        assert_eq!(tls.ca_epoch, "2026h1");
+        assert_eq!(tls.leaf_epoch, "2026w20");
+        assert_eq!(tls.validity.ca_not_after_year, 2030);
+        assert_eq!(tls.validity.leaf_not_after_year, 2027);
     }
 }

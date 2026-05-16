@@ -19,7 +19,10 @@ use kube::api::Patch;
 use kube::{Api, api::PatchParams};
 use serde_json::json;
 use sha2::Digest;
-use styrene_identity::pki::{StyreneCertificateChain, derive_server_certificate_chain};
+use styrene_identity::pki::{
+    StyreneCertificateChain, StyreneCertificateProfile,
+    derive_server_certificate_chain_with_profile,
+};
 use styrene_identity::signer::RootSecret;
 use styrene_identity::{KeyDeriver, KeyPurpose, pubkey};
 use tracing::info;
@@ -264,11 +267,22 @@ async fn provision_control_tls_secret(
         .ok_or(ControlTlsProvisionError::NotConfigured)?;
     let ca_scope = control_tls_ca_scope(ns);
     let agent_label = format!("{ns}/{name}");
-    let chain = derive_server_certificate_chain(
+    let profile = StyreneCertificateProfile {
+        ca_not_before_year: tls.validity.ca_not_before_year,
+        ca_not_after_year: tls.validity.ca_not_after_year,
+        leaf_not_before_year: tls.validity.leaf_not_before_year,
+        leaf_not_after_year: tls.validity.leaf_not_after_year,
+        ..StyreneCertificateProfile::default()
+    }
+    .with_profile(tls.profile.clone())
+    .with_ca_epoch(tls.ca_epoch.clone())
+    .with_leaf_epoch(tls.leaf_epoch.clone());
+    let chain = derive_server_certificate_chain_with_profile(
         operator_root,
         &ca_scope,
         &agent_label,
         control_tls_subject_alt_names(ns, name),
+        &profile,
     )?;
     let secret = control_tls_secret_manifest(agent, ns, &tls, &chain);
 
@@ -324,6 +338,11 @@ fn control_tls_secret_manifest(
                 "styrene.sh/ca-fingerprint-sha256": chain.ca_fingerprint_sha256,
                 "styrene.sh/server-fingerprint-sha256": chain.leaf.fingerprint_sha256,
                 "styrene.sh/certificate-uri": chain.leaf.uri_san,
+                "styrene.sh/tls-profile": chain.profile.profile,
+                "styrene.sh/tls-ca-epoch": chain.profile.ca_epoch,
+                "styrene.sh/tls-leaf-epoch": chain.profile.leaf_epoch,
+                "styrene.sh/tls-ca-validity": format!("{}-{}", chain.profile.ca_not_before_year, chain.profile.ca_not_after_year),
+                "styrene.sh/tls-leaf-validity": format!("{}-{}", chain.profile.leaf_not_before_year, chain.profile.leaf_not_after_year),
             },
         },
         "type": "kubernetes.io/tls",
@@ -433,11 +452,13 @@ mod tests {
         let tls = crate::reconciler::resolved_control_tls(&agent, "secure-primary")
             .expect("resolved TLS");
         let root = RootSecret::new([0x42; 32]);
-        let chain = derive_server_certificate_chain(
+        let profile = StyreneCertificateProfile::default();
+        let chain = derive_server_certificate_chain_with_profile(
             &root,
             &control_tls_ca_scope("omegon-agents"),
             "omegon-agents/secure-primary",
             control_tls_subject_alt_names("omegon-agents", "secure-primary"),
+            &profile,
         )
         .expect("certificate chain");
 
@@ -460,6 +481,26 @@ mod tests {
         assert_eq!(
             manifest["data"]["ca.crt"],
             base64_encode(chain.ca_bundle_pem().as_bytes())
+        );
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/tls-profile"],
+            "default"
+        );
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/tls-ca-epoch"],
+            "0"
+        );
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/tls-leaf-epoch"],
+            "0"
+        );
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/tls-ca-validity"],
+            "2026-2036"
+        );
+        assert_eq!(
+            manifest["metadata"]["annotations"]["styrene.sh/tls-leaf-validity"],
+            "2026-2031"
         );
     }
 

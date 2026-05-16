@@ -466,6 +466,22 @@ pub struct ControlPlaneTlsSpec {
     /// without requiring client certificates.
     #[serde(default = "default_tls_client_ca_key")]
     pub client_ca_key: Option<String>,
+
+    /// Styrene PKI issuance profile. Separates independent policy namespaces.
+    #[serde(default = "default_tls_profile")]
+    pub profile: String,
+
+    /// Scoped CA epoch. Bump this to rotate the trust anchor.
+    #[serde(default = "default_tls_epoch")]
+    pub ca_epoch: String,
+
+    /// Leaf certificate epoch. Bump this for routine server certificate rotation.
+    #[serde(default = "default_tls_epoch")]
+    pub leaf_epoch: String,
+
+    /// Certificate validity window policy.
+    #[serde(default)]
+    pub validity: ControlPlaneTlsValiditySpec,
 }
 
 impl Default for ControlPlaneTlsSpec {
@@ -476,6 +492,41 @@ impl Default for ControlPlaneTlsSpec {
             cert_key: default_tls_cert_key(),
             key_key: default_tls_key_key(),
             client_ca_key: default_tls_client_ca_key(),
+            profile: default_tls_profile(),
+            ca_epoch: default_tls_epoch(),
+            leaf_epoch: default_tls_epoch(),
+            validity: ControlPlaneTlsValiditySpec::default(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, JsonSchema, PartialEq, Eq)]
+#[serde(rename_all = "camelCase")]
+pub struct ControlPlaneTlsValiditySpec {
+    /// CA not-before year.
+    #[serde(default = "default_tls_ca_not_before_year")]
+    pub ca_not_before_year: i32,
+
+    /// CA not-after year.
+    #[serde(default = "default_tls_ca_not_after_year")]
+    pub ca_not_after_year: i32,
+
+    /// Leaf not-before year.
+    #[serde(default = "default_tls_leaf_not_before_year")]
+    pub leaf_not_before_year: i32,
+
+    /// Leaf not-after year.
+    #[serde(default = "default_tls_leaf_not_after_year")]
+    pub leaf_not_after_year: i32,
+}
+
+impl Default for ControlPlaneTlsValiditySpec {
+    fn default() -> Self {
+        Self {
+            ca_not_before_year: default_tls_ca_not_before_year(),
+            ca_not_after_year: default_tls_ca_not_after_year(),
+            leaf_not_before_year: default_tls_leaf_not_before_year(),
+            leaf_not_after_year: default_tls_leaf_not_after_year(),
         }
     }
 }
@@ -490,6 +541,30 @@ fn default_tls_key_key() -> String {
 
 fn default_tls_client_ca_key() -> Option<String> {
     Some("ca.crt".to_string())
+}
+
+fn default_tls_profile() -> String {
+    "default".to_string()
+}
+
+fn default_tls_epoch() -> String {
+    "0".to_string()
+}
+
+fn default_tls_ca_not_before_year() -> i32 {
+    2026
+}
+
+fn default_tls_ca_not_after_year() -> i32 {
+    2036
+}
+
+fn default_tls_leaf_not_before_year() -> i32 {
+    2026
+}
+
+fn default_tls_leaf_not_after_year() -> i32 {
+    2031
 }
 
 /// Resource bounds for bounded agent execution (job/cronjob modes).

@@ -476,6 +476,14 @@ fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
         "transport_security": if tls.is_some() { "tls" } else { "plaintext" },
         "mtls": tls.as_ref().is_some_and(|t| t.client_ca_key.is_some()),
         "tls_secret": tls.as_ref().map(|t| t.secret_name.as_str()),
+        "tls_profile": tls.as_ref().map(|t| t.profile.as_str()),
+        "tls_ca_epoch": tls.as_ref().map(|t| t.ca_epoch.as_str()),
+        "tls_leaf_epoch": tls.as_ref().map(|t| t.leaf_epoch.as_str()),
+        "tls_leaf_validity": tls.as_ref().map(|t| format!(
+            "{}-{}",
+            t.validity.leaf_not_before_year,
+            t.validity.leaf_not_after_year
+        )),
     }))
 }
 
@@ -634,5 +642,9 @@ mod tests {
         assert_eq!(control_plane["transport_security"], "tls");
         assert_eq!(control_plane["mtls"], true);
         assert_eq!(control_plane["tls_secret"], "secure-primary-control-tls");
+        assert_eq!(control_plane["tls_profile"], "default");
+        assert_eq!(control_plane["tls_ca_epoch"], "0");
+        assert_eq!(control_plane["tls_leaf_epoch"], "0");
+        assert_eq!(control_plane["tls_leaf_validity"], "2026-2031");
     }
 }
