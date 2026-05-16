@@ -9,8 +9,8 @@ name = "auspex-operator"
 path = "src/main.rs"
 
 [dependencies]
-# Styrene identity (HKDF key derivation + Ed25519/X25519)
-styrene-identity = { path = "../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["signing"] }
+# Styrene identity (HKDF key derivation + identity-bound X.509 control-plane PKI)
+styrene-identity = { path = "../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["pki"] }
 styrene-mqtt = { path = "../../styrene-rs/crates/libs/styrene-mqtt", features = ["embedded-broker"] }
 sha2 = "0.10"
 zeroize = "1"
