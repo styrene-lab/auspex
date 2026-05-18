@@ -149,8 +149,7 @@ jobs:
 
           # Sign the CycloneDX SBOM (keyless, OIDC-based)
           cosign sign-blob --yes \
-            --output-signature "${name}.cdx.json.sig" \
-            --output-certificate "${name}.cdx.json.cert" \
+            --bundle "${name}.cdx.json.bundle" \
             "${name}.cdx.json"
 
       - name: Attach SBOM to OCI image
@@ -178,8 +177,7 @@ jobs:
             ${{ steps.sbom.outputs.cdx_file }}
             ${{ steps.sbom.outputs.spdx_file }}
             ${{ steps.meta.outputs.image_name }}-vulns.json
-            ${{ steps.meta.outputs.image_name }}.cdx.json.sig
-            ${{ steps.meta.outputs.image_name }}.cdx.json.cert
+            ${{ steps.meta.outputs.image_name }}.cdx.json.bundle
 
       - name: Summary
         run: |

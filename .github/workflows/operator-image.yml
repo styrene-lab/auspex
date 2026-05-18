@@ -140,8 +140,7 @@ jobs:
         run: |
           image="${{ steps.push.outputs.image }}@${{ steps.push.outputs.digest }}"
           cosign sign-blob --yes \
-            --output-signature auspex-operator.cdx.json.sig \
-            --output-certificate auspex-operator.cdx.json.cert \
+            --bundle auspex-operator.cdx.json.bundle \
             auspex-operator.cdx.json
           cosign attach sbom --sbom auspex-operator.cdx.json --type cyclonedx "$image"
 
@@ -158,5 +157,4 @@ jobs:
           path: |
             auspex-operator.cdx.json
             auspex-operator-vulns.json
-            auspex-operator.cdx.json.sig
-            auspex-operator.cdx.json.cert
+            auspex-operator.cdx.json.bundle
