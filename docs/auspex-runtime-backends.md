@@ -47,7 +47,9 @@ Defaults:
 - `spec.model`: `AUSPEX_PRIMARY_AGENT_MODEL`, else `anthropic:claude-sonnet-4-6`
 - `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:latest`
 
-Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns the primary agent manifest. Set `AUSPEX_PRIMARY_AGENT_SECRET` to attach the Kubernetes Secret that carries provider credentials and runtime tokens.
+Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns the primary agent manifest. Set `AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET` to attach the narrow Kubernetes Secret that carries provider `auth.json` credentials for the primary agent. Set `AUSPEX_PRIMARY_AGENT_SECRET` only for broad environment-style runtime tokens that cannot use file projection; it is higher blast radius because all Secret keys are exposed through `envFrom`.
+
+`authJsonSecret` support requires Omegon commit `cd3f484dd16244eab40da0fc87e9784ecbd610e4` or newer on `release/0.22`, because older runtimes do not honor `OMEGON_AUTH_JSON_PATH`.
 
 The operator advertises daemon `OmegonAgent` control planes through `/api/fleet`, including the in-cluster service URL and ACP websocket URL. The UI can therefore distinguish the single operator-facing primary from supervised children and detached services.
 

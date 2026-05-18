@@ -1,0 +1,27 @@
+# Profile: omegon-home-media-operator
+#
+# Long-running home media stack operator. Watches Jellyfin, Jellyseerr,
+# Radarr, Sonarr, Prowlarr, qBittorrent, SABnzbd, and related Kubernetes
+# workloads through API probes and cluster status checks.
+#
+# Build: nex build-image profiles/home-media-operator.toml --tag <version>
+
+[meta]
+name = "omegon-home-media-operator"
+description = "Home media stack operator for Jellyfin, Jellyseerr, Arr services, downloaders, and media namespace health"
+extends = "styrene-lab/omegon-infra-engineer"
+
+[container]
+packages = [
+    "curl",
+    "jq",
+    "yq-go",
+    "kubectl",
+    "kubernetes-helm",
+]
+cmd = ["serve", "--agent", "styrene.home-media-operator"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.home-media-operator"
+HOME_STACK_SCOPE = "media"
+HOME_MEDIA_NAMESPACE = "media"

@@ -1,0 +1,28 @@
+# Profile: omegon-home-infra-sentinel
+#
+# Long-running cluster sentinel for the home system. Focuses on Brutus
+# cluster health, Gateway/API exposure, cert-manager, Vault, Keycloak,
+# ArgoCD drift, backups, and resource pressure.
+#
+# Build: nex build-image profiles/home-infra-sentinel.toml --tag <version>
+
+[meta]
+name = "omegon-home-infra-sentinel"
+description = "Home Kubernetes infrastructure sentinel for Brutus control-plane health, ingress, identity, backups, and drift"
+extends = "styrene-lab/omegon-infra-engineer"
+
+[container]
+packages = [
+    "kubectl",
+    "kubernetes-helm",
+    "kustomize",
+    "stern",
+    "jq",
+    "curl",
+]
+cmd = ["serve", "--agent", "styrene.home-infra-sentinel"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.home-infra-sentinel"
+HOME_STACK_SCOPE = "infra"
+BRUTUS_CLUSTER = "brutus"

@@ -10,6 +10,9 @@ mod reconciler;
 
 use std::{net::SocketAddr, sync::Arc};
 
+use auspex_core::agent_packages::{
+    AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
+};
 use axum::{
     Json, Router,
     extract::Path as AxumPath,
@@ -36,6 +39,8 @@ use reconciler::Context;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    let _ = rustls::crypto::aws_lc_rs::default_provider().install_default();
+
     tracing_subscriber::fmt()
         .with_env_filter(
             tracing_subscriber::EnvFilter::try_from_default_env()
@@ -43,20 +48,20 @@ async fn main() -> anyhow::Result<()> {
         )
         .init();
 
-    info!("auspex-operator starting");
-
-    let client = Client::try_default().await?;
-
     // Print CRDs for installation: auspex-operator --crd
     if std::env::args().any(|a| a == "--crd") {
         let managed = OmegonAgent::crd();
         let external = ExternalAgent::crd();
-        println!(
-            "{}",
-            serde_json::to_string_pretty(&serde_json::json!([managed, external]))?
-        );
+        println!("---");
+        print!("{}", serde_yaml::to_string(&managed)?);
+        println!("---");
+        print!("{}", serde_yaml::to_string(&external)?);
         return Ok(());
     }
+
+    info!("auspex-operator starting");
+
+    let client = Client::try_default().await?;
 
     // Namespace scoping: when AUSPEX_WATCH_NAMESPACE is set, the operator
     // only watches CRDs in that namespace. When unset, watches cluster-wide.
@@ -142,6 +147,20 @@ async fn main() -> anyhow::Result<()> {
                 post({
                     let ctx = api_ctx.clone();
                     move |body: Json<Value>| deploy_agent_handler(ctx, body)
+                }),
+            )
+            .route("/packages", get(packages_handler))
+            .route(
+                "/packages/{id}",
+                get(|path: AxumPath<String>| package_detail_handler(path)),
+            )
+            .route(
+                "/packages/{id}/deploy",
+                post({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<String>, body: Option<Json<Value>>| {
+                        deploy_package_handler(ctx, path, body)
+                    }
                 }),
             )
             .route(
@@ -316,6 +335,7 @@ struct PrimaryAgentBootstrapConfig {
     image: String,
     model: String,
     secret_name: Option<String>,
+    auth_json_secret: Option<String>,
     control_tls_secret: Option<String>,
 }
 
@@ -333,6 +353,7 @@ impl PrimaryAgentBootstrapConfig {
             model: std::env::var("AUSPEX_PRIMARY_AGENT_MODEL")
                 .unwrap_or_else(|_| "anthropic:claude-sonnet-4-6".into()),
             secret_name: std::env::var("AUSPEX_PRIMARY_AGENT_SECRET").ok(),
+            auth_json_secret: std::env::var("AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET").ok(),
             control_tls_secret: std::env::var("AUSPEX_PRIMARY_AGENT_CONTROL_TLS_SECRET").ok(),
         }
     }
@@ -342,6 +363,9 @@ fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
     let mut secrets = serde_json::json!({});
     if let Some(secret_name) = config.secret_name.as_ref() {
         secrets["secretName"] = serde_json::json!(secret_name);
+    }
+    if let Some(auth_json_secret) = config.auth_json_secret.as_ref() {
+        secrets["authJsonSecret"] = serde_json::json!(auth_json_secret);
     }
 
     let mut manifest = serde_json::json!({
@@ -430,6 +454,8 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
                 "mode": a.spec.mode,
                 "image": a.spec.image,
                 "profile": a.spec.profile,
+                "package": a.labels().get("styrene.sh/agent-package"),
+                "home_stack": a.labels().get("styrene.sh/home-stack"),
                 "is_primary": is_primary_agent(a),
                 "control_plane": managed_agent_control_plane(a),
                 "status": a.status.as_ref().map(|s| &s.phase),
@@ -564,6 +590,57 @@ async fn deploy_agent_handler(ctx: Arc<Context>, Json(mut manifest): Json<Value>
         Ok(agent) => Json(serde_json::json!({ "agent": managed_agent_detail(&agent) })),
         Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
     }
+}
+
+async fn packages_handler() -> Json<Value> {
+    Json(serde_json::json!({
+        "packages": builtin_agent_packages(),
+        "source": "builtin",
+        "next_source": "armory-signum",
+    }))
+}
+
+async fn package_detail_handler(AxumPath(id): AxumPath<String>) -> Json<Value> {
+    match find_builtin_agent_package(&id) {
+        Some(package) => Json(serde_json::json!({
+            "package": package,
+            "source": "builtin",
+        })),
+        None => Json(serde_json::json!({ "error": format!("unknown package '{id}'") })),
+    }
+}
+
+async fn deploy_package_handler(
+    ctx: Arc<Context>,
+    AxumPath(id): AxumPath<String>,
+    body: Option<Json<Value>>,
+) -> Json<Value> {
+    let Some(package) = find_builtin_agent_package(&id) else {
+        return Json(serde_json::json!({ "error": format!("unknown package '{id}'") }));
+    };
+
+    let request = match body {
+        Some(Json(value)) => match serde_json::from_value::<AgentPackageDeployRequest>(value) {
+            Ok(request) => request,
+            Err(error) => {
+                return Json(serde_json::json!({
+                    "error": format!("invalid package deploy request: {error}")
+                }));
+            }
+        },
+        None => AgentPackageDeployRequest::default(),
+    };
+
+    let mut request = request;
+    if request.namespace.is_none() {
+        request.namespace = ctx
+            .watch_namespace
+            .clone()
+            .or_else(|| Some("default".into()));
+    }
+
+    let manifest = package.omegon_agent_manifest(&request);
+    deploy_agent_handler(ctx, Json(manifest)).await
 }
 
 async fn patch_agent_handler(
@@ -919,6 +996,7 @@ mod tests {
             image: "example.com/omegon:dev".into(),
             model: "anthropic:claude-sonnet-4-6".into(),
             secret_name: Some("auspex-primary-secrets".into()),
+            auth_json_secret: Some("auspex-primary-auth-json".into()),
             control_tls_secret: None,
         });
 
@@ -933,6 +1011,10 @@ mod tests {
         assert_eq!(
             manifest["spec"]["secrets"]["secretName"],
             "auspex-primary-secrets"
+        );
+        assert_eq!(
+            manifest["spec"]["secrets"]["authJsonSecret"],
+            "auspex-primary-auth-json"
         );
     }
 

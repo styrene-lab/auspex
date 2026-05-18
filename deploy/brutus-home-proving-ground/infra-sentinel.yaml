@@ -1,0 +1,35 @@
+apiVersion: styrene.sh/v1alpha1
+kind: OmegonAgent
+metadata:
+  name: home-infra-sentinel
+  labels:
+    app.kubernetes.io/part-of: auspex-home-proving-ground
+    styrene.sh/agent-package: home-infra-sentinel
+    styrene.sh/agent-role: detached-service
+    styrene.sh/home-stack: infra
+  annotations:
+    auspex.styrene.sh/purpose: "Monitor Brutus cluster health, ingress, certificates, identity, backup, and GitOps drift."
+    auspex.styrene.sh/package-agent: styrene.home-infra-sentinel
+    auspex.styrene.sh/package-profile: styrene-lab/omegon-home-infra-sentinel
+spec:
+  agent: styrene.home-infra-sentinel
+  model: anthropic:claude-sonnet-4-6
+  posture: explorator
+  role: detached-service
+  mode: daemon
+  image: ghcr.io/styrene-lab/omegon-agents:latest
+  profile: styrene-lab/omegon-home-infra-sentinel
+  secrets:
+    authJsonSecret: home-infra-sentinel-provider-auth
+  identity:
+    provision: true
+    securityTier: file
+    meshRole: monitor
+    mtls: true
+  controlPlane:
+    tls:
+      enabled: true
+      profile: home-infra
+  resources:
+    cpu: "500m"
+    memory: "768Mi"

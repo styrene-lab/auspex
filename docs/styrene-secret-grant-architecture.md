@@ -70,8 +70,41 @@ Identifies a secret without exposing its value.
 - backend kind: vault, vso, kubernetes-secret, local-store, env, external
 - backend path or selector
 - intended mount/import target
+- materialization format: raw value, env file, JSON, or provider `auth.json`
 - sensitivity class
 - rotation policy
+
+Provider credentials use the same object model. `auth.json` is only a
+materialization format for an LLM-provider credential grant; it is not a
+separate identity system, not a package artifact, and not an alternate
+configuration store. Local agents may resolve the underlying credential from
+the OS keyring or encrypted Styrene/Omegon secret store. Kubernetes agents
+should receive the same logical `SecretRef` through Vault Agent, VSO,
+Secrets Store CSI, or a narrow Kubernetes Secret mount. SSH/shuttle or
+nonstandard deployments should redeem the grant after enrollment and import
+the material into the local encrypted agent store.
+
+For `openai-codex`, the provider `auth.json` entry contains bearer material
+and refresh material:
+
+```json
+{
+  "openai-codex": {
+    "type": "oauth",
+    "access": "<redacted>",
+    "refresh": "<redacted>",
+    "expires": 1779043200000,
+    "accountId": "<redacted>"
+  }
+}
+```
+
+This complete object is high-value secret material. Auspex UI, telemetry,
+MQTT events, logs, and audit messages may show the `SecretRef`, provider id,
+generation, expiry posture, and lease state, but must never show `access`,
+`refresh`, or account identifiers from the concrete file. Deployed agents
+should receive a least-privilege bundle containing only the provider entries
+they are granted.
 
 `SecretGrant`
 
@@ -145,10 +178,11 @@ This is the important path because it proves the model is not Kubernetes-only.
 Kubernetes remains the easiest backend, but it should be one realization of the same grant model:
 
 1. `SecretGrant` is created for the target `OmegonAgent`.
-2. The Kubernetes adapter renders the grant as Vault Secrets Operator, Vault Agent, or Secret mount config.
+2. The Kubernetes adapter renders the grant as Vault Secrets Operator, Vault Agent, Secrets Store CSI, or Secret mount config.
 3. The pod starts with a workload identity and mTLS material.
-4. Omegon still reports which `SecretRef` ids became ready.
-5. Rotation and revocation update the same grant/lease state as SSH and local deployments.
+4. Provider `auth.json` bundles are mounted at a deterministic runtime path and advertised through `OMEGON_AUTH_JSON_PATH`; the runtime must not depend on container `$HOME`.
+5. Omegon still reports which `SecretRef` ids became ready.
+6. Rotation and revocation update the same grant/lease state as SSH and local deployments.
 
 This keeps the operator UX consistent: the operator attaches secret references to an agent, not backend-specific secret plumbing.
 

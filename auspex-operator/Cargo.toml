@@ -9,6 +9,8 @@ name = "auspex-operator"
 path = "src/main.rs"
 
 [dependencies]
+auspex-core = { path = "../auspex-core" }
+
 # Styrene identity (HKDF key derivation + identity-bound X.509 control-plane PKI)
 styrene-identity = { path = "../../styrene-rs/crates/libs/styrene-identity", default-features = false, features = ["pki"] }
 styrene-mqtt = { path = "../../styrene-rs/crates/libs/styrene-mqtt", features = ["embedded-broker"] }
@@ -25,6 +27,7 @@ k8s-openapi = { version = "0.24", features = ["v1_30"] }
 
 # HTTP client for external agent probing
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
+rustls = { version = "0.23", default-features = false, features = ["aws_lc_rs"] }
 
 # Async runtime
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "signal"] }
@@ -33,6 +36,7 @@ futures-util = "0.3"
 # Serialization
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+serde_yaml = "0.9"
 
 # HTTP server for fleet API + web UI
 axum = "0.8"

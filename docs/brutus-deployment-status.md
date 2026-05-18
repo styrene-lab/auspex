@@ -29,7 +29,22 @@
 ## What's NOT deployed yet
 
 ### Primary driver credentials
-`OmegonAgent/auspex-primary` needs a provider credential Secret before the agent can complete useful Chat/ACP work. Set `AUSPEX_PRIMARY_AGENT_SECRET` on the operator to attach that Secret to the bootstrapped primary agent, or disable bootstrap and manage the manifest through GitOps.
+`OmegonAgent/auspex-primary` needs provider credentials before the agent can
+complete useful Chat/ACP work. Prefer a narrow provider `auth.json` projection:
+
+```text
+AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET=auspex-primary-openai-codex-auth
+```
+
+The referenced Secret must contain key `auth.json`; the operator mounts it at
+`/config/omegon/auth.json` and sets `OMEGON_AUTH_JSON_PATH`. Use
+`AUSPEX_PRIMARY_AGENT_SECRET` only for broad environment-style runtime tokens
+that the agent genuinely needs. That path is intentionally higher blast radius
+because Kubernetes projects every key in the Secret through `envFrom`.
+
+The Omegon image must include `styrene-lab/omegon` commit
+`cd3f484dd16244eab40da0fc87e9784ecbd610e4` or later on `release/0.22`; earlier
+images ignore `OMEGON_AUTH_JSON_PATH`.
 
 ### Web UI
 The WASM bundle (`trunk build` produces 1.5MB optimized) is built locally but not in the deployed image. The nix-built image only contains the operator binary + cacert. To add the web UI, either:
@@ -104,7 +119,7 @@ Source repos cloned at `/tmp/auspex-build/{auspex,omegon,styrene-rs}` on Brutus.
 
 ## Next steps
 
-1. **Seed primary driver credentials** — create the provider Secret referenced by `AUSPEX_PRIMARY_AGENT_SECRET`
+1. **Seed primary driver credentials** — create the provider `auth.json` Secret referenced by `AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET`
 2. **Migrate overnight-reviewer** — convert the hand-deployed CronJob to a CRD-managed `OmegonAgent`
 3. **Fix --crd output** — split into individual CRD documents for kubectl apply
 4. **Install ExternalAgent CRD** — enables monitoring of off-cluster agents

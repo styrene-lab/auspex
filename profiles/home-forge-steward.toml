@@ -1,0 +1,27 @@
+# Profile: omegon-home-forge-steward
+#
+# Long-running Forgejo/GitOps steward for the home system. Watches Styrene
+# repos, ArgoCD sync state, image build status, release readiness, and
+# package publication flow.
+#
+# Build: nex build-image profiles/home-forge-steward.toml --tag <version>
+
+[meta]
+name = "omegon-home-forge-steward"
+description = "Home forge and release steward for Styrene repos, ArgoCD sync, OCI packages, and release readiness"
+extends = "styrene-lab/omegon-coding-agent"
+
+[container]
+packages = [
+    "git",
+    "gh",
+    "jq",
+    "curl",
+    "kubectl",
+]
+cmd = ["serve", "--agent", "styrene.home-forge-steward"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.home-forge-steward"
+HOME_STACK_SCOPE = "forge"
+FORGE_HOST = "forge.styrene.io"

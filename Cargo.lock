@@ -380,14 +380,17 @@ name = "auspex-operator"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "auspex-core",
  "axum 0.8.8",
  "futures-util",
  "k8s-openapi",
  "kube",
  "reqwest",
+ "rustls 0.23.37",
  "schemars",
  "serde",
  "serde_json",
+ "serde_yaml",
  "sha2",
  "styrene-identity",
  "styrene-mqtt",

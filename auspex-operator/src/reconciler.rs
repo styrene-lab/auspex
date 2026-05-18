@@ -21,6 +21,38 @@ use tracing::{info, warn};
 use crate::crd::{AgentMode, OmegonAgent};
 
 const CONTROL_TLS_MOUNT_PATH: &str = "/run/omegon/control-tls";
+const AUSPEX_PRIMARY_AGENT_ID: &str = "styrene.auspex-primary";
+
+const AUSPEX_PRIMARY_AGENT_TOML: &str = r#"[agent]
+id = "styrene.auspex-primary"
+name = "Auspex Primary Coordinator"
+version = "0.1.0"
+description = "Operator-facing coordinator for Auspex-managed agent fleets, workflows, deployments, and policy-gated work routing."
+domain = "orchestration"
+
+[persona]
+directive = "PERSONA.md"
+badge = "coordinator"
+
+[settings]
+model = "anthropic:claude-sonnet-4-6"
+thinking_level = "medium"
+context_class = "squad"
+max_turns = 80
+
+[secrets]
+required = ["ANTHROPIC_API_KEY"]
+optional = ["GITHUB_TOKEN", "OPENAI_API_KEY", "KUBECONFIG"]
+"#;
+
+const AUSPEX_PRIMARY_PERSONA_MD: &str = r#"# Auspex Primary Coordinator
+
+You are the operator-facing coordinator for an Auspex-managed agent fleet.
+
+Your job is not to behave like a single coding assistant by default. Your job is to understand operator intent, normalize work into execution lanes, choose whether work should run inline or be delegated, deploy and supervise Omegon agents when policy allows, and publish concise operating state back to Auspex.
+
+Prefer coordination over local execution when work can progress independently. Keep deployment, secret, workflow, and agent lifecycle operations explicit. Treat high-impact actions as policy-gated operations that require clear operator intent or configured approval.
+"#;
 
 /// Default sidecar images. Override via AUSPEX_STYRENED_IMAGE / AUSPEX_AETHER_IMAGE env vars.
 fn styrened_image() -> String {
@@ -85,6 +117,11 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
     // Ensure ConfigMap for vox.toml
     reconcile_configmap(client, &agent, &ns, &name).await?;
 
+    // Seed the built-in primary coordinator bundle until Omegon images carry it natively.
+    if agent.spec.agent == AUSPEX_PRIMARY_AGENT_ID {
+        reconcile_primary_catalog_configmap(client, &agent, &ns, &name).await?;
+    }
+
     // Ensure workload
     match agent.spec.mode {
         AgentMode::Daemon => {
@@ -106,6 +143,38 @@ pub async fn reconcile(agent: Arc<OmegonAgent>, ctx: Arc<Context>) -> Result<Act
 
     info!(agent = %name, "reconciliation complete");
     Ok(Action::requeue(std::time::Duration::from_secs(300)))
+}
+
+async fn reconcile_primary_catalog_configmap(
+    client: &Client,
+    agent: &OmegonAgent,
+    ns: &str,
+    name: &str,
+) -> Result<(), kube::Error> {
+    let api: Api<ConfigMap> = Api::namespaced(client.clone(), ns);
+    let cm_name = format!("{name}-catalog");
+
+    let cm = json!({
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": cm_name,
+            "namespace": ns,
+            "ownerReferences": [owner_ref(agent)],
+        },
+        "data": {
+            "agent.toml": AUSPEX_PRIMARY_AGENT_TOML,
+            "PERSONA.md": AUSPEX_PRIMARY_PERSONA_MD,
+        }
+    });
+
+    api.patch(
+        &cm_name,
+        &PatchParams::apply("auspex-operator"),
+        &Patch::Apply(cm),
+    )
+    .await?;
+    Ok(())
 }
 
 /// Handle reconciliation errors.
@@ -407,6 +476,8 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let is_bounded = matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob);
     let has_aether = agent.spec.vox.connectors.iter().any(|c| c == "aether");
     let control_tls = resolved_control_tls(agent, name);
+    let control_tls_args_enabled =
+        omegon_runtime_flag_enabled("AUSPEX_ENABLE_OMEGON_CONTROL_TLS_ARGS");
 
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
@@ -455,6 +526,18 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         "configMap": { "name": format!("{name}-vox") },
     })];
 
+    if agent.spec.agent == AUSPEX_PRIMARY_AGENT_ID {
+        volumes.push(json!({
+            "name": "agent-catalog",
+            "configMap": { "name": format!("{name}-catalog") },
+        }));
+        volume_mounts.push(json!({
+            "name": "agent-catalog",
+            "mountPath": format!("/data/omegon/catalog/{AUSPEX_PRIMARY_AGENT_ID}"),
+            "readOnly": true,
+        }));
+    }
+
     if has_aether {
         // Shared volume for Unix socket between agent and styrened sidecar.
         volumes.push(json!({
@@ -490,6 +573,10 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     }
 
     if let Some(ref auth_secret) = agent.spec.secrets.auth_json_secret {
+        env.push(json!({
+            "name": "OMEGON_AUTH_JSON_PATH",
+            "value": "/config/omegon/auth.json",
+        }));
         volume_mounts.push(json!({
             "name": "auth-json",
             "mountPath": "/config/omegon",
@@ -622,7 +709,10 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         ]
     };
 
-    if !is_bounded && let Some(tls) = control_tls.as_ref() {
+    if !is_bounded
+        && control_tls_args_enabled
+        && let Some(tls) = control_tls.as_ref()
+    {
         args.extend([
             "--control-tls-cert".into(),
             format!("{CONTROL_TLS_MOUNT_PATH}/tls.crt"),
@@ -639,7 +729,9 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
 
     args.extend(["--agent".into(), agent.spec.agent.clone()]);
     args.extend(["--model".into(), agent.spec.model.clone()]);
-    args.extend(["--posture".into(), agent.spec.posture.clone()]);
+    if omegon_runtime_flag_enabled("AUSPEX_ENABLE_OMEGON_POSTURE_ARG") {
+        args.extend(["--posture".into(), agent.spec.posture.clone()]);
+    }
 
     // Append resource bounds for bounded modes.
     if let Some(ref bounds) = agent.spec.bounds {
@@ -669,6 +761,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let mut agent_container = json!({
         "name": "agent",
         "image": &agent.spec.image,
+        "command": ["/usr/local/bin/omegon"],
         "args": args,
         "env": env,
         "envFrom": env_from,
@@ -679,15 +772,23 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     if !is_bounded {
         let container = agent_container.as_object_mut().unwrap();
         container.insert("ports".into(), json!([{"containerPort": 7842}]));
-        let probe_scheme = if control_tls.is_some() {
-            "HTTPS"
+        let probe_scheme = if control_tls.is_some() && control_tls_args_enabled {
+            "https"
         } else {
-            "HTTP"
+            "http"
+        };
+        let probe_curl_args = |path: &str| {
+            let url = format!("{probe_scheme}://127.0.0.1:7842{path}");
+            if probe_scheme == "https" {
+                vec!["curl".to_string(), "-kfsS".to_string(), url]
+            } else {
+                vec!["curl".to_string(), "-fsS".to_string(), url]
+            }
         };
         container.insert(
             "livenessProbe".into(),
             json!({
-                "httpGet": { "path": "/api/healthz", "port": 7842, "scheme": probe_scheme },
+                "exec": { "command": probe_curl_args("/api/healthz") },
                 "initialDelaySeconds": 15,
                 "periodSeconds": 30,
             }),
@@ -695,7 +796,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         container.insert(
             "readinessProbe".into(),
             json!({
-                "httpGet": { "path": "/api/readyz", "port": 7842, "scheme": probe_scheme },
+                "exec": { "command": probe_curl_args("/api/readyz") },
                 "initialDelaySeconds": 10,
                 "periodSeconds": 10,
             }),
@@ -851,6 +952,10 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     }
 }
 
+fn omegon_runtime_flag_enabled(name: &str) -> bool {
+    std::env::var(name).is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes"))
+}
+
 /// Pod template with spec and optional annotations for the template metadata.
 pub struct PodTemplate {
     pub spec: serde_json::Value,
@@ -915,6 +1020,9 @@ mod tests {
 
     #[test]
     fn pod_spec_mounts_tls_secret_and_passes_control_tls_args() {
+        unsafe {
+            std::env::set_var("AUSPEX_ENABLE_OMEGON_CONTROL_TLS_ARGS", "true");
+        }
         let agent = daemon_agent(serde_json::json!({
             "apiVersion": "styrene.sh/v1alpha1",
             "kind": "OmegonAgent",
@@ -947,10 +1055,15 @@ mod tests {
         assert!(args.contains(&"/run/omegon/control-tls/tls.key"));
         assert!(args.contains(&"--control-tls-client-ca"));
         assert!(args.contains(&"/run/omegon/control-tls/ca.crt"));
-        assert_eq!(
-            agent_container["readinessProbe"]["httpGet"]["scheme"],
-            "HTTPS"
-        );
+        let readiness_command = agent_container["readinessProbe"]["exec"]["command"]
+            .as_array()
+            .expect("readiness command");
+        assert!(readiness_command.iter().any(|value| value == "-kfsS"));
+        assert!(readiness_command.iter().any(|value| {
+            value
+                .as_str()
+                .is_some_and(|item| item == "https://127.0.0.1:7842/api/readyz")
+        }));
         assert_eq!(
             template.spec["volumes"]
                 .as_array()
@@ -960,6 +1073,9 @@ mod tests {
                 .expect("control TLS volume")["secret"]["secretName"],
             "secure-primary-control-tls"
         );
+        unsafe {
+            std::env::remove_var("AUSPEX_ENABLE_OMEGON_CONTROL_TLS_ARGS");
+        }
     }
 
     #[test]
@@ -991,6 +1107,98 @@ mod tests {
         assert_eq!(tls.ca_epoch, "0");
         assert_eq!(tls.leaf_epoch, "0");
         assert_eq!(tls.validity.leaf_not_after_year, 2031);
+    }
+
+    #[test]
+    fn primary_coordinator_mounts_seed_catalog() {
+        let agent = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "auspex-primary",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.auspex-primary",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon"
+            }
+        }));
+
+        let template = pod_spec(&agent, "auspex-primary");
+        let agent_container = &template.spec["containers"][0];
+
+        assert_eq!(
+            template.spec["volumes"]
+                .as_array()
+                .expect("volumes")
+                .iter()
+                .find(|volume| volume["name"] == "agent-catalog")
+                .expect("agent catalog volume")["configMap"]["name"],
+            "auspex-primary-catalog"
+        );
+        assert_eq!(
+            agent_container["volumeMounts"]
+                .as_array()
+                .expect("volume mounts")
+                .iter()
+                .find(|mount| mount["name"] == "agent-catalog")
+                .expect("agent catalog mount")["mountPath"],
+            "/data/omegon/catalog/styrene.auspex-primary"
+        );
+    }
+
+    #[test]
+    fn auth_json_secret_sets_explicit_runtime_path() {
+        let agent = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "primary-driver",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.primary",
+                "model": "openai-codex:gpt-5.4",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "secrets": {
+                    "authJsonSecret": "primary-driver-openai-codex-auth"
+                }
+            }
+        }));
+
+        let template = pod_spec(&agent, "primary-driver");
+        let agent_container = &template.spec["containers"][0];
+
+        assert_eq!(
+            agent_container["env"]
+                .as_array()
+                .expect("env")
+                .iter()
+                .find(|env| env["name"] == "OMEGON_AUTH_JSON_PATH")
+                .expect("OMEGON_AUTH_JSON_PATH")["value"],
+            "/config/omegon/auth.json"
+        );
+        assert_eq!(
+            agent_container["volumeMounts"]
+                .as_array()
+                .expect("volume mounts")
+                .iter()
+                .find(|mount| mount["name"] == "auth-json")
+                .expect("auth json mount")["mountPath"],
+            "/config/omegon"
+        );
+        assert_eq!(
+            template.spec["volumes"]
+                .as_array()
+                .expect("volumes")
+                .iter()
+                .find(|volume| volume["name"] == "auth-json")
+                .expect("auth json volume")["secret"]["secretName"],
+            "primary-driver-openai-codex-auth"
+        );
     }
 
     #[test]

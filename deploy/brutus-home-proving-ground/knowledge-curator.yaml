@@ -1,0 +1,35 @@
+apiVersion: styrene.sh/v1alpha1
+kind: OmegonAgent
+metadata:
+  name: home-knowledge-curator
+  labels:
+    app.kubernetes.io/part-of: auspex-home-proving-ground
+    styrene.sh/agent-package: home-knowledge-curator
+    styrene.sh/agent-role: detached-service
+    styrene.sh/home-stack: knowledge
+  annotations:
+    auspex.styrene.sh/purpose: "Maintain home operations runbooks, incident summaries, and cross-agent handoff context."
+    auspex.styrene.sh/package-agent: styrene.home-knowledge-curator
+    auspex.styrene.sh/package-profile: styrene-lab/omegon-home-knowledge-curator
+spec:
+  agent: styrene.home-knowledge-curator
+  model: anthropic:claude-sonnet-4-6
+  posture: fabricator
+  role: detached-service
+  mode: daemon
+  image: ghcr.io/styrene-lab/omegon-agents:latest
+  profile: styrene-lab/omegon-home-knowledge-curator
+  secrets:
+    authJsonSecret: home-knowledge-curator-provider-auth
+  identity:
+    provision: true
+    securityTier: file
+    meshRole: monitor
+    mtls: true
+  controlPlane:
+    tls:
+      enabled: true
+      profile: home-knowledge
+  resources:
+    cpu: "350m"
+    memory: "512Mi"

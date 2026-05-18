@@ -1,0 +1,35 @@
+apiVersion: styrene.sh/v1alpha1
+kind: OmegonAgent
+metadata:
+  name: home-forge-steward
+  labels:
+    app.kubernetes.io/part-of: auspex-home-proving-ground
+    styrene.sh/agent-package: home-forge-steward
+    styrene.sh/agent-role: detached-service
+    styrene.sh/home-stack: forge
+  annotations:
+    auspex.styrene.sh/purpose: "Watch Styrene repository, package, release, and ArgoCD flow for the home system."
+    auspex.styrene.sh/package-agent: styrene.home-forge-steward
+    auspex.styrene.sh/package-profile: styrene-lab/omegon-home-forge-steward
+spec:
+  agent: styrene.home-forge-steward
+  model: anthropic:claude-sonnet-4-6
+  posture: fabricator
+  role: detached-service
+  mode: daemon
+  image: ghcr.io/styrene-lab/omegon-agents:latest
+  profile: styrene-lab/omegon-home-forge-steward
+  secrets:
+    authJsonSecret: home-forge-steward-provider-auth
+  identity:
+    provision: true
+    securityTier: file
+    meshRole: operator
+    mtls: true
+  controlPlane:
+    tls:
+      enabled: true
+      profile: home-forge
+  resources:
+    cpu: "500m"
+    memory: "768Mi"

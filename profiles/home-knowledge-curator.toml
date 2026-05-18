@@ -1,0 +1,24 @@
+# Profile: omegon-home-knowledge-curator
+#
+# Long-running knowledge curator for home operations. Keeps operational
+# notes, incident summaries, runbooks, and agent handoff context tidy.
+#
+# Build: nex build-image profiles/home-knowledge-curator.toml --tag <version>
+
+[meta]
+name = "omegon-home-knowledge-curator"
+description = "Home operations knowledge curator for runbooks, incident summaries, boards, and fleet handoff context"
+extends = "styrene-lab/omegon-coding-agent"
+
+[container]
+packages = [
+    "git",
+    "ripgrep",
+    "fd",
+    "jq",
+]
+cmd = ["serve", "--agent", "styrene.home-knowledge-curator"]
+
+[shell.env]
+OMEGON_AGENT = "styrene.home-knowledge-curator"
+HOME_STACK_SCOPE = "knowledge"

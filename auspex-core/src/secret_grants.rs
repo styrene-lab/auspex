@@ -59,6 +59,8 @@ pub enum SecretBackendKind {
 pub struct SecretTarget {
     #[serde(default)]
     pub mode: SecretTargetMode,
+    #[serde(default)]
+    pub format: SecretMaterializationFormat,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub destination: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -73,6 +75,16 @@ pub enum SecretTargetMode {
     AgentStore,
     #[default]
     ReferenceOnly,
+}
+
+#[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum SecretMaterializationFormat {
+    ProviderAuthJson,
+    EnvFile,
+    Json,
+    #[default]
+    Opaque,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
@@ -767,6 +779,7 @@ mod tests {
             selector: BTreeMap::from([("json_key".into(), "ANTHROPIC_API_KEY".into())]),
             target: SecretTarget {
                 mode: SecretTargetMode::AgentStore,
+                format: SecretMaterializationFormat::ProviderAuthJson,
                 destination: Some("omegon/providers/anthropic".into()),
                 env_key: None,
             },

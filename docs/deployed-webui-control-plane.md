@@ -16,6 +16,9 @@ Deployments should set this token or front the service with OIDC/mTLS ingress.
 | Route | Method | Purpose |
 |-------|--------|---------|
 | `/api/fleet` | `GET` | List managed and external agents. |
+| `/api/packages` | `GET` | List deployable agent packages known to Auspex. |
+| `/api/packages/{id}` | `GET` | Read one deployable package definition. |
+| `/api/packages/{id}/deploy` | `POST` | Create an `OmegonAgent` from package defaults plus overrides. |
 | `/api/agents` | `POST` | Create or server-side apply an `OmegonAgent`. |
 | `/api/agents/{ns}/{name}` | `GET` | Read one managed agent with control-plane metadata. |
 | `/api/agents/{ns}/{name}` | `PATCH` | Merge-patch an existing managed agent. |

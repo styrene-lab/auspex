@@ -57,6 +57,15 @@ kubectl set env deployment/auspex-operator \
 
 **Provider keys:** Stored in Vault. Injected into agent pods via Vault Agent annotations. The operator never sees them — it just sets the right annotations on the pod template.
 
+Provider OAuth bundles such as `openai-codex` are handled with the same posture
+as every other secret. The logical grant can be backed by OS keychain/encrypted
+store for local agents, Vault/OpenBao for production agents, VSO/CSI for
+Kubernetes materialization, or sealed bootstrap redemption for nonstandard
+hosts. The concrete `auth.json` file is only the runtime projection format.
+Pods must receive it through an explicit path contract such as
+`OMEGON_AUTH_JSON_PATH=/config/omegon/auth.json`; runtimes must not infer this
+from `$HOME`.
+
 **Fleet API auth:** Bearer token from Vault-injected env. mTLS optional.
 
 **Transport:** mTLS using StyreneIdentity-derived certificates (see below).

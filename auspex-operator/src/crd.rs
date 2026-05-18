@@ -221,13 +221,16 @@ pub struct SlackSpec {
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct SecretsSpec {
     /// Name of a k8s Secret containing API keys and bot tokens.
-    #[serde(default)]
+    #[serde(default, alias = "secret_name")]
     pub secret_name: Option<String>,
 
-    /// Mount auth.json from a Secret for OAuth tokens.
-    #[serde(default)]
+    /// Mount provider auth.json from a Secret as a runtime materialization of
+    /// a secret grant. Prefer Vault/VSO/CSI in production; this hook exists for
+    /// narrow Kubernetes Secret projections and development clusters.
+    #[serde(default, alias = "auth_json_secret")]
     pub auth_json_secret: Option<String>,
 
     /// HashiCorp Vault integration for secret injection.
@@ -351,6 +354,7 @@ pub struct ResourcesSpec {
 ///     hsmSlot: "pkcs11:token=styrene-operator"
 ///   ```
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct IdentitySpec {
     /// Whether to provision a StyreneID for this agent's styrened sidecar.
     #[serde(default)]
@@ -358,42 +362,42 @@ pub struct IdentitySpec {
 
     /// Security tier: "file" (default), "vault", or "hsm".
     /// See struct-level docs for details on each tier.
-    #[serde(default = "default_security_tier")]
+    #[serde(default = "default_security_tier", alias = "security_tier")]
     pub security_tier: String,
 
     /// RBAC mesh role for this agent: observer, monitor, operator, admin.
-    #[serde(default = "default_mesh_role")]
+    #[serde(default = "default_mesh_role", alias = "mesh_role")]
     pub mesh_role: String,
 
     /// Override the derivation label (defaults to "{namespace}/{name}").
-    #[serde(default)]
+    #[serde(default, alias = "derivation_label")]
     pub derivation_label: Option<String>,
 
     // --- Tier 1 (file) fields ---
     /// Name of the k8s Secret containing the operator's root secret.
     /// Used when security_tier=file.
-    #[serde(default = "default_operator_secret")]
+    #[serde(default = "default_operator_secret", alias = "operator_secret")]
     pub operator_secret: String,
 
     /// Key within the operator Secret that holds the root secret bytes.
-    #[serde(default = "default_operator_secret_key")]
+    #[serde(default = "default_operator_secret_key", alias = "operator_secret_key")]
     pub operator_secret_key: String,
 
     // --- Tier 2 (vault) fields ---
     /// Vault path for the operator's root secret.
     /// Used when security_tier=vault.
-    #[serde(default)]
+    #[serde(default, alias = "vault_path")]
     pub vault_path: Option<String>,
 
     /// Vault path prefix for derived agent secrets.
     /// Agent keys are written to "{vault_agent_prefix}/{agent_name}".
-    #[serde(default)]
+    #[serde(default, alias = "vault_agent_prefix")]
     pub vault_agent_prefix: Option<String>,
 
     // --- Tier 3 (hsm) fields ---
     /// PKCS#11 URI or device path for the HSM.
     /// Used when security_tier=hsm.
-    #[serde(default)]
+    #[serde(default, alias = "hsm_slot")]
     pub hsm_slot: Option<String>,
 
     // --- Common fields ---
@@ -402,7 +406,7 @@ pub struct IdentitySpec {
     pub rotate: bool,
 
     /// Additional RNS destinations this agent should be able to reach.
-    #[serde(default)]
+    #[serde(default, alias = "mesh_peers")]
     pub mesh_peers: Vec<String>,
 
     /// Enable mTLS on the fleet API using StyreneIdentity-derived certificates.
