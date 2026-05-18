@@ -557,13 +557,10 @@ pub async fn bootstrap_from_http_state_async(
     url: &str,
     hints: &ConnectHints,
 ) -> Result<BootstrapResult, String> {
-    let mut builder = reqwest::Client::builder();
+    let builder = reqwest::Client::builder();
     // reqwest on wasm32 uses browser fetch which doesn't support the timeout method.
     #[cfg(not(target_arch = "wasm32"))]
-    {
-        builder = builder.timeout(Duration::from_secs(10));
-        builder = crate::tls_config::apply_reqwest_roots(builder)?;
-    }
+    let builder = crate::tls_config::apply_reqwest_roots(builder.timeout(Duration::from_secs(10)))?;
     let client = builder
         .build()
         .map_err(|e| format!("could not build HTTP client: {e}"))?;
@@ -974,6 +971,7 @@ fn auspex_workspace_root() -> Option<PathBuf> {
 ///
 /// This function blocks on process I/O and should be called from
 /// `tokio::task::spawn_blocking` or a dedicated thread.
+#[cfg(not(target_arch = "wasm32"))]
 fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
     if !startup.state_url.is_empty() {
         return Some(startup.state_url.clone());

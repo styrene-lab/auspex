@@ -37,7 +37,6 @@ web = [
 auspex-core = { path = "auspex-core", default-features = false }
 omegon-flow = "0.9.1"
 dioxus = { version = "0.7", features = ["launch", "devtools", "logger", "lib"] }
-reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
@@ -50,7 +49,7 @@ futures-util = "0.3"
 tungstenite = { version = "0.28", default-features = false }
 rmp-serde = "1"
 omegon-traits = { path = "../omegon/core/crates/omegon-traits" }
-uuid = { version = "1", features = ["serde", "v4"] }
+uuid = { version = "1", features = ["serde", "v4", "js"] }
 pulldown-cmark = { version = "0.13", default-features = false, features = ["html"] }
 
 # Desktop-only: async WebSocket via tokio
@@ -68,6 +67,9 @@ gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
 # Entropy source — getrandom v0.3 requires explicit `wasm_js` feature on wasm32.
 # This is a transitive dep; we declare it here only to enable the feature.
 getrandom = "0.3"
+
+[target.'cfg(not(target_arch = "wasm32"))'.dependencies]
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 
 [dev-dependencies]
 pretty_assertions = "1"

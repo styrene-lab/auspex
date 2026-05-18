@@ -81,7 +81,10 @@ pub fn WorkflowBuilderScreen() -> Element {
                 save_state.set("saving".to_string());
                 let doc_id = workflow.read().doc_id;
                 match crate::workflow::state_from_json(&body_json, doc_id, "edited") {
-                    Ok(mut next) => {
+                    Ok(next) => {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        let mut next = next;
+                        #[cfg(not(target_arch = "wasm32"))]
                         let parsed = serde_json::from_str::<omegon_flow::Flow>(&body_json);
                         #[cfg(not(target_arch = "wasm32"))]
                         if let Ok(flow) = parsed {
@@ -154,7 +157,9 @@ pub fn WorkflowBuilderScreen() -> Element {
                                                 save_state.set("saving".to_string());
                                                 let current = workflow.read().clone();
                                                 match crate::workflow::add_catalog_node(&current, &item.kind) {
-                                                    Ok(mut next) => {
+                                                    Ok(next) => {
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        let mut next = next;
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         if let Err(error) = crate::workflow::save_workflow_state(&mut next) {
                                                             save_state.set(format!("save failed: {error}"));

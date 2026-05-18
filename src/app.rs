@@ -695,7 +695,9 @@ pub fn App() -> Element {
         let ipc_event_stream = ipc_event_stream;
         #[cfg(not(target_arch = "wasm32"))]
         let mut settings_status_message = settings_status_message;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut composer_ready_notice = composer_ready_notice;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut settings_open = settings_open;
         let mut workspace = workspace;
         async move {
@@ -1518,11 +1520,15 @@ pub fn App() -> Element {
                                                     "data-command": provider_card.login_action.action.command_slug(),
                                                     "data-provider": provider_card.provider_key.clone().unwrap_or_default(),
                                                     onclick: {
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let mut controller = controller;
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         let mut settings_status_message = settings_status_message;
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let action_kind = provider_card.login_action.action;
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let provider = provider_card.login_action.provider.clone();
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let target_label = settings_model.target_label.clone();
                                                         move |_| {
                                                             #[cfg(not(target_arch = "wasm32"))]
@@ -1568,11 +1574,15 @@ pub fn App() -> Element {
                                                     "data-command": provider_card.logout_action.action.command_slug(),
                                                     "data-provider": provider_card.provider_key.clone().unwrap_or_default(),
                                                     onclick: {
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let mut controller = controller;
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         let mut settings_status_message = settings_status_message;
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let action_kind = provider_card.logout_action.action;
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let provider = provider_card.logout_action.provider.clone();
+                                                        #[cfg(not(target_arch = "wasm32"))]
                                                         let target_label = settings_model.target_label.clone();
                                                         move |_| {
                                                             #[cfg(not(target_arch = "wasm32"))]
@@ -1664,11 +1674,15 @@ pub fn App() -> Element {
                                             "data-command": action.action.command_slug(),
                                             "data-target": settings_model.target_label.clone(),
                                             onclick: {
+                                                #[cfg(not(target_arch = "wasm32"))]
                                                 let mut controller = controller;
                                                 #[cfg(not(target_arch = "wasm32"))]
                                                 let mut settings_status_message = settings_status_message;
+                                                #[cfg(not(target_arch = "wasm32"))]
                                                 let action_kind = action.action;
+                                                #[cfg(not(target_arch = "wasm32"))]
                                                 let provider = action.provider.clone();
+                                                #[cfg(not(target_arch = "wasm32"))]
                                                 let target_label = settings_model.target_label.clone();
                                                 move |_| {
                                                     #[cfg(not(target_arch = "wasm32"))]
@@ -3887,8 +3901,10 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                                 class: "composer-blocked-action composer-blocked-action-primary",
                                 r#type: "button",
                                 onclick: {
+                                    #[cfg(not(target_arch = "wasm32"))]
                                     let provider = provider.clone();
                                     move |_| {
+                                        #[cfg(not(target_arch = "wasm32"))]
                                         let provider = provider.clone();
                                         #[cfg(not(target_arch = "wasm32"))]
                                         spawn(async move {

@@ -1,4 +1,5 @@
 use std::collections::{BTreeMap, BTreeSet};
+#[cfg(not(target_arch = "wasm32"))]
 use std::path::PathBuf;
 
 use omegon_flow::catalog::{

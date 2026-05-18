@@ -617,6 +617,7 @@ impl SecretGrantBroker for FileSecretGrantBroker {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn validate_redeem_request(
     grant: &SecretGrant,
     request: &SecretRedeemRequest,
@@ -662,6 +663,7 @@ fn validate_redeem_request(
     Ok(())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn check_constraint(
     label: &str,
     expected: Option<&str>,
@@ -679,6 +681,7 @@ fn check_constraint(
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn next_lease_id(store: &SecretGrantStore, grant_id: &str) -> String {
     let count = store
         .leases
@@ -689,6 +692,7 @@ fn next_lease_id(store: &SecretGrantStore, grant_id: &str) -> String {
     format!("lease_{grant_id}_{count}")
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 fn epoch_timestamp(seconds: u64) -> String {
     format!("unix:{seconds}")
 }
