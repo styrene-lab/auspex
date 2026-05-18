@@ -20,6 +20,7 @@ packages = [
     "jq",
     "curl",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.home-infra-sentinel"]
 
 [shell.env]

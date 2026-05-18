@@ -1319,7 +1319,7 @@ fn ensure_omegon_profile_for_auspex() {
     let preferred_model = preferred_authenticated_omegon_model();
 
     let mut profile_paths = Vec::new();
-    if let Some(home) = std::env::var("HOME").ok() {
+    if let Ok(home) = std::env::var("HOME") {
         profile_paths.push(std::path::PathBuf::from(home).join(".omegon/profile.json"));
     }
     if let Some(root) = auspex_workspace_root() {
@@ -1356,7 +1356,7 @@ fn ensure_profile_path_uses_model(
     profile_path: &std::path::Path,
     preferred_model: Option<(&str, &str)>,
 ) {
-    let Ok(contents) = fs::read_to_string(&profile_path) else {
+    let Ok(contents) = fs::read_to_string(profile_path) else {
         return;
     };
     let Ok(mut profile) = serde_json::from_str::<serde_json::Value>(&contents) else {
@@ -1393,7 +1393,7 @@ fn ensure_profile_path_uses_model(
             profile["thinkingLevel"] = serde_json::json!(AUSPEX_OMEGON_THINKING);
         }
         if let Ok(json) = serde_json::to_string_pretty(&profile) {
-            let _ = fs::write(&profile_path, json);
+            let _ = fs::write(profile_path, json);
             eprintln!(
                 "auspex: updated Omegon profile {} for Auspex coordinator posture {AUSPEX_OMEGON_POSTURE}, thinking {AUSPEX_OMEGON_THINKING}",
                 profile_path.display()

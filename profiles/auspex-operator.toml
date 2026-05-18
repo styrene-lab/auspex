@@ -21,7 +21,7 @@ packages = [
 ]
 entrypoint = "/bin/auspex-operator"
 expose = [8080]
-workdir = "/workspace"
+workdir = "/"
 user = "operator"
 
 [shell.env]

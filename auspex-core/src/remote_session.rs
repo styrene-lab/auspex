@@ -477,20 +477,20 @@ impl RemoteHostSession {
                 // aborted block rather than silently dropping the text.
                 if self.pending_role.is_some() {
                     let aborted = self.pending_text.trim().to_string();
-                    if !aborted.is_empty() {
-                        if let Some(turn_data) = self.transcript.turns.last_mut() {
-                            // Replace the streaming Text block (if any) with Aborted.
-                            let replaced = matches!(
-                                turn_data.blocks.last(),
-                                Some(crate::fixtures::TurnBlock::Text(t)) if t.origin.is_none()
-                            );
-                            if replaced {
-                                turn_data.blocks.pop();
-                            }
-                            turn_data
-                                .blocks
-                                .push(crate::fixtures::TurnBlock::Aborted(aborted));
+                    if !aborted.is_empty()
+                        && let Some(turn_data) = self.transcript.turns.last_mut()
+                    {
+                        // Replace the streaming Text block (if any) with Aborted.
+                        let replaced = matches!(
+                            turn_data.blocks.last(),
+                            Some(crate::fixtures::TurnBlock::Text(t)) if t.origin.is_none()
+                        );
+                        if replaced {
+                            turn_data.blocks.pop();
                         }
+                        turn_data
+                            .blocks
+                            .push(crate::fixtures::TurnBlock::Aborted(aborted));
                     }
                     self.pending_text.clear();
                     self.pending_role = None;
@@ -955,7 +955,7 @@ impl HostSessionModel for RemoteHostSession {
             .iter()
             .map(|(k, v)| (k.clone(), *v))
             .collect();
-        counts.sort_by(|a, b| b.1.cmp(&a.1));
+        counts.sort_by_key(|(_, count)| std::cmp::Reverse(*count));
 
         GraphData {
             nodes,

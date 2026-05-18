@@ -14,6 +14,7 @@ extends = "styrene-lab/omegon-base"
 packages = [
     "ripgrep",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.discord-agent"]
 
 [shell.env]

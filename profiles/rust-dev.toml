@@ -23,6 +23,7 @@ packages = [
     "rust-analyzer",
     "mold",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.coding-agent", "--model", "anthropic:claude-sonnet-4-6"]
 
 [shell.env]

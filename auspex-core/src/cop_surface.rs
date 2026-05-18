@@ -159,23 +159,13 @@ pub struct MetricData {
 const MAX_ALERT_FEED_ENTRIES: usize = 100;
 
 /// The full COP display state — one per auspex instance (fleet-wide).
-#[derive(Clone, Debug, PartialEq)]
+#[derive(Clone, Debug, Default, PartialEq)]
 pub struct CopDisplayState {
     regions: BTreeMap<CopRegion, RegionContent>,
     write_seq: u64,
     /// Which regions are enabled in the current layout.
     /// If empty, all standard segmenta regions are shown.
     active_regions: Vec<CopRegion>,
-}
-
-impl Default for CopDisplayState {
-    fn default() -> Self {
-        Self {
-            regions: BTreeMap::new(),
-            write_seq: 0,
-            active_regions: Vec::new(),
-        }
-    }
 }
 
 impl CopDisplayState {
@@ -194,34 +184,33 @@ impl CopDisplayState {
         self.write_seq += 1;
         let seq = self.write_seq;
 
-        if content_type.is_append_mode() {
-            if let Some(existing) = self.regions.get_mut(&region) {
-                if existing.content_type == content_type {
-                    existing.seq = seq;
+        if content_type.is_append_mode()
+            && let Some(existing) = self.regions.get_mut(&region)
+            && existing.content_type == content_type
+        {
+            existing.seq = seq;
 
-                    let new_items = data
-                        .get("items")
-                        .and_then(|v| v.as_array())
-                        .or_else(|| data.as_array())
-                        .cloned();
+            let new_items = data
+                .get("items")
+                .and_then(|v| v.as_array())
+                .or_else(|| data.as_array())
+                .cloned();
 
-                    let existing_items = existing
-                        .data
-                        .get_mut("items")
-                        .and_then(|v| v.as_array_mut());
+            let existing_items = existing
+                .data
+                .get_mut("items")
+                .and_then(|v| v.as_array_mut());
 
-                    if let (Some(existing_arr), Some(new_arr)) = (existing_items, &new_items) {
-                        existing_arr.extend(new_arr.iter().cloned());
-                        if existing_arr.len() > MAX_ALERT_FEED_ENTRIES {
-                            let drain_count = existing_arr.len() - MAX_ALERT_FEED_ENTRIES;
-                            existing_arr.drain(..drain_count);
-                        }
-                    } else if let Some(new_arr) = new_items {
-                        existing.data = serde_json::json!({ "items": new_arr });
-                    }
-                    return;
+            if let (Some(existing_arr), Some(new_arr)) = (existing_items, &new_items) {
+                existing_arr.extend(new_arr.iter().cloned());
+                if existing_arr.len() > MAX_ALERT_FEED_ENTRIES {
+                    let drain_count = existing_arr.len() - MAX_ALERT_FEED_ENTRIES;
+                    existing_arr.drain(..drain_count);
                 }
+            } else if let Some(new_arr) = new_items {
+                existing.data = serde_json::json!({ "items": new_arr });
             }
+            return;
         }
 
         self.regions.insert(

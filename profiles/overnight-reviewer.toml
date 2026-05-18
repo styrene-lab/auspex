@@ -13,6 +13,7 @@ description = "Nightly code review agent — bounded run, structured output"
 extends = "styrene-lab/omegon-coding-agent"
 
 [container]
+workdir = "/"
 cmd = ["run", "--prompt-file", "/input/prompt.txt", "--output", "/output/result.json", "--max-turns", "100", "--timeout", "1800"]
 
 [shell.env]

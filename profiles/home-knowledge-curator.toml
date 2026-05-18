@@ -17,6 +17,7 @@ packages = [
     "fd",
     "jq",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.home-knowledge-curator"]
 
 [shell.env]

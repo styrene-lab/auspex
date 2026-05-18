@@ -410,10 +410,10 @@ impl AppController {
     /// Transcript for the focused instance (or primary if none focused).
     pub fn focused_transcript(&self) -> &crate::fixtures::TranscriptData {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if let Some(session) = self.instance_sessions.get(id) {
-                return session.transcript();
-            }
+        if let Some(id) = &self.focused_instance_id
+            && let Some(session) = self.instance_sessions.get(id)
+        {
+            return session.transcript();
         }
         self.transcript()
     }
@@ -421,10 +421,10 @@ impl AppController {
     /// Chat messages for the focused instance (or primary).
     pub fn focused_messages(&self) -> &[crate::fixtures::ChatMessage] {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if let Some(session) = self.instance_sessions.get(id) {
-                return session.messages();
-            }
+        if let Some(id) = &self.focused_instance_id
+            && let Some(session) = self.instance_sessions.get(id)
+        {
+            return session.messages();
         }
         self.messages()
     }
@@ -432,10 +432,10 @@ impl AppController {
     /// Whether the focused instance has an active turn.
     pub fn focused_is_run_active(&self) -> bool {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if let Some(session) = self.instance_sessions.get(id) {
-                return session.is_run_active();
-            }
+        if let Some(id) = &self.focused_instance_id
+            && let Some(session) = self.instance_sessions.get(id)
+        {
+            return session.is_run_active();
         }
         self.is_run_active()
     }
@@ -443,10 +443,10 @@ impl AppController {
     /// Session data for the focused instance (or primary).
     pub fn focused_session_data(&self) -> crate::fixtures::SessionData {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if let Some(session) = self.instance_sessions.get(id) {
-                return session.session_data();
-            }
+        if let Some(id) = &self.focused_instance_id
+            && let Some(session) = self.instance_sessions.get(id)
+        {
+            return session.session_data();
         }
         self.session_data()
     }
@@ -454,10 +454,10 @@ impl AppController {
     /// Summary for the focused instance (or primary).
     pub fn focused_summary(&self) -> &crate::fixtures::HostSessionSummary {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if let Some(session) = self.instance_sessions.get(id) {
-                return session.summary();
-            }
+        if let Some(id) = &self.focused_instance_id
+            && let Some(session) = self.instance_sessions.get(id)
+        {
+            return session.summary();
         }
         self.summary()
     }
@@ -465,11 +465,11 @@ impl AppController {
     /// Whether the operator can submit a prompt to the focused instance.
     pub fn focused_can_submit(&self) -> bool {
         #[cfg(not(target_arch = "wasm32"))]
-        if let Some(id) = &self.focused_instance_id {
-            if self.instance_sessions.get(id).is_some() {
-                // Remote instances are always submittable if connected.
-                return true;
-            }
+        if let Some(id) = &self.focused_instance_id
+            && self.instance_sessions.get(id).is_some()
+        {
+            // Remote instances are always submittable if connected.
+            return true;
         }
         self.can_submit()
     }

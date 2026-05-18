@@ -19,6 +19,7 @@ packages = [
     "curl",
     "kubectl",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.home-forge-steward"]
 
 [shell.env]

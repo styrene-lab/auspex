@@ -21,6 +21,7 @@ packages = [
     "k9s",
     "stern",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.infra-engineer"]
 
 [shell.env]

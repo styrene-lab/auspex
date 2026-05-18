@@ -18,6 +18,7 @@ packages = [
     "tree-sitter",
     "tokei",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.coding-agent"]
 
 [shell.env]

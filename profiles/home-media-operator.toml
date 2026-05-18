@@ -19,6 +19,7 @@ packages = [
     "kubectl",
     "kubernetes-helm",
 ]
+workdir = "/"
 cmd = ["serve", "--agent", "styrene.home-media-operator"]
 
 [shell.env]

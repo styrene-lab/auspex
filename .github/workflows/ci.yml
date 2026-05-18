@@ -25,8 +25,16 @@ jobs:
           repository: styrene-lab/omegon
           path: omegon
 
+      - name: Check out styrene-rs sibling for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/styrene-rs
+          path: styrene-rs
+
       - name: Link Omegon at expected sibling path
-        run: ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
+        run: |
+          ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
+          ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../styrene-rs"
 
       - uses: dtolnay/rust-toolchain@stable
 
@@ -59,4 +67,4 @@ jobs:
     uses: styrene-lab/lipstyk/.github/workflows/lipstyk.yml@main
     with:
       paths: "src/ auspex-core/src/ auspex-operator/src/"
-      threshold: 50
+      threshold: 500

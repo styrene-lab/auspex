@@ -715,7 +715,7 @@ pub fn App() -> Element {
                     // Reconcile container agents every ~15s (100 ticks × 150ms).
                     // Collect remote probe targets on the same cadence, offset by 50 ticks.
                     container_reconcile_tick += 1;
-                    if container_reconcile_tick % 100 == 0 {
+                    if container_reconcile_tick.is_multiple_of(100) {
                         ctrl.reconcile_container_agents();
                     }
                     if container_reconcile_tick % 100 == 50 {
@@ -3232,7 +3232,6 @@ fn render_fleet_instance_card(
             r#type: "button",
             onclick: {
                 let instance_id = instance.instance_id.clone();
-                let is_focused = is_focused;
                 move |_| {
                     if is_focused {
                         on_focus.call(None);

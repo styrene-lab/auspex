@@ -148,11 +148,7 @@ impl SecretGrant {
     }
 
     pub fn allows_delivery_mode(&self, mode: SecretDeliveryMode) -> bool {
-        self.status == SecretGrantStatus::Active
-            && self
-                .allowed_delivery_modes
-                .iter()
-                .any(|allowed| *allowed == mode)
+        self.status == SecretGrantStatus::Active && self.allowed_delivery_modes.contains(&mode)
     }
 }
 
