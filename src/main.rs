@@ -66,12 +66,12 @@ fn main() {
                 .with_menu(menu)
                 .with_window(window)
                 .with_custom_head(custom_head)
-                .with_on_window(|window, _| {
+                .with_on_window(|_window, _| {
                     #[cfg(target_os = "macos")]
                     {
                         use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
-                        window.set_titlebar_transparent(false);
-                        window.set_fullsize_content_view(false);
+                        _window.set_titlebar_transparent(false);
+                        _window.set_fullsize_content_view(false);
                     }
                 }),
         )
