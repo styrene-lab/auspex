@@ -126,11 +126,13 @@ jobs:
 
       # --- SBOM + signing ---
 
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
       - name: Install supply chain tools
         run: |
           curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           curl -sSfL https://raw.githubusercontent.com/anchore/grype/main/install.sh | sh -s -- -b /usr/local/bin
-          nix profile install nixpkgs#cosign
 
       - name: Generate SBOM
         id: sbom
