@@ -495,41 +495,40 @@ async fn fleet_handler_inner(ctx: Arc<Context>) -> Json<serde_json::Value> {
         }
     };
 
-    let mut fleet: Vec<serde_json::Value> = agents
-        .items
-        .iter()
-        .map(|a| {
-            let name = a.name_any();
-            let namespace = a.namespace().unwrap_or_else(|| "default".into());
-            serde_json::json!({
-                "name": name,
-                "namespace": namespace,
-                "agent": a.spec.agent,
-                "model": a.spec.model,
-                "posture": a.spec.posture,
-                "role": a.spec.role,
-                "mode": a.spec.mode,
-                "image": a.spec.image,
-                "profile": a.spec.profile,
-                "package": a.labels().get("styrene.sh/agent-package"),
-                "home_stack": a.labels().get("styrene.sh/home-stack"),
-                "is_primary": is_primary_agent(a),
-                "control_plane": managed_agent_control_plane(a),
-                "status": a.status.as_ref().map(|s| &s.phase),
-                "sbom": a.status.as_ref().and_then(|s| s.sbom.as_ref()).map(|sb| {
-                    serde_json::json!({
-                        "available": sb.available,
-                        "format": sb.format,
-                        "artifact_ref": sb.artifact_ref,
-                        "image_digest": sb.image_digest,
-                        "component_count": sb.component_count,
-                        "vulnerability_count": sb.vulnerability_count,
-                        "signature_verified": sb.signature_verified,
-                    })
-                }),
-            })
-        })
-        .collect();
+    let mut fleet = Vec::with_capacity(agents.items.len());
+    for a in &agents.items {
+        let name = a.name_any();
+        let namespace = a.namespace().unwrap_or_else(|| "default".into());
+        let lifecycle = managed_agent_lifecycle(&ctx.client, a).await;
+        fleet.push(serde_json::json!({
+            "name": name,
+            "namespace": namespace,
+            "agent": a.spec.agent,
+            "model": a.spec.model,
+            "posture": a.spec.posture,
+            "role": a.spec.role,
+            "mode": a.spec.mode,
+            "image": a.spec.image,
+            "profile": a.spec.profile,
+            "package": a.labels().get("styrene.sh/agent-package"),
+            "home_stack": a.labels().get("styrene.sh/home-stack"),
+            "is_primary": is_primary_agent(a),
+            "control_plane": managed_agent_control_plane(a),
+            "lifecycle": lifecycle,
+            "status": a.status.as_ref().map(|s| &s.phase),
+            "sbom": a.status.as_ref().and_then(|s| s.sbom.as_ref()).map(|sb| {
+                serde_json::json!({
+                    "available": sb.available,
+                    "format": sb.format,
+                    "artifact_ref": sb.artifact_ref,
+                    "image_digest": sb.image_digest,
+                    "component_count": sb.component_count,
+                    "vulnerability_count": sb.vulnerability_count,
+                    "signature_verified": sb.signature_verified,
+                })
+            }),
+        }));
+    }
 
     // External agents (observed, not managed).
     let ext_api: Api<ExternalAgent> = match &ctx.watch_namespace {
@@ -1111,6 +1110,143 @@ fn managed_agent_detail(agent: &OmegonAgent) -> Value {
         "status": agent.status,
         "is_primary": is_primary_agent(agent),
         "control_plane": managed_agent_control_plane(agent),
+    })
+}
+
+async fn managed_agent_lifecycle(client: &Client, agent: &OmegonAgent) -> Value {
+    let name = agent.name_any();
+    let namespace = agent.namespace().unwrap_or_else(|| "default".into());
+    let phase = agent
+        .status
+        .as_ref()
+        .map(|status| status.phase.as_str())
+        .filter(|phase| !phase.is_empty())
+        .unwrap_or("Pending");
+    let status_message = agent
+        .status
+        .as_ref()
+        .and_then(|status| status.message.as_deref())
+        .filter(|message| !message.is_empty());
+    let observed_generation = agent
+        .status
+        .as_ref()
+        .and_then(|status| status.observed_generation);
+    let cr_observed = observed_generation
+        .zip(agent.metadata.generation)
+        .is_some_and(|(observed, generation)| observed >= generation);
+    let control_plane = managed_agent_control_plane(agent);
+    let acp_proxy_ready = control_plane
+        .as_ref()
+        .and_then(|control| control.get("acp_proxy_url"))
+        .and_then(|value| value.as_str())
+        .is_some_and(|url| !url.is_empty());
+
+    let mut workload_created = false;
+    let mut ready_replicas = 0;
+    let mut available_replicas = 0;
+    let mut workload_message = None::<String>;
+    if agent.spec.mode == AgentMode::Daemon {
+        let deployments: Api<Deployment> = Api::namespaced(client.clone(), &namespace);
+        match deployments.get(&name).await {
+            Ok(deployment) => {
+                workload_created = true;
+                if let Some(status) = deployment.status.as_ref() {
+                    ready_replicas = status.ready_replicas.unwrap_or_default();
+                    available_replicas = status.available_replicas.unwrap_or_default();
+                    workload_message = deployment_condition_message(status);
+                }
+            }
+            Err(error) => {
+                workload_message = Some(error.to_string());
+            }
+        }
+    } else {
+        workload_created = !phase.eq_ignore_ascii_case("Pending");
+    }
+
+    let pod_ready = if agent.spec.mode == AgentMode::Daemon {
+        ready_replicas > 0 || available_replicas > 0
+    } else {
+        phase.eq_ignore_ascii_case("Succeeded") || phase.eq_ignore_ascii_case("Running")
+    };
+    let failed = phase.eq_ignore_ascii_case("Failed");
+    let summary = status_message
+        .map(str::to_string)
+        .or(workload_message)
+        .unwrap_or_else(|| {
+            if failed {
+                "Agent reconciliation failed.".into()
+            } else if pod_ready && acp_proxy_ready {
+                "Agent workload is ready and control-plane metadata is published.".into()
+            } else if workload_created {
+                "Agent workload exists; waiting for runtime readiness.".into()
+            } else {
+                "OmegonAgent accepted; waiting for workload reconciliation.".into()
+            }
+        });
+
+    serde_json::json!({
+        "phase": phase,
+        "summary": summary,
+        "ready_replicas": ready_replicas,
+        "available_replicas": available_replicas,
+        "steps": [
+            {
+                "key": "cr",
+                "label": "CR accepted",
+                "state": if failed { "failed" } else { "ok" },
+                "detail": if cr_observed { "Observed by operator" } else { "Stored in API server" }
+            },
+            {
+                "key": "workload",
+                "label": "Workload created",
+                "state": lifecycle_step_state(workload_created, failed),
+                "detail": if workload_created { "Deployment/CronJob materialized" } else { "Waiting for reconcile" }
+            },
+            {
+                "key": "pod",
+                "label": "Pod ready",
+                "state": lifecycle_step_state(pod_ready, failed),
+                "detail": format!("{ready_replicas} ready / {available_replicas} available")
+            },
+            {
+                "key": "control-plane",
+                "label": "ACP reachable",
+                "state": lifecycle_step_state(acp_proxy_ready, failed),
+                "detail": if acp_proxy_ready { "Operator ACP proxy published" } else { "Waiting for daemon control plane" }
+            }
+        ]
+    })
+}
+
+fn lifecycle_step_state(ready: bool, failed: bool) -> &'static str {
+    if ready {
+        "ok"
+    } else if failed {
+        "failed"
+    } else {
+        "pending"
+    }
+}
+
+fn deployment_condition_message(
+    status: &k8s_openapi::api::apps::v1::DeploymentStatus,
+) -> Option<String> {
+    status.conditions.as_ref().and_then(|conditions| {
+        conditions
+            .iter()
+            .find(|condition| {
+                matches!(
+                    condition.type_.as_str(),
+                    "Progressing" | "Available" | "ReplicaFailure"
+                ) && condition.status != "True"
+            })
+            .and_then(|condition| {
+                condition
+                    .message
+                    .clone()
+                    .or_else(|| condition.reason.clone())
+            })
     })
 }
 

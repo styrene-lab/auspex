@@ -67,6 +67,37 @@ struct DeployFleetAgentModel {
     package: Option<String>,
     status: Option<String>,
     control_plane: Option<serde_json::Value>,
+    lifecycle: Option<DeployLifecycleModel>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+struct DeployLifecycleModel {
+    #[serde(default)]
+    phase: String,
+    #[serde(default)]
+    summary: String,
+    #[serde(default)]
+    steps: Vec<DeployLifecycleStepModel>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+struct DeployLifecycleStepModel {
+    #[serde(default)]
+    label: String,
+    #[serde(default)]
+    state: String,
+    #[serde(default)]
+    detail: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+struct DeploySecretGrantModel {
+    name: String,
+    namespace: Option<String>,
+    #[serde(default)]
+    data_keys: Vec<String>,
+    #[serde(default)]
+    labels: std::collections::BTreeMap<String, String>,
 }
 
 #[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
@@ -81,6 +112,13 @@ struct PackagesResponse {
 struct FleetResponse {
     #[serde(default)]
     agents: Vec<DeployFleetAgentModel>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+struct SecretGrantsResponse {
+    #[serde(default)]
+    grants: Vec<DeploySecretGrantModel>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -116,11 +154,25 @@ impl Default for AgentDeployFormState {
 struct AgentDeployWorkspaceState {
     packages: Vec<DeployPackageModel>,
     fleet: Vec<DeployFleetAgentModel>,
+    secret_grants: Vec<DeploySecretGrantModel>,
     form: AgentDeployFormState,
     loading: bool,
     deploying: bool,
     message: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DeployPreflightModel {
+    can_deploy: bool,
+    items: Vec<DeployPreflightItemModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct DeployPreflightItemModel {
+    label: String,
+    detail: String,
+    state: &'static str,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -1139,7 +1191,7 @@ pub fn App() -> Element {
         } else if *workspace.read() == Workspace::Graph {
             GraphScreen { data: controller.read().session_data() }
         } else if *workspace.read() == Workspace::Deploy {
-            {render_agent_deploy_workspace(deploy_workspace)}
+            {render_agent_deploy_workspace(deploy_workspace, event_stream, workspace, chat_last_activity)}
         } else if *workspace.read() == Workspace::Workflow {
             WorkflowBuilderScreen {}
         } else if *workspace.read() == Workspace::Audit {
@@ -3411,7 +3463,12 @@ fn render_fleet_instance_card(
     }
 }
 
-fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -> Element {
+fn render_agent_deploy_workspace(
+    mut state: Signal<AgentDeployWorkspaceState>,
+    event_stream: Signal<Option<EventStreamHandle>>,
+    workspace: Signal<Workspace>,
+    chat_last_activity: Signal<Option<std::time::Instant>>,
+) -> Element {
     let snapshot = state.read().clone();
     let selected_package = snapshot
         .form
@@ -3420,7 +3477,9 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
         .and_then(|id| snapshot.packages.iter().find(|package| package.id == id))
         .or_else(|| snapshot.packages.first());
     let selected_package_id = selected_package.map(|package| package.id.clone());
+    let preflight = build_deploy_preflight(selected_package, &snapshot);
     let can_deploy = selected_package_id.is_some()
+        && preflight.can_deploy
         && !snapshot.deploying
         && !snapshot.form.namespace.trim().is_empty()
         && !snapshot.form.name.trim().is_empty();
@@ -3458,6 +3517,16 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
         let status = agent.status.as_deref().unwrap_or("unknown");
         let model = agent.model.as_deref().unwrap_or("model pending");
         let profile = agent.profile.as_deref().unwrap_or("profile pending");
+        let lifecycle_summary = agent
+            .lifecycle
+            .as_ref()
+            .map(|lifecycle| lifecycle.summary.as_str())
+            .unwrap_or("No lifecycle summary");
+        let lifecycle_steps = agent
+            .lifecycle
+            .as_ref()
+            .map(|lifecycle| lifecycle.steps.as_slice())
+            .unwrap_or(&[]);
         let acp_proxy = agent
             .control_plane
             .as_ref()
@@ -3475,11 +3544,52 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
                 td { "{agent.name}" }
                 td { "{namespace}" }
                 td { "{package}" }
-                td { "{status}" }
+                td {
+                    div { class: "deploy-status-stack",
+                        strong { "{status}" }
+                        span { "{lifecycle_summary}" }
+                    }
+                }
                 td { "{model}" }
                 td { "{profile}" }
                 td { "{security}" }
-                td { "{acp_proxy}" }
+                td {
+                    div { class: "deploy-lifecycle-steps",
+                        for step in lifecycle_steps {
+                            span {
+                                class: "deploy-lifecycle-step",
+                                "data-state": step.state.as_str(),
+                                title: step.detail.clone(),
+                                "{step.label}"
+                            }
+                        }
+                    }
+                }
+                td {
+                    div { class: "deploy-acp-cell",
+                        code { "{acp_proxy}" }
+                        if acp_proxy != "no proxy" {
+                            button {
+                                class: "deploy-inline-action",
+                                r#type: "button",
+                                onclick: {
+                                    let acp_proxy = acp_proxy.to_string();
+                                    let token = snapshot.form.api_token.clone();
+                                    move |_| {
+                                        open_deploy_direct_line(
+                                            &acp_proxy,
+                                            &token,
+                                            event_stream,
+                                            workspace,
+                                            chat_last_activity,
+                                        );
+                                    }
+                                },
+                                "Open"
+                            }
+                        }
+                    }
+                }
             }
         }
     });
@@ -3567,6 +3677,23 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
 
                 section { class: "deploy-config",
                     {package_detail}
+                    section { class: "deploy-preflight",
+                        div { class: "deploy-section-title",
+                            h3 { "Preflight" }
+                            span {
+                                class: if preflight.can_deploy { "deploy-preflight-state deploy-preflight-ok" } else { "deploy-preflight-state deploy-preflight-warn" },
+                                if preflight.can_deploy { "ready" } else { "needs attention" }
+                            }
+                        }
+                        div { class: "deploy-preflight-list",
+                            for item in &preflight.items {
+                                div { class: "deploy-preflight-item", "data-state": item.state,
+                                    strong { "{item.label}" }
+                                    span { "{item.detail}" }
+                                }
+                            }
+                        }
+                    }
                     form {
                         class: "deploy-form",
                         onsubmit: move |event| {
@@ -3671,12 +3798,13 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
                                 th { "Model" }
                                 th { "Profile" }
                                 th { "Security" }
+                                th { "Lifecycle" }
                                 th { "ACP proxy" }
                             }
                         }
                         tbody {
                             if snapshot.fleet.is_empty() {
-                                tr { td { colspan: "8", "No managed agents reported yet." } }
+                                tr { td { colspan: "9", "No managed agents reported yet." } }
                             } else {
                                 {fleet_rows}
                             }
@@ -3688,13 +3816,166 @@ fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -
     }
 }
 
+fn build_deploy_preflight(
+    package: Option<&DeployPackageModel>,
+    state: &AgentDeployWorkspaceState,
+) -> DeployPreflightModel {
+    let mut items = Vec::new();
+    let Some(package) = package else {
+        return DeployPreflightModel {
+            can_deploy: false,
+            items: vec![DeployPreflightItemModel {
+                label: "Package".into(),
+                detail: "Select an agent package before deploying.".into(),
+                state: "failed",
+            }],
+        };
+    };
+
+    let auth_json_secret = state.form.auth_json_secret.trim();
+    let env_secret = state.form.secret_name.trim();
+    if !auth_json_secret.is_empty() {
+        let has_auth_secret =
+            secret_grant_exists(&state.secret_grants, auth_json_secret, "auth.json");
+        items.push(DeployPreflightItemModel {
+            label: "Provider auth".into(),
+            detail: if has_auth_secret {
+                format!("{auth_json_secret} exposes auth.json")
+            } else {
+                format!("{auth_json_secret} not reported by secret-grant projection")
+            },
+            state: if has_auth_secret { "ok" } else { "warn" },
+        });
+    } else {
+        items.push(DeployPreflightItemModel {
+            label: "Provider auth".into(),
+            detail: "Prefer an authJsonSecret containing auth.json for provider credentials."
+                .into(),
+            state: if package.required_secrets.is_empty() {
+                "warn"
+            } else {
+                "failed"
+            },
+        });
+    }
+
+    if !env_secret.is_empty() {
+        let exists = secret_grant_exists(&state.secret_grants, env_secret, "");
+        items.push(DeployPreflightItemModel {
+            label: "Env secret".into(),
+            detail: if exists {
+                format!("{env_secret} is visible to Auspex; use only for extension env tokens.")
+            } else {
+                format!("{env_secret} not visible in redacted secret projections.")
+            },
+            state: if exists { "warn" } else { "failed" },
+        });
+    } else {
+        items.push(DeployPreflightItemModel {
+            label: "Env secret".into(),
+            detail: "No broad env Secret selected; lower blast radius.".into(),
+            state: "ok",
+        });
+    }
+
+    let connectors = state
+        .form
+        .connectors
+        .split(',')
+        .map(str::trim)
+        .filter(|connector| !connector.is_empty())
+        .collect::<Vec<_>>();
+    items.push(DeployPreflightItemModel {
+        label: "Extensions".into(),
+        detail: if connectors.is_empty() {
+            "No Vox connectors selected.".into()
+        } else {
+            format!("Enabling {}", connectors.join(", "))
+        },
+        state: "ok",
+    });
+
+    let can_deploy = items.iter().all(|item| item.state != "failed");
+    DeployPreflightModel { can_deploy, items }
+}
+
+fn secret_grant_exists(grants: &[DeploySecretGrantModel], name: &str, required_key: &str) -> bool {
+    grants.iter().any(|grant| {
+        grant.name == name
+            && (required_key.is_empty()
+                || grant
+                    .data_keys
+                    .iter()
+                    .any(|key| key.as_str() == required_key))
+    })
+}
+
+fn open_deploy_direct_line(
+    acp_proxy: &str,
+    token: &str,
+    event_stream: Signal<Option<EventStreamHandle>>,
+    mut workspace: Signal<Workspace>,
+    mut chat_last_activity: Signal<Option<std::time::Instant>>,
+) {
+    let ws_url = operator_websocket_url(acp_proxy, token);
+    let Some(ws_url) = ws_url else {
+        return;
+    };
+    set_deploy_event_stream(event_stream, &ws_url);
+    workspace.set(Workspace::Chat);
+    chat_last_activity.set(Some(std::time::Instant::now()));
+    let ws_json = serde_json::to_string(&ws_url).unwrap_or_else(|_| "\"\"".to_string());
+    let script = format!(
+        r#"
+        (function() {{
+          var ws = {ws_json};
+          var url = new URL(window.location.href);
+          url.searchParams.set("ws", ws);
+          window.history.replaceState(null, "", url.toString());
+          window.dispatchEvent(new CustomEvent("auspex-direct-line", {{ detail: {{ ws: ws }} }}));
+        }})();
+        "#
+    );
+    spawn(async move {
+        let _ = document::eval(&script).await;
+    });
+}
+
+#[cfg(target_arch = "wasm32")]
+fn set_deploy_event_stream(mut event_stream: Signal<Option<EventStreamHandle>>, ws_url: &str) {
+    if let Some(existing) = event_stream.read().as_ref() {
+        existing.cancel();
+    }
+    event_stream.set(Some(
+        auspex_core::event_stream::spawn_websocket_event_stream(ws_url),
+    ));
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn set_deploy_event_stream(_event_stream: Signal<Option<EventStreamHandle>>, _ws_url: &str) {}
+
+fn operator_websocket_url(acp_proxy: &str, token: &str) -> Option<String> {
+    if acp_proxy.trim().is_empty() || acp_proxy == "no proxy" {
+        return None;
+    }
+    let token = token.trim();
+    let token_query = if token.is_empty() {
+        String::new()
+    } else if acp_proxy.contains('?') {
+        format!("&access_token={token}")
+    } else {
+        format!("?access_token={token}")
+    };
+    Some(format!("{acp_proxy}{token_query}"))
+}
+
 async fn refresh_deploy_workspace(state: &mut Signal<AgentDeployWorkspaceState>) {
     state.write().loading = true;
     let result = load_deploy_workspace(state.read().form.api_token.trim().to_string()).await;
     let mut state = state.write();
     state.loading = false;
     match result {
-        Ok((packages, fleet)) => {
+        Ok((packages, fleet, secret_grants)) => {
             if state.form.selected_package.is_none()
                 && let Some(package) = packages.first()
             {
@@ -3705,6 +3986,7 @@ async fn refresh_deploy_workspace(state: &mut Signal<AgentDeployWorkspaceState>)
             }
             state.packages = packages;
             state.fleet = fleet;
+            state.secret_grants = secret_grants;
             state.error = None;
             state
                 .message
@@ -3745,21 +4027,38 @@ async fn deploy_selected_package(state: &mut Signal<AgentDeployWorkspaceState>) 
 #[cfg(target_arch = "wasm32")]
 async fn load_deploy_workspace(
     token: String,
-) -> Result<(Vec<DeployPackageModel>, Vec<DeployFleetAgentModel>), String> {
+) -> Result<
+    (
+        Vec<DeployPackageModel>,
+        Vec<DeployFleetAgentModel>,
+        Vec<DeploySecretGrantModel>,
+    ),
+    String,
+> {
     let packages = operator_get("/api/packages", &token).await?;
     let fleet = operator_get("/api/fleet", &token).await?;
+    let grants = operator_get("/api/secrets/grants", &token).await?;
     let packages: PackagesResponse =
         serde_json::from_str(&packages).map_err(|error| format!("package JSON failed: {error}"))?;
     let fleet: FleetResponse =
         serde_json::from_str(&fleet).map_err(|error| format!("fleet JSON failed: {error}"))?;
-    Ok((packages.packages, fleet.agents))
+    let grants: SecretGrantsResponse = serde_json::from_str(&grants)
+        .map_err(|error| format!("secret grant JSON failed: {error}"))?;
+    Ok((packages.packages, fleet.agents, grants.grants))
 }
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn load_deploy_workspace(
     _token: String,
-) -> Result<(Vec<DeployPackageModel>, Vec<DeployFleetAgentModel>), String> {
-    Ok((Vec::new(), Vec::new()))
+) -> Result<
+    (
+        Vec<DeployPackageModel>,
+        Vec<DeployFleetAgentModel>,
+        Vec<DeploySecretGrantModel>,
+    ),
+    String,
+> {
+    Ok((Vec::new(), Vec::new(), Vec::new()))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -5434,9 +5733,10 @@ fn json_display_value(value: &serde_json::Value) -> String {
 #[cfg(test)]
 mod tests {
     use super::{
-        AuditFilters, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
+        AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
+        DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
         audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
-        build_chat_empty_state_model, build_dispatch_context_strip_model,
+        build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
         build_left_rail_inventory, build_provider_blocked_composer_model,
         build_settings_panel_model, chat_status_tone, context_window_label,
         control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
@@ -6556,6 +6856,85 @@ mod tests {
         assert_eq!(
             app_surface_tone(AppSurfaceKind::CompatibilityFailure),
             "danger"
+        );
+    }
+
+    #[test]
+    fn deploy_preflight_prefers_auth_json_and_flags_broad_env_secret() {
+        let package = DeployPackageModel {
+            id: "home-media-operator".into(),
+            name: "Home Media Operator".into(),
+            description: "media".into(),
+            domain: "ops".into(),
+            agent: "styrene.home-media-operator".into(),
+            profile: "styrene-lab/omegon-home-media-operator".into(),
+            default_model: "anthropic:claude-sonnet-4-6".into(),
+            posture: "fabricator".into(),
+            role: "detached-service".into(),
+            mode: "daemon".into(),
+            image: "ghcr.io/styrene-lab/omegon-agents:latest".into(),
+            required_secrets: vec!["ANTHROPIC_API_KEY".into()],
+            ..Default::default()
+        };
+        let state = AgentDeployWorkspaceState {
+            secret_grants: vec![DeploySecretGrantModel {
+                name: "agent-auth-json".into(),
+                namespace: Some("omegon-agents".into()),
+                data_keys: vec!["auth.json".into()],
+                labels: Default::default(),
+            }],
+            form: AgentDeployFormState {
+                auth_json_secret: "agent-auth-json".into(),
+                connectors: "aether".into(),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        let preflight = build_deploy_preflight(Some(&package), &state);
+
+        assert!(preflight.can_deploy);
+        assert!(
+            preflight
+                .items
+                .iter()
+                .any(|item| item.label == "Provider auth" && item.state == "ok")
+        );
+        assert!(
+            preflight
+                .items
+                .iter()
+                .any(|item| item.label == "Env secret" && item.state == "ok")
+        );
+    }
+
+    #[test]
+    fn deploy_preflight_blocks_required_package_without_auth_secret() {
+        let package = DeployPackageModel {
+            id: "home-infra-sentinel".into(),
+            name: "Home Infra Sentinel".into(),
+            description: "infra".into(),
+            domain: "infra".into(),
+            agent: "styrene.home-infra-sentinel".into(),
+            profile: "styrene-lab/omegon-home-infra-sentinel".into(),
+            default_model: "anthropic:claude-sonnet-4-6".into(),
+            posture: "explorator".into(),
+            role: "detached-service".into(),
+            mode: "daemon".into(),
+            image: "ghcr.io/styrene-lab/omegon-agents:latest".into(),
+            required_secrets: vec!["ANTHROPIC_API_KEY".into()],
+            ..Default::default()
+        };
+        let state = AgentDeployWorkspaceState::default();
+
+        let preflight = build_deploy_preflight(Some(&package), &state);
+
+        assert!(!preflight.can_deploy);
+        assert!(
+            preflight
+                .items
+                .iter()
+                .any(|item| item.label == "Provider auth" && item.state == "failed")
         );
     }
 

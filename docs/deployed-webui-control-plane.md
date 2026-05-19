@@ -76,6 +76,21 @@ Security posture:
   so the resulting daemon should expose `wss://` ACP and an operator-relative
   `acp_proxy_url`.
 
+After a deploy, the same workspace should show the agent moving through the
+cluster lifecycle:
+
+1. `CR accepted` — the Kubernetes API has accepted the `OmegonAgent`.
+2. `Workload created` — the operator has materialized a Deployment/CronJob/Job.
+3. `Pod ready` — daemon Deployments report ready or available replicas.
+4. `ACP reachable` — the operator has published an `acp_proxy_url`.
+
+The WebUI preflight checks package requirements against the redacted
+`/api/secrets/grants` projection. This does not prove the secret value is valid,
+but it does prove that Auspex can see the required Kubernetes Secret envelope
+without exposing secret contents. Ready daemon rows expose an `Open` action that
+switches the browser onto the operator ACP proxy URL so Chat can operate against
+the deployed agent path.
+
 ## Current Boundary
 
 The first slice is intentionally thin: it gives the WebUI enough API to build
