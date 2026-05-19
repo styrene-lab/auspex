@@ -8,17 +8,22 @@ mod external;
 mod identity;
 mod reconciler;
 
-use std::{net::SocketAddr, sync::Arc};
+use std::{io::Cursor, net::SocketAddr, sync::Arc};
 
 use auspex_core::agent_packages::{
     AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
 };
 use axum::{
     Json, Router,
-    extract::Path as AxumPath,
+    extract::{
+        Path as AxumPath,
+        ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
+    },
+    http::StatusCode,
+    response::{IntoResponse, Response},
     routing::{get, post},
 };
-use futures_util::StreamExt;
+use futures_util::{SinkExt, StreamExt};
 use k8s_openapi::api::{
     apps::v1::Deployment,
     batch::v1::{CronJob, Job},
@@ -31,11 +36,17 @@ use kube::{
 };
 use serde_json::Value;
 use styrene_mqtt::{EmbeddedBrokerBuilder, EmbeddedBrokerConfig, broker::TcpListenerConfig};
+use tokio_tungstenite::Connector;
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
 
 use crd::{AgentMode, ExternalAgent, OmegonAgent};
 use reconciler::Context;
+
+struct AcpProxyTarget {
+    url: String,
+    connector: Option<Connector>,
+}
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
@@ -184,6 +195,15 @@ async fn main() -> anyhow::Result<()> {
                 }),
             )
             .route(
+                "/agents/{ns}/{name}/acp",
+                get({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<(String, String)>, ws: WebSocketUpgrade| {
+                        agent_acp_proxy_handler(ctx, path, ws)
+                    }
+                }),
+            )
+            .route(
                 "/agents/{ns}/{name}/rotate-control-tls",
                 post({
                     let ctx = api_ctx.clone();
@@ -214,23 +234,7 @@ async fn main() -> anyhow::Result<()> {
                 move |req: axum::extract::Request, next: axum::middleware::Next| {
                     let expected = expected_value.clone();
                     async move {
-                        let auth_header = req
-                            .headers()
-                            .get("authorization")
-                            .and_then(|v| v.to_str().ok())
-                            .unwrap_or("");
-                        // Constant-time comparison to prevent timing attacks.
-                        // Always iterate the full expected length regardless of
-                        // header length, comparing against zero-padding for short
-                        // inputs so the loop duration doesn't leak length info.
-                        let header_bytes = auth_header.as_bytes();
-                        let expected_bytes = expected.as_bytes();
-                        let mut diff = (header_bytes.len() ^ expected_bytes.len()) as u8;
-                        for (i, expected_byte) in expected_bytes.iter().enumerate() {
-                            let h = header_bytes.get(i).copied().unwrap_or(0xff);
-                            diff |= h ^ expected_byte;
-                        }
-                        if diff == 0 {
+                        if request_has_valid_api_auth(&req, &expected) {
                             next.run(req).await
                         } else {
                             axum::http::Response::builder()
@@ -300,6 +304,53 @@ async fn main() -> anyhow::Result<()> {
         _ = api_server => error!("API server exited unexpectedly"),
     }
     Ok(())
+}
+
+fn request_has_valid_api_auth(req: &axum::extract::Request, expected_bearer: &str) -> bool {
+    let auth_header = req
+        .headers()
+        .get("authorization")
+        .and_then(|v| v.to_str().ok())
+        .unwrap_or("");
+    if constant_time_eq(auth_header, expected_bearer) {
+        return true;
+    }
+
+    // Browser WebSocket clients cannot set arbitrary Authorization headers.
+    // Allow query-token auth only on WebSocket upgrade requests so normal API
+    // calls stay on the less leak-prone bearer-header path.
+    if !req
+        .headers()
+        .get(axum::http::header::UPGRADE)
+        .and_then(|v| v.to_str().ok())
+        .is_some_and(|value| value.eq_ignore_ascii_case("websocket"))
+    {
+        return false;
+    }
+
+    let Some(expected_token) = expected_bearer.strip_prefix("Bearer ") else {
+        return false;
+    };
+    req.uri().query().is_some_and(|query| {
+        url::form_urlencoded::parse(query.as_bytes()).any(|(key, value)| {
+            matches!(key.as_ref(), "access_token" | "token")
+                && constant_time_eq(value.as_ref(), expected_token)
+        })
+    })
+}
+
+fn constant_time_eq(actual: &str, expected: &str) -> bool {
+    // Constant-time comparison to prevent timing attacks. Always iterate the
+    // full expected length regardless of actual length, comparing against
+    // zero-padding for short inputs so the loop duration doesn't leak length.
+    let actual_bytes = actual.as_bytes();
+    let expected_bytes = expected.as_bytes();
+    let mut diff = (actual_bytes.len() ^ expected_bytes.len()) as u8;
+    for (i, expected_byte) in expected_bytes.iter().enumerate() {
+        let actual_byte = actual_bytes.get(i).copied().unwrap_or(0xff);
+        diff |= actual_byte ^ expected_byte;
+    }
+    diff == 0
 }
 
 async fn ensure_primary_agent(
@@ -395,6 +446,12 @@ fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
     });
 
     if let Some(secret) = config.control_tls_secret.as_ref() {
+        manifest["spec"]["identity"] = serde_json::json!({
+            "provision": true,
+            "securityTier": "file",
+            "meshRole": "operator",
+            "mtls": true,
+        });
         manifest["spec"]["controlPlane"] = serde_json::json!({
             "tls": {
                 "enabled": true,
@@ -544,6 +601,247 @@ async fn agent_control_plane_handler(
             "control_plane": managed_agent_control_plane(&agent),
         })),
         Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn agent_acp_proxy_handler(
+    ctx: Arc<Context>,
+    AxumPath((ns, name)): AxumPath<(String, String)>,
+    ws: WebSocketUpgrade,
+) -> Response {
+    match resolve_managed_agent_acp_proxy_target(&ctx, &ns, &name).await {
+        Ok(target) => ws
+            .on_upgrade(move |socket| proxy_acp_websocket(socket, target))
+            .into_response(),
+        Err(error) => error.into_response(),
+    }
+}
+
+async fn resolve_managed_agent_acp_proxy_target(
+    ctx: &Context,
+    ns: &str,
+    name: &str,
+) -> Result<AcpProxyTarget, (StatusCode, String)> {
+    if let Some(error) = namespace_scope_error(ctx, ns) {
+        return Err((
+            StatusCode::FORBIDDEN,
+            error
+                .get("error")
+                .and_then(Value::as_str)
+                .unwrap_or("namespace outside operator scope")
+                .to_string(),
+        ));
+    }
+
+    let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), ns);
+    let agent = api
+        .get(name)
+        .await
+        .map_err(|error| (StatusCode::NOT_FOUND, error.to_string()))?;
+    if agent.spec.mode != AgentMode::Daemon {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "ACP proxy is only available for daemon agents".to_string(),
+        ));
+    }
+
+    let Some(target) = managed_agent_acp_url(&agent) else {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "agent has no ACP control-plane endpoint".to_string(),
+        ));
+    };
+
+    let connector = match reconciler::resolved_control_tls(&agent, name) {
+        Some(tls) => Some(control_tls_connector(ctx, ns, &tls).await?),
+        None => None,
+    };
+    Ok(AcpProxyTarget {
+        url: target,
+        connector,
+    })
+}
+
+async fn control_tls_connector(
+    ctx: &Context,
+    ns: &str,
+    tls: &reconciler::ResolvedControlTls,
+) -> Result<Connector, (StatusCode, String)> {
+    let api: Api<Secret> = Api::namespaced(ctx.client.clone(), ns);
+    let secret = api.get(&tls.secret_name).await.map_err(|error| {
+        (
+            StatusCode::BAD_GATEWAY,
+            format!(
+                "control-TLS Secret '{}' unavailable: {error}",
+                tls.secret_name
+            ),
+        )
+    })?;
+
+    let cert_pem = secret_bytes(&secret, &tls.cert_key)?;
+    let key_pem = secret_bytes(&secret, &tls.key_key)?;
+    let trust_pem = match tls.client_ca_key.as_ref() {
+        Some(key) => secret_bytes(&secret, key)?,
+        None => cert_pem.clone(),
+    };
+
+    let root_certs = parse_pem_certs(&trust_pem, "control-TLS trust bundle")?;
+    let mut roots = rustls::RootCertStore::empty();
+    let (accepted, _ignored) = roots.add_parsable_certificates(root_certs);
+    if accepted == 0 {
+        return Err((
+            StatusCode::BAD_GATEWAY,
+            "control-TLS trust bundle contains no usable certificates".to_string(),
+        ));
+    }
+
+    let client_certs = parse_pem_certs(&cert_pem, "control-TLS client certificate")?;
+    let private_key = parse_pem_private_key(&key_pem, "control-TLS client key")?;
+    let config = if tls.client_ca_key.is_some() {
+        rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_client_auth_cert(client_certs, private_key)
+            .map_err(|error| {
+                (
+                    StatusCode::BAD_GATEWAY,
+                    format!("control-TLS client certificate rejected: {error}"),
+                )
+            })?
+    } else {
+        rustls::ClientConfig::builder()
+            .with_root_certificates(roots)
+            .with_no_client_auth()
+    };
+
+    Ok(Connector::Rustls(Arc::new(config)))
+}
+
+fn secret_bytes(secret: &Secret, key: &str) -> Result<Vec<u8>, (StatusCode, String)> {
+    secret
+        .data
+        .as_ref()
+        .and_then(|data| data.get(key))
+        .map(|value| value.0.clone())
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!(
+                    "Secret '{}' is missing required key '{key}'",
+                    secret.name_any()
+                ),
+            )
+        })
+}
+
+fn parse_pem_certs(
+    pem: &[u8],
+    label: &str,
+) -> Result<Vec<rustls::pki_types::CertificateDer<'static>>, (StatusCode, String)> {
+    rustls_pemfile::certs(&mut Cursor::new(pem))
+        .collect::<Result<Vec<_>, _>>()
+        .map_err(|error| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("{label} parse failed: {error}"),
+            )
+        })
+}
+
+fn parse_pem_private_key(
+    pem: &[u8],
+    label: &str,
+) -> Result<rustls::pki_types::PrivateKeyDer<'static>, (StatusCode, String)> {
+    rustls_pemfile::private_key(&mut Cursor::new(pem))
+        .map_err(|error| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("{label} parse failed: {error}"),
+            )
+        })?
+        .ok_or_else(|| {
+            (
+                StatusCode::BAD_GATEWAY,
+                format!("{label} contains no private key"),
+            )
+        })
+}
+
+async fn proxy_acp_websocket(client_socket: WebSocket, target: AcpProxyTarget) {
+    let upstream = tokio_tungstenite::connect_async_tls_with_config(
+        target.url.as_str(),
+        None,
+        false,
+        target.connector,
+    )
+    .await;
+    let Ok((upstream_socket, _response)) = upstream else {
+        warn!(target = %target.url, "ACP upstream websocket connection failed");
+        return;
+    };
+
+    let (mut client_tx, mut client_rx) = client_socket.split();
+    let (mut upstream_tx, mut upstream_rx) = upstream_socket.split();
+
+    let client_to_upstream = async {
+        while let Some(message) = client_rx.next().await {
+            let Ok(message) = message else {
+                break;
+            };
+            let Some(message) = axum_to_tungstenite_message(message) else {
+                continue;
+            };
+            if upstream_tx.send(message).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    let upstream_to_client = async {
+        while let Some(message) = upstream_rx.next().await {
+            let Ok(message) = message else {
+                break;
+            };
+            let Some(message) = tungstenite_to_axum_message(message) else {
+                continue;
+            };
+            if client_tx.send(message).await.is_err() {
+                break;
+            }
+        }
+    };
+
+    tokio::select! {
+        _ = client_to_upstream => {}
+        _ = upstream_to_client => {}
+    }
+}
+
+fn axum_to_tungstenite_message(
+    message: AxumWsMessage,
+) -> Option<tokio_tungstenite::tungstenite::Message> {
+    use tokio_tungstenite::tungstenite::Message;
+
+    match message {
+        AxumWsMessage::Text(text) => Some(Message::Text(text.to_string().into())),
+        AxumWsMessage::Binary(data) => Some(Message::Binary(data)),
+        AxumWsMessage::Ping(data) => Some(Message::Ping(data)),
+        AxumWsMessage::Pong(data) => Some(Message::Pong(data)),
+        AxumWsMessage::Close(_) => Some(Message::Close(None)),
+    }
+}
+
+fn tungstenite_to_axum_message(
+    message: tokio_tungstenite::tungstenite::Message,
+) -> Option<AxumWsMessage> {
+    use tokio_tungstenite::tungstenite::Message;
+
+    match message {
+        Message::Text(text) => Some(AxumWsMessage::Text(text.to_string().into())),
+        Message::Binary(data) => Some(AxumWsMessage::Binary(data)),
+        Message::Ping(data) => Some(AxumWsMessage::Ping(data)),
+        Message::Pong(data) => Some(AxumWsMessage::Pong(data)),
+        Message::Close(_) => Some(AxumWsMessage::Close(None)),
+        Message::Frame(_) => None,
     }
 }
 
@@ -847,6 +1145,7 @@ fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
         "ready_url": format!("{http_scheme}://{service}:7842/api/readyz"),
         "ws_url": format!("{ws_scheme}://{service}:7842/ws"),
         "acp_url": format!("{ws_scheme}://{service}:7842/acp"),
+        "acp_proxy_url": format!("/api/agents/{namespace}/{name}/acp"),
         "auth_mode": auth_mode,
         "transport_security": if tls.is_some() { "tls" } else { "plaintext" },
         "mtls": tls.as_ref().is_some_and(|t| t.client_ca_key.is_some()),
@@ -860,6 +1159,22 @@ fn managed_agent_control_plane(agent: &OmegonAgent) -> Option<Value> {
             t.validity.leaf_not_after_year
         )),
     }))
+}
+
+fn managed_agent_acp_url(agent: &OmegonAgent) -> Option<String> {
+    if agent.spec.mode != AgentMode::Daemon {
+        return None;
+    }
+
+    let name = agent.name_any();
+    let namespace = agent.namespace().unwrap_or_else(|| "default".into());
+    let service = format!("{name}.{namespace}.svc");
+    let ws_scheme = if reconciler::resolved_control_tls(agent, &name).is_some() {
+        "wss"
+    } else {
+        "ws"
+    };
+    Some(format!("{ws_scheme}://{service}:7842/acp"))
 }
 
 fn namespace_scope_error(ctx: &Context, ns: &str) -> Option<Value> {
@@ -1019,6 +1334,50 @@ mod tests {
     }
 
     #[test]
+    fn api_auth_accepts_header_and_websocket_query_token_only() {
+        let expected = "Bearer secret-token";
+        let header_req = axum::http::Request::builder()
+            .uri("/api/fleet")
+            .header("authorization", expected)
+            .body(axum::body::Body::empty())
+            .expect("request");
+        assert!(request_has_valid_api_auth(&header_req, expected));
+
+        let ws_req = axum::http::Request::builder()
+            .uri("/api/agents/ops/primary/acp?access_token=secret-token")
+            .header(axum::http::header::UPGRADE, "websocket")
+            .body(axum::body::Body::empty())
+            .expect("request");
+        assert!(request_has_valid_api_auth(&ws_req, expected));
+
+        let plain_query_req = axum::http::Request::builder()
+            .uri("/api/fleet?access_token=secret-token")
+            .body(axum::body::Body::empty())
+            .expect("request");
+        assert!(!request_has_valid_api_auth(&plain_query_req, expected));
+    }
+
+    #[test]
+    fn primary_agent_manifest_enables_identity_when_control_tls_is_requested() {
+        let manifest = primary_agent_manifest(&PrimaryAgentBootstrapConfig {
+            namespace: "omegon-agents".into(),
+            name: "auspex-primary".into(),
+            image: "example.com/omegon:dev".into(),
+            model: "anthropic:claude-sonnet-4-6".into(),
+            secret_name: None,
+            auth_json_secret: None,
+            control_tls_secret: Some("auspex-primary-control-tls".into()),
+        });
+
+        assert_eq!(manifest["spec"]["identity"]["provision"], true);
+        assert_eq!(manifest["spec"]["identity"]["mtls"], true);
+        assert_eq!(
+            manifest["spec"]["controlPlane"]["tls"]["secretName"],
+            "auspex-primary-control-tls"
+        );
+    }
+
+    #[test]
     fn daemon_agents_publish_cluster_control_plane_urls() {
         let agent: OmegonAgent = serde_json::from_value(serde_json::json!({
             "apiVersion": "styrene.sh/v1alpha1",
@@ -1050,6 +1409,10 @@ mod tests {
         assert_eq!(
             control_plane["acp_url"],
             "ws://auspex-primary.omegon-agents.svc:7842/acp"
+        );
+        assert_eq!(
+            control_plane["acp_proxy_url"],
+            "/api/agents/omegon-agents/auspex-primary/acp"
         );
         assert_eq!(control_plane["transport_security"], "plaintext");
         assert_eq!(control_plane["mtls"], false);
@@ -1089,6 +1452,10 @@ mod tests {
             control_plane["acp_url"],
             "wss://secure-primary.omegon-agents.svc:7842/acp"
         );
+        assert_eq!(
+            control_plane["acp_proxy_url"],
+            "/api/agents/omegon-agents/secure-primary/acp"
+        );
         assert_eq!(control_plane["auth_mode"], "mtls");
         assert_eq!(control_plane["transport_security"], "tls");
         assert_eq!(control_plane["mtls"], true);
@@ -1125,6 +1492,10 @@ mod tests {
         assert_eq!(
             detail["control_plane"]["acp_url"],
             "ws://primary.ops.svc:7842/acp"
+        );
+        assert_eq!(
+            detail["control_plane"]["acp_proxy_url"],
+            "/api/agents/ops/primary/acp"
         );
     }
 

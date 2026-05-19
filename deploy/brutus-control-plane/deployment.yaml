@@ -1,0 +1,87 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: auspex-operator
+  labels:
+    app.kubernetes.io/name: auspex-operator
+    app.kubernetes.io/part-of: auspex
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: auspex-operator
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: auspex-operator
+        app.kubernetes.io/part-of: auspex
+    spec:
+      serviceAccountName: auspex-operator
+      containers:
+        - name: operator
+          image: ghcr.io/styrene-lab/auspex-operator:latest
+          imagePullPolicy: Always
+          ports:
+            - name: http
+              containerPort: 8080
+            - name: mqtt
+              containerPort: 1883
+          env:
+            - name: RUST_LOG
+              value: info,kube=warn
+            - name: AUSPEX_WEB_UI_PATH
+              value: /ui/dist
+            - name: AUSPEX_WATCH_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: AUSPEX_BOOTSTRAP_PRIMARY_AGENT
+              value: "true"
+            - name: AUSPEX_PRIMARY_AGENT_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: AUSPEX_PRIMARY_AGENT_NAME
+              value: auspex-primary
+            - name: AUSPEX_PRIMARY_AGENT_IMAGE
+              value: ghcr.io/styrene-lab/omegon-agents:latest
+            - name: AUSPEX_PRIMARY_AGENT_MODEL
+              value: anthropic:claude-sonnet-4-6
+            - name: AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET
+              value: auspex-primary-openai-codex-auth
+            - name: AUSPEX_PRIMARY_AGENT_CONTROL_TLS_SECRET
+              value: auspex-primary-control-tls
+            - name: AUSPEX_ENABLE_OMEGON_CONTROL_TLS_ARGS
+              value: "true"
+            - name: AUSPEX_ENABLE_OMEGON_POSTURE_ARG
+              value: "true"
+            - name: AUSPEX_API_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: auspex-operator-api-token
+                  key: token
+          readinessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: http
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests:
+              cpu: 250m
+              memory: 256Mi
+            limits:
+              cpu: "1"
+              memory: 1Gi
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            runAsNonRoot: true
+            capabilities:
+              drop: ["ALL"]

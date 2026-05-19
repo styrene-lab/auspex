@@ -47,15 +47,21 @@ The Omegon image must include `styrene-lab/omegon` commit
 images ignore `OMEGON_AUTH_JSON_PATH`.
 
 ### Web UI
-The WASM bundle (`trunk build` produces 1.5MB optimized) is built locally but not in the deployed image. The nix-built image only contains the operator binary + cacert. To add the web UI, either:
-- Rebuild the nix image expression to include the dist/ directory
-- Or use the Dockerfile.operator multi-stage build (requires Docker on Brutus or CI)
+The WASM bundle (`trunk build` produces 1.5MB optimized) is built locally but
+not in the currently deployed Brutus image. The repository now has a
+Dockerfile-based operator image lane that copies `auspex/dist/` into `/ui/dist`
+and pushes `ghcr.io/styrene-lab/auspex-operator:<tag>`.
 
 ### styrened mesh node
 No styrened StatefulSet deployed. Needed before aether-connected agents can communicate.
 
 ### ExternalAgent CRD
-Not installed — the `--crd` output format needs fixing (outputs JSON array, kubectl needs individual objects).
+Not installed in the last recorded Brutus state. The current `--crd` output is
+YAML document separated and should be applied with:
+
+```bash
+cargo run -p auspex-operator -- --crd | kubectl apply -f -
+```
 
 ### StyreneIdentity provisioning
 Operator root secret (`styrene-operator-identity`) not created in cluster. Identity provisioning will fail until it's seeded.
@@ -121,9 +127,9 @@ Source repos cloned at `/tmp/auspex-build/{auspex,omegon,styrene-rs}` on Brutus.
 
 1. **Seed primary driver credentials** — create the provider `auth.json` Secret referenced by `AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET`
 2. **Migrate overnight-reviewer** — convert the hand-deployed CronJob to a CRD-managed `OmegonAgent`
-3. **Fix --crd output** — split into individual CRD documents for kubectl apply
-4. **Install ExternalAgent CRD** — enables monitoring of off-cluster agents
-5. **Bake web UI into image** — include dist/ in nix image for browser-based fleet management
+3. **Install ExternalAgent CRD** — enables monitoring of off-cluster agents
+4. **Build and deploy operator WebUI image** — use `ghcr.io/styrene-lab/auspex-operator:<tag>` and `deploy/brutus-control-plane`
+5. **Verify ACP proxy** — browser clients should use `control_plane.acp_proxy_url`, not cluster-local `*.svc` URLs
 6. **Deploy styrened** — mesh transport for aether-connected agents
 7. **Seed operator identity** — create `styrene-operator-identity` Secret for StyreneID provisioning
 8. **Expose fleet API** — HTTPRoute via Envoy Gateway at fleet.styrene.dev

@@ -12,6 +12,9 @@ state, exposes control-plane endpoints, and issues guarded mutations against
 
 All routes live under `/api` and are protected by `AUSPEX_API_TOKEN` when set.
 Deployments should set this token or front the service with OIDC/mTLS ingress.
+Normal HTTP API calls use `Authorization: Bearer <token>`. Browser WebSocket
+clients may pass the same token as `access_token` or `token` query parameter,
+but only on WebSocket upgrade requests.
 
 | Route | Method | Purpose |
 |-------|--------|---------|
@@ -23,6 +26,7 @@ Deployments should set this token or front the service with OIDC/mTLS ingress.
 | `/api/agents/{ns}/{name}` | `GET` | Read one managed agent with control-plane metadata. |
 | `/api/agents/{ns}/{name}` | `PATCH` | Merge-patch an existing managed agent. |
 | `/api/agents/{ns}/{name}/control-plane` | `GET` | Return ACP/WSS/health URLs and TLS posture. |
+| `/api/agents/{ns}/{name}/acp` | `GET` | Authenticated WebSocket proxy to the selected managed agent's ACP stream. |
 | `/api/agents/{ns}/{name}/rotate-control-tls` | `POST` | Bump TLS leaf/CA epochs and trigger reconciliation. |
 | `/api/fleet/{ns}/{name}/sbom` | `GET` | Return SBOM status and artifact metadata. |
 | `/api/audit` | `GET` | Return recent Kubernetes events involving managed agents. |
@@ -42,6 +46,10 @@ Deployments should set this token or front the service with OIDC/mTLS ingress.
 
 The first slice is intentionally thin: it gives the WebUI enough API to build
 fleet, graph, deploy, identity, audit, and direct-line screens against real
-cluster primitives. ACP stream proxying is not implemented yet; the current API
-returns the selected agent's `acp_url` and transport posture so the next slice
-can add an authenticated `/api/agents/{ns}/{name}/acp` proxy.
+cluster primitives. Control-plane metadata includes both the cluster-local
+`acp_url` and an operator-relative `acp_proxy_url` for browser clients.
+
+The ACP proxy dials upstream WSS with the selected agent's control-TLS Secret
+when control-plane TLS is enabled. For mTLS agents, that Secret supplies the
+client certificate, key, and CA bundle; missing or malformed material fails the
+proxy closed instead of downgrading to plaintext.

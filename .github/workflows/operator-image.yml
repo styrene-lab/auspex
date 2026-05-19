@@ -9,6 +9,10 @@ on:
       - "src/**"
       - "web/**"
       - "assets/**"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - "Dockerfile.operator"
+      - ".github/workflows/operator-image.yml"
       - "profiles/auspex-operator.toml"
     tags: ["v*"]
   workflow_dispatch:
@@ -60,12 +64,6 @@ jobs:
       - name: Install trunk
         run: cargo install trunk
 
-      - name: Install nix
-        uses: DeterminateSystems/nix-installer-action@main
-
-      - name: Install nex
-        run: cargo install --git https://github.com/styrene-lab/nex nex-pkg
-
       # --- Build the WASM web UI ---
 
       - name: Build web UI
@@ -82,14 +80,33 @@ jobs:
 
       # --- Assemble the OCI image ---
 
-      - name: Build OCI image
+      - name: Resolve image tag
+        id: meta
+        env:
+          TAG_INPUT: ${{ inputs.tag }}
         run: |
-          tag="${{ inputs.tag || github.ref_name || 'latest' }}"
-          # The nex profile provides the base packages. We layer the
-          # operator binary and web UI dist on top.
-          nex build-image profiles/auspex-operator.toml \
-            --name auspex-operator \
-            --tag "$tag"
+          set -euo pipefail
+          if [ -n "${TAG_INPUT}" ]; then
+            tag="${TAG_INPUT}"
+          elif [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            tag="${GITHUB_REF_NAME}"
+          else
+            tag="latest"
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "image=${REGISTRY}/${IMAGE_NAME}" >> "$GITHUB_OUTPUT"
+
+      - name: Prepare Docker build context
+        id: context
+        run: |
+          set -euo pipefail
+          context="${RUNNER_TEMP}/auspex-operator-image"
+          rm -rf "$context"
+          mkdir -p "$context"
+          cp -a . "$context/auspex"
+          cp -a omegon/core/crates/omegon-traits "$context/omegon-traits"
+          cp -a styrene-rs/crates/libs/styrene-identity "$context/styrene-identity"
+          echo "path=${context}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
         uses: docker/login-action@v3
@@ -98,20 +115,14 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Push image
+      - name: Build and push image
         id: push
-        run: |
-          tag="${{ inputs.tag || github.ref_name || 'latest' }}"
-          image="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
-
-          podman load -i "auspex-operator-${tag}.tar.gz"
-          podman tag "auspex-operator:${tag}" "${image}:${tag}"
-          podman push "${image}:${tag}"
-
-          digest=$(podman inspect "${image}:${tag}" --format '{{.Digest}}')
-          echo "image=${image}" >> "$GITHUB_OUTPUT"
-          echo "digest=${digest}" >> "$GITHUB_OUTPUT"
-          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ steps.context.outputs.path }}
+          file: ${{ steps.context.outputs.path }}/auspex/Dockerfile.operator
+          push: true
+          tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
 
       # --- SBOM + signing ---
 
@@ -124,7 +135,7 @@ jobs:
       - name: Generate SBOM
         id: sbom
         run: |
-          image="${{ steps.push.outputs.image }}:${{ steps.push.outputs.tag }}"
+          image="${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}"
           syft "$image" --output cyclonedx-json=auspex-operator.cdx.json
           count=$(jq '.components | length' auspex-operator.cdx.json)
           echo "component_count=${count}" >> "$GITHUB_OUTPUT"
@@ -138,7 +149,7 @@ jobs:
 
       - name: Sign and attach SBOM
         run: |
-          image="${{ steps.push.outputs.image }}@${{ steps.push.outputs.digest }}"
+          image="${{ steps.meta.outputs.image }}@${{ steps.push.outputs.digest }}"
           cosign sign-blob --yes \
             --bundle auspex-operator.cdx.json.bundle \
             auspex-operator.cdx.json
@@ -147,7 +158,7 @@ jobs:
       - name: Build provenance attestation
         uses: actions/attest-build-provenance@v2
         with:
-          subject-name: ${{ steps.push.outputs.image }}
+          subject-name: ${{ steps.meta.outputs.image }}
           subject-digest: ${{ steps.push.outputs.digest }}
 
       - name: Upload artifacts

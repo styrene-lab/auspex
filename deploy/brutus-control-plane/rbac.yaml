@@ -1,0 +1,45 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: auspex-operator
+  labels:
+    app.kubernetes.io/name: auspex-operator
+    app.kubernetes.io/part-of: auspex
+rules:
+  - apiGroups: ["styrene.sh"]
+    resources: ["omegonagents", "externalagents"]
+    verbs: ["get", "list", "watch", "create", "patch", "update"]
+  - apiGroups: ["styrene.sh"]
+    resources: ["omegonagents/status", "externalagents/status"]
+    verbs: ["get", "patch", "update"]
+  - apiGroups: ["styrene.sh"]
+    resources: ["omegonagents/finalizers", "externalagents/finalizers"]
+    verbs: ["update"]
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: ["batch"]
+    resources: ["jobs", "cronjobs"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "services", "secrets"]
+    verbs: ["get", "list", "watch", "create", "patch", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: auspex-operator
+  labels:
+    app.kubernetes.io/name: auspex-operator
+    app.kubernetes.io/part-of: auspex
+subjects:
+  - kind: ServiceAccount
+    name: auspex-operator
+    namespace: omegon-agents
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: auspex-operator
