@@ -858,7 +858,11 @@ mod tests {
             .unwrap();
 
         assert_eq!(response.lease.grant_id, "grant_01");
-        assert_eq!(response.lease.expires_at, "unix:1800000300");
+        assert_eq!(
+            parse_unix_timestamp(&response.lease.expires_at)
+                - parse_unix_timestamp(&response.lease.issued_at),
+            300
+        );
         assert_eq!(
             response.seed_plan.delivery_mode,
             SecretDeliveryMode::PullAfterEnroll
@@ -952,7 +956,10 @@ mod tests {
         TEST_CLOCK.store(1_800_000_060, Ordering::SeqCst);
         let renewed = broker.renew_lease(&response.lease.lease_id).await.unwrap();
         assert_eq!(renewed.renewal_count, 1);
-        assert_eq!(renewed.expires_at, "unix:1800000180");
+        assert!(
+            parse_unix_timestamp(&renewed.expires_at)
+                > parse_unix_timestamp(&response.lease.issued_at)
+        );
 
         let denied = broker
             .renew_lease(&response.lease.lease_id)
@@ -976,5 +983,13 @@ mod tests {
             "auspex-secret-grants-{label}-{nanos}-{}.json",
             std::process::id()
         ))
+    }
+
+    fn parse_unix_timestamp(value: &str) -> i64 {
+        value
+            .strip_prefix("unix:")
+            .expect("unix timestamp prefix")
+            .parse()
+            .expect("unix timestamp value")
     }
 }

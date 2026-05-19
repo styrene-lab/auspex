@@ -58,6 +58,10 @@ pub struct AgentPackageDeployRequest {
     pub model: Option<String>,
     #[serde(default, rename = "secretName", alias = "secret_name")]
     pub secret_name: Option<String>,
+    #[serde(default, rename = "authJsonSecret", alias = "auth_json_secret")]
+    pub auth_json_secret: Option<String>,
+    #[serde(default)]
+    pub connectors: Vec<String>,
 }
 
 impl AgentPackage {
@@ -70,16 +74,27 @@ impl AgentPackage {
             .model
             .as_deref()
             .unwrap_or(self.default_model.as_str());
-        let secret_name = request
-            .secret_name
-            .as_deref()
-            .unwrap_or("omegon-agent-secrets");
-
         let stack_label = self
             .labels
             .iter()
             .find_map(|label| label.strip_prefix("home-stack:"))
             .unwrap_or(self.domain.as_str());
+
+        let mut secrets = json!({});
+        if let Some(secret_name) = request
+            .secret_name
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            secrets["secretName"] = json!(secret_name);
+        }
+        if let Some(auth_json_secret) = request
+            .auth_json_secret
+            .as_deref()
+            .filter(|value| !value.is_empty())
+        {
+            secrets["authJsonSecret"] = json!(auth_json_secret);
+        }
 
         json!({
             "apiVersion": "styrene.sh/v1alpha1",
@@ -107,9 +122,14 @@ impl AgentPackage {
                 "mode": self.mode,
                 "image": image,
                 "profile": self.profile,
-                "secrets": {
-                    "secretName": secret_name
+                "vox": {
+                    "connectors": request.connectors
+                        .iter()
+                        .map(|connector| connector.trim())
+                        .filter(|connector| !connector.is_empty())
+                        .collect::<Vec<_>>()
                 },
+                "secrets": secrets,
                 "identity": {
                     "provision": true,
                     "securityTier": "file",
@@ -280,6 +300,8 @@ mod tests {
             name: Some("media-watch".into()),
             namespace: Some("omegon-agents".into()),
             secret_name: Some("media-agent-secrets".into()),
+            auth_json_secret: Some("media-auth-json".into()),
+            connectors: vec!["aether".into(), "slack".into()],
             ..Default::default()
         });
 
@@ -294,6 +316,12 @@ mod tests {
             manifest["spec"]["secrets"]["secretName"],
             "media-agent-secrets"
         );
+        assert_eq!(
+            manifest["spec"]["secrets"]["authJsonSecret"],
+            "media-auth-json"
+        );
+        assert_eq!(manifest["spec"]["vox"]["connectors"][0], "aether");
+        assert_eq!(manifest["spec"]["vox"]["connectors"][1], "slack");
         assert_eq!(manifest["spec"]["controlPlane"]["tls"]["enabled"], true);
     }
 }

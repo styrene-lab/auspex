@@ -29,6 +29,7 @@ web = [
     "dep:web-sys",
     "dep:wasm-bindgen",
     "dep:wasm-bindgen-futures",
+    "dep:gloo-net",
     "dep:gloo-timers",
     "getrandom/wasm_js",
 ]
@@ -62,6 +63,7 @@ rpkl = { version = "0.8", optional = true }
 web-sys = { version = "0.3", optional = true, features = ["WebSocket", "MessageEvent", "CloseEvent", "ErrorEvent", "BinaryType"] }
 wasm-bindgen = { version = "0.2", optional = true }
 wasm-bindgen-futures = { version = "0.4", optional = true }
+gloo-net = { version = "0.6", optional = true }
 gloo-timers = { version = "0.3", optional = true, features = ["futures"] }
 
 # Entropy source — getrandom v0.3 requires explicit `wasm_js` feature on wasm32.

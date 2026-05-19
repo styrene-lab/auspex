@@ -751,12 +751,12 @@ impl AppController {
             }
             let record_clone = self.instance_registry.find(instance_id).cloned();
             if let Some(record) = record_clone {
-                if !self
+                let already_attached = self
                     .attached_instance_engine
                     .attached_instances()
                     .iter()
-                    .any(|i| i.instance_id == *instance_id)
-                {
+                    .any(|i| i.instance_id == *instance_id);
+                if !already_attached {
                     self.register_remote_agent(&record);
                 }
                 #[cfg(not(target_arch = "wasm32"))]

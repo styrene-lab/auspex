@@ -23,10 +23,104 @@ const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 enum Workspace {
     Cop,
     Chat,
+    Deploy,
     Session,
     Graph,
     Workflow,
     Audit,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+struct DeployPackageModel {
+    id: String,
+    name: String,
+    description: String,
+    domain: String,
+    agent: String,
+    profile: String,
+    #[serde(default)]
+    default_model: String,
+    posture: String,
+    role: String,
+    mode: String,
+    image: String,
+    #[serde(default)]
+    labels: Vec<String>,
+    #[serde(default)]
+    required_secrets: Vec<String>,
+    #[serde(default)]
+    optional_secrets: Vec<String>,
+    #[serde(default)]
+    control_tls_profile: String,
+    #[serde(default)]
+    mesh_role: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+struct DeployFleetAgentModel {
+    name: String,
+    namespace: Option<String>,
+    agent: Option<String>,
+    model: Option<String>,
+    mode: Option<String>,
+    profile: Option<String>,
+    package: Option<String>,
+    status: Option<String>,
+    control_plane: Option<serde_json::Value>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
+struct PackagesResponse {
+    #[serde(default)]
+    packages: Vec<DeployPackageModel>,
+}
+
+#[cfg_attr(not(target_arch = "wasm32"), allow(dead_code))]
+#[derive(Clone, Debug, Default, PartialEq, serde::Deserialize)]
+struct FleetResponse {
+    #[serde(default)]
+    agents: Vec<DeployFleetAgentModel>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentDeployFormState {
+    api_token: String,
+    selected_package: Option<String>,
+    name: String,
+    namespace: String,
+    image: String,
+    model: String,
+    secret_name: String,
+    auth_json_secret: String,
+    connectors: String,
+}
+
+impl Default for AgentDeployFormState {
+    fn default() -> Self {
+        Self {
+            api_token: String::new(),
+            selected_package: None,
+            name: String::new(),
+            namespace: "omegon-agents".into(),
+            image: String::new(),
+            model: String::new(),
+            secret_name: String::new(),
+            auth_json_secret: String::new(),
+            connectors: String::new(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq)]
+struct AgentDeployWorkspaceState {
+    packages: Vec<DeployPackageModel>,
+    fleet: Vec<DeployFleetAgentModel>,
+    form: AgentDeployFormState,
+    loading: bool,
+    deploying: bool,
+    message: Option<String>,
+    error: Option<String>,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -671,6 +765,7 @@ pub fn App() -> Element {
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
     let mut workspace = use_signal(|| Workspace::Cop);
+    let deploy_workspace = use_signal(AgentDeployWorkspaceState::default);
     let mut chat_last_activity: Signal<Option<std::time::Instant>> = use_signal(|| None);
     let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
@@ -835,6 +930,14 @@ pub fn App() -> Element {
                 #[cfg(target_arch = "wasm32")]
                 gloo_timers::future::TimeoutFuture::new(150).await;
             }
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    use_future(move || {
+        let mut deploy_workspace = deploy_workspace;
+        async move {
+            refresh_deploy_workspace(&mut deploy_workspace).await;
         }
     });
 
@@ -1035,6 +1138,8 @@ pub fn App() -> Element {
             {render_cop_surface(controller.read().cop_state())}
         } else if *workspace.read() == Workspace::Graph {
             GraphScreen { data: controller.read().session_data() }
+        } else if *workspace.read() == Workspace::Deploy {
+            {render_agent_deploy_workspace(deploy_workspace)}
         } else if *workspace.read() == Workspace::Workflow {
             WorkflowBuilderScreen {}
         } else if *workspace.read() == Workspace::Audit {
@@ -3306,6 +3411,457 @@ fn render_fleet_instance_card(
     }
 }
 
+fn render_agent_deploy_workspace(mut state: Signal<AgentDeployWorkspaceState>) -> Element {
+    let snapshot = state.read().clone();
+    let selected_package = snapshot
+        .form
+        .selected_package
+        .as_deref()
+        .and_then(|id| snapshot.packages.iter().find(|package| package.id == id))
+        .or_else(|| snapshot.packages.first());
+    let selected_package_id = selected_package.map(|package| package.id.clone());
+    let can_deploy = selected_package_id.is_some()
+        && !snapshot.deploying
+        && !snapshot.form.namespace.trim().is_empty()
+        && !snapshot.form.name.trim().is_empty();
+
+    let package_cards = snapshot.packages.iter().map(|package| {
+        let is_selected = selected_package_id.as_deref() == Some(package.id.as_str());
+        let package_id = package.id.clone();
+        let package_name = package.name.clone();
+        let default_name = package.id.clone();
+        let default_image = package.image.clone();
+        let default_model = package.default_model.clone();
+        rsx! {
+            button {
+                class: if is_selected { "deploy-package deploy-package-active" } else { "deploy-package" },
+                r#type: "button",
+                onclick: move |_| {
+                    let mut next = state.write();
+                    next.form.selected_package = Some(package_id.clone());
+                    next.form.name = default_name.clone();
+                    next.form.image = default_image.clone();
+                    next.form.model = default_model.clone();
+                    next.error = None;
+                    next.message = Some(format!("Selected {package_name}"));
+                },
+                span { class: "deploy-package-title", "{package.name}" }
+                span { class: "deploy-package-desc", "{package.description}" }
+                span { class: "deploy-package-meta", "{package.domain} · {package.role} · {package.mode}" }
+            }
+        }
+    });
+
+    let fleet_rows = snapshot.fleet.iter().map(|agent| {
+        let namespace = agent.namespace.as_deref().unwrap_or("default");
+        let package = agent.package.as_deref().unwrap_or("custom");
+        let status = agent.status.as_deref().unwrap_or("unknown");
+        let model = agent.model.as_deref().unwrap_or("model pending");
+        let profile = agent.profile.as_deref().unwrap_or("profile pending");
+        let acp_proxy = agent
+            .control_plane
+            .as_ref()
+            .and_then(|value| value.get("acp_proxy_url"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("no proxy");
+        let security = agent
+            .control_plane
+            .as_ref()
+            .and_then(|value| value.get("transport_security"))
+            .and_then(|value| value.as_str())
+            .unwrap_or("unknown");
+        rsx! {
+            tr {
+                td { "{agent.name}" }
+                td { "{namespace}" }
+                td { "{package}" }
+                td { "{status}" }
+                td { "{model}" }
+                td { "{profile}" }
+                td { "{security}" }
+                td { "{acp_proxy}" }
+            }
+        }
+    });
+
+    let package_detail = selected_package.map(|package| {
+        let required = if package.required_secrets.is_empty() {
+            "none".into()
+        } else {
+            package.required_secrets.join(", ")
+        };
+        let optional = if package.optional_secrets.is_empty() {
+            "none".into()
+        } else {
+            package.optional_secrets.join(", ")
+        };
+        rsx! {
+            section { class: "deploy-selected-card",
+                div { class: "deploy-selected-heading",
+                    span { class: "deploy-kicker", "Selected package" }
+                    h3 { "{package.name}" }
+                    p { "{package.description}" }
+                }
+                dl { class: "deploy-definition-grid",
+                    dt { "Agent" }
+                    dd { "{package.agent}" }
+                    dt { "Nex profile" }
+                    dd { "{package.profile}" }
+                    dt { "Posture" }
+                    dd { "{package.posture}" }
+                    dt { "Control TLS" }
+                    dd { "{package.control_tls_profile}" }
+                    dt { "Mesh role" }
+                    dd { "{package.mesh_role}" }
+                    dt { "Required secrets" }
+                    dd { "{required}" }
+                    dt { "Optional secrets" }
+                    dd { "{optional}" }
+                }
+            }
+        }
+    });
+
+    rsx! {
+        section { class: "deploy-workspace",
+            header { class: "deploy-header",
+                div {
+                    div { class: "workspace-kicker", "CLUSTER AGENT FACTORY" }
+                    h2 { "Deploy Omegon agents" }
+                    p { "Create managed in-cluster agents from package profiles, wire control TLS, and verify the live fleet path." }
+                }
+                div { class: "deploy-header-actions",
+                    button {
+                        class: "deploy-secondary-action",
+                        r#type: "button",
+                        disabled: snapshot.loading,
+                        onclick: move |_| {
+                            let mut state = state;
+                            spawn(async move {
+                                refresh_deploy_workspace(&mut state).await;
+                            });
+                        },
+                        if snapshot.loading { "Refreshing" } else { "Refresh" }
+                    }
+                }
+            }
+
+            if let Some(error) = snapshot.error.as_deref() {
+                div { class: "deploy-alert deploy-alert-error", "{error}" }
+            }
+            if let Some(message) = snapshot.message.as_deref() {
+                div { class: "deploy-alert deploy-alert-info", "{message}" }
+            }
+
+            div { class: "deploy-layout",
+                section { class: "deploy-catalog",
+                    h3 { "Packages" }
+                    div { class: "deploy-package-list",
+                        if snapshot.packages.is_empty() {
+                            p { class: "deploy-empty", "No package catalog returned by the operator." }
+                        } else {
+                            {package_cards}
+                        }
+                    }
+                }
+
+                section { class: "deploy-config",
+                    {package_detail}
+                    form {
+                        class: "deploy-form",
+                        onsubmit: move |event| {
+                            event.prevent_default();
+                            if can_deploy {
+                                let mut state = state;
+                                spawn(async move {
+                                    deploy_selected_package(&mut state).await;
+                                });
+                            }
+                        },
+                        label { class: "deploy-field deploy-field-wide",
+                            span { "API token" }
+                            input {
+                                r#type: "password",
+                                value: snapshot.form.api_token.clone(),
+                                placeholder: "Bearer token for /api",
+                                oninput: move |event| state.write().form.api_token = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field",
+                            span { "Name" }
+                            input {
+                                value: snapshot.form.name.clone(),
+                                placeholder: "home-media-operator",
+                                oninput: move |event| state.write().form.name = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field",
+                            span { "Namespace" }
+                            input {
+                                value: snapshot.form.namespace.clone(),
+                                placeholder: "omegon-agents",
+                                oninput: move |event| state.write().form.namespace = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field deploy-field-wide",
+                            span { "Image" }
+                            input {
+                                value: snapshot.form.image.clone(),
+                                placeholder: "ghcr.io/styrene-lab/omegon-agents:latest",
+                                oninput: move |event| state.write().form.image = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field deploy-field-wide",
+                            span { "Model" }
+                            input {
+                                value: snapshot.form.model.clone(),
+                                placeholder: "anthropic:claude-sonnet-4-6",
+                                oninput: move |event| state.write().form.model = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field",
+                            span { "Env secret" }
+                            input {
+                                value: snapshot.form.secret_name.clone(),
+                                placeholder: "optional k8s Secret",
+                                oninput: move |event| state.write().form.secret_name = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field",
+                            span { "auth.json secret" }
+                            input {
+                                value: snapshot.form.auth_json_secret.clone(),
+                                placeholder: "agent-auth-json",
+                                oninput: move |event| state.write().form.auth_json_secret = event.value(),
+                            }
+                        }
+                        label { class: "deploy-field deploy-field-wide",
+                            span { "Connectors" }
+                            input {
+                                value: snapshot.form.connectors.clone(),
+                                placeholder: "aether, discord, slack",
+                                oninput: move |event| state.write().form.connectors = event.value(),
+                            }
+                        }
+                        div { class: "deploy-form-actions",
+                            button {
+                                class: "deploy-primary-action",
+                                r#type: "submit",
+                                disabled: !can_deploy,
+                                if snapshot.deploying { "Deploying" } else { "Deploy agent" }
+                            }
+                        }
+                    }
+                }
+            }
+
+            section { class: "deploy-fleet",
+                div { class: "deploy-section-title",
+                    h3 { "Managed fleet" }
+                    span { "{snapshot.fleet.len()} agents" }
+                }
+                div { class: "deploy-table-wrap",
+                    table { class: "deploy-table",
+                        thead {
+                            tr {
+                                th { "Name" }
+                                th { "Namespace" }
+                                th { "Package" }
+                                th { "Status" }
+                                th { "Model" }
+                                th { "Profile" }
+                                th { "Security" }
+                                th { "ACP proxy" }
+                            }
+                        }
+                        tbody {
+                            if snapshot.fleet.is_empty() {
+                                tr { td { colspan: "8", "No managed agents reported yet." } }
+                            } else {
+                                {fleet_rows}
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+async fn refresh_deploy_workspace(state: &mut Signal<AgentDeployWorkspaceState>) {
+    state.write().loading = true;
+    let result = load_deploy_workspace(state.read().form.api_token.trim().to_string()).await;
+    let mut state = state.write();
+    state.loading = false;
+    match result {
+        Ok((packages, fleet)) => {
+            if state.form.selected_package.is_none()
+                && let Some(package) = packages.first()
+            {
+                state.form.selected_package = Some(package.id.clone());
+                state.form.name = package.id.clone();
+                state.form.image = package.image.clone();
+                state.form.model = package.default_model.clone();
+            }
+            state.packages = packages;
+            state.fleet = fleet;
+            state.error = None;
+            state
+                .message
+                .get_or_insert_with(|| "Operator catalog loaded.".into());
+        }
+        Err(error) => {
+            state.error = Some(error);
+        }
+    }
+}
+
+async fn deploy_selected_package(state: &mut Signal<AgentDeployWorkspaceState>) {
+    let snapshot = state.read().clone();
+    let Some(package_id) = snapshot
+        .form
+        .selected_package
+        .clone()
+        .or_else(|| snapshot.packages.first().map(|package| package.id.clone()))
+    else {
+        state.write().error = Some("Select a package before deploying.".into());
+        return;
+    };
+
+    state.write().deploying = true;
+    let result = deploy_package_request(&package_id, &snapshot.form).await;
+    state.write().deploying = false;
+    match result {
+        Ok(message) => {
+            state.write().message = Some(message);
+            refresh_deploy_workspace(state).await;
+        }
+        Err(error) => {
+            state.write().error = Some(error);
+        }
+    }
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn load_deploy_workspace(
+    token: String,
+) -> Result<(Vec<DeployPackageModel>, Vec<DeployFleetAgentModel>), String> {
+    let packages = operator_get("/api/packages", &token).await?;
+    let fleet = operator_get("/api/fleet", &token).await?;
+    let packages: PackagesResponse =
+        serde_json::from_str(&packages).map_err(|error| format!("package JSON failed: {error}"))?;
+    let fleet: FleetResponse =
+        serde_json::from_str(&fleet).map_err(|error| format!("fleet JSON failed: {error}"))?;
+    Ok((packages.packages, fleet.agents))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn load_deploy_workspace(
+    _token: String,
+) -> Result<(Vec<DeployPackageModel>, Vec<DeployFleetAgentModel>), String> {
+    Ok((Vec::new(), Vec::new()))
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn deploy_package_request(
+    package_id: &str,
+    form: &AgentDeployFormState,
+) -> Result<String, String> {
+    let connectors = form
+        .connectors
+        .split(',')
+        .map(str::trim)
+        .filter(|connector| !connector.is_empty())
+        .collect::<Vec<_>>();
+    let mut body = serde_json::json!({
+        "name": form.name.trim(),
+        "namespace": form.namespace.trim(),
+        "connectors": connectors,
+    });
+    if !form.image.trim().is_empty() {
+        body["image"] = serde_json::json!(form.image.trim());
+    }
+    if !form.model.trim().is_empty() {
+        body["model"] = serde_json::json!(form.model.trim());
+    }
+    if !form.secret_name.trim().is_empty() {
+        body["secretName"] = serde_json::json!(form.secret_name.trim());
+    }
+    if !form.auth_json_secret.trim().is_empty() {
+        body["authJsonSecret"] = serde_json::json!(form.auth_json_secret.trim());
+    }
+
+    let response = operator_post(
+        &format!("/api/packages/{package_id}/deploy"),
+        form.api_token.trim(),
+        body,
+    )
+    .await?;
+    let value: serde_json::Value =
+        serde_json::from_str(&response).map_err(|error| format!("deploy JSON failed: {error}"))?;
+    if let Some(error) = value.get("error").and_then(|value| value.as_str()) {
+        return Err(error.to_string());
+    }
+    Ok(format!(
+        "Deployment request accepted for {}",
+        form.name.trim()
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn deploy_package_request(
+    _package_id: &str,
+    _form: &AgentDeployFormState,
+) -> Result<String, String> {
+    Err("Cluster deploys are available from the deployed WebUI build.".into())
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn operator_get(path: &str, token: &str) -> Result<String, String> {
+    let mut request = gloo_net::http::Request::get(path);
+    if !token.is_empty() {
+        request = request.header("authorization", &format!("Bearer {token}"));
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("GET {path} failed: {error}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| format!("GET {path} body failed: {error}"))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("GET {path} returned {status}: {text}"));
+    }
+    Ok(text)
+}
+
+#[cfg(target_arch = "wasm32")]
+async fn operator_post(path: &str, token: &str, body: serde_json::Value) -> Result<String, String> {
+    let mut request =
+        gloo_net::http::Request::post(path).header("content-type", "application/json");
+    if !token.is_empty() {
+        request = request.header("authorization", &format!("Bearer {token}"));
+    }
+    let request = request
+        .body(body.to_string())
+        .map_err(|error| format!("POST {path} request failed: {error}"))?;
+    let response = request
+        .send()
+        .await
+        .map_err(|error| format!("POST {path} failed: {error}"))?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| format!("POST {path} body failed: {error}"))?;
+    if !(200..300).contains(&status) {
+        return Err(format!("POST {path} returned {status}: {text}"));
+    }
+    Ok(text)
+}
+
 fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) -> Element {
     rsx! {
         section { class: "cockpit-cop-stage",
@@ -3313,6 +3869,7 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
                 nav { class: "cockpit-workspace-nav",
                     button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
+                    button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
                     button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
                     button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
@@ -3607,6 +4164,7 @@ fn workspace_label(workspace: Workspace) -> &'static str {
     match workspace {
         Workspace::Cop => "COP",
         Workspace::Chat => "Chat",
+        Workspace::Deploy => "Deploy",
         Workspace::Session => "Session",
         Workspace::Graph => "Graph",
         Workspace::Workflow => "Workflow",

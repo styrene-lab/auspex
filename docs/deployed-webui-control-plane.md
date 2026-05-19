@@ -42,6 +42,40 @@ but only on WebSocket upgrade requests.
 - Mutations should operate through Kubernetes desired state. The WebUI should not
   bypass the operator by calling pod-local management endpoints directly.
 
+## MVP Deploy Path
+
+The deployed WebUI includes a `Deploy` workspace that acts as the first real
+MVP test: Auspex must be able to create and observe agents inside the cluster
+from its own control surface.
+
+That workspace reads `/api/packages` and `/api/fleet`, then posts
+`/api/packages/{id}/deploy` with package overrides:
+
+```json
+{
+  "name": "home-media-operator",
+  "namespace": "omegon-agents",
+  "image": "ghcr.io/styrene-lab/omegon-agents:latest",
+  "model": "anthropic:claude-sonnet-4-6",
+  "secretName": "optional-env-secret",
+  "authJsonSecret": "agent-auth-json",
+  "connectors": ["aether", "discord"]
+}
+```
+
+Security posture:
+
+- `authJsonSecret` is preferred for provider auth material because it mounts one
+  `auth.json` file at the runtime path instead of projecting a broad Secret
+  through `envFrom`.
+- `secretName` remains available for explicit environment-style tokens needed
+  by extensions or integrations, but should be treated as higher blast radius.
+- `connectors` maps to `spec.vox.connectors`; the reconciler is responsible for
+  mounting extension material and enabling connector-specific runtime config.
+- Package deploys enable identity provisioning and control-plane TLS by default,
+  so the resulting daemon should expose `wss://` ACP and an operator-relative
+  `acp_proxy_url`.
+
 ## Current Boundary
 
 The first slice is intentionally thin: it gives the WebUI enough API to build
