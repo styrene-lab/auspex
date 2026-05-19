@@ -2,16 +2,11 @@ FROM rust:1.85-bookworm AS builder
 WORKDIR /build
 
 # Copy dependency crates first for layer caching
-COPY omegon-traits/ /build/omegon-traits/
-COPY styrene-identity/ /build/styrene-identity/
+COPY omegon/ /build/omegon/
+COPY styrene-rs/ /build/styrene-rs/
 
 # Copy auspex workspace
 COPY auspex/ /build/auspex/
-
-# Rewrite path deps to flat build context
-RUN sed -i 's|path = "../../omegon/core/crates/omegon-traits"|path = "/build/omegon-traits"|g' /build/auspex/auspex-core/Cargo.toml \
-    && sed -i 's|path = "../omegon/core/crates/omegon-traits"|path = "/build/omegon-traits"|g' /build/auspex/Cargo.toml \
-    && sed -i 's|path = "../../styrene-rs/crates/libs/styrene-identity"|path = "/build/styrene-identity"|g' /build/auspex/auspex-operator/Cargo.toml
 
 WORKDIR /build/auspex
 RUN cargo build --release -p auspex-operator

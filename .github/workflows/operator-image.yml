@@ -104,8 +104,8 @@ jobs:
           rm -rf "$context"
           mkdir -p "$context"
           cp -a . "$context/auspex"
-          cp -a omegon/core/crates/omegon-traits "$context/omegon-traits"
-          cp -a styrene-rs/crates/libs/styrene-identity "$context/styrene-identity"
+          cp -a omegon "$context/omegon"
+          cp -a styrene-rs "$context/styrene-rs"
           echo "path=${context}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
