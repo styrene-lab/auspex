@@ -22,6 +22,9 @@ but only on WebSocket upgrade requests.
 | `/api/packages` | `GET` | List deployable agent packages known to Auspex. |
 | `/api/packages/{id}` | `GET` | Read one deployable package definition. |
 | `/api/packages/{id}/deploy` | `POST` | Create an `OmegonAgent` from package defaults plus overrides. |
+| `/api/armory/packages` | `GET` | List Armory package records without installing anything. |
+| `/api/armory/packages/{kind}/{id}` | `GET` | Read one Armory package by stable ref such as `profile/security-review`. |
+| `/api/armory/plan` | `POST` | Produce a dry-run Armory install/deploy plan with policy gates. |
 | `/api/agents` | `POST` | Create or server-side apply an `OmegonAgent`. |
 | `/api/agents/{ns}/{name}` | `GET` | Read one managed agent with control-plane metadata. |
 | `/api/agents/{ns}/{name}` | `PATCH` | Merge-patch an existing managed agent. |
@@ -90,6 +93,30 @@ but it does prove that Auspex can see the required Kubernetes Secret envelope
 without exposing secret contents. Ready daemon rows expose an `Open` action that
 switches the browser onto the operator ACP proxy URL so Chat can operate against
 the deployed agent path.
+
+## Armory Planning Boundary
+
+Armory-backed package support is split into read-only discovery, dry-run
+planning, explicit Auspex deployment overlays, and policy-gated execution:
+
+- `GET /api/armory/packages` fetches the configured Armory index
+  (`AUSPEX_ARMORY_INDEX_URL`, default
+  `https://armory.styrene.io/api/index.json`).
+- `POST /api/armory/plan` accepts `{ "packageRef": "profile/security-review" }`
+  and returns an `ArmoryInstallPlan`.
+- Planning may classify OCI artifacts, Omegon prompt/plugin payloads, native
+  Omegon extensions, external integrations, Nex forge templates, required
+  secrets, warnings, and policy gates.
+- Planning never pulls artifacts, installs extensions, mutates Kubernetes, or
+  grants secrets.
+- `forge-template/*` packages are Nex-owned. Auspex may surface
+  `canonicalFormat`, `minNex`, `destructiveCapabilities`, and
+  `networkRequirements`, but Nex must validate or build them and Auspex policy
+  must approve any destructive or networked execution.
+- Armory `agent` and `profile` records require an explicit Auspex deployment
+  overlay before becoming an `AgentPackage`; runtime fields such as image, mode,
+  role, model, resources, control TLS profile, and secret grant bindings are not
+  guessed from public Armory metadata.
 
 ## Current Boundary
 

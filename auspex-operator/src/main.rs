@@ -13,6 +13,10 @@ use std::{io::Cursor, net::SocketAddr, sync::Arc};
 use auspex_core::agent_packages::{
     AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
 };
+use auspex_core::armory::{
+    ArmoryClient, ArmoryError, ArmoryIndex, ArmoryPlanOptions, DEFAULT_ARMORY_INDEX_URL,
+    plan_armory_install,
+};
 use axum::{
     Json, Router,
     extract::{
@@ -161,6 +165,15 @@ async fn main() -> anyhow::Result<()> {
                 }),
             )
             .route("/packages", get(packages_handler))
+            .route("/armory/packages", get(armory_packages_handler))
+            .route(
+                "/armory/packages/{kind}/{id}",
+                get(|path: AxumPath<(String, String)>| armory_package_detail_handler(path)),
+            )
+            .route(
+                "/armory/plan",
+                post(|body: Json<Value>| armory_plan_handler(body)),
+            )
             .route(
                 "/packages/{id}",
                 get(|path: AxumPath<String>| package_detail_handler(path)),
@@ -895,6 +908,74 @@ async fn packages_handler() -> Json<Value> {
         "source": "builtin",
         "next_source": "armory-signum",
     }))
+}
+
+async fn armory_packages_handler() -> Json<Value> {
+    match fetch_armory_index().await {
+        Ok(index) => Json(serde_json::json!({
+            "packages": index.items,
+            "source": "armory",
+            "generatedAt": index.generated_at,
+            "registry": index.registry,
+        })),
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn armory_package_detail_handler(
+    AxumPath((kind, id)): AxumPath<(String, String)>,
+) -> Json<Value> {
+    let package_ref = format!("{kind}/{id}");
+    match fetch_armory_index().await {
+        Ok(index) => match index.get(&package_ref) {
+            Some(package) => Json(serde_json::json!({
+                "package": package,
+                "source": "armory",
+            })),
+            None => Json(
+                serde_json::json!({ "error": format!("unknown Armory package '{package_ref}'") }),
+            ),
+        },
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn armory_plan_handler(Json(body): Json<Value>) -> Json<Value> {
+    let Some(package_ref) = body
+        .get("packageRef")
+        .or_else(|| body.get("package_ref"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Json(serde_json::json!({ "error": "packageRef is required" }));
+    };
+    let options = ArmoryPlanOptions {
+        include_optional: body
+            .get("includeOptional")
+            .or_else(|| body.get("include_optional"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+    };
+
+    match fetch_armory_index().await {
+        Ok(index) => match index.get(package_ref) {
+            Some(package) => Json(serde_json::json!({
+                "plan": plan_armory_install(package, options),
+                "source": "armory",
+            })),
+            None => Json(
+                serde_json::json!({ "error": format!("unknown Armory package '{package_ref}'") }),
+            ),
+        },
+        Err(error) => Json(serde_json::json!({ "error": error.to_string() })),
+    }
+}
+
+async fn fetch_armory_index() -> Result<ArmoryIndex, ArmoryError> {
+    let index_url = std::env::var("AUSPEX_ARMORY_INDEX_URL")
+        .unwrap_or_else(|_| DEFAULT_ARMORY_INDEX_URL.into());
+    let mut client = ArmoryClient::new(index_url);
+    client.fetch_index().await.cloned()
 }
 
 async fn package_detail_handler(AxumPath(id): AxumPath<String>) -> Json<Value> {

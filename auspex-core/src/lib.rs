@@ -9,6 +9,7 @@
 
 // Foundation (no internal deps)
 pub mod agent_packages;
+pub mod armory;
 pub mod cop_surface;
 pub mod omegon_control;
 pub mod runtime_types;
