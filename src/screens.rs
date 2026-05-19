@@ -1087,6 +1087,24 @@ fn render_instance_descriptor(instance: &auspex_core::fixtures::InstanceDescript
                     if let Some(auth_mode) = control_plane.auth_mode.as_deref() {
                         {kv_row("Auth mode", auth_mode)}
                     }
+                    if let Some(transport_security) = control_plane.transport_security.as_deref() {
+                        {kv_row("Transport", transport_security)}
+                    }
+                    if let Some(mtls) = control_plane.mtls {
+                        {kv_row("mTLS", if mtls { "enabled" } else { "disabled" })}
+                    }
+                    if let Some(tls_profile) = control_plane.tls_profile.as_deref() {
+                        {kv_row("TLS profile", tls_profile)}
+                    }
+                    if let Some(tls_secret) = control_plane.tls_secret.as_deref() {
+                        {kv_row("TLS secret", tls_secret)}
+                    }
+                    if let Some(tls_leaf_validity) = control_plane.tls_leaf_validity.as_deref() {
+                        {kv_row("TLS validity", tls_leaf_validity)}
+                    }
+                    if let Some(fingerprint) = control_plane.server_fingerprint_sha256.as_deref() {
+                        {kv_row("Server cert", fingerprint)}
+                    }
                     if let Some(token_ref) = control_plane.token_ref.as_deref() {
                         {kv_row("Token ref", token_ref)}
                     }

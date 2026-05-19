@@ -530,6 +530,7 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                     auth_mode: String::new(),
                     token_ref: None,
                     last_ready_at: None,
+                    ..Default::default()
                 },
                 health: crate::runtime_types::ObservedHealth {
                     ready: true,
@@ -609,6 +610,7 @@ mod tests {
                     last_ready_at: None,
                     last_verified_at: None,
                     capabilities: vec![],
+                    ..Default::default()
                 }),
                 runtime: None,
                 workspace: None,
@@ -842,6 +844,7 @@ mod tests {
                             "secret://auspex/instances/omg_dispatcher_01HVTEST/token".into(),
                         ),
                         last_ready_at: Some("2026-04-06T00:00:02Z".into()),
+                        ..Default::default()
                     },
                     health: crate::runtime_types::ObservedHealth {
                         ready: true,
@@ -1238,6 +1241,7 @@ mod tests {
                         auth_mode: String::new(),
                         token_ref: None,
                         last_ready_at: None,
+                        ..Default::default()
                     },
                     health: crate::runtime_types::ObservedHealth {
                         ready: true,

@@ -239,6 +239,24 @@ pub struct ObservedControlPlane {
     #[serde(default)]
     pub token_ref: Option<String>,
     #[serde(default)]
+    pub transport_security: Option<String>,
+    #[serde(default)]
+    pub mtls: Option<bool>,
+    #[serde(default)]
+    pub tls_secret: Option<String>,
+    #[serde(default)]
+    pub tls_profile: Option<String>,
+    #[serde(default)]
+    pub tls_ca_epoch: Option<String>,
+    #[serde(default)]
+    pub tls_leaf_epoch: Option<String>,
+    #[serde(default)]
+    pub tls_leaf_validity: Option<String>,
+    #[serde(default)]
+    pub ca_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    pub server_fingerprint_sha256: Option<String>,
+    #[serde(default)]
     pub last_ready_at: Option<String>,
 }
 
@@ -580,6 +598,8 @@ mod tests {
               "ready_url": "http://omegon-child-abc123.auspex.svc:7842/api/readyz",
               "ws_url": "ws://omegon-child-abc123.auspex.svc:7842/ws?token=...",
               "auth_mode": "ephemeral-bearer",
+              "transport_security": "plaintext",
+              "mtls": false,
               "token_ref": "secret://auspex/instances/omg_01HV.../token",
               "last_ready_at": "2026-04-03T12:00:11Z"
             },
@@ -609,6 +629,11 @@ mod tests {
             record.observed.control_plane.token_ref.as_deref(),
             Some("secret://auspex/instances/omg_01HV.../token")
         );
+        assert_eq!(
+            record.observed.control_plane.transport_security.as_deref(),
+            Some("plaintext")
+        );
+        assert_eq!(record.observed.control_plane.mtls, Some(false));
         assert!(record.observed.health.ready);
     }
 

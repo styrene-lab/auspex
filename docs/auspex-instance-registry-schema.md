@@ -111,6 +111,15 @@ Use one file per worker instance in a registry directory such as:
       "ready_url": "http://omegon-child-abc123.auspex.svc:7842/api/readyz",
       "ws_url": "ws://omegon-child-abc123.auspex.svc:7842/ws?token=...",
       "auth_mode": "ephemeral-bearer",
+      "transport_security": "plaintext",
+      "mtls": false,
+      "tls_secret": null,
+      "tls_profile": null,
+      "tls_ca_epoch": null,
+      "tls_leaf_epoch": null,
+      "tls_leaf_validity": null,
+      "ca_fingerprint_sha256": null,
+      "server_fingerprint_sha256": null,
       "token_ref": "secret://auspex/instances/omg_01HV.../token",
       "last_ready_at": "2026-04-03T12:00:11Z"
     },
@@ -162,6 +171,12 @@ Use one file per worker instance in a registry directory such as:
 - `observed` is authoritative for UI/debugging
 - `status` in `identity` is a synthesized worker lifecycle label
 - `observed.control_plane.token_ref` should point to a secret backend, keychain, or Kubernetes Secret reference
+- `observed.control_plane.transport_security` and `mtls` are operator posture,
+  not decoration. WSS/mTLS-capable endpoints should report `transport_security:
+  "tls"` and `mtls: true` when client certificate auth is required.
+- TLS secret names, profile/epoch values, validity windows, and certificate
+  fingerprints should be references/metadata only. Never embed private keys or
+  certificate PEM bodies in registry records.
 - session-level dispatcher attachment should resolve through both logical worker identity and authenticated control-plane verification
 
 ## Status vocabulary

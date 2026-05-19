@@ -50,6 +50,16 @@ pub struct OmegonControlPlaneDescriptor {
     pub acp_url: Option<String>,
     pub auth_mode: Option<String>,
     pub token_ref: Option<String>,
+    pub transport_security: Option<String>,
+    #[serde(default)]
+    pub mtls: Option<bool>,
+    pub tls_secret: Option<String>,
+    pub tls_profile: Option<String>,
+    pub tls_ca_epoch: Option<String>,
+    pub tls_leaf_epoch: Option<String>,
+    pub tls_leaf_validity: Option<String>,
+    pub ca_fingerprint_sha256: Option<String>,
+    pub server_fingerprint_sha256: Option<String>,
     pub last_ready_at: Option<String>,
     pub last_verified_at: Option<String>,
     pub ipc_socket_path: Option<String>,
@@ -128,6 +138,24 @@ pub struct OmegonStartupInfo {
     pub auth_mode: String,
     #[serde(default)]
     pub auth_source: String,
+    #[serde(default)]
+    pub transport_security: Option<String>,
+    #[serde(default)]
+    pub mtls: Option<bool>,
+    #[serde(default)]
+    pub tls_secret: Option<String>,
+    #[serde(default)]
+    pub tls_profile: Option<String>,
+    #[serde(default)]
+    pub tls_ca_epoch: Option<String>,
+    #[serde(default)]
+    pub tls_leaf_epoch: Option<String>,
+    #[serde(default)]
+    pub tls_leaf_validity: Option<String>,
+    #[serde(default)]
+    pub ca_fingerprint_sha256: Option<String>,
+    #[serde(default)]
+    pub server_fingerprint_sha256: Option<String>,
     #[serde(default)]
     pub control_plane_state: String,
     #[serde(default)]
@@ -570,7 +598,9 @@ mod tests {
                     "base_url": "http://127.0.0.1:7842",
                     "state_url": "http://127.0.0.1:7842/api/state",
                     "ws_url": "ws://127.0.0.1:7842/ws?token=test",
-                    "auth_mode": "ephemeral-bearer"
+                    "auth_mode": "ephemeral-bearer",
+                    "transport_security": "plaintext",
+                    "mtls": false
                 },
                 "runtime": {
                     "backend": "local-process",
@@ -602,6 +632,16 @@ mod tests {
             Some("repo:8f2f4c1")
         );
         assert_eq!(descriptor.control_plane.as_ref().unwrap().schema_version, 2);
+        assert_eq!(
+            descriptor
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .transport_security
+                .as_deref(),
+            Some("plaintext")
+        );
+        assert_eq!(descriptor.control_plane.as_ref().unwrap().mtls, Some(false));
         assert_eq!(descriptor.runtime.as_ref().unwrap().pid, Some(7842));
         assert_eq!(
             descriptor.session.as_ref().unwrap().session_id.as_deref(),
@@ -652,7 +692,10 @@ mod tests {
                     "state_url": "http://127.0.0.1:7843/api/state",
                     "ready_url": "http://127.0.0.1:7843/api/readyz",
                     "ws_url": "ws://127.0.0.1:7843/ws?token=test",
+                    "acp_url": "ws://127.0.0.1:7843/acp?token=test",
                     "auth_mode": "ephemeral-bearer",
+                    "transport_security": "plaintext",
+                    "mtls": false,
                     "token_ref": "secret://auspex/instances/omg_primary_01HVSTATE/token",
                     "last_ready_at": "2026-04-05T10:00:00Z"
                 },
@@ -716,6 +759,24 @@ mod tests {
                 .token_ref
                 .as_deref(),
             Some("secret://auspex/instances/omg_primary_01HVSTATE/token")
+        );
+        assert_eq!(
+            descriptor
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .acp_url
+                .as_deref(),
+            Some("ws://127.0.0.1:7843/acp?token=test")
+        );
+        assert_eq!(
+            descriptor
+                .control_plane
+                .as_ref()
+                .unwrap()
+                .transport_security
+                .as_deref(),
+            Some("plaintext")
         );
         assert_eq!(
             snapshot

@@ -163,7 +163,10 @@ mod tests {
                     acp_url: Some(format!("ws://127.0.0.1/{instance_id}/acp")),
                     auth_mode: "ephemeral-bearer".into(),
                     token_ref: Some("secret://auspex/instances/token".into()),
+                    transport_security: Some("plaintext".into()),
+                    mtls: Some(false),
                     last_ready_at: Some("2026-04-03T12:00:11Z".into()),
+                    ..Default::default()
                 },
                 health: ObservedHealth {
                     ready: true,

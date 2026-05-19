@@ -1915,6 +1915,7 @@ mod tests {
                         auth_mode: "ephemeral-bearer".into(),
                         token_ref: None,
                         last_ready_at: Some("2026-04-06T00:00:02Z".into()),
+                        ..Default::default()
                     },
                     health: crate::runtime_types::ObservedHealth {
                         ready: true,

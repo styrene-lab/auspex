@@ -388,7 +388,14 @@ impl RemoteInstanceEntry {
                     acp_url: None,
                     auth_mode: self.auth_mode.clone(),
                     token_ref: self.token.clone(),
+                    transport_security: Some(if base.starts_with("https://") {
+                        "tls".into()
+                    } else {
+                        "plaintext".into()
+                    }),
+                    mtls: Some(self.auth_mode == "mtls"),
                     last_ready_at: None,
+                    ..Default::default()
                 },
                 health: crate::runtime_types::ObservedHealth {
                     ready: false,

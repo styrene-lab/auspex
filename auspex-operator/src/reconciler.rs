@@ -483,10 +483,10 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
         json!({"name": "AETHER_WORKER_ROLE", "value": &agent.spec.role}),
     ];
-    if let Some(ref discord) = agent.spec.vox.discord {
-        if let Some(ref gid) = discord.guild_id {
-            env.push(json!({"name": "VOX_DISCORD_GUILD_ID", "value": gid}));
-        }
+    if let Some(ref discord) = agent.spec.vox.discord
+        && let Some(ref gid) = discord.guild_id
+    {
+        env.push(json!({"name": "VOX_DISCORD_GUILD_ID", "value": gid}));
     }
 
     // When aether is enabled, set the styrened socket path and extensions dir.
@@ -750,11 +750,9 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     }
 
     // Prompt and output paths for bounded modes.
-    if is_bounded {
-        if let Some(ref prompt) = agent.spec.prompt {
-            args.extend(["--prompt-file".into(), prompt.mount_path.clone()]);
-            args.extend(["--output".into(), prompt.output_path.clone()]);
-        }
+    if is_bounded && let Some(ref prompt) = agent.spec.prompt {
+        args.extend(["--prompt-file".into(), prompt.mount_path.clone()]);
+        args.extend(["--output".into(), prompt.output_path.clone()]);
     }
 
     // Build container list: agent + optional styrened sidecar.
@@ -888,49 +886,49 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     if let Some(ref profile) = agent.spec.profile {
         annotations.insert("styrene.sh/profile".into(), json!(profile));
     }
-    if let Some(ref sbom) = agent.spec.sbom {
-        if sbom.enabled {
-            annotations.insert("styrene.sh/sbom-format".into(), json!(&sbom.format));
-            if let Some(ref artifact) = sbom.artifact_ref {
-                annotations.insert("styrene.sh/sbom-ref".into(), json!(artifact));
-            }
+    if let Some(ref sbom) = agent.spec.sbom
+        && sbom.enabled
+    {
+        annotations.insert("styrene.sh/sbom-format".into(), json!(&sbom.format));
+        if let Some(ref artifact) = sbom.artifact_ref {
+            annotations.insert("styrene.sh/sbom-ref".into(), json!(artifact));
         }
     }
 
     // Vault Agent injector annotations: when vault secrets are configured,
     // annotate the pod so the Vault Agent sidecar injects secrets directly.
     // This means secrets never pass through the operator's memory or k8s Secrets.
-    if let Some(ref vault) = agent.spec.secrets.vault {
-        if vault.agent_inject {
-            annotations.insert("vault.hashicorp.com/agent-inject".into(), json!("true"));
-            if let Some(ref role) = vault.role {
-                annotations.insert("vault.hashicorp.com/role".into(), json!(role));
-            }
-            if let Some(ref addr) = vault.address {
-                annotations.insert(
-                    "vault.hashicorp.com/agent-inject-status".into(),
-                    json!("update"),
-                );
-                annotations.insert("vault.hashicorp.com/agent-address".into(), json!(addr));
-            }
-            for mapping in &vault.secrets {
-                // The annotation suffix becomes the filename under /vault/secrets/.
-                // Sanitize the destination to a safe annotation key suffix.
-                let suffix = mapping
-                    .destination
-                    .trim_start_matches('/')
-                    .replace('/', "-");
+    if let Some(ref vault) = agent.spec.secrets.vault
+        && vault.agent_inject
+    {
+        annotations.insert("vault.hashicorp.com/agent-inject".into(), json!("true"));
+        if let Some(ref role) = vault.role {
+            annotations.insert("vault.hashicorp.com/role".into(), json!(role));
+        }
+        if let Some(ref addr) = vault.address {
+            annotations.insert(
+                "vault.hashicorp.com/agent-inject-status".into(),
+                json!("update"),
+            );
+            annotations.insert("vault.hashicorp.com/agent-address".into(), json!(addr));
+        }
+        for mapping in &vault.secrets {
+            // The annotation suffix becomes the filename under /vault/secrets/.
+            // Sanitize the destination to a safe annotation key suffix.
+            let suffix = mapping
+                .destination
+                .trim_start_matches('/')
+                .replace('/', "-");
 
+            annotations.insert(
+                format!("vault.hashicorp.com/agent-inject-secret-{suffix}"),
+                json!(&mapping.path),
+            );
+            if let Some(ref template) = mapping.template {
                 annotations.insert(
-                    format!("vault.hashicorp.com/agent-inject-secret-{suffix}"),
-                    json!(&mapping.path),
+                    format!("vault.hashicorp.com/agent-inject-template-{suffix}"),
+                    json!(template),
                 );
-                if let Some(ref template) = mapping.template {
-                    annotations.insert(
-                        format!("vault.hashicorp.com/agent-inject-template-{suffix}"),
-                        json!(template),
-                    );
-                }
             }
         }
     }

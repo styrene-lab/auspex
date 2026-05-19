@@ -2410,8 +2410,9 @@ fn build_chat_acp_surface_model(
     } else {
         "pending"
     };
+    let security = control_plane_security_label(control_plane);
     let detail = if acp_url.is_some() {
-        "Direct ACP stream available.".to_string()
+        format!("Direct {security} ACP stream available.")
     } else if backend_unavailable {
         "No control-plane descriptor is attached.".to_string()
     } else {
@@ -2423,10 +2424,6 @@ fn build_chat_acp_surface_model(
         .or_else(|| infer_backend_from_endpoint(control_plane))
         .unwrap_or("backend pending")
         .to_string();
-    let skills = capability_summary(control_plane, &["skill", "mcp", "plugin"])
-        .unwrap_or_else(|| "skills pending".to_string());
-    let armory = capability_summary(control_plane, &["armory", "tool", "command"])
-        .unwrap_or_else(|| "armory pending".to_string());
     let config_items = vec![
         DispatchContextItem {
             label: "Tier",
@@ -2444,18 +2441,21 @@ fn build_chat_acp_surface_model(
             tone: "muted",
         },
         DispatchContextItem {
-            label: "Backend",
+            label: "Runtime",
             value: backend,
             tone: "muted",
         },
         DispatchContextItem {
-            label: "Skills",
-            value: skills,
-            tone: "muted",
+            label: "Security",
+            value: security,
+            tone: control_plane_security_tone(control_plane),
         },
         DispatchContextItem {
-            label: "Armory",
-            value: armory,
+            label: "Auth",
+            value: control_plane
+                .and_then(|control_plane| control_plane.auth_mode.as_deref())
+                .unwrap_or("auth pending")
+                .to_string(),
             tone: "muted",
         },
     ];
@@ -2516,6 +2516,52 @@ fn agent_direct_line_detail(descriptor: &auspex_core::fixtures::InstanceDescript
     format!("{profile} · {runtime} · {workspace}")
 }
 
+fn control_plane_security_label(
+    control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
+) -> String {
+    let Some(control_plane) = control_plane else {
+        return "security pending".into();
+    };
+    if control_plane.mtls == Some(true) {
+        return "mTLS".into();
+    }
+    if control_plane
+        .transport_security
+        .as_deref()
+        .is_some_and(|security| security.eq_ignore_ascii_case("tls"))
+        || control_plane
+            .acp_url
+            .as_deref()
+            .or(control_plane.ws_url.as_deref())
+            .is_some_and(|url| url.starts_with("wss://"))
+        || control_plane
+            .base_url
+            .as_deref()
+            .is_some_and(|url| url.starts_with("https://"))
+    {
+        return "TLS".into();
+    }
+    if control_plane
+        .transport_security
+        .as_deref()
+        .is_some_and(|security| security.eq_ignore_ascii_case("plaintext"))
+    {
+        return "plaintext".into();
+    }
+    "security pending".into()
+}
+
+fn control_plane_security_tone(
+    control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
+) -> &'static str {
+    match control_plane_security_label(control_plane).as_str() {
+        "mTLS" => "success",
+        "TLS" => "accent",
+        "plaintext" => "danger",
+        _ => "muted",
+    }
+}
+
 fn infer_backend_from_endpoint(
     control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
 ) -> Option<&'static str> {
@@ -2527,21 +2573,6 @@ fn infer_backend_from_endpoint(
     } else {
         Some("remote")
     }
-}
-
-fn capability_summary(
-    control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
-    needles: &[&str],
-) -> Option<String> {
-    let capabilities = &control_plane?.capabilities;
-    let count = capabilities
-        .iter()
-        .filter(|capability| {
-            let capability = capability.to_ascii_lowercase();
-            needles.iter().any(|needle| capability.contains(needle))
-        })
-        .count();
-    (count > 0).then(|| count.to_string())
 }
 
 fn non_empty_or(value: &str, fallback: &str) -> String {
@@ -4849,22 +4880,23 @@ mod tests {
         audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
         build_chat_empty_state_model, build_dispatch_context_strip_model,
         build_left_rail_inventory, build_provider_blocked_composer_model,
-        build_settings_panel_model, chat_status_tone, context_window_label, derive_acp_url_from_ws,
-        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
-        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
-        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
-        should_expand_tool_output, system_block_class, system_block_tone,
-        system_notice_summary_label, text_block_class, text_block_tone, tool_block_class,
-        tool_block_tone, tool_partial_label, tool_result_label, tool_status_label,
-        tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
+        build_settings_panel_model, chat_status_tone, context_window_label,
+        control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
+        find_transcript_anchor, looks_like_structured_payload, redact_ws_token,
+        render_chat_status_banner, render_dispatch_context_strip, should_collapse_agent_payload,
+        should_expand_system_notice, should_expand_tool_args, should_expand_tool_output,
+        system_block_class, system_block_tone, system_notice_summary_label, text_block_class,
+        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
+        tool_status_label, tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
         transcript_disclosure_open,
     };
     use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use auspex_core::controller::{AppController, SessionMode};
     use auspex_core::event_stream::EventStreamHandle;
     use auspex_core::fixtures::{
-        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary, MessageRole,
-        MockHostSession, OriginKind, SystemNoticeKind, ToolCard, TranscriptData,
+        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
+        InstanceControlPlaneData, MessageRole, MockHostSession, OriginKind, SystemNoticeKind,
+        ToolCard, TranscriptData,
     };
     #[cfg(not(target_arch = "wasm32"))]
     use auspex_core::runtime_types::TargetedCommand;
@@ -4880,6 +4912,33 @@ mod tests {
             redact_ws_token("ws://127.0.0.1:7842/acp?token=secret"),
             "ws://127.0.0.1:7842/acp?token=..."
         );
+    }
+
+    #[test]
+    fn control_plane_security_label_prefers_mtls_then_tls_then_plaintext() {
+        let mtls = InstanceControlPlaneData {
+            transport_security: Some("tls".into()),
+            mtls: Some(true),
+            acp_url: Some("wss://agent.namespace.svc:7842/acp".into()),
+            ..Default::default()
+        };
+        let tls = InstanceControlPlaneData {
+            transport_security: Some("tls".into()),
+            mtls: Some(false),
+            acp_url: Some("wss://agent.namespace.svc:7842/acp".into()),
+            ..Default::default()
+        };
+        let plaintext = InstanceControlPlaneData {
+            transport_security: Some("plaintext".into()),
+            mtls: Some(false),
+            acp_url: Some("ws://127.0.0.1:7842/acp".into()),
+            ..Default::default()
+        };
+
+        assert_eq!(control_plane_security_label(Some(&mtls)), "mTLS");
+        assert_eq!(control_plane_security_label(Some(&tls)), "TLS");
+        assert_eq!(control_plane_security_label(Some(&plaintext)), "plaintext");
+        assert_eq!(control_plane_security_label(None), "security pending");
     }
 
     #[test]

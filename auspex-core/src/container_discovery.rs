@@ -243,7 +243,10 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 )),
                 auth_mode: "ephemeral-bearer".into(),
                 token_ref: if token.is_empty() { None } else { Some(token) },
+                transport_security: Some("plaintext".into()),
+                mtls: Some(false),
                 last_ready_at: if ready { Some(now.clone()) } else { None },
+                ..Default::default()
             },
             health: ObservedHealth {
                 ready,

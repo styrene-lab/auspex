@@ -226,9 +226,9 @@ async fn main() -> anyhow::Result<()> {
                         let header_bytes = auth_header.as_bytes();
                         let expected_bytes = expected.as_bytes();
                         let mut diff = (header_bytes.len() ^ expected_bytes.len()) as u8;
-                        for i in 0..expected_bytes.len() {
+                        for (i, expected_byte) in expected_bytes.iter().enumerate() {
                             let h = header_bytes.get(i).copied().unwrap_or(0xff);
-                            diff |= h ^ expected_bytes[i];
+                            diff |= h ^ expected_byte;
                         }
                         if diff == 0 {
                             next.run(req).await
@@ -939,12 +939,12 @@ async fn sbom_handler(
     AxumPath((ns, name)): AxumPath<(String, String)>,
 ) -> Json<serde_json::Value> {
     // Enforce namespace scoping: reject cross-namespace reads.
-    if let Some(ref allowed) = ctx.watch_namespace {
-        if ns != *allowed {
-            return Json(serde_json::json!({
-                "error": format!("namespace '{ns}' is outside operator scope '{allowed}'")
-            }));
-        }
+    if let Some(ref allowed) = ctx.watch_namespace
+        && ns != *allowed
+    {
+        return Json(serde_json::json!({
+            "error": format!("namespace '{ns}' is outside operator scope '{allowed}'")
+        }));
     }
 
     let api: Api<OmegonAgent> = Api::namespaced(ctx.client.clone(), &ns);

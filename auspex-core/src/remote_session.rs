@@ -1134,6 +1134,7 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
             last_verified_at: None,
             ipc_socket_path: instance.control_plane.ipc_socket_path.clone(),
             capabilities: instance.control_plane.capabilities.clone(),
+            ..Default::default()
         }),
         runtime: Some(crate::omegon_control::OmegonRuntimeDescriptor {
             backend: Some(format_ipc_deployment_kind(
@@ -1242,6 +1243,15 @@ fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> Instanc
                 acp_url: control_plane.acp_url.clone(),
                 auth_mode: control_plane.auth_mode.clone(),
                 token_ref: control_plane.token_ref.clone(),
+                transport_security: control_plane.transport_security.clone(),
+                mtls: control_plane.mtls,
+                tls_secret: control_plane.tls_secret.clone(),
+                tls_profile: control_plane.tls_profile.clone(),
+                tls_ca_epoch: control_plane.tls_ca_epoch.clone(),
+                tls_leaf_epoch: control_plane.tls_leaf_epoch.clone(),
+                tls_leaf_validity: control_plane.tls_leaf_validity.clone(),
+                ca_fingerprint_sha256: control_plane.ca_fingerprint_sha256.clone(),
+                server_fingerprint_sha256: control_plane.server_fingerprint_sha256.clone(),
                 last_ready_at: control_plane.last_ready_at.clone(),
                 last_verified_at: control_plane.last_verified_at.clone(),
                 capabilities: control_plane.capabilities.clone(),
