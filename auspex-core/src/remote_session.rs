@@ -3,8 +3,8 @@ use crate::fixtures::{
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
     InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData, InstanceWorkspaceData,
-    MessageRole, OriginKind, ProviderInfo, SessionData, ShellState, SystemNoticeKind,
-    TranscriptData, WorkData, WorkNode,
+    MessageRole, OriginKind, PlanSnapshotData, ProviderInfo, SessionData, ShellState,
+    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
@@ -44,6 +44,7 @@ pub struct RemoteHostSession {
     context_tokens: Option<u64>,
     context_window: Option<u64>,
     dispatcher_binding: Option<crate::omegon_control::DispatcherBindingSnapshot>,
+    latest_plan: Option<PlanSnapshotData>,
     transcript: TranscriptData,
 }
 
@@ -122,6 +123,7 @@ impl RemoteHostSession {
             context_tokens: None,
             context_window: None,
             dispatcher_binding: snapshot.dispatcher,
+            latest_plan: None,
             transcript: TranscriptData::default(),
         }
     }
@@ -429,6 +431,17 @@ impl RemoteHostSession {
                 self.scenario = scenario;
                 apply_harness_summary(&mut self.summary, &status);
                 self.harness_snapshot = Some(status);
+                true
+            }
+            SessionEvent::PlanUpdated { snapshot } => {
+                let plan = plan_snapshot_data(&snapshot);
+                self.summary.activity = format!("Plan updated: {}", plan.summary);
+                self.summary.activity_kind = ActivityKind::Running;
+                self.latest_plan = Some(plan.clone());
+                self.push_dispatcher_notice(
+                    format!("Plan updated: {}", plan.summary),
+                    SystemNoticeKind::Generic,
+                );
                 true
             }
             SessionEvent::SessionReset => {
@@ -918,6 +931,7 @@ impl HostSessionModel for RemoteHostSession {
                     }),
                 }
             }),
+            latest_plan: self.latest_plan.clone(),
         }
     }
 
@@ -1212,6 +1226,70 @@ fn format_ipc_deployment_kind(kind: &omegon_traits::OmegonDeploymentKind) -> Str
         omegon_traits::OmegonDeploymentKind::Unknown => "unknown",
     }
     .into()
+}
+
+fn plan_snapshot_data(snapshot: &serde_json::Value) -> PlanSnapshotData {
+    PlanSnapshotData {
+        summary: plan_snapshot_summary(snapshot),
+        raw_json: serde_json::to_string_pretty(snapshot).unwrap_or_else(|_| snapshot.to_string()),
+    }
+}
+
+fn plan_snapshot_summary(snapshot: &serde_json::Value) -> String {
+    if let Some(summary) = snapshot.get("summary").and_then(|value| value.as_str()) {
+        let summary = summary.trim();
+        if !summary.is_empty() {
+            return summary.to_string();
+        }
+    }
+
+    let entries = snapshot
+        .as_array()
+        .or_else(|| snapshot.get("entries").and_then(|value| value.as_array()))
+        .or_else(|| snapshot.get("items").and_then(|value| value.as_array()))
+        .or_else(|| snapshot.get("steps").and_then(|value| value.as_array()))
+        .or_else(|| snapshot.get("tasks").and_then(|value| value.as_array()));
+
+    if let Some(entries) = entries {
+        let active = entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .get("status")
+                    .or_else(|| entry.get("state"))
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|status| {
+                        matches!(
+                            status.to_ascii_lowercase().as_str(),
+                            "active" | "running" | "in_progress" | "in-progress"
+                        )
+                    })
+            })
+            .count();
+        let done = entries
+            .iter()
+            .filter(|entry| {
+                entry
+                    .get("status")
+                    .or_else(|| entry.get("state"))
+                    .and_then(|value| value.as_str())
+                    .is_some_and(|status| {
+                        matches!(
+                            status.to_ascii_lowercase().as_str(),
+                            "done" | "complete" | "completed"
+                        )
+                    })
+            })
+            .count();
+        return match (entries.len(), active, done) {
+            (0, _, _) => "empty".into(),
+            (total, 0, 0) => format!("{total} entries"),
+            (total, 0, done) => format!("{done}/{total} complete"),
+            (total, active, done) => format!("{active} active · {done}/{total} complete"),
+        };
+    }
+
+    "snapshot received".into()
 }
 
 fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> InstanceDescriptorData {
@@ -2353,6 +2431,23 @@ mod tests {
                 notice_kind: None,
             })
         );
+    }
+
+    #[test]
+    fn plan_updated_event_updates_session_plan_without_text_parsing() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+
+        session
+            .apply_event_json(
+                r#"{"type":"plan_updated","event_name":"plan.updated","snapshot":{"entries":[{"status":"completed"},{"status":"active"},{"status":"pending"}]}}"#,
+            )
+            .expect("plan event");
+
+        let data = session.session_data();
+        let plan = data.latest_plan.expect("latest plan");
+        assert_eq!(plan.summary, "1 active · 1/3 complete");
+        assert!(plan.raw_json.contains("\"entries\""));
+        assert!(session.summary().activity.contains("Plan updated"));
     }
 
     #[test]

@@ -617,6 +617,8 @@ pub struct ArmoryDeploymentOverlay {
     pub control_tls_profile: String,
     #[serde(default)]
     pub mesh_role: String,
+    #[serde(default, rename = "terminalTool", alias = "terminal_tool")]
+    pub terminal_tool: bool,
 }
 
 impl ArmoryDeploymentOverlay {
@@ -693,6 +695,7 @@ pub fn agent_package_from_armory_overlay(
         resources: overlay.resources.clone(),
         control_tls_profile: overlay.control_tls_profile.clone(),
         mesh_role: overlay.mesh_role.clone(),
+        terminal_tool: overlay.terminal_tool,
     })
 }
 

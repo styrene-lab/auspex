@@ -414,6 +414,9 @@ pub enum OmegonEvent {
     HarnessStatusChanged {
         status: HarnessStatusSnapshot,
     },
+    PlanUpdated {
+        snapshot: serde_json::Value,
+    },
     SessionReset,
     TurnStart {
         turn: u32,

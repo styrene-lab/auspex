@@ -25,6 +25,9 @@ pub enum SessionEvent {
     HarnessStatusChanged {
         status: crate::omegon_control::HarnessStatusSnapshot,
     },
+    PlanUpdated {
+        snapshot: serde_json::Value,
+    },
     StateChanged {
         sections: Vec<String>,
     },
@@ -88,6 +91,7 @@ impl From<OmegonEvent> for SessionEvent {
             OmegonEvent::MessageAbort => Self::MessageAbort,
             OmegonEvent::SystemNotification { message } => Self::SystemNotification { message },
             OmegonEvent::HarnessStatusChanged { status } => Self::HarnessStatusChanged { status },
+            OmegonEvent::PlanUpdated { snapshot } => Self::PlanUpdated { snapshot },
             OmegonEvent::SessionReset => Self::SessionReset,
             OmegonEvent::TurnStart { turn } => Self::TurnStarted { turn },
             OmegonEvent::TurnEnd {

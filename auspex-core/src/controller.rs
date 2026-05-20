@@ -1652,6 +1652,10 @@ impl AppController {
         event: omegon_traits::IpcEventPayload,
     ) -> Result<bool, String> {
         let normalized: SessionEvent = event.into();
+        self.apply_session_event(normalized)
+    }
+
+    pub fn apply_session_event(&mut self, normalized: SessionEvent) -> Result<bool, String> {
         self.try_intercept_cop_tool_event(&normalized);
 
         match &mut self.session {

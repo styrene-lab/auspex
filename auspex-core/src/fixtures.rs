@@ -36,6 +36,12 @@ pub struct ToolCard {
     pub origin: Option<BlockOrigin>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct PlanSnapshotData {
+    pub summary: String,
+    pub raw_json: String,
+}
+
 #[allow(dead_code)]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum SystemNoticeKind {
@@ -348,6 +354,7 @@ pub struct SessionData {
     pub telemetry: SessionTelemetryData,
     pub instance_descriptor: Option<InstanceDescriptorData>,
     pub dispatcher_binding: Option<DispatcherBindingData>,
+    pub latest_plan: Option<PlanSnapshotData>,
 }
 
 // ── Chat types ───────────────────────────────────────────────

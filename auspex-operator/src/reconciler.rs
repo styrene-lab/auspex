@@ -482,6 +482,10 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
         json!({"name": "AETHER_WORKER_ROLE", "value": &agent.spec.role}),
+        json!({
+            "name": "OMEGON_TERMINAL_TOOL",
+            "value": if agent.spec.terminal_tool { "1" } else { "0" },
+        }),
     ];
     if let Some(ref discord) = agent.spec.vox.discord
         && let Some(ref gid) = discord.guild_id
@@ -1016,6 +1020,14 @@ mod tests {
         serde_json::from_value(value).expect("valid OmegonAgent")
     }
 
+    fn env_value<'a>(container: &'a serde_json::Value, name: &str) -> Option<&'a str> {
+        container["env"].as_array()?.iter().find_map(|env| {
+            (env["name"].as_str()? == name)
+                .then(|| env["value"].as_str())
+                .flatten()
+        })
+    }
+
     #[test]
     fn pod_spec_mounts_tls_secret_and_passes_control_tls_args() {
         unsafe {
@@ -1105,6 +1117,57 @@ mod tests {
         assert_eq!(tls.ca_epoch, "0");
         assert_eq!(tls.leaf_epoch, "0");
         assert_eq!(tls.validity.leaf_not_after_year, 2031);
+    }
+
+    #[test]
+    fn terminal_tool_policy_is_explicit_in_agent_env() {
+        let disabled = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "headless-agent",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.headless",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "detached-service",
+                "mode": "daemon"
+            }
+        }));
+        let enabled = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "interactive-agent",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.interactive",
+                "model": "anthropic:claude-sonnet-4-6",
+                "role": "primary-driver",
+                "mode": "daemon",
+                "terminalTool": true
+            }
+        }));
+
+        let disabled_template = pod_spec(&disabled, "headless-agent");
+        let enabled_template = pod_spec(&enabled, "interactive-agent");
+
+        assert_eq!(
+            env_value(
+                &disabled_template.spec["containers"][0],
+                "OMEGON_TERMINAL_TOOL"
+            ),
+            Some("0")
+        );
+        assert_eq!(
+            env_value(
+                &enabled_template.spec["containers"][0],
+                "OMEGON_TERMINAL_TOOL"
+            ),
+            Some("1")
+        );
     }
 
     #[test]

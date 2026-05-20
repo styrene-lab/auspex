@@ -450,6 +450,7 @@ fn primary_agent_manifest(config: &PrimaryAgentBootstrapConfig) -> Value {
             "role": "primary-driver",
             "mode": "daemon",
             "image": config.image,
+            "terminalTool": false,
             "secrets": secrets,
             "resources": {
                 "cpu": "1",
@@ -1540,6 +1541,7 @@ mod tests {
         assert_eq!(manifest["spec"]["agent"], "styrene.auspex-primary");
         assert_eq!(manifest["spec"]["role"], "primary-driver");
         assert_eq!(manifest["spec"]["mode"], "daemon");
+        assert_eq!(manifest["spec"]["terminalTool"], false);
         assert_eq!(
             manifest["spec"]["secrets"]["secretName"],
             "auspex-primary-secrets"

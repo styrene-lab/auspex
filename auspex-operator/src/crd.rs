@@ -153,6 +153,14 @@ pub struct OmegonAgentSpec {
     #[serde(default, rename = "controlPlane", alias = "control_plane")]
     pub control_plane: ControlPlaneSpec,
 
+    /// Enable Omegon's governed PTY-backed terminal tool for this pod.
+    ///
+    /// Kubernetes/headless agents default this off. Profiles that need
+    /// interactive terminal sessions must opt in and provide writable runtime
+    /// storage plus a pod environment with `/dev/pts`.
+    #[serde(default, rename = "terminalTool", alias = "terminal_tool")]
+    pub terminal_tool: bool,
+
     /// Resource bounds for bounded execution (job/cronjob modes).
     #[serde(default)]
     pub bounds: Option<BoundsSpec>,

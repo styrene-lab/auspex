@@ -898,8 +898,15 @@ pub fn App() -> Element {
                         {
                             let mut controller = controller.write();
                             for event in ipc_events {
-                                needs_refresh |= auspex_core::controller::AppController::ipc_event_requires_refresh(&event);
-                                let _ = controller.apply_ipc_event(event);
+                                match event {
+                                    auspex_core::ipc_client::IpcClientEvent::Payload(event) => {
+                                        needs_refresh |= auspex_core::controller::AppController::ipc_event_requires_refresh(&event);
+                                        let _ = controller.apply_ipc_event(event);
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::Session(event) => {
+                                        let _ = controller.apply_session_event(event);
+                                    }
+                                }
                             }
                         }
                         if needs_refresh && let Ok(snapshot) = client.get_state().await {
@@ -2341,6 +2348,9 @@ fn render_transcript(
                                                 h3 { class: origin_class(origin), "{origin.label}" }
                                             }
                                             h3 { class: "tool-name", "{tool.name}" }
+                                            if let Some(context) = terminal_tool_context(tool) {
+                                                p { class: "tool-context", "{context}" }
+                                            }
                                         }
                                         span { class: tool_status_class(tool), "{tool_status_label(tool)}" }
                                     }
@@ -2637,8 +2647,16 @@ fn build_chat_acp_surface_model(
         },
         DispatchContextItem {
             label: "Plan",
-            value: "turn plan pending".to_string(),
-            tone: "muted",
+            value: session
+                .latest_plan
+                .as_ref()
+                .map(|plan| plan.summary.clone())
+                .unwrap_or_else(|| "turn plan pending".to_string()),
+            tone: if session.latest_plan.is_some() {
+                "success"
+            } else {
+                "muted"
+            },
         },
         DispatchContextItem {
             label: "Tools",
@@ -4998,6 +5016,9 @@ fn tool_status_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
 }
 
 fn tool_partial_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
+    if is_terminal_tool(tool) {
+        return "Terminal output";
+    }
     if tool.result.is_some() {
         "Streamed output"
     } else {
@@ -5006,10 +5027,39 @@ fn tool_partial_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
 }
 
 fn tool_result_label(tool: &auspex_core::fixtures::ToolCard) -> &'static str {
+    if is_terminal_tool(tool) {
+        return "Terminal result";
+    }
     if tool.is_error {
         "Error result"
     } else {
         "Final result"
+    }
+}
+
+fn is_terminal_tool(tool: &auspex_core::fixtures::ToolCard) -> bool {
+    tool.name == "terminal"
+}
+
+fn terminal_tool_context(tool: &auspex_core::fixtures::ToolCard) -> Option<String> {
+    if !is_terminal_tool(tool) {
+        return None;
+    }
+    let args: serde_json::Value = serde_json::from_str(&tool.args).ok()?;
+    let session_id = args
+        .get("session_id")
+        .or_else(|| args.get("terminal_id"))
+        .or_else(|| args.get("id"))
+        .and_then(|value| value.as_str());
+    let transcript = args
+        .get("transcript_path")
+        .or_else(|| args.get("transcript"))
+        .and_then(|value| value.as_str());
+    match (session_id, transcript) {
+        (Some(id), Some(path)) => Some(format!("session {id} · transcript {path}")),
+        (Some(id), None) => Some(format!("session {id}")),
+        (None, Some(path)) => Some(format!("transcript {path}")),
+        (None, None) => Some("PTY session".into()),
     }
 }
 
@@ -5736,15 +5786,16 @@ mod tests {
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
         audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
-        build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
-        build_left_rail_inventory, build_provider_blocked_composer_model,
-        build_settings_panel_model, chat_status_tone, context_window_label,
-        control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
-        find_transcript_anchor, looks_like_structured_payload, redact_ws_token,
-        render_chat_status_banner, render_dispatch_context_strip, should_collapse_agent_payload,
-        should_expand_system_notice, should_expand_tool_args, should_expand_tool_output,
-        system_block_class, system_block_tone, system_notice_summary_label, text_block_class,
-        text_block_tone, tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
+        build_chat_acp_surface_model, build_chat_empty_state_model, build_deploy_preflight,
+        build_dispatch_context_strip_model, build_left_rail_inventory,
+        build_provider_blocked_composer_model, build_settings_panel_model, chat_status_tone,
+        context_window_label, control_plane_security_label, derive_acp_url_from_ws,
+        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
+        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
+        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
+        should_expand_tool_output, system_block_class, system_block_tone,
+        system_notice_summary_label, terminal_tool_context, text_block_class, text_block_tone,
+        tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
         tool_status_label, tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
         transcript_disclosure_open,
     };
@@ -5797,6 +5848,48 @@ mod tests {
         assert_eq!(control_plane_security_label(Some(&tls)), "TLS");
         assert_eq!(control_plane_security_label(Some(&plaintext)), "plaintext");
         assert_eq!(control_plane_security_label(None), "security pending");
+    }
+
+    #[test]
+    fn chat_acp_surface_reports_structured_plan_snapshot() {
+        let mut session = auspex_core::fixtures::SessionData {
+            latest_plan: Some(auspex_core::fixtures::PlanSnapshotData {
+                summary: "1 active · 2/4 complete".into(),
+                raw_json: "{}".into(),
+            }),
+            ..Default::default()
+        };
+        session.instance_descriptor = Some(Default::default());
+
+        let surface = build_chat_acp_surface_model(&session);
+
+        let plan = surface
+            .stream_items
+            .iter()
+            .find(|item| item.label == "Plan")
+            .expect("plan item");
+        assert_eq!(plan.value, "1 active · 2/4 complete");
+        assert_eq!(plan.tone, "success");
+    }
+
+    #[test]
+    fn terminal_tool_context_uses_session_and_transcript_metadata() {
+        let tool = ToolCard {
+            id: "tool-terminal".into(),
+            name: "terminal".into(),
+            args: r#"{"session_id":"pty-7","transcript_path":"/state/pty-7.log"}"#.into(),
+            partial_output: String::new(),
+            result: None,
+            is_error: false,
+            origin: None,
+        };
+
+        assert_eq!(
+            terminal_tool_context(&tool).as_deref(),
+            Some("session pty-7 · transcript /state/pty-7.log")
+        );
+        assert_eq!(tool_partial_label(&tool), "Terminal output");
+        assert_eq!(tool_result_label(&tool), "Terminal result");
     }
 
     #[test]

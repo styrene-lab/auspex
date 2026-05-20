@@ -42,10 +42,17 @@ const IPC_SERVER_EVENT_NAMES: &[&str] = &[
     "decomposition.child_completed",
     "decomposition.completed",
     "harness.changed",
+    "plan.updated",
     "state.changed",
     "system.notification",
     "session.reset",
 ];
+
+#[derive(Clone, Debug, PartialEq)]
+pub enum IpcClientEvent {
+    Payload(IpcEventPayload),
+    Session(crate::session_event::SessionEvent),
+}
 
 #[derive(Clone, Debug)]
 pub struct IpcCommandClient {
@@ -55,18 +62,18 @@ pub struct IpcCommandClient {
 #[allow(dead_code)]
 #[derive(Clone, Debug, Default)]
 pub struct IpcEventInbox {
-    queue: Arc<Mutex<Vec<IpcEventPayload>>>,
+    queue: Arc<Mutex<Vec<IpcClientEvent>>>,
 }
 
 #[allow(dead_code)]
 impl IpcEventInbox {
-    pub fn push(&self, event: IpcEventPayload) {
+    pub fn push(&self, event: IpcClientEvent) {
         if let Ok(mut queue) = self.queue.lock() {
             queue.push(event);
         }
     }
 
-    pub fn drain(&self) -> Vec<IpcEventPayload> {
+    pub fn drain(&self) -> Vec<IpcClientEvent> {
         if let Ok(mut queue) = self.queue.lock() {
             return std::mem::take(&mut *queue);
         }
@@ -349,7 +356,7 @@ fn validate_response_envelope(
 }
 
 #[allow(dead_code)]
-fn decode_event_envelope(envelope: IpcEnvelope) -> Result<Option<IpcEventPayload>, String> {
+fn decode_event_envelope(envelope: IpcEnvelope) -> Result<Option<IpcClientEvent>, String> {
     if envelope.kind != IpcEnvelopeKind::Event {
         return Ok(None);
     }
@@ -357,9 +364,27 @@ fn decode_event_envelope(envelope: IpcEnvelope) -> Result<Option<IpcEventPayload
     let payload = envelope
         .payload
         .ok_or_else(|| "IPC event envelope returned no payload".to_string())?;
+    if is_plan_updated_ipc_payload(&payload)
+        && let Some(snapshot) = payload
+            .get("data")
+            .and_then(|data| data.get("snapshot"))
+            .cloned()
+    {
+        return Ok(Some(IpcClientEvent::Session(
+            crate::session_event::SessionEvent::PlanUpdated { snapshot },
+        )));
+    }
+
     serde_json::from_value::<IpcEventPayload>(payload)
+        .map(IpcClientEvent::Payload)
         .map(Some)
         .map_err(|error| format!("decode IPC event payload: {error}"))
+}
+
+fn is_plan_updated_ipc_payload(payload: &Value) -> bool {
+    payload.get("name").and_then(Value::as_str) == Some("plan.updated")
+        || payload.get("event_name").and_then(Value::as_str) == Some("plan.updated")
+        || payload.get("type").and_then(Value::as_str) == Some("plan_updated")
 }
 
 async fn write_envelope(stream: &mut UnixStream, envelope: &IpcEnvelope) -> Result<(), String> {
@@ -443,14 +468,16 @@ mod tests {
     #[test]
     fn ipc_event_inbox_drains_fifo_payloads() {
         let inbox = IpcEventInbox::default();
-        inbox.push(IpcEventPayload::TurnStarted { turn: 1 });
-        inbox.push(IpcEventPayload::MessageCompleted);
+        inbox.push(IpcClientEvent::Payload(IpcEventPayload::TurnStarted {
+            turn: 1,
+        }));
+        inbox.push(IpcClientEvent::Payload(IpcEventPayload::MessageCompleted));
 
         assert_eq!(
             inbox.drain(),
             vec![
-                IpcEventPayload::TurnStarted { turn: 1 },
-                IpcEventPayload::MessageCompleted,
+                IpcClientEvent::Payload(IpcEventPayload::TurnStarted { turn: 1 }),
+                IpcClientEvent::Payload(IpcEventPayload::MessageCompleted),
             ]
         );
         assert!(inbox.drain().is_empty());
@@ -461,14 +488,18 @@ mod tests {
         let handle = IpcEventStreamHandle::new("/tmp/auspex.sock");
         let clone = handle.clone();
 
-        clone.inbox.push(IpcEventPayload::HarnessChanged);
-        handle.inbox.push(IpcEventPayload::SessionReset);
+        clone
+            .inbox
+            .push(IpcClientEvent::Payload(IpcEventPayload::HarnessChanged));
+        handle
+            .inbox
+            .push(IpcClientEvent::Payload(IpcEventPayload::SessionReset));
 
         assert_eq!(
             handle.inbox.drain(),
             vec![
-                IpcEventPayload::HarnessChanged,
-                IpcEventPayload::SessionReset
+                IpcClientEvent::Payload(IpcEventPayload::HarnessChanged),
+                IpcClientEvent::Payload(IpcEventPayload::SessionReset)
             ]
         );
     }
@@ -489,7 +520,33 @@ mod tests {
 
         assert_eq!(
             decode_event_envelope(envelope).unwrap(),
-            Some(IpcEventPayload::TurnStarted { turn: 7 })
+            Some(IpcClientEvent::Payload(IpcEventPayload::TurnStarted {
+                turn: 7
+            }))
+        );
+    }
+
+    #[test]
+    fn decode_event_envelope_maps_plan_updated_before_traits_variant_exists() {
+        let envelope = IpcEnvelope {
+            protocol_version: IPC_PROTOCOL_VERSION,
+            kind: IpcEnvelopeKind::Event,
+            request_id: None,
+            method: None,
+            payload: Some(serde_json::json!({
+                "name": "plan.updated",
+                "data": { "snapshot": { "entries": [{"status": "active"}] } }
+            })),
+            error: None,
+        };
+
+        assert_eq!(
+            decode_event_envelope(envelope).unwrap(),
+            Some(IpcClientEvent::Session(
+                crate::session_event::SessionEvent::PlanUpdated {
+                    snapshot: serde_json::json!({ "entries": [{"status": "active"}] })
+                }
+            ))
         );
     }
 

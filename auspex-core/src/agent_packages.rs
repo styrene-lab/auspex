@@ -34,6 +34,8 @@ pub struct AgentPackage {
     pub control_tls_profile: String,
     #[serde(default)]
     pub mesh_role: String,
+    #[serde(default, rename = "terminalTool", alias = "terminal_tool")]
+    pub terminal_tool: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -122,6 +124,7 @@ impl AgentPackage {
                 "mode": self.mode,
                 "image": image,
                 "profile": self.profile,
+                "terminalTool": self.terminal_tool,
                 "vox": {
                     "connectors": request.connectors
                         .iter()
@@ -184,6 +187,7 @@ pub fn builtin_home_packages() -> Vec<AgentPackage> {
             },
             control_tls_profile: "home-media".into(),
             mesh_role: "operator".into(),
+            terminal_tool: false,
         },
         AgentPackage {
             id: "home-infra-sentinel".into(),
@@ -206,6 +210,7 @@ pub fn builtin_home_packages() -> Vec<AgentPackage> {
             },
             control_tls_profile: "home-infra".into(),
             mesh_role: "monitor".into(),
+            terminal_tool: false,
         },
         AgentPackage {
             id: "home-forge-steward".into(),
@@ -232,6 +237,7 @@ pub fn builtin_home_packages() -> Vec<AgentPackage> {
             },
             control_tls_profile: "home-forge".into(),
             mesh_role: "operator".into(),
+            terminal_tool: false,
         },
         AgentPackage {
             id: "home-knowledge-curator".into(),
@@ -254,6 +260,7 @@ pub fn builtin_home_packages() -> Vec<AgentPackage> {
             },
             control_tls_profile: "home-knowledge".into(),
             mesh_role: "monitor".into(),
+            terminal_tool: false,
         },
     ]
 }

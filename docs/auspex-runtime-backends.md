@@ -44,6 +44,7 @@ Defaults:
 - `spec.role`: `primary-driver`
 - `spec.mode`: `daemon`
 - `spec.posture`: `architect`
+- `spec.terminalTool`: `false`
 - `spec.model`: `AUSPEX_PRIMARY_AGENT_MODEL`, else `anthropic:claude-sonnet-4-6`
 - `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:latest`
 
@@ -52,6 +53,15 @@ Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns
 `authJsonSecret` support requires Omegon commit `cd3f484dd16244eab40da0fc87e9784ecbd610e4` or newer on `release/0.22`, because older runtimes do not honor `OMEGON_AUTH_JSON_PATH`.
 
 The operator advertises daemon `OmegonAgent` control planes through `/api/fleet`, including the in-cluster service URL and ACP websocket URL. The UI can therefore distinguish the single operator-facing primary from supervised children and detached services.
+
+Omegon 0.23 adds a governed PTY-backed `terminal` tool. Auspex-managed
+Kubernetes agents make that policy explicit with `spec.terminalTool`. The
+operator projects the setting into `OMEGON_TERMINAL_TOOL=1|0`; the default is
+off for headless/hardened pods. Profiles that opt in must provide a pod
+environment with `/dev/pts` and writable runtime transcript/config storage.
+Permission copy should use Omegon's canonical `/permissions` surface; durable
+directory grants live in `profile.permissions.trustedDirectories`, while
+`/trust` is compatibility-only.
 
 ## Deploy profiles
 

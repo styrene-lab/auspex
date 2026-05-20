@@ -44,6 +44,12 @@ but only on WebSocket upgrade requests.
   leaf epoch, and validity posture so the UI can present rotation state.
 - Mutations should operate through Kubernetes desired state. The WebUI should not
   bypass the operator by calling pod-local management endpoints directly.
+- Managed agent manifests should set `terminalTool` explicitly. It defaults to
+  `false` for headless Kubernetes pods; enabling Omegon's PTY-backed `terminal`
+  tool requires `/dev/pts` and writable transcript/config storage.
+- Operator permission flows should describe `/permissions` as canonical. Durable
+  allow-always grants live under `profile.permissions.trustedDirectories`;
+  `/trust` is compatibility-only.
 
 ## MVP Deploy Path
 
