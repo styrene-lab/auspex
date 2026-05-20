@@ -11,7 +11,8 @@ mod reconciler;
 use std::{collections::BTreeMap, io::Cursor, net::SocketAddr, sync::Arc};
 
 use auspex_core::agent_packages::{
-    AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
+    AgentPackageDeployRequest, OciImageAssessment, assess_oci_image_ref, builtin_agent_packages,
+    find_builtin_agent_package,
 };
 use auspex_core::armory::{
     ArmoryClient, ArmoryDeploymentOverlay, ArmoryError, ArmoryIndex, ArmoryPlanOptions,
@@ -1158,6 +1159,11 @@ async fn armory_preflight_handler(ctx: Arc<Context>, Json(body): Json<Value>) ->
         .as_str()
         .unwrap_or("default");
     let scope_error = namespace_scope_error(&ctx, namespace);
+    let oci_policy = oci_preflight_policy_from_body(&body);
+    let image_ref = manifest["spec"]["image"].as_str().unwrap_or_default();
+    let image_assessment = assess_oci_image_ref(image_ref);
+    let supply_chain = armory_supply_chain_projection(package, &image_assessment, &oci_policy);
+    let oci_policy_blocked = oci_policy.blocks(&image_assessment);
 
     Json(serde_json::json!({
         "package": package,
@@ -1166,10 +1172,20 @@ async fn armory_preflight_handler(ctx: Arc<Context>, Json(body): Json<Value>) ->
         "agentPackage": agent_package,
         "deployRequest": deploy_request,
         "manifest": manifest,
-        "deployable": !blocked && scope_error.is_none(),
-        "blocked": blocked,
+        "deployable": !blocked && !oci_policy_blocked && scope_error.is_none(),
+        "blocked": blocked || oci_policy_blocked,
         "requiresApproval": requires_approval,
         "scopeError": scope_error,
+        "ociPolicy": {
+            "mode": oci_policy.as_str(),
+            "blocked": oci_policy_blocked,
+            "reason": if oci_policy_blocked {
+                Some("strict OCI policy requires a valid digest-pinned image")
+            } else {
+                None
+            },
+        },
+        "supplyChain": supply_chain,
         "secretRequests": {
             "required": plan.required_secrets,
             "optional": plan.optional_secrets,
@@ -1183,6 +1199,75 @@ async fn fetch_armory_index() -> Result<ArmoryIndex, ArmoryError> {
         .unwrap_or_else(|_| DEFAULT_ARMORY_INDEX_URL.into());
     let mut client = ArmoryClient::new(index_url);
     client.fetch_index().await.cloned()
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum OciPreflightPolicy {
+    Warn,
+    Strict,
+}
+
+impl OciPreflightPolicy {
+    fn as_str(self) -> &'static str {
+        match self {
+            Self::Warn => "warn",
+            Self::Strict => "strict",
+        }
+    }
+
+    fn blocks(self, assessment: &OciImageAssessment) -> bool {
+        self == Self::Strict && !assessment.digest_pinned
+    }
+}
+
+fn oci_preflight_policy_from_body(body: &Value) -> OciPreflightPolicy {
+    let policy = body
+        .get("ociPolicy")
+        .or_else(|| body.get("oci_policy"))
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .or_else(|| std::env::var("AUSPEX_OCI_PREFLIGHT_POLICY").ok())
+        .unwrap_or_else(|| "warn".into());
+    match policy.trim().to_ascii_lowercase().as_str() {
+        "strict" | "enforce" | "required" => OciPreflightPolicy::Strict,
+        _ => OciPreflightPolicy::Warn,
+    }
+}
+
+fn armory_supply_chain_projection(
+    package: &auspex_core::armory::ArmoryPackage,
+    image: &OciImageAssessment,
+    policy: &OciPreflightPolicy,
+) -> Value {
+    serde_json::json!({
+        "image": image,
+        "packageArtifact": {
+            "ociRef": empty_as_null(&package.oci_ref),
+            "artifactType": empty_as_null(&package.artifact_type),
+            "payloadDigest": empty_as_null(&package.payload_digest),
+            "verifyCommand": empty_as_null(&package.verify_command),
+        },
+        "sbom": {
+            "expected": true,
+            "verified": false,
+            "status": "not-resolved-in-preflight",
+        },
+        "signature": {
+            "expected": *policy == OciPreflightPolicy::Strict,
+            "verified": false,
+            "status": "not-resolved-in-preflight",
+        },
+        "provenance": {
+            "expected": *policy == OciPreflightPolicy::Strict,
+            "verified": false,
+            "status": "not-resolved-in-preflight",
+        },
+    })
+}
+
+fn empty_as_null(value: &str) -> Option<&str> {
+    let value = value.trim();
+    if value.is_empty() { None } else { Some(value) }
 }
 
 fn armory_overlay_store_location(ctx: &Context) -> (String, String) {
@@ -2221,5 +2306,29 @@ mod tests {
         assert!(armory_overlay_data_key("profile/security-review").is_err());
         assert!(armory_overlay_data_key("../escape").is_err());
         assert!(armory_overlay_data_key("").is_err());
+    }
+
+    #[test]
+    fn strict_oci_preflight_policy_blocks_mutable_images() {
+        let policy = oci_preflight_policy_from_body(&serde_json::json!({
+            "ociPolicy": "strict"
+        }));
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+        let digest = assess_oci_image_ref(
+            "ghcr.io/styrene-lab/omegon-agents@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        );
+
+        assert_eq!(policy.as_str(), "strict");
+        assert!(policy.blocks(&tagged));
+        assert!(!policy.blocks(&digest));
+    }
+
+    #[test]
+    fn warn_oci_preflight_policy_reports_but_does_not_block() {
+        let policy = oci_preflight_policy_from_body(&serde_json::json!({}));
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+
+        assert_eq!(policy.as_str(), "warn");
+        assert!(!policy.blocks(&tagged));
     }
 }

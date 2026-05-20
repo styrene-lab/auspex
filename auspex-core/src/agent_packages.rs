@@ -66,6 +66,114 @@ pub struct AgentPackageDeployRequest {
     pub connectors: Vec<String>,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum OciImageReferenceKind {
+    Digest,
+    TagAndDigest,
+    Tag,
+    Untagged,
+    Invalid,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct OciImageAssessment {
+    pub image: String,
+    pub kind: OciImageReferenceKind,
+    pub digest_pinned: bool,
+    pub mutable_tag: bool,
+    #[serde(default)]
+    pub tag: Option<String>,
+    #[serde(default)]
+    pub digest: Option<String>,
+    #[serde(default)]
+    pub warnings: Vec<String>,
+    #[serde(default)]
+    pub errors: Vec<String>,
+}
+
+pub fn assess_oci_image_ref(image: &str) -> OciImageAssessment {
+    let image = image.trim();
+    let mut warnings = Vec::new();
+    let mut errors = Vec::new();
+    if image.is_empty() {
+        errors.push("image reference is required".into());
+        return OciImageAssessment {
+            image: image.into(),
+            kind: OciImageReferenceKind::Invalid,
+            digest_pinned: false,
+            mutable_tag: false,
+            tag: None,
+            digest: None,
+            warnings,
+            errors,
+        };
+    }
+    if image.chars().any(char::is_whitespace) {
+        errors.push("image reference must not contain whitespace".into());
+    }
+
+    let (name_and_tag, digest) = match image.split_once('@') {
+        Some((name, digest)) => {
+            if !is_supported_digest(digest) {
+                errors.push("image digest must be sha256:<64 lowercase hex characters>".into());
+            }
+            (name, Some(digest.to_string()))
+        }
+        None => (image, None),
+    };
+    let tag = image_tag(name_and_tag);
+    if digest.is_none() {
+        match tag.as_deref() {
+            Some("latest") => warnings.push("image uses mutable tag 'latest'".into()),
+            Some(_) => warnings.push("image uses a mutable tag instead of a digest".into()),
+            None => warnings.push("image has no tag or digest and will resolve implicitly".into()),
+        }
+    }
+
+    let kind = if !errors.is_empty() {
+        OciImageReferenceKind::Invalid
+    } else {
+        match (tag.is_some(), digest.is_some()) {
+            (false, true) => OciImageReferenceKind::Digest,
+            (true, true) => OciImageReferenceKind::TagAndDigest,
+            (true, false) => OciImageReferenceKind::Tag,
+            (false, false) => OciImageReferenceKind::Untagged,
+        }
+    };
+
+    OciImageAssessment {
+        image: image.into(),
+        kind,
+        digest_pinned: digest.is_some() && errors.is_empty(),
+        mutable_tag: tag.is_some() && digest.is_none(),
+        tag,
+        digest,
+        warnings,
+        errors,
+    }
+}
+
+fn image_tag(image_without_digest: &str) -> Option<String> {
+    let last_segment = image_without_digest.rsplit('/').next().unwrap_or_default();
+    last_segment
+        .rsplit_once(':')
+        .map(|(_, tag)| tag)
+        .filter(|tag| !tag.is_empty())
+        .map(str::to_string)
+}
+
+fn is_supported_digest(digest: &str) -> bool {
+    let Some(hex) = digest.strip_prefix("sha256:") else {
+        return false;
+    };
+    hex.len() == 64
+        && hex
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
 impl AgentPackage {
     /// Build a Kubernetes `OmegonAgent` manifest for this package.
     pub fn omegon_agent_manifest(&self, request: &AgentPackageDeployRequest) -> Value {
@@ -330,5 +438,34 @@ mod tests {
         assert_eq!(manifest["spec"]["vox"]["connectors"][0], "aether");
         assert_eq!(manifest["spec"]["vox"]["connectors"][1], "slack");
         assert_eq!(manifest["spec"]["controlPlane"]["tls"]["enabled"], true);
+    }
+
+    #[test]
+    fn oci_image_assessment_distinguishes_digest_from_mutable_tag() {
+        let digest = "ghcr.io/styrene-lab/omegon-agents@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa";
+        let assessment = assess_oci_image_ref(digest);
+
+        assert_eq!(assessment.kind, OciImageReferenceKind::Digest);
+        assert!(assessment.digest_pinned);
+        assert!(!assessment.mutable_tag);
+        assert_eq!(
+            assessment.digest.as_deref(),
+            Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
+        );
+
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+        assert_eq!(tagged.kind, OciImageReferenceKind::Tag);
+        assert!(!tagged.digest_pinned);
+        assert!(tagged.mutable_tag);
+        assert_eq!(tagged.tag.as_deref(), Some("latest"));
+        assert!(!tagged.warnings.is_empty());
+    }
+
+    #[test]
+    fn oci_image_assessment_rejects_malformed_digest() {
+        let assessment = assess_oci_image_ref("ghcr.io/example/agent@sha256:ABC");
+
+        assert_eq!(assessment.kind, OciImageReferenceKind::Invalid);
+        assert!(!assessment.errors.is_empty());
     }
 }

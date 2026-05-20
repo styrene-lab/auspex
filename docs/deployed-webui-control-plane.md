@@ -126,7 +126,13 @@ planning, explicit Auspex deployment overlays, and policy-gated execution:
   `{ "packageRef": "profile/security-review", "overlayId": "security-review" }`
   or an inline `overlay`, then returns the install plan, generated
   `AgentPackage`, deploy request, Kubernetes `OmegonAgent` manifest preview,
-  policy gates, and namespace-scope errors without mutating the cluster.
+  OCI supply-chain posture, policy gates, and namespace-scope errors without
+  mutating the cluster.
+- Preflight defaults to `ociPolicy: "warn"` and can be made strict with
+  `{ "ociPolicy": "strict" }` or `AUSPEX_OCI_PREFLIGHT_POLICY=strict`. Strict
+  mode requires the generated image to be digest-pinned, for example
+  `ghcr.io/styrene-lab/omegon-agents@sha256:<digest>`, before the response is
+  marked deployable.
 - Planning may classify OCI artifacts, Omegon prompt/plugin payloads, native
   Omegon extensions, external integrations, Nex forge templates, required
   secrets, warnings, and policy gates.
@@ -164,6 +170,10 @@ Preflight is the handoff point between browsing Armory and launching an agent.
 It should be treated as the WebUI's review screen: operators can inspect
 required secrets, destructive policy gates, Nex-owned build requirements, and
 the exact manifest that would be applied before any deploy route is enabled.
+Mutable tags are acceptable for local proving-ground work under warn mode, but
+production package deploys should run strict OCI policy and reject tag-only
+images until Nex/Armory provide signed digest-pinned packages with SBOM and
+provenance referrers.
 
 ## Current Boundary
 

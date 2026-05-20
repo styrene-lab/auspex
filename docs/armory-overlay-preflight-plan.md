@@ -18,6 +18,13 @@ Status: implemented in the operator API.
 - Expose `/api/armory/preflight` to combine package metadata, install plan,
   overlay posture, deploy overrides, namespace scope, and generated
   `OmegonAgent` manifest.
+- Classify the generated OCI image reference and surface supply-chain posture:
+  digest pinning, mutable tags, expected SBOM, expected signature, expected
+  provenance, package artifact reference, payload digest, and verification
+  command.
+- Support strict OCI policy through request `ociPolicy: "strict"` or
+  `AUSPEX_OCI_PREFLIGHT_POLICY=strict`; strict mode marks preflight blocked
+  unless the generated image is digest-pinned.
 - Do not pull OCI artifacts, install extensions, grant secrets, or apply CRDs in
   preflight.
 
@@ -30,6 +37,8 @@ The deployed WebUI should add an Armory deploy drawer that:
 - Shows required and optional secret names against `/api/secrets/grants`.
 - Shows generated runtime posture: model, image, mode, role, TLS profile, mesh
   role, terminal tool posture, namespace, and expected connectors.
+- Shows OCI image posture and makes mutable tags visually distinct from
+  digest-pinned deployments.
 - Shows blocked and approval-required policy gates before enabling deploy.
 
 ## Phase 3: Guarded Deploy
