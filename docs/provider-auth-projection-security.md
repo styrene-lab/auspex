@@ -6,9 +6,9 @@ security posture for projected OpenAI Codex and other provider credentials.
 
 ## Required Runtime Baseline
 
-Projected provider auth requires Omegon commit
-`cd3f484dd16244eab40da0fc87e9784ecbd610e4` or newer on `release/0.22`.
-That runtime:
+Projected provider auth requires the Omegon `0.23.x` runtime line. During the
+0.23 release process, validate against the local build first, then against the
+published digest-pinned OCI image before production rollout. That runtime:
 
 - honors `OMEGON_AUTH_JSON_PATH` before the default desktop auth path;
 - routes provider readers, writers, and legacy resolvers through the shared
@@ -18,8 +18,8 @@ That runtime:
   with runtime redaction;
 - emits operator-safe guidance for read-only projection write-back failures.
 
-Older Omegon images silently ignore Auspex's mounted auth path and must not be
-used for projected provider auth smoke tests.
+Older Omegon images may silently ignore Auspex's mounted auth path and must not
+be used for projected provider auth smoke tests.
 
 ## Projection Modes
 
@@ -64,8 +64,8 @@ used for projected provider auth smoke tests.
 
 ## Validation Checklist
 
-1. Confirm the running Omegon image contains commit
-   `cd3f484dd16244eab40da0fc87e9784ecbd610e4` or newer.
+1. Confirm the running Omegon image is `0.23.x`, and production deployments are
+   pinned by digest rather than mutable tag.
 2. Confirm pod env contains `OMEGON_AUTH_JSON_PATH=/config/omegon/auth.json`.
 3. Confirm the mounted Secret or Vault projection contains only key
    `auth.json` for the target provider bundle.

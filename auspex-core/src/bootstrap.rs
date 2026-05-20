@@ -1549,7 +1549,7 @@ mod tests {
             auth_source: "default".into(),
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
-                    omegon_version: Some("0.15.25".into()),
+                    omegon_version: Some("0.23.0".into()),
                     schema_version: 2,
                     ..Default::default()
                 }),
@@ -1632,9 +1632,9 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.15.19".into());
+            .omegon_version = Some("0.22.99".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("requires Omegon 0.15.20 or newer"));
+        assert!(err.contains("requires Omegon 0.23.0 or newer"));
     }
 
     #[test]
@@ -1644,7 +1644,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.16.99".into());
+            .omegon_version = Some("0.23.99".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning

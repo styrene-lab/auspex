@@ -388,7 +388,7 @@ fn default_model() -> String {
 }
 
 fn default_image() -> String {
-    "ghcr.io/styrene-lab/omegon-agents:latest".into()
+    "ghcr.io/styrene-lab/omegon-agents:0.23".into()
 }
 
 #[cfg(test)]
@@ -453,11 +453,11 @@ mod tests {
             Some("sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa")
         );
 
-        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:0.23");
         assert_eq!(tagged.kind, OciImageReferenceKind::Tag);
         assert!(!tagged.digest_pinned);
         assert!(tagged.mutable_tag);
-        assert_eq!(tagged.tag.as_deref(), Some("latest"));
+        assert_eq!(tagged.tag.as_deref(), Some("0.23"));
         assert!(!tagged.warnings.is_empty());
     }
 

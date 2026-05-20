@@ -42,9 +42,10 @@ The referenced Secret must contain key `auth.json`; the operator mounts it at
 that the agent genuinely needs. That path is intentionally higher blast radius
 because Kubernetes projects every key in the Secret through `envFrom`.
 
-The Omegon image must include `styrene-lab/omegon` commit
-`cd3f484dd16244eab40da0fc87e9784ecbd610e4` or later on `release/0.22`; earlier
-images ignore `OMEGON_AUTH_JSON_PATH`.
+The Omegon image must be from the `0.23.x` release line; earlier images may
+ignore `OMEGON_AUTH_JSON_PATH` and lack the ACP/TLS/terminal posture Auspex now
+expects. Local proving-ground manifests may use the `0.23` tag while release is
+in flight, but production rollout should pin the published image digest.
 
 ### Web UI
 The WASM bundle (`trunk build` produces 1.5MB optimized) is built locally but
@@ -144,7 +145,7 @@ Source repos cloned at `/tmp/auspex-build/{auspex,omegon,styrene-rs}` on Brutus.
 | `5001102` | Web bootstrap: ConnectHints, operator serves WASM |
 | `4424194` | CI workflows: SBOM generation, cosign signing |
 | `4056148` | Security tiers doc (Tier 1/2/3) |
-| `5723e3f` | Omegon 0.16.0 tracking: posture system |
+| `5723e3f` | Omegon 0.23 tracking: posture system |
 | `8222437` | Aether alignment: role, identity wiring, metrics |
 | `cff06fc` | WASM compilation: all cfg-gating fixed |
 | `128f512` | Trunk build config |

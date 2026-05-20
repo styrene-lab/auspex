@@ -195,7 +195,7 @@ fn default_role() -> String {
 }
 
 fn default_image() -> String {
-    "ghcr.io/styrene-lab/omegon-agents:latest".to_string()
+    "ghcr.io/styrene-lab/omegon-agents:0.23".to_string()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

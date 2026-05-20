@@ -17,7 +17,7 @@ spec:
   posture: explorator
   role: detached-service
   mode: daemon
-  image: ghcr.io/styrene-lab/omegon-agents:latest
+  image: ghcr.io/styrene-lab/omegon-agents:0.23
   profile: styrene-lab/omegon-home-infra-sentinel
   secrets:
     authJsonSecret: home-infra-sentinel-provider-auth

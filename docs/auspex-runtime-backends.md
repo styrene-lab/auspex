@@ -46,15 +46,20 @@ Defaults:
 - `spec.posture`: `architect`
 - `spec.terminalTool`: `false`
 - `spec.model`: `AUSPEX_PRIMARY_AGENT_MODEL`, else `anthropic:claude-sonnet-4-6`
-- `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:latest`
+- `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:0.23`
 
 Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns the primary agent manifest. Set `AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET` to attach the narrow Kubernetes Secret that carries provider `auth.json` credentials for the primary agent. Set `AUSPEX_PRIMARY_AGENT_SECRET` only for broad environment-style runtime tokens that cannot use file projection; it is higher blast radius because all Secret keys are exposed through `envFrom`.
 
-`authJsonSecret` support requires Omegon commit `cd3f484dd16244eab40da0fc87e9784ecbd610e4` or newer on `release/0.22`, because older runtimes do not honor `OMEGON_AUTH_JSON_PATH`.
+Auspex's Kubernetes deployment path now targets Omegon `0.23.x` as the runtime
+compatibility floor. `authJsonSecret` projection, control-plane TLS descriptors,
+ACP plan updates, and the governed `terminal` posture should be validated
+against the local `0.23` build during release, then against the published image
+digest before production rollout. Older runtimes must not be used for projected
+provider auth smoke tests because they may ignore `OMEGON_AUTH_JSON_PATH`.
 
 The operator advertises daemon `OmegonAgent` control planes through `/api/fleet`, including the in-cluster service URL and ACP websocket URL. The UI can therefore distinguish the single operator-facing primary from supervised children and detached services.
 
-Omegon 0.23 adds a governed PTY-backed `terminal` tool. Auspex-managed
+Omegon 0.23 provides a governed PTY-backed `terminal` tool. Auspex-managed
 Kubernetes agents make that policy explicit with `spec.terminalTool`. The
 operator projects the setting into `OMEGON_TERMINAL_TOOL=1|0`; the default is
 off for headless/hardened pods. Profiles that opt in must provide a pod
@@ -78,14 +83,14 @@ profiles {
   }
   ["homelab-container"] {
     backend = "oci-container"
-    image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+    image = "ghcr.io/styrene-lab/omegon:v0.23.0"
     namespace = "auspex"
     resources { cpu = "1"; memory = "2Gi" }
     restart_on_exit = true
   }
   ["k8s-worker"] {
     backend = "kubernetes"
-    image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+    image = "ghcr.io/styrene-lab/omegon:v0.23.0"
     namespace = "agents"
     max_instances = 8
     resources { cpu = "500m"; memory = "1Gi" }
@@ -119,7 +124,7 @@ This is the internal shape Auspex uses regardless of backend. It combines a reso
     "model": "anthropic:claude-haiku",
     "thinking_level": "low",
     "max_runtime_seconds": 900,
-    "image": "ghcr.io/styrene-lab/omegon:v0.15.25",
+    "image": "ghcr.io/styrene-lab/omegon:v0.23.0",
     "namespace": "auspex",
     "resources": {
       "cpu": "500m",

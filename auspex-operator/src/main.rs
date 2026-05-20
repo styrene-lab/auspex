@@ -450,7 +450,7 @@ impl PrimaryAgentBootstrapConfig {
             name: std::env::var("AUSPEX_PRIMARY_AGENT_NAME")
                 .unwrap_or_else(|_| "auspex-primary".into()),
             image: std::env::var("AUSPEX_PRIMARY_AGENT_IMAGE")
-                .unwrap_or_else(|_| "ghcr.io/styrene-lab/omegon-agents:latest".into()),
+                .unwrap_or_else(|_| "ghcr.io/styrene-lab/omegon-agents:0.23".into()),
             model: std::env::var("AUSPEX_PRIMARY_AGENT_MODEL")
                 .unwrap_or_else(|_| "anthropic:claude-sonnet-4-6".into()),
             secret_name: std::env::var("AUSPEX_PRIMARY_AGENT_SECRET").ok(),
@@ -2279,7 +2279,7 @@ mod tests {
             armory: "profile/security-review".into(),
             mode: "daemon".into(),
             role: "security-reviewer".into(),
-            image: "ghcr.io/styrene-lab/omegon-agents:latest".into(),
+            image: "ghcr.io/styrene-lab/omegon-agents:0.23".into(),
             model: "anthropic:claude-sonnet-4-6".into(),
             ..Default::default()
         };
@@ -2313,7 +2313,7 @@ mod tests {
         let policy = oci_preflight_policy_from_body(&serde_json::json!({
             "ociPolicy": "strict"
         }));
-        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:0.23");
         let digest = assess_oci_image_ref(
             "ghcr.io/styrene-lab/omegon-agents@sha256:aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
         );
@@ -2326,7 +2326,7 @@ mod tests {
     #[test]
     fn warn_oci_preflight_policy_reports_but_does_not_block() {
         let policy = oci_preflight_policy_from_body(&serde_json::json!({}));
-        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:latest");
+        let tagged = assess_oci_image_ref("ghcr.io/styrene-lab/omegon-agents:0.23");
 
         assert_eq!(policy.as_str(), "warn");
         assert!(!policy.blocks(&tagged));
