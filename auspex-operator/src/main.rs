@@ -8,13 +8,14 @@ mod external;
 mod identity;
 mod reconciler;
 
-use std::{io::Cursor, net::SocketAddr, sync::Arc};
+use std::{collections::BTreeMap, io::Cursor, net::SocketAddr, sync::Arc};
 
 use auspex_core::agent_packages::{
     AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
 };
 use auspex_core::armory::{
-    ArmoryClient, ArmoryError, ArmoryIndex, ArmoryPlanOptions, DEFAULT_ARMORY_INDEX_URL,
+    ArmoryClient, ArmoryDeploymentOverlay, ArmoryError, ArmoryIndex, ArmoryPlanOptions,
+    DEFAULT_ARMORY_INDEX_URL, PolicySeverity, agent_package_from_armory_overlay,
     plan_armory_install,
 };
 use axum::{
@@ -31,7 +32,7 @@ use futures_util::{SinkExt, StreamExt};
 use k8s_openapi::api::{
     apps::v1::Deployment,
     batch::v1::{CronJob, Job},
-    core::v1::{Event, Secret},
+    core::v1::{ConfigMap, Event, Secret},
 };
 use kube::{
     Api, Client, CustomResourceExt, ResourceExt,
@@ -173,6 +174,41 @@ async fn main() -> anyhow::Result<()> {
             .route(
                 "/armory/plan",
                 post(|body: Json<Value>| armory_plan_handler(body)),
+            )
+            .route(
+                "/armory/overlays",
+                get({
+                    let ctx = api_ctx.clone();
+                    move || armory_overlays_handler(ctx)
+                })
+                .post({
+                    let ctx = api_ctx.clone();
+                    move |body: Json<Value>| upsert_armory_overlay_handler(ctx, None, body)
+                }),
+            )
+            .route(
+                "/armory/overlays/{id}",
+                get({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<String>| armory_overlay_detail_handler(ctx, path)
+                })
+                .put({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<String>, body: Json<Value>| {
+                        upsert_armory_overlay_handler(ctx, Some(path), body)
+                    }
+                })
+                .delete({
+                    let ctx = api_ctx.clone();
+                    move |path: AxumPath<String>| delete_armory_overlay_handler(ctx, path)
+                }),
+            )
+            .route(
+                "/armory/preflight",
+                post({
+                    let ctx = api_ctx.clone();
+                    move |body: Json<Value>| armory_preflight_handler(ctx, body)
+                }),
             )
             .route(
                 "/packages/{id}",
@@ -972,11 +1008,373 @@ async fn armory_plan_handler(Json(body): Json<Value>) -> Json<Value> {
     }
 }
 
+async fn armory_overlays_handler(ctx: Arc<Context>) -> Json<Value> {
+    let (namespace, name) = armory_overlay_store_location(&ctx);
+    match read_armory_overlay_config_data(&ctx).await {
+        Ok(data) => {
+            let (overlays, errors) = parse_armory_overlay_config_data(&data);
+            Json(serde_json::json!({
+                "overlays": overlays,
+                "errors": errors,
+                "source": "config-map",
+                "configMap": {
+                    "namespace": namespace,
+                    "name": name,
+                },
+            }))
+        }
+        Err(error) => Json(serde_json::json!({ "error": error })),
+    }
+}
+
+async fn armory_overlay_detail_handler(
+    ctx: Arc<Context>,
+    AxumPath(id): AxumPath<String>,
+) -> Json<Value> {
+    match read_armory_overlay_by_id(&ctx, &id).await {
+        Ok(Some(overlay)) => Json(serde_json::json!({
+            "overlay": overlay,
+            "source": "config-map",
+        })),
+        Ok(None) => Json(serde_json::json!({ "error": format!("unknown Armory overlay '{id}'") })),
+        Err(error) => Json(serde_json::json!({ "error": error })),
+    }
+}
+
+async fn upsert_armory_overlay_handler(
+    ctx: Arc<Context>,
+    id: Option<AxumPath<String>>,
+    Json(body): Json<Value>,
+) -> Json<Value> {
+    let id = id.map(|AxumPath(id)| id);
+    let overlay = match armory_overlay_from_body(body, id.as_deref()) {
+        Ok(overlay) => overlay,
+        Err(error) => return Json(serde_json::json!({ "error": error })),
+    };
+
+    let (namespace, name) = armory_overlay_store_location(&ctx);
+    match write_armory_overlay(&ctx, &overlay).await {
+        Ok(()) => Json(serde_json::json!({
+            "overlay": overlay,
+            "source": "config-map",
+            "configMap": {
+                "namespace": namespace,
+                "name": name,
+            },
+        })),
+        Err(error) => Json(serde_json::json!({ "error": error })),
+    }
+}
+
+async fn delete_armory_overlay_handler(
+    ctx: Arc<Context>,
+    AxumPath(id): AxumPath<String>,
+) -> Json<Value> {
+    let (namespace, name) = armory_overlay_store_location(&ctx);
+    match delete_armory_overlay(&ctx, &id).await {
+        Ok(deleted) => Json(serde_json::json!({
+            "deleted": deleted,
+            "id": id,
+            "source": "config-map",
+            "configMap": {
+                "namespace": namespace,
+                "name": name,
+            },
+        })),
+        Err(error) => Json(serde_json::json!({ "error": error })),
+    }
+}
+
+async fn armory_preflight_handler(ctx: Arc<Context>, Json(body): Json<Value>) -> Json<Value> {
+    let Some(package_ref) = body
+        .get("packageRef")
+        .or_else(|| body.get("package_ref"))
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Json(serde_json::json!({ "error": "packageRef is required" }));
+    };
+    let options = ArmoryPlanOptions {
+        include_optional: body
+            .get("includeOptional")
+            .or_else(|| body.get("include_optional"))
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+    };
+
+    let overlay = match resolve_armory_preflight_overlay(&ctx, &body).await {
+        Ok(overlay) => overlay,
+        Err(error) => return Json(serde_json::json!({ "error": error })),
+    };
+
+    let index = match fetch_armory_index().await {
+        Ok(index) => index,
+        Err(error) => return Json(serde_json::json!({ "error": error.to_string() })),
+    };
+    let Some(package) = index.get(package_ref) else {
+        return Json(
+            serde_json::json!({ "error": format!("unknown Armory package '{package_ref}'") }),
+        );
+    };
+
+    let plan = plan_armory_install(package, options);
+    let blocked = plan
+        .policy_gates
+        .iter()
+        .any(|gate| gate.severity == PolicySeverity::Blocked);
+    let requires_approval = plan
+        .policy_gates
+        .iter()
+        .any(|gate| gate.severity == PolicySeverity::ApprovalRequired);
+    let agent_package = match agent_package_from_armory_overlay(package, &overlay, &plan) {
+        Ok(package) => package,
+        Err(error) => return Json(serde_json::json!({ "error": error.to_string() })),
+    };
+
+    let deploy_request = match body.get("deploy").cloned() {
+        Some(value) => match serde_json::from_value::<AgentPackageDeployRequest>(value) {
+            Ok(request) => request,
+            Err(error) => {
+                return Json(serde_json::json!({
+                    "error": format!("invalid deploy request: {error}")
+                }));
+            }
+        },
+        None => AgentPackageDeployRequest::default(),
+    };
+    let mut deploy_request = deploy_request;
+    if deploy_request.namespace.is_none() {
+        deploy_request.namespace = overlay
+            .namespace
+            .clone()
+            .or_else(|| ctx.watch_namespace.clone())
+            .or_else(|| Some("default".into()));
+    }
+    if deploy_request.name.is_none() {
+        deploy_request.name = Some(overlay.id.clone());
+    }
+    let manifest = agent_package.omegon_agent_manifest(&deploy_request);
+    let namespace = manifest["metadata"]["namespace"]
+        .as_str()
+        .unwrap_or("default");
+    let scope_error = namespace_scope_error(&ctx, namespace);
+
+    Json(serde_json::json!({
+        "package": package,
+        "overlay": overlay,
+        "plan": plan,
+        "agentPackage": agent_package,
+        "deployRequest": deploy_request,
+        "manifest": manifest,
+        "deployable": !blocked && scope_error.is_none(),
+        "blocked": blocked,
+        "requiresApproval": requires_approval,
+        "scopeError": scope_error,
+        "secretRequests": {
+            "required": plan.required_secrets,
+            "optional": plan.optional_secrets,
+        },
+        "source": "armory",
+    }))
+}
+
 async fn fetch_armory_index() -> Result<ArmoryIndex, ArmoryError> {
     let index_url = std::env::var("AUSPEX_ARMORY_INDEX_URL")
         .unwrap_or_else(|_| DEFAULT_ARMORY_INDEX_URL.into());
     let mut client = ArmoryClient::new(index_url);
     client.fetch_index().await.cloned()
+}
+
+fn armory_overlay_store_location(ctx: &Context) -> (String, String) {
+    let namespace = ctx
+        .watch_namespace
+        .clone()
+        .or_else(|| std::env::var("AUSPEX_ARMORY_OVERLAYS_NAMESPACE").ok())
+        .unwrap_or_else(|| "default".into());
+    let name = std::env::var("AUSPEX_ARMORY_OVERLAYS_CONFIG_MAP")
+        .unwrap_or_else(|_| "auspex-armory-overlays".into());
+    (namespace, name)
+}
+
+async fn read_armory_overlay_config_data(
+    ctx: &Context,
+) -> Result<BTreeMap<String, String>, String> {
+    let (namespace, name) = armory_overlay_store_location(ctx);
+    let api: Api<ConfigMap> = Api::namespaced(ctx.client.clone(), &namespace);
+    let config_map = api
+        .get_opt(&name)
+        .await
+        .map_err(|error| format!("failed to read Armory overlay ConfigMap: {error}"))?;
+    Ok(config_map.and_then(|cm| cm.data).unwrap_or_default())
+}
+
+async fn read_armory_overlay_by_id(
+    ctx: &Context,
+    id: &str,
+) -> Result<Option<ArmoryDeploymentOverlay>, String> {
+    let key = armory_overlay_data_key(id)?;
+    let data = read_armory_overlay_config_data(ctx).await?;
+    let Some(raw) = data.get(&key) else {
+        return Ok(None);
+    };
+    let overlay = parse_armory_overlay_json(&key, raw)?;
+    Ok(Some(overlay))
+}
+
+async fn write_armory_overlay(
+    ctx: &Context,
+    overlay: &ArmoryDeploymentOverlay,
+) -> Result<(), String> {
+    overlay
+        .validate()
+        .map_err(|error| format!("invalid Armory overlay: {error}"))?;
+    let (namespace, name) = armory_overlay_store_location(ctx);
+    let mut data = read_armory_overlay_config_data(ctx).await?;
+    upsert_armory_overlay_data(&mut data, overlay)?;
+    apply_armory_overlay_config_map(ctx, &namespace, &name, data).await
+}
+
+async fn delete_armory_overlay(ctx: &Context, id: &str) -> Result<bool, String> {
+    let (namespace, name) = armory_overlay_store_location(ctx);
+    let mut data = read_armory_overlay_config_data(ctx).await?;
+    let key = armory_overlay_data_key(id)?;
+    let deleted = data.remove(&key).is_some();
+    apply_armory_overlay_config_map(ctx, &namespace, &name, data).await?;
+    Ok(deleted)
+}
+
+async fn apply_armory_overlay_config_map(
+    ctx: &Context,
+    namespace: &str,
+    name: &str,
+    data: BTreeMap<String, String>,
+) -> Result<(), String> {
+    let api: Api<ConfigMap> = Api::namespaced(ctx.client.clone(), namespace);
+    let manifest = serde_json::json!({
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+            "name": name,
+            "namespace": namespace,
+            "labels": {
+                "app.kubernetes.io/part-of": "auspex",
+                "auspex.styrene.sh/config": "armory-overlays",
+            },
+        },
+        "data": data,
+    });
+    api.patch(
+        name,
+        &PatchParams::apply("auspex-webui").force(),
+        &Patch::Apply(manifest),
+    )
+    .await
+    .map(|_| ())
+    .map_err(|error| format!("failed to write Armory overlay ConfigMap: {error}"))
+}
+
+async fn resolve_armory_preflight_overlay(
+    ctx: &Context,
+    body: &Value,
+) -> Result<ArmoryDeploymentOverlay, String> {
+    if let Some(value) = body.get("overlay") {
+        return armory_overlay_from_body(value.clone(), None);
+    }
+    let Some(overlay_id) = body
+        .get("overlayId")
+        .or_else(|| body.get("overlay_id"))
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+    else {
+        return Err("overlay or overlayId is required".into());
+    };
+    read_armory_overlay_by_id(ctx, overlay_id)
+        .await?
+        .ok_or_else(|| format!("unknown Armory overlay '{overlay_id}'"))
+}
+
+fn armory_overlay_from_body(
+    body: Value,
+    expected_id: Option<&str>,
+) -> Result<ArmoryDeploymentOverlay, String> {
+    let value = body.get("overlay").cloned().unwrap_or(body);
+    let mut overlay = serde_json::from_value::<ArmoryDeploymentOverlay>(value)
+        .map_err(|error| format!("invalid Armory overlay: {error}"))?;
+    if overlay.id.trim().is_empty() {
+        overlay.id = expected_id.unwrap_or_default().to_string();
+    }
+    if let Some(expected_id) = expected_id
+        && overlay.id != expected_id
+    {
+        return Err(format!(
+            "overlay id '{}' does not match route id '{expected_id}'",
+            overlay.id
+        ));
+    }
+    overlay
+        .validate()
+        .map_err(|error| format!("invalid Armory overlay: {error}"))?;
+    armory_overlay_data_key(&overlay.id)?;
+    Ok(overlay)
+}
+
+fn parse_armory_overlay_config_data(
+    data: &BTreeMap<String, String>,
+) -> (Vec<ArmoryDeploymentOverlay>, Vec<Value>) {
+    let mut overlays = Vec::new();
+    let mut errors = Vec::new();
+    for (key, raw) in data {
+        if !key.ends_with(".json") {
+            continue;
+        }
+        match parse_armory_overlay_json(key, raw) {
+            Ok(overlay) => overlays.push(overlay),
+            Err(error) => errors.push(serde_json::json!({
+                "key": key,
+                "error": error,
+            })),
+        }
+    }
+    overlays.sort_by(|left, right| left.id.cmp(&right.id));
+    (overlays, errors)
+}
+
+fn parse_armory_overlay_json(key: &str, raw: &str) -> Result<ArmoryDeploymentOverlay, String> {
+    let overlay = serde_json::from_str::<ArmoryDeploymentOverlay>(raw)
+        .map_err(|error| format!("invalid overlay entry '{key}': {error}"))?;
+    overlay
+        .validate()
+        .map_err(|error| format!("invalid overlay entry '{key}': {error}"))?;
+    armory_overlay_data_key(&overlay.id)?;
+    Ok(overlay)
+}
+
+fn upsert_armory_overlay_data(
+    data: &mut BTreeMap<String, String>,
+    overlay: &ArmoryDeploymentOverlay,
+) -> Result<(), String> {
+    let key = armory_overlay_data_key(&overlay.id)?;
+    let raw = serde_json::to_string_pretty(overlay)
+        .map_err(|error| format!("failed to encode Armory overlay: {error}"))?;
+    data.insert(key, raw);
+    Ok(())
+}
+
+fn armory_overlay_data_key(id: &str) -> Result<String, String> {
+    let id = id.trim();
+    if id.is_empty() {
+        return Err("overlay id is required".into());
+    }
+    if id.len() > 128 {
+        return Err("overlay id must be 128 characters or fewer".into());
+    }
+    let valid = id
+        .bytes()
+        .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'.' | b'_' | b'-'));
+    if !valid {
+        return Err("overlay id may only contain ASCII letters, numbers, '.', '_', and '-'".into());
+    }
+    Ok(format!("{id}.json"))
 }
 
 async fn package_detail_handler(AxumPath(id): AxumPath<String>) -> Json<Value> {
@@ -1787,5 +2185,41 @@ mod tests {
             }))
             .is_err()
         );
+    }
+
+    #[test]
+    fn armory_overlay_config_data_is_validated_and_resilient() {
+        let overlay = ArmoryDeploymentOverlay {
+            id: "security-review".into(),
+            armory: "profile/security-review".into(),
+            mode: "daemon".into(),
+            role: "security-reviewer".into(),
+            image: "ghcr.io/styrene-lab/omegon-agents:latest".into(),
+            model: "anthropic:claude-sonnet-4-6".into(),
+            ..Default::default()
+        };
+        let mut data = BTreeMap::from([
+            ("notes.txt".into(), "ignored".into()),
+            ("bad.json".into(), "{".into()),
+        ]);
+
+        upsert_armory_overlay_data(&mut data, &overlay).expect("stored overlay");
+        let (overlays, errors) = parse_armory_overlay_config_data(&data);
+
+        assert_eq!(
+            armory_overlay_data_key("security-review").unwrap(),
+            "security-review.json"
+        );
+        assert_eq!(overlays, vec![overlay]);
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0]["key"], "bad.json");
+    }
+
+    #[test]
+    fn armory_overlay_ids_reject_path_like_names() {
+        assert!(armory_overlay_data_key("home-media").is_ok());
+        assert!(armory_overlay_data_key("profile/security-review").is_err());
+        assert!(armory_overlay_data_key("../escape").is_err());
+        assert!(armory_overlay_data_key("").is_err());
     }
 }

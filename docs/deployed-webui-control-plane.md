@@ -25,6 +25,12 @@ but only on WebSocket upgrade requests.
 | `/api/armory/packages` | `GET` | List Armory package records without installing anything. |
 | `/api/armory/packages/{kind}/{id}` | `GET` | Read one Armory package by stable ref such as `profile/security-review`. |
 | `/api/armory/plan` | `POST` | Produce a dry-run Armory install/deploy plan with policy gates. |
+| `/api/armory/overlays` | `GET` | List Auspex deployment overlays persisted in the overlay ConfigMap. |
+| `/api/armory/overlays` | `POST` | Create or replace one deployment overlay. |
+| `/api/armory/overlays/{id}` | `GET` | Read one deployment overlay by Auspex-safe overlay id. |
+| `/api/armory/overlays/{id}` | `PUT` | Create or replace one deployment overlay under a specific id. |
+| `/api/armory/overlays/{id}` | `DELETE` | Remove one deployment overlay. |
+| `/api/armory/preflight` | `POST` | Combine an Armory package, overlay, and deploy overrides into a non-mutating manifest preview. |
 | `/api/agents` | `POST` | Create or server-side apply an `OmegonAgent`. |
 | `/api/agents/{ns}/{name}` | `GET` | Read one managed agent with control-plane metadata. |
 | `/api/agents/{ns}/{name}` | `PATCH` | Merge-patch an existing managed agent. |
@@ -110,6 +116,17 @@ planning, explicit Auspex deployment overlays, and policy-gated execution:
   `https://armory.styrene.io/api/index.json`).
 - `POST /api/armory/plan` accepts `{ "packageRef": "profile/security-review" }`
   and returns an `ArmoryInstallPlan`.
+- `GET /api/armory/overlays` and `/api/armory/overlays/{id}` expose Auspex-owned
+  deployment overlays from a Kubernetes ConfigMap. The store defaults to
+  `auspex-armory-overlays` in `AUSPEX_WATCH_NAMESPACE`, or
+  `AUSPEX_ARMORY_OVERLAYS_NAMESPACE`/`default` when the operator is not
+  namespace-scoped. The ConfigMap name can be overridden with
+  `AUSPEX_ARMORY_OVERLAYS_CONFIG_MAP`.
+- `POST /api/armory/preflight` accepts
+  `{ "packageRef": "profile/security-review", "overlayId": "security-review" }`
+  or an inline `overlay`, then returns the install plan, generated
+  `AgentPackage`, deploy request, Kubernetes `OmegonAgent` manifest preview,
+  policy gates, and namespace-scope errors without mutating the cluster.
 - Planning may classify OCI artifacts, Omegon prompt/plugin payloads, native
   Omegon extensions, external integrations, Nex forge templates, required
   secrets, warnings, and policy gates.
@@ -123,6 +140,30 @@ planning, explicit Auspex deployment overlays, and policy-gated execution:
   overlay before becoming an `AgentPackage`; runtime fields such as image, mode,
   role, model, resources, control TLS profile, and secret grant bindings are not
   guessed from public Armory metadata.
+
+Example overlay:
+
+```json
+{
+  "id": "security-review",
+  "armory": "profile/security-review",
+  "mode": "daemon",
+  "role": "security-reviewer",
+  "image": "ghcr.io/styrene-lab/omegon-agents:latest",
+  "model": "anthropic:claude-sonnet-4-6",
+  "posture": "architect",
+  "namespace": "omegon-agents",
+  "required_secrets": ["agent-auth-json"],
+  "control_tls_profile": "security-review",
+  "mesh_role": "operator",
+  "terminalTool": false
+}
+```
+
+Preflight is the handoff point between browsing Armory and launching an agent.
+It should be treated as the WebUI's review screen: operators can inspect
+required secrets, destructive policy gates, Nex-owned build requirements, and
+the exact manifest that would be applied before any deploy route is enabled.
 
 ## Current Boundary
 
