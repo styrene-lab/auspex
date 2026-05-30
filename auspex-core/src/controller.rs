@@ -1766,6 +1766,7 @@ impl AppController {
                 let applied = session.apply_event_json(json)?;
                 if applied {
                     self.handle_session_mutation();
+                    self.sync_primary_descriptor_to_registry();
                 }
                 Ok(applied)
             }
@@ -1793,6 +1794,7 @@ impl AppController {
                 };
                 if applied {
                     self.handle_session_mutation();
+                    self.sync_primary_descriptor_to_registry();
                 }
                 Ok(applied)
             }
