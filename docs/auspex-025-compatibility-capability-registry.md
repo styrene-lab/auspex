@@ -59,10 +59,10 @@ Auspex should add a compatibility/capability registry slice that treats Omegon i
 
 ## Implementation Slice
 
-1. Replace the markdown placeholder `omegon-compat.toml` with a real machine-readable compatibility manifest.
-2. Add compatibility probe fixtures for supported Omegon 0.25.x and unsupported pre-0.25 instances.
-3. Add an instance capability registry model.
-4. Add HostAction policy classification for read-only discovery vs mutating package install.
-5. Add audit tests proving unknown/mutating host actions are denied or approval-gated by default.
+1. [x] Replace the markdown placeholder `omegon-compat.toml` with a real machine-readable compatibility manifest.
+2. [x] Add compatibility probe fixtures for supported Omegon 0.25.x and unsupported pre-0.25 instances.
+3. [ ] Add an instance capability registry model.
+4. [x] Add HostAction policy classification for read-only discovery vs mutating package install.
+5. [x] Add audit tests proving unknown/mutating host actions are denied or approval-gated by default.
 
 ## Open Questions

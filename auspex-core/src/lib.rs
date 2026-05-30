@@ -28,6 +28,7 @@ pub mod audit_timeline;
 pub mod command_transport;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod container_discovery;
+pub mod compatibility;
 pub mod event_stream;
 pub mod host_action_policy;
 pub mod instance_registry;
