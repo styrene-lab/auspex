@@ -4,6 +4,8 @@
 //! probes their health endpoints, and produces `InstanceRecord`s for the
 //! instance registry.
 
+use crate::capability_registry::InstanceCapabilitySnapshot;
+use crate::compatibility::assess_observed_control_plane;
 use crate::runtime_types::{
     BackendConfig, BackendKind, DesiredWorkerState, InstanceRecord, ObservedControlPlane,
     ObservedHealth, ObservedPlacement, ObservedWorkerState, OwnerKind, PolicyOverrides,
@@ -209,14 +211,8 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
             task: None,
             security: Default::default(),
         },
-        observed: ObservedWorkerState {
-            placement: ObservedPlacement {
-                placement_id: container.container_id.clone(),
-                host: "localhost".into(),
-                container_name: Some(container.name.clone()),
-                ..Default::default()
-            },
-            control_plane: ObservedControlPlane {
+        observed: {
+            let control_plane = ObservedControlPlane {
                 schema_version: 2,
                 omegon_version,
                 base_url: base_url.clone(),
@@ -226,20 +222,12 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 ws_url: format!(
                     "ws://127.0.0.1:{}/ws{}",
                     container.host_port,
-                    if token.is_empty() {
-                        String::new()
-                    } else {
-                        format!("?token={token}")
-                    }
+                    if token.is_empty() { String::new() } else { format!("?token={token}") }
                 ),
                 acp_url: Some(format!(
                     "ws://127.0.0.1:{}/acp{}",
                     container.host_port,
-                    if token.is_empty() {
-                        String::new()
-                    } else {
-                        format!("?token={token}")
-                    }
+                    if token.is_empty() { String::new() } else { format!("?token={token}") }
                 )),
                 auth_mode: "ephemeral-bearer".into(),
                 token_ref: if token.is_empty() { None } else { Some(token) },
@@ -247,18 +235,31 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 mtls: Some(false),
                 last_ready_at: if ready { Some(now.clone()) } else { None },
                 ..Default::default()
-            },
-            health: ObservedHealth {
-                ready,
-                last_heartbeat_at: Some(now.clone()),
-                last_seen_at: Some(now),
-                ..Default::default()
-            },
-            exit: Default::default(),
-            compatibility: None,
-            operational_profile: None,
-            capabilities: None,
+            };
+            ObservedWorkerState {
+                placement: ObservedPlacement {
+                    placement_id: container.container_id.clone(),
+                    host: "localhost".into(),
+                    container_name: Some(container.name.clone()),
+                    ..Default::default()
+                },
+                control_plane: control_plane.clone(),
+                health: ObservedHealth {
+                    ready,
+                    last_heartbeat_at: Some(now.clone()),
+                    last_seen_at: Some(now),
+                    ..Default::default()
+                },
+                exit: Default::default(),
+                compatibility: Some(assess_observed_control_plane(&control_plane)),
+                operational_profile: None,
+                capabilities: Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                    format!("container:{}", container.name),
+                    [] as [&str; 0],
+                )),
+            }
         },
+
     }
 }
 

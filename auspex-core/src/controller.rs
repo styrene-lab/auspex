@@ -336,6 +336,12 @@ impl AppController {
         self.attached_instance_engine.selected_command_route_id()
     }
 
+    pub fn fleet_runtime_projection(&self) -> crate::fleet_projection::FleetRuntimeProjection {
+        crate::fleet_projection::FleetRuntimeProjection::from_instances(
+            &self.instance_registry.instances,
+        )
+    }
+
     pub fn select_command_route(&mut self, route_id: &str) {
         self.attached_instance_engine
             .select_command_route(route_id.to_string());
@@ -735,6 +741,11 @@ impl AppController {
                 }
                 if !omegon_version.is_empty() {
                     record.observed.control_plane.omegon_version = omegon_version.clone();
+                    record.observed.compatibility = Some(
+                        crate::compatibility::assess_observed_control_plane(
+                            &record.observed.control_plane,
+                        ),
+                    );
                 }
                 record.identity.updated_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
@@ -781,6 +792,11 @@ impl AppController {
                     record.observed.health.ready = *ready;
                     if !omegon_version.is_empty() {
                         record.observed.control_plane.omegon_version = omegon_version.clone();
+                        record.observed.compatibility = Some(
+                            crate::compatibility::assess_observed_control_plane(
+                                &record.observed.control_plane,
+                            ),
+                        );
                     }
                 }
             }
