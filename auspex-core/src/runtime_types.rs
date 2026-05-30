@@ -170,6 +170,12 @@ pub struct ObservedWorkerState {
     pub control_plane: ObservedControlPlane,
     pub health: ObservedHealth,
     pub exit: ObservedExit,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub compatibility: Option<crate::compatibility::CompatibilityAssessment>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub operational_profile: Option<crate::operational_profile::OperationalProfile>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub capabilities: Option<crate::capability_registry::InstanceCapabilitySnapshot>,
 }
 
 #[derive(Clone, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]

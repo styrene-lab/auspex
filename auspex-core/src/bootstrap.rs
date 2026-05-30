@@ -328,14 +328,31 @@ struct CargoManifest {
 struct OmegonCompatibilityManifest {
     minimum_version: String,
     maximum_tested_version: String,
+    #[serde(default)]
     control_plane_schema: u32,
+    #[serde(default)]
+    web_startup_schema: u32,
+    #[serde(default)]
+    instance_descriptor_schema: u32,
+    #[serde(default)]
+    control_plane_protocol: u32,
 }
 
 impl OmegonCompatibilityManifest {
     fn parse() -> Self {
-        toml::from_str::<CargoManifest>(CARGO_MANIFEST)
+        let mut manifest = toml::from_str::<CargoManifest>(CARGO_MANIFEST)
             .map(|manifest| manifest.package.metadata.omegon)
-            .unwrap_or_default()
+            .unwrap_or_default();
+        if manifest.web_startup_schema == 0 {
+            manifest.web_startup_schema = manifest.control_plane_schema;
+        }
+        if manifest.instance_descriptor_schema == 0 {
+            manifest.instance_descriptor_schema = crate::compatibility::INSTANCE_DESCRIPTOR_SCHEMA_VERSION;
+        }
+        if manifest.control_plane_protocol == 0 {
+            manifest.control_plane_protocol = crate::compatibility::CONTROL_PLANE_PROTOCOL_VERSION;
+        }
+        manifest
     }
 }
 
@@ -871,10 +888,10 @@ fn validate_omegon_version(startup: &OmegonStartupInfo) -> Result<Option<String>
 
 fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<Option<String>, String> {
     let manifest = OmegonCompatibilityManifest::parse();
-    if startup.schema_version != manifest.control_plane_schema {
+    if startup.schema_version != manifest.web_startup_schema {
         return Err(format!(
-            "Auspex requires control-plane schema {}, but Omegon reported schema {}.",
-            manifest.control_plane_schema, startup.schema_version
+            "Auspex requires web startup schema {}, but Omegon reported schema {}.",
+            manifest.web_startup_schema, startup.schema_version
         ));
     }
 
@@ -1549,7 +1566,7 @@ mod tests {
             auth_source: "default".into(),
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
-                    omegon_version: Some("0.23.0".into()),
+                    omegon_version: Some("0.25.4".into()),
                     schema_version: 2,
                     ..Default::default()
                 }),
@@ -1634,7 +1651,7 @@ mod tests {
             .expect("fixture control plane")
             .omegon_version = Some("0.22.99".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("requires Omegon 0.23.0 or newer"));
+        assert!(err.contains("requires Omegon 0.25.0 or newer"));
     }
 
     #[test]
@@ -1644,7 +1661,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.23.99".into());
+            .omegon_version = Some("0.25.99".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning
@@ -1667,7 +1684,7 @@ mod tests {
         let mut info = remote_startup_info_fixture();
         info.schema_version = 99;
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("control-plane schema"));
+        assert!(err.contains("web startup schema"));
     }
 
     #[test]

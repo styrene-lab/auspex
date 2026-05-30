@@ -545,6 +545,9 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                     exit_reason: None,
                     exited_at: None,
                 },
+                compatibility: None,
+                operational_profile: None,
+                capabilities: None,
             },
         });
 
@@ -859,6 +862,9 @@ mod tests {
                         exit_reason: None,
                         exited_at: None,
                     },
+                    compatibility: None,
+                    operational_profile: None,
+                    capabilities: None,
                 },
             }],
         };
@@ -1256,6 +1262,9 @@ mod tests {
                         exit_reason: None,
                         exited_at: None,
                     },
+                    compatibility: None,
+                    operational_profile: None,
+                    capabilities: None,
                 },
             }),
         });

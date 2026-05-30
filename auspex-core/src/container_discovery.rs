@@ -255,6 +255,9 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 ..Default::default()
             },
             exit: Default::default(),
+            compatibility: None,
+            operational_profile: None,
+            capabilities: None,
         },
     }
 }

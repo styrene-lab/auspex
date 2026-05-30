@@ -402,6 +402,9 @@ impl RemoteInstanceEntry {
                     ..Default::default()
                 },
                 exit: Default::default(),
+                compatibility: None,
+                operational_profile: None,
+                capabilities: None,
             },
         }
     }

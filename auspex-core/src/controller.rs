@@ -1934,6 +1934,9 @@ mod tests {
                         exit_reason: None,
                         exited_at: None,
                     },
+                    compatibility: None,
+                    operational_profile: None,
+                    capabilities: None,
                 },
             }],
         };
