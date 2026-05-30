@@ -343,6 +343,28 @@ impl AppController {
         )
     }
 
+    pub fn gateway_fleet_status(&self) -> crate::gateway_projection::GatewayProjectionResponse {
+        crate::gateway_projection::GatewayProjectionResponse::fleet_status(
+            self.fleet_runtime_projection(),
+        )
+    }
+
+    pub fn gateway_instances_list(&self) -> crate::gateway_projection::GatewayInstancesListResponse {
+        crate::gateway_projection::GatewayInstancesListResponse::from_fleet(
+            self.fleet_runtime_projection(),
+        )
+    }
+
+    pub fn gateway_capabilities_query(
+        &self,
+        query: crate::capability_registry::CapabilityKey,
+    ) -> crate::gateway_projection::GatewayCapabilitiesQueryResponse {
+        crate::gateway_projection::GatewayCapabilitiesQueryResponse::from_fleet(
+            &self.fleet_runtime_projection(),
+            query,
+        )
+    }
+
     pub fn apply_instance_descriptor(
         &mut self,
         instance_id: &str,

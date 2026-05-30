@@ -35,6 +35,7 @@ pub mod compatibility;
 pub mod descriptor_ingest;
 pub mod event_stream;
 pub mod fleet_projection;
+pub mod gateway_projection;
 pub mod host_action_policy;
 pub mod instance_registry;
 #[cfg(not(target_arch = "wasm32"))]
