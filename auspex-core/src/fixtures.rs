@@ -353,6 +353,7 @@ pub struct SessionData {
     pub context_window: Option<u64>,
     pub telemetry: SessionTelemetryData,
     pub instance_descriptor: Option<InstanceDescriptorData>,
+    pub operational_profile_metadata: Option<serde_json::Value>,
     pub dispatcher_binding: Option<DispatcherBindingData>,
     pub latest_plan: Option<PlanSnapshotData>,
 }

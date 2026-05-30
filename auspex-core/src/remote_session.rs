@@ -41,6 +41,7 @@ pub struct RemoteHostSession {
     session_stats: crate::omegon_control::SessionSnapshot,
     harness_snapshot: Option<HarnessStatusSnapshot>,
     instance_descriptor: Option<OmegonInstanceDescriptor>,
+    operational_profile_metadata: Option<serde_json::Value>,
     context_tokens: Option<u64>,
     context_window: Option<u64>,
     dispatcher_binding: Option<crate::omegon_control::DispatcherBindingSnapshot>,
@@ -120,6 +121,10 @@ impl RemoteHostSession {
             session_stats: snapshot.session,
             harness_snapshot: snapshot.harness.clone(),
             instance_descriptor: snapshot.instance_descriptor,
+            operational_profile_metadata: snapshot
+                .operational_profile
+                .or(snapshot.initialize_metadata)
+                .or(snapshot.extension_metadata),
             context_tokens: None,
             context_window: None,
             dispatcher_binding: snapshot.dispatcher,
@@ -293,6 +298,11 @@ impl RemoteHostSession {
                 self.session_stats = data.session;
                 self.harness_snapshot = data.harness.clone();
                 self.instance_descriptor = data.instance_descriptor.clone();
+                self.operational_profile_metadata = data
+                    .operational_profile
+                    .clone()
+                    .or_else(|| data.initialize_metadata.clone())
+                    .or_else(|| data.extension_metadata.clone());
                 let previous_dispatcher = self.dispatcher_binding.take();
                 self.dispatcher_binding =
                     reconcile_dispatcher_binding(previous_dispatcher.clone(), data.dispatcher);
@@ -849,6 +859,7 @@ impl HostSessionModel for RemoteHostSession {
                 .instance_descriptor
                 .as_ref()
                 .map(project_instance_descriptor),
+            operational_profile_metadata: self.operational_profile_metadata.clone(),
             dispatcher_binding: self.dispatcher_binding.as_ref().map(|binding| {
                 DispatcherBindingData {
                     session_id: binding
@@ -1084,6 +1095,9 @@ fn project_ipc_state_snapshot(
         dispatcher,
         instance_descriptor: Some(project_ipc_instance_descriptor(snapshot)),
         daemon_sessions: None,
+        operational_profile: None,
+        initialize_metadata: None,
+        extension_metadata: None,
     }
 }
 
@@ -1909,6 +1923,9 @@ mod tests {
                 ..OmegonInstanceDescriptor::default()
             }),
             daemon_sessions: None,
+            operational_profile: None,
+            initialize_metadata: None,
+            extension_metadata: None,
         });
 
         let data = session.session_data();
@@ -1955,6 +1972,9 @@ mod tests {
                 ..OmegonInstanceDescriptor::default()
             }),
             daemon_sessions: None,
+            operational_profile: None,
+            initialize_metadata: None,
+            extension_metadata: None,
         });
 
         assert_eq!(session.shell_state(), ShellState::Degraded);

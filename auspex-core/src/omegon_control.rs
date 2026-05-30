@@ -163,6 +163,7 @@ pub struct OmegonStartupInfo {
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+#[non_exhaustive]
 pub struct OmegonStateSnapshot {
     #[serde(default)]
     pub design: DesignSnapshot,
@@ -178,6 +179,12 @@ pub struct OmegonStateSnapshot {
     pub dispatcher: Option<DispatcherBindingSnapshot>,
     #[serde(default, alias = "instance")]
     pub instance_descriptor: Option<OmegonInstanceDescriptor>,
+    #[serde(default)]
+    pub initialize_metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub extension_metadata: Option<serde_json::Value>,
+    #[serde(default)]
+    pub operational_profile: Option<serde_json::Value>,
     /// Daemon session router state (0.15.24+). Present when the instance is
     /// running in daemon mode with multi-session routing.
     #[serde(default)]

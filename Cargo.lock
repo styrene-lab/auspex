@@ -314,7 +314,7 @@ dependencies = [
  "gloo-net",
  "gloo-timers",
  "omegon-flow",
- "omegon-traits 0.25.4",
+ "omegon-traits 0.25.5",
  "pretty_assertions",
  "pulldown-cmark",
  "reqwest",
@@ -4498,7 +4498,7 @@ dependencies = [
 
 [[package]]
 name = "omegon-traits"
-version = "0.25.4"
+version = "0.25.5"
 dependencies = [
  "anyhow",
  "async-trait",
