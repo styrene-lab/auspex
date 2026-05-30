@@ -711,10 +711,10 @@ impl AppController {
     }
 
     /// Apply probe results for remote instances. Each entry is
-    /// `(instance_id, ready, omegon_version)`.
-    pub fn apply_remote_probe_results(&mut self, results: &[(String, bool, String)]) {
+    /// `(instance_id, ready, omegon_version, capabilities)`.
+    pub fn apply_remote_probe_results(&mut self, results: &[(String, bool, String, Vec<String>)]) {
         let mut changed = false;
-        for (instance_id, ready, omegon_version) in results {
+        for (instance_id, ready, omegon_version, capabilities) in results {
             if let Some(record) = self
                 .instance_registry
                 .instances
@@ -747,6 +747,14 @@ impl AppController {
                         ),
                     );
                 }
+                if !capabilities.is_empty() {
+                    record.observed.capabilities = Some(
+                        crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                            instance_id.clone(),
+                            capabilities.clone(),
+                        ),
+                    );
+                }
                 record.identity.updated_at = std::time::SystemTime::now()
                     .duration_since(std::time::UNIX_EPOCH)
                     .map(|d| d.as_secs().to_string())
@@ -756,7 +764,7 @@ impl AppController {
             }
         }
         // Connect newly-ready instances outside the mutable registry borrow.
-        for (instance_id, ready, _) in results {
+        for (instance_id, ready, _, _) in results {
             if !ready {
                 continue;
             }
@@ -782,7 +790,7 @@ impl AppController {
         if changed {
             self.instance_registry = self.attached_instance_engine.registry_store().clone();
             // Re-merge our direct instance_registry mutations.
-            for (instance_id, ready, omegon_version) in results {
+            for (instance_id, ready, omegon_version, capabilities) in results {
                 if let Some(record) = self
                     .instance_registry
                     .instances
@@ -795,6 +803,14 @@ impl AppController {
                         record.observed.compatibility = Some(
                             crate::compatibility::assess_observed_control_plane(
                                 &record.observed.control_plane,
+                            ),
+                        );
+                    }
+                    if !capabilities.is_empty() {
+                        record.observed.capabilities = Some(
+                            crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                                instance_id.clone(),
+                                capabilities.clone(),
                             ),
                         );
                     }
@@ -1763,11 +1779,11 @@ impl AppController {
 }
 
 /// Probe a list of remote instances asynchronously.
-/// Returns `(instance_id, ready, omegon_version)` for each.
+/// Returns `(instance_id, ready, omegon_version, capabilities)` for each.
 #[cfg(not(target_arch = "wasm32"))]
 pub async fn probe_remote_instances(
     targets: &[(String, String, String)],
-) -> Vec<(String, bool, String)> {
+) -> Vec<(String, bool, String, Vec<String>)> {
     use std::time::Duration;
 
     let client = match reqwest::Client::builder()
@@ -1792,27 +1808,41 @@ pub async fn probe_remote_instances(
             _ => false,
         };
 
-        let omegon_version = if ready {
+        let (omegon_version, capabilities) = if ready {
             match client.get(startup_url).send().await {
                 Ok(response) if response.status().is_success() => {
                     let body = response.text().await.unwrap_or_default();
-                    serde_json::from_str::<serde_json::Value>(&body)
-                        .ok()
-                        .and_then(|v| {
-                            v.pointer("/instance_descriptor/identity/omegon_version")
+                    match serde_json::from_str::<serde_json::Value>(&body) {
+                        Ok(v) => {
+                            let version = v
+                                .pointer("/instance_descriptor/control_plane/omegon_version")
+                                .or_else(|| v.pointer("/instance_descriptor/identity/omegon_version"))
                                 .or_else(|| v.get("omegon_version"))
                                 .and_then(|v| v.as_str())
-                                .map(|s| s.to_string())
-                        })
-                        .unwrap_or_default()
+                                .map(str::to_string)
+                                .unwrap_or_default();
+                            let capabilities = v
+                                .pointer("/instance_descriptor/control_plane/capabilities")
+                                .and_then(|v| v.as_array())
+                                .map(|items| {
+                                    items
+                                        .iter()
+                                        .filter_map(|item| item.as_str().map(str::to_string))
+                                        .collect::<Vec<_>>()
+                                })
+                                .unwrap_or_default();
+                            (version, capabilities)
+                        }
+                        Err(_) => (String::new(), Vec::new()),
+                    }
                 }
-                _ => String::new(),
+                _ => (String::new(), Vec::new()),
             }
         } else {
-            String::new()
+            (String::new(), Vec::new())
         };
 
-        results.push((instance_id.clone(), ready, omegon_version));
+        results.push((instance_id.clone(), ready, omegon_version, capabilities));
     }
 
     results
@@ -3163,7 +3193,8 @@ mod tests {
         controller.apply_remote_probe_results(&[(
             "remote:styrene-discord".into(),
             true,
-            "0.15.25".into(),
+            "0.25.4".into(),
+            vec!["state.snapshot".into()],
         )]);
 
         // No longer needs probing.
@@ -3201,7 +3232,7 @@ mod tests {
         assert!(controller.remote_instances_needing_probe().is_empty());
 
         // Simulate failed probe.
-        controller.apply_remote_probe_results(&[("remote:test".into(), false, String::new())]);
+        controller.apply_remote_probe_results(&[("remote:test".into(), false, String::new(), Vec::new())]);
 
         // Now needs probing again (lost health).
         assert_eq!(controller.remote_instances_needing_probe().len(), 1);

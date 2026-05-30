@@ -133,7 +133,7 @@ pub fn probe_health(host_port: u16) -> bool {
 
 /// Fetch the omegon version from a container's startup endpoint.
 #[cfg(not(target_arch = "wasm32"))]
-fn fetch_startup_info(host_port: u16) -> Option<(String, String)> {
+fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
     let url = format!("http://127.0.0.1:{host_port}/api/startup");
     let output = std::process::Command::new("curl")
         .args(["-sf", "--max-time", "2", &url])
@@ -162,14 +162,25 @@ fn fetch_startup_info(host_port: u16) -> Option<(String, String)> {
         .unwrap_or("")
         .to_string();
 
-    Some((token, omegon_version))
+    let capabilities = startup
+        .pointer("/instance_descriptor/control_plane/capabilities")
+        .and_then(|v| v.as_array())
+        .map(|items| {
+            items
+                .iter()
+                .filter_map(|item| item.as_str().map(str::to_string))
+                .collect::<Vec<_>>()
+        })
+        .unwrap_or_default();
+
+    Some((token, omegon_version, capabilities))
 }
 
 /// Convert a discovered container into an `InstanceRecord`.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn container_to_instance_record(container: &DiscoveredContainer) -> InstanceRecord {
     let ready = probe_health(container.host_port);
-    let (token, omegon_version) = fetch_startup_info(container.host_port).unwrap_or_default();
+    let (token, omegon_version, capabilities) = fetch_startup_info(container.host_port).unwrap_or_default();
 
     let base_url = format!("http://127.0.0.1:{}", container.host_port);
     let now = std::time::SystemTime::now()
@@ -255,7 +266,7 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 operational_profile: None,
                 capabilities: Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
                     format!("container:{}", container.name),
-                    [] as [&str; 0],
+                    capabilities,
                 )),
             }
         },
