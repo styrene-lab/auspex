@@ -1219,6 +1219,59 @@ impl AppController {
         self.session.model().work_data()
     }
 
+    pub fn sync_primary_descriptor_to_registry(&mut self) -> bool {
+        let Some(descriptor) = self.session.model().session_data().instance_descriptor else {
+            return false;
+        };
+        let instance_id = descriptor.identity.instance_id.clone();
+        if instance_id.is_empty() {
+            return false;
+        }
+        let Some(record) = self
+            .instance_registry
+            .instances
+            .iter_mut()
+            .find(|record| record.identity.instance_id == instance_id)
+        else {
+            return false;
+        };
+
+        if let Some(control_plane) = descriptor.control_plane.as_ref() {
+            record.observed.control_plane.schema_version = control_plane.schema_version;
+            if let Some(version) = control_plane.omegon_version.as_ref().filter(|v| !v.is_empty()) {
+                record.observed.control_plane.omegon_version = version.clone();
+            }
+            if let Some(base_url) = control_plane.base_url.as_ref().filter(|v| !v.is_empty()) {
+                record.observed.control_plane.base_url = base_url.clone();
+            }
+            record.observed.compatibility = Some(
+                crate::compatibility::assess_observed_control_plane(&record.observed.control_plane),
+            );
+            record.observed.capabilities = Some(
+                crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                    instance_id.clone(),
+                    control_plane.capabilities.clone(),
+                ),
+            );
+        }
+        let record = record.clone();
+        self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
+            instance_id: record.identity.instance_id.clone(),
+            route_id: format!("instance:{}", record.identity.instance_id),
+            role: format!("{:?}", record.identity.role),
+            profile: record.identity.profile.clone(),
+            session_key: format!("instance:{}", record.identity.instance_id),
+            base_url: Some(record.observed.control_plane.base_url.clone()).filter(|url| !url.is_empty()),
+            model: record.desired.policy.model.clone(),
+            dispatcher_instance_id: None,
+            registry_record: Some(record),
+        });
+        self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
+        true
+    }
+
     pub fn session_data(&self) -> SessionData {
         let mut data = self.session.model().session_data();
         #[cfg(not(target_arch = "wasm32"))]
