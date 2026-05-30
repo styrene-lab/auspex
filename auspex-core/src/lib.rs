@@ -12,6 +12,7 @@ pub mod agent_packages;
 pub mod armory;
 pub mod cop_surface;
 pub mod omegon_control;
+pub mod omegon_version_pin;
 pub mod operational_profile;
 pub mod runtime_types;
 pub mod secret_grants;

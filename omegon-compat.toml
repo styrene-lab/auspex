@@ -5,7 +5,7 @@ Auspex targets the Omegon 0.25 release line and newer compatible 0.x releases th
 ```toml
 [omegon]
 minimum_version = "0.25.0"
-maximum_tested_version = "0.25.4"
+maximum_tested_version = "0.25.6"
 web_startup_schema = 2
 instance_descriptor_schema = 1
 control_plane_protocol = 1
@@ -28,7 +28,7 @@ Auspex should not attach blindly to arbitrary Omegon instances. It declares the 
 ## Current stance
 
 - Minimum Omegon: `0.25.0`
-- Maximum tested Omegon: `0.25.4`
+- Maximum tested Omegon: `0.25.6`
 - Web startup schema: `2`
 - Instance descriptor schema: `1`
 - Control-plane protocol/schema: `1`
