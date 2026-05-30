@@ -36,16 +36,16 @@ Auspex should add a compatibility/capability registry slice that treats Omegon i
 
 ## Evidence
 
-- Auspex `Cargo.toml` still declares `minimum_version = "0.23.0"`, `maximum_tested_version = "0.23.0"`, `control_plane_schema = 2`.
-- Auspex `omegon-compat.toml` is a markdown placeholder repeating the 0.23.0 compatibility shape.
+- Auspex `Cargo.toml` now declares `minimum_version = "0.25.0"`, `maximum_tested_version = "0.25.4"`, `control_plane_schema = 2`.
+- Auspex `omegon-compat.toml` declares pre-0.25 Omegon versions unsupported, not degraded.
 - Omegon `CHANGELOG.md` 0.25.4 adds `package.install@1` HostAction support and extension initialize metadata for clients such as Flynt.
 - Omegon `CHANGELOG.md` 0.25.3 adds `nex_capability` as a read-only resolver.
 - Omegon host action implementation validates package install provider/tool/package/scope/privilege policy and derives `nex install --nix <package>` through managed terminal execution.
 
 ## Open Questions
 
-- [assumption] Auspex should support Omegon 0.23 as degraded/legacy rather than dropping it immediately.
-- [assumption] Omegon control-plane schema remains `2` across 0.23 to 0.25; this must be verified against runtime discovery/state snapshots.
+- Auspex requires Omegon 0.25.x+; pre-0.25 instances are unsupported rather than degraded.
+- [assumption] Omegon control-plane schema remains `2` across the supported 0.25 line; this must be verified against runtime discovery/state snapshots.
 - What exact ACP/session-info fields expose extension initialize metadata, and which should become Auspex instance registry fields?
 - Should Auspex capability registry persist per-instance capability snapshots, or derive them live on demand?
 - What approval model maps existing Auspex operator security tiers to Omegon HostAction approval states?
@@ -60,7 +60,7 @@ Auspex should add a compatibility/capability registry slice that treats Omegon i
 ## Implementation Slice
 
 1. Replace the markdown placeholder `omegon-compat.toml` with a real machine-readable compatibility manifest.
-2. Add compatibility probe fixtures for Omegon 0.23 and 0.25.
+2. Add compatibility probe fixtures for supported Omegon 0.25.x and unsupported pre-0.25 instances.
 3. Add an instance capability registry model.
 4. Add HostAction policy classification for read-only discovery vs mutating package install.
 5. Add audit tests proving unknown/mutating host actions are denied or approval-gated by default.

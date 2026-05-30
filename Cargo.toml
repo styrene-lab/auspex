@@ -8,8 +8,8 @@ version = "0.2.0-rc.1"
 edition = "2024"
 
 [package.metadata.omegon]
-minimum_version = "0.23.0"
-maximum_tested_version = "0.23.0"
+minimum_version = "0.25.0"
+maximum_tested_version = "0.25.4"
 control_plane_schema = 2
 
 [features]

@@ -1,20 +1,41 @@
 # Omegon Compatibility Manifest
 
-This file is a placeholder for Auspex's explicit runtime compatibility contract with released Omegon versions.
-
-## Current declared shape
+Auspex targets the Omegon 0.25 release line and newer compatible 0.x releases that preserve the declared control-plane contract. Older incompatible releases are unsupported rather than degraded.
 
 ```toml
 [omegon]
-minimum_version = "0.23.0"
-maximum_tested_version = "0.23.0"
+minimum_version = "0.25.0"
+maximum_tested_version = "0.25.4"
 control_plane_schema = 2
+required_surfaces = [
+  "acp.initialize.metadata",
+  "nex_capability.read_only",
+  "host_action.package_install_v1",
+]
+
+[policy]
+older_versions = "unsupported"
+unknown_host_actions = "deny"
+mutating_host_actions = "approval_required"
 ```
 
 ## Purpose
 
-Auspex should not attach blindly to arbitrary Omegon instances. It should declare which Omegon release line and control-plane schema it supports, then verify that at runtime.
+Auspex should not attach blindly to arbitrary Omegon instances. It declares the Omegon release line, control-plane schema, and orchestration surfaces it supports, then verifies those at runtime.
 
-## Status
+## Current stance
 
-Documentation placeholder only. Actual manifest format can change once the app's compatibility handling settles further.
+- Minimum Omegon: `0.25.0`
+- Maximum tested Omegon: `0.25.4`
+- Control-plane schema: `2`
+- Older Omegon versions, including `0.23.x`, are unsupported.
+
+## Rationale
+
+The parity upgrade depends on Omegon 0.25 surfaces:
+
+- `package.install@1` HostAction support;
+- read-only `nex_capability` resolver;
+- extension initialize metadata surfaced through ACP/session info.
+
+Maintaining compatibility shims for pre-0.25 instances would increase workload while preserving a weaker orchestration contract. Auspex should fail clearly instead.

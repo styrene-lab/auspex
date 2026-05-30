@@ -314,7 +314,7 @@ dependencies = [
  "gloo-net",
  "gloo-timers",
  "omegon-flow",
- "omegon-traits 0.20.0",
+ "omegon-traits 0.25.4",
  "pretty_assertions",
  "pulldown-cmark",
  "reqwest",
@@ -343,7 +343,7 @@ dependencies = [
  "futures-util",
  "gloo-timers",
  "js-sys",
- "omegon-traits 0.20.0 (registry+https://github.com/rust-lang/crates.io-index)",
+ "omegon-traits 0.20.0",
  "pretty_assertions",
  "reqwest",
  "rmp-serde",
@@ -4485,6 +4485,8 @@ dependencies = [
 [[package]]
 name = "omegon-traits"
 version = "0.20.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b73c0303b1a7ccae68a667014faa2f3126fe0afe4e4a5319c273e46b48a8d56f"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -4496,9 +4498,7 @@ dependencies = [
 
 [[package]]
 name = "omegon-traits"
-version = "0.20.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b73c0303b1a7ccae68a667014faa2f3126fe0afe4e4a5319c273e46b48a8d56f"
+version = "0.25.4"
 dependencies = [
  "anyhow",
  "async-trait",
