@@ -5,8 +5,12 @@ use serde::{Deserialize, Serialize};
 use crate::capability_registry::{CapabilityKey, InstanceCapabilitySnapshot};
 use crate::compatibility::CompatibilityStatus;
 use crate::fleet_projection::{FleetInstanceProjection, FleetRuntimeProjection};
+use crate::operational_profile::OperationalProfile;
 
 pub const GATEWAY_PROJECTION_SCHEMA_VERSION: u32 = 1;
+pub const METHOD_FLEET_STATUS: &str = "auspex/fleet/status";
+pub const METHOD_INSTANCES_LIST: &str = "auspex/instances/list";
+pub const METHOD_CAPABILITIES_QUERY: &str = "auspex/capabilities/query";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatewayProjectionResponse {
@@ -34,6 +38,80 @@ pub enum GatewayProjectionMethod {
     FleetStatus,
     InstancesList,
     CapabilitiesQuery,
+}
+
+impl GatewayProjectionMethod {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::FleetStatus => METHOD_FLEET_STATUS,
+            Self::InstancesList => METHOD_INSTANCES_LIST,
+            Self::CapabilitiesQuery => METHOD_CAPABILITIES_QUERY,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilityNamespace {
+    Acp,
+    Auspex,
+    Omegon,
+    Styrene,
+    HostAction,
+    Nex,
+    Armory,
+    Tool,
+    Binary,
+    Package,
+    Extension,
+    Runtime,
+    Service,
+    Unknown,
+}
+
+impl CapabilityNamespace {
+    pub fn from_key(key: &CapabilityKey) -> Self {
+        match key.kind {
+            crate::capability_registry::CapabilityKind::HostAction => Self::HostAction,
+            crate::capability_registry::CapabilityKind::Binary => Self::Binary,
+            crate::capability_registry::CapabilityKind::Package => Self::Package,
+            crate::capability_registry::CapabilityKind::Extension => Self::Extension,
+            crate::capability_registry::CapabilityKind::Runtime => Self::Runtime,
+            crate::capability_registry::CapabilityKind::Service => Self::Service,
+            crate::capability_registry::CapabilityKind::Tool => {
+                if key.name.starts_with("acp/") || key.name.starts_with("acp.") {
+                    Self::Acp
+                } else if key.name.starts_with("auspex/") {
+                    Self::Auspex
+                } else if key.name.starts_with("omegon/") {
+                    Self::Omegon
+                } else if key.name.starts_with("styrene/") {
+                    Self::Styrene
+                } else if key.name.starts_with("nex") || key.name.starts_with("nex/") {
+                    Self::Nex
+                } else if key.name.starts_with("armory") || key.name.starts_with("armory/") {
+                    Self::Armory
+                } else {
+                    Self::Tool
+                }
+            }
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GatewayMethodDescriptor {
+    pub name: String,
+    pub method: GatewayProjectionMethod,
+    pub read_only: bool,
+}
+
+pub fn projection_method_registry() -> Vec<GatewayMethodDescriptor> {
+    vec![
+        GatewayMethodDescriptor { name: METHOD_FLEET_STATUS.into(), method: GatewayProjectionMethod::FleetStatus, read_only: true },
+        GatewayMethodDescriptor { name: METHOD_INSTANCES_LIST.into(), method: GatewayProjectionMethod::InstancesList, read_only: true },
+        GatewayMethodDescriptor { name: METHOD_CAPABILITIES_QUERY.into(), method: GatewayProjectionMethod::CapabilitiesQuery, read_only: true },
+    ]
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -96,6 +174,31 @@ impl GatewayDegradation {
             ));
             unavailable_surfaces.push("dispatch-to-not-ready-instances".into());
         }
+        let missing_profile_count = fleet
+            .instances
+            .iter()
+            .filter(|instance| instance.operational_profile.is_none())
+            .count();
+        if missing_profile_count > 0 {
+            reasons.push(format!(
+                "{} instance(s) have no operational profile metadata",
+                missing_profile_count
+            ));
+            unavailable_surfaces.push("profile-gated-first-party-methods".into());
+        }
+        let no_host_action_support = fleet
+            .instances
+            .iter()
+            .filter(|instance| instance.ready)
+            .filter(|instance| !instance_supports_host_actions(instance))
+            .count();
+        if no_host_action_support > 0 {
+            reasons.push(format!(
+                "{} ready instance(s) have no known HostAction support",
+                no_host_action_support
+            ));
+            unavailable_surfaces.push("auspex/host-actions/*".into());
+        }
 
         if reasons.is_empty() {
             Self::default()
@@ -148,9 +251,23 @@ impl GatewayCapabilitiesQueryResponse {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct GatewayCapabilityMatch {
     pub instance_id: String,
+    pub namespace: CapabilityNamespace,
     pub ready: bool,
     pub compatibility: CompatibilityStatus,
     pub capabilities: InstanceCapabilitySnapshot,
+}
+
+fn instance_supports_host_actions(instance: &FleetInstanceProjection) -> bool {
+    instance
+        .operational_profile
+        .as_ref()
+        .is_some_and(|profile: &OperationalProfile| profile.capabilities.host_actions)
+        || instance.capabilities.as_ref().is_some_and(|capabilities| {
+            capabilities.evidence.iter().any(|evidence| {
+                CapabilityNamespace::from_key(&evidence.key) == CapabilityNamespace::HostAction
+                    && evidence.status == crate::capability_registry::CapabilityStatus::Present
+            })
+        })
 }
 
 fn capability_match(
@@ -168,6 +285,7 @@ fn capability_match(
         .unwrap_or(CompatibilityStatus::Unknown);
     Some(GatewayCapabilityMatch {
         instance_id: instance.instance_id.clone(),
+        namespace: CapabilityNamespace::from_key(query),
         ready: instance.ready,
         compatibility,
         capabilities: capabilities.clone(),
@@ -207,6 +325,7 @@ mod tests {
                 control_plane: control_plane.clone(),
                 health: ObservedHealth { ready, ..Default::default() },
                 compatibility: Some(assess_observed_control_plane(&control_plane)),
+                operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
                 capabilities: Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
                     id.to_string(),
                     capabilities.iter().copied(),
@@ -215,6 +334,52 @@ mod tests {
             },
             ..Default::default()
         }
+    }
+
+
+    #[test]
+    fn method_registry_is_read_only_and_canonical() {
+        let methods = projection_method_registry();
+
+        assert_eq!(methods.len(), 3);
+        assert!(methods.iter().all(|method| method.read_only));
+        assert!(methods.iter().any(|method| method.name == METHOD_FLEET_STATUS));
+        assert_eq!(GatewayProjectionMethod::FleetStatus.as_str(), METHOD_FLEET_STATUS);
+    }
+
+    #[test]
+    fn capability_namespace_detects_first_party_surfaces() {
+        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::tool("omegon/context/status")), CapabilityNamespace::Omegon);
+        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::tool("styrene/identity/attest")), CapabilityNamespace::Styrene);
+        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::host_action("package.install@1")), CapabilityNamespace::HostAction);
+    }
+
+    #[test]
+    fn missing_profile_and_hostaction_support_degrade_projection() {
+        let mut record = instance("primary", "0.25.6", true, &["state.snapshot"]);
+        record.observed.operational_profile = None;
+        let fleet = FleetRuntimeProjection::from_instances(&[record]);
+        let response = GatewayProjectionResponse::fleet_status(fleet);
+
+        assert_eq!(response.degradation.mode, GatewayDegradationMode::Degraded);
+        assert!(response.degradation.reasons.iter().any(|reason| reason.contains("operational profile")));
+        assert!(response.degradation.unavailable_surfaces.contains(&"auspex/host-actions/*".to_string()));
+    }
+
+    #[test]
+    fn fleet_status_serializes_stable_method_and_schema() {
+        let fleet = FleetRuntimeProjection::from_instances(&[instance(
+            "primary",
+            "0.25.6",
+            true,
+            &["state.snapshot"],
+        )]);
+        let response = GatewayProjectionResponse::fleet_status(fleet);
+        let json = serde_json::to_string(&response).unwrap();
+
+        assert!(json.contains("\"schema_version\":1"));
+        assert!(json.contains("\"method\":\"fleet-status\""));
+        assert!(json.contains("\"mode\":\"full\""));
     }
 
     #[test]
