@@ -32,9 +32,55 @@ impl OperationalProfile {
         }
     }
 
+    pub fn from_initialize_metadata(metadata: &serde_json::Value) -> Option<Self> {
+        let root = metadata
+            .pointer("/_meta/auspex")
+            .or_else(|| metadata.pointer("/meta/auspex"))
+            .unwrap_or(metadata);
+        let info = root
+            .get("runtime_info")
+            .or_else(|| root.get("extension_info"))?;
+        let capabilities = root.get("capabilities");
+        let policy = root.get("policy");
+
+        let name = string_field(info, "name")?;
+        let version = string_field(info, "version").unwrap_or_default();
+        let recommended_profile = string_field(info, "recommended_profile")
+            .unwrap_or_else(|| name.clone());
+        let required_profile = string_field(info, "required_profile")
+            .unwrap_or_else(|| recommended_profile.clone());
+        let capability_contract_version = info
+            .get("capability_contract_version")
+            .and_then(|value| value.as_u64())
+            .unwrap_or(1) as u32;
+        let scope = string_field(info, "scope")
+            .and_then(|value| OperationalScope::from_str(&value))
+            .unwrap_or_default();
+
+        Some(Self {
+            name,
+            version,
+            scope,
+            recommended_profile,
+            required_profile,
+            capability_contract_version,
+            capabilities: OperationalCapabilities::from_metadata(capabilities),
+            policy: OperationalPolicy::from_metadata(policy),
+            meta: BTreeMap::new(),
+        })
+    }
+
     pub fn is_required_profile_satisfied_by(&self, profile: &str) -> bool {
         self.required_profile == profile
     }
+}
+
+fn string_field(value: &serde_json::Value, field: &str) -> Option<String> {
+    value
+        .get(field)
+        .and_then(|value| value.as_str())
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -45,6 +91,18 @@ pub enum OperationalScope {
     Fleet,
     Host,
     Cluster,
+}
+
+impl OperationalScope {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "project" => Some(Self::Project),
+            "fleet" => Some(Self::Fleet),
+            "host" => Some(Self::Host),
+            "cluster" => Some(Self::Cluster),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -77,6 +135,23 @@ impl OperationalCapabilities {
             fleet_projection: true,
         }
     }
+
+    fn from_metadata(value: Option<&serde_json::Value>) -> Self {
+        let Some(value) = value else { return Self::default(); };
+        Self {
+            instance_registry: bool_field(value, "instance_registry"),
+            dispatch: bool_field(value, "dispatch"),
+            supervision: bool_field(value, "supervision"),
+            host_actions: bool_field(value, "host_actions"),
+            package_reconciliation: bool_field(value, "package_reconciliation"),
+            audit: bool_field(value, "audit"),
+            fleet_projection: bool_field(value, "fleet_projection"),
+        }
+    }
+}
+
+fn bool_field(value: &serde_json::Value, field: &str) -> bool {
+    value.get(field).and_then(|value| value.as_bool()).unwrap_or(false)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -98,6 +173,35 @@ impl OperationalPolicy {
             cross_project_state: CrossProjectStatePolicy::ExplicitGrantOnly,
         }
     }
+
+    fn from_metadata(value: Option<&serde_json::Value>) -> Self {
+        let Some(value) = value else { return Self::default(); };
+        Self {
+            host_action_mutation_requires_approval: bool_field(
+                value,
+                "host_action_mutation_requires_approval",
+            ),
+            unknown_host_actions: value
+                .get("unknown_host_actions")
+                .and_then(|value| value.as_str())
+                .and_then(UnknownHostActionPolicy::from_str)
+                .unwrap_or_default(),
+            capability_discovery: value
+                .get("capability_discovery")
+                .and_then(|value| value.as_str())
+                .and_then(CapabilityDiscoveryPolicy::from_str)
+                .unwrap_or_default(),
+            dispatch_requires_compatible_instance: bool_field(
+                value,
+                "dispatch_requires_compatible_instance",
+            ),
+            cross_project_state: value
+                .get("cross_project_state")
+                .and_then(|value| value.as_str())
+                .and_then(CrossProjectStatePolicy::from_str)
+                .unwrap_or_default(),
+        }
+    }
 }
 
 impl Default for OperationalPolicy {
@@ -114,11 +218,30 @@ pub enum UnknownHostActionPolicy {
     Unsupported,
 }
 
+impl UnknownHostActionPolicy {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "deny" => Some(Self::Deny),
+            "unsupported" => Some(Self::Unsupported),
+            _ => None,
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CapabilityDiscoveryPolicy {
     #[default]
     ReadOnly,
+}
+
+impl CapabilityDiscoveryPolicy {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "read_only" => Some(Self::ReadOnly),
+            _ => None,
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
@@ -130,9 +253,21 @@ pub enum CrossProjectStatePolicy {
     Allowed,
 }
 
+impl CrossProjectStatePolicy {
+    fn from_str(value: &str) -> Option<Self> {
+        match value {
+            "explicit_grant_only" => Some(Self::ExplicitGrantOnly),
+            "forbidden" => Some(Self::Forbidden),
+            "allowed" => Some(Self::Allowed),
+            _ => None,
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     #[test]
     fn orchestrator_profile_declares_fleet_policy() {
@@ -144,5 +279,75 @@ mod tests {
         assert!(profile.capabilities.host_actions);
         assert_eq!(profile.policy.unknown_host_actions, UnknownHostActionPolicy::Deny);
         assert!(profile.policy.dispatch_requires_compatible_instance);
+    }
+
+    #[test]
+    fn parses_auspex_meta_initialize_metadata() {
+        let metadata = json!({
+            "_meta": {
+                "auspex": {
+                    "runtime_info": {
+                        "name": "auspex-orchestrator",
+                        "version": "0.2.0",
+                        "scope": "fleet",
+                        "recommended_profile": "auspex-orchestrator",
+                        "required_profile": "auspex-orchestrator",
+                        "capability_contract_version": 3
+                    },
+                    "capabilities": {
+                        "instance_registry": true,
+                        "dispatch": true,
+                        "host_actions": true,
+                        "fleet_projection": true
+                    },
+                    "policy": {
+                        "host_action_mutation_requires_approval": true,
+                        "unknown_host_actions": "deny",
+                        "capability_discovery": "read_only",
+                        "dispatch_requires_compatible_instance": true,
+                        "cross_project_state": "explicit_grant_only"
+                    }
+                }
+            }
+        });
+
+        let profile = OperationalProfile::from_initialize_metadata(&metadata).unwrap();
+
+        assert_eq!(profile.name, "auspex-orchestrator");
+        assert_eq!(profile.capability_contract_version, 3);
+        assert!(profile.capabilities.instance_registry);
+        assert!(profile.capabilities.dispatch);
+        assert!(profile.policy.host_action_mutation_requires_approval);
+    }
+
+    #[test]
+    fn parses_flynt_style_extension_initialize_metadata() {
+        let metadata = json!({
+            "extension_info": {
+                "name": "flynt",
+                "version": "0.1.0",
+                "scope": "project",
+                "recommended_profile": "flynt-agent",
+                "required_profile": "flynt-agent",
+                "capability_contract_version": 1
+            },
+            "capabilities": {
+                "host_actions": false,
+                "audit": true
+            },
+            "policy": {
+                "unknown_host_actions": "deny",
+                "capability_discovery": "read_only",
+                "cross_project_state": "forbidden"
+            }
+        });
+
+        let profile = OperationalProfile::from_initialize_metadata(&metadata).unwrap();
+
+        assert_eq!(profile.name, "flynt");
+        assert_eq!(profile.scope, OperationalScope::Project);
+        assert_eq!(profile.required_profile, "flynt-agent");
+        assert!(profile.capabilities.audit);
+        assert_eq!(profile.policy.cross_project_state, CrossProjectStatePolicy::Forbidden);
     }
 }

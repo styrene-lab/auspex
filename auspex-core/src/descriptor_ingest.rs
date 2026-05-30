@@ -10,6 +10,15 @@ pub fn apply_descriptor_to_observed_state(
     observed: &mut ObservedWorkerState,
     descriptor: &OmegonInstanceDescriptor,
 ) {
+    apply_descriptor_and_metadata_to_observed_state(instance_id, observed, descriptor, None);
+}
+
+pub fn apply_descriptor_and_metadata_to_observed_state(
+    instance_id: &str,
+    observed: &mut ObservedWorkerState,
+    descriptor: &OmegonInstanceDescriptor,
+    metadata: Option<&serde_json::Value>,
+) {
     if let Some(control_plane) = descriptor.control_plane.as_ref() {
         apply_control_plane_descriptor(&mut observed.control_plane, control_plane);
         observed.compatibility = Some(assess_observed_control_plane(&observed.control_plane));
@@ -17,6 +26,10 @@ pub fn apply_descriptor_to_observed_state(
             instance_id.to_string(),
             control_plane.capabilities.clone(),
         ));
+    }
+    if let Some(metadata) = metadata {
+        observed.operational_profile =
+            crate::operational_profile::OperationalProfile::from_initialize_metadata(metadata);
     }
 }
 
@@ -100,5 +113,43 @@ mod tests {
             .find(|evidence| evidence.key == CapabilityKey::tool("state.snapshot"))
             .expect("state.snapshot evidence");
         assert_eq!(state_snapshot.status, CapabilityStatus::Present);
+    }
+
+    #[test]
+    fn descriptor_with_metadata_updates_operational_profile() {
+        let descriptor = OmegonInstanceDescriptor {
+            control_plane: Some(OmegonControlPlaneDescriptor {
+                schema_version: 2,
+                omegon_version: Some("0.25.4".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let metadata = serde_json::json!({
+            "_meta": {
+                "auspex": {
+                    "runtime_info": {
+                        "name": "auspex-orchestrator",
+                        "version": "0.2.0",
+                        "scope": "fleet",
+                        "required_profile": "auspex-orchestrator"
+                    },
+                    "capabilities": { "dispatch": true },
+                    "policy": { "unknown_host_actions": "deny" }
+                }
+            }
+        });
+        let mut observed = ObservedWorkerState::default();
+
+        apply_descriptor_and_metadata_to_observed_state(
+            "omg-1",
+            &mut observed,
+            &descriptor,
+            Some(&metadata),
+        );
+
+        let profile = observed.operational_profile.as_ref().unwrap();
+        assert_eq!(profile.name, "auspex-orchestrator");
+        assert!(profile.capabilities.dispatch);
     }
 }
