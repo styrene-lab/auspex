@@ -33,6 +33,33 @@ pub fn apply_descriptor_and_metadata_to_observed_state(
     }
 }
 
+
+pub fn apply_fixture_descriptor_and_metadata_to_observed_state(
+    instance_id: &str,
+    observed: &mut ObservedWorkerState,
+    descriptor: &crate::fixtures::InstanceDescriptorData,
+    metadata: Option<&serde_json::Value>,
+) {
+    if let Some(control_plane) = descriptor.control_plane.as_ref() {
+        observed.control_plane.schema_version = control_plane.schema_version;
+        if let Some(version) = control_plane.omegon_version.as_ref().filter(|value| !value.is_empty()) {
+            observed.control_plane.omegon_version = version.clone();
+        }
+        if let Some(base_url) = control_plane.base_url.as_ref().filter(|value| !value.is_empty()) {
+            observed.control_plane.base_url = base_url.clone();
+        }
+        observed.compatibility = Some(assess_observed_control_plane(&observed.control_plane));
+        observed.capabilities = Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+            instance_id.to_string(),
+            control_plane.capabilities.clone(),
+        ));
+    }
+    if let Some(metadata) = metadata {
+        observed.operational_profile =
+            crate::operational_profile::OperationalProfile::from_initialize_metadata(metadata);
+    }
+}
+
 fn apply_control_plane_descriptor(
     observed: &mut ObservedControlPlane,
     descriptor: &crate::omegon_control::OmegonControlPlaneDescriptor,
