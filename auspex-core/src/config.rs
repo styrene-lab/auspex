@@ -402,9 +402,32 @@ impl RemoteInstanceEntry {
                     ..Default::default()
                 },
                 exit: Default::default(),
-                compatibility: None,
+                compatibility: Some(crate::compatibility::assess_observed_control_plane(
+                    &crate::runtime_types::ObservedControlPlane {
+                        schema_version: 2,
+                        omegon_version: String::new(),
+                        base_url: base.to_string(),
+                        startup_url: self.startup_url(),
+                        health_url: self.health_url(),
+                        ready_url: self.ready_url(),
+                        ws_url: self.ws_url(),
+                        acp_url: None,
+                        auth_mode: self.auth_mode.clone(),
+                        token_ref: self.token.clone(),
+                        transport_security: Some(if base.starts_with("https://") {
+                            "tls".into()
+                        } else {
+                            "plaintext".into()
+                        }),
+                        mtls: Some(self.auth_mode == "mtls"),
+                        last_ready_at: None,
+                        ..Default::default()
+                    },
+                )),
                 operational_profile: None,
-                capabilities: None,
+                capabilities: Some(crate::capability_registry::InstanceCapabilitySnapshot::empty(
+                    format!("remote:{name}"),
+                )),
             },
         }
     }

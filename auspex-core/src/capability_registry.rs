@@ -100,6 +100,10 @@ impl InstanceCapabilitySnapshot {
         Self { instance_id: instance_id.into(), evidence: Vec::new() }
     }
 
+    pub fn empty(instance_id: impl Into<String>) -> Self {
+        Self::new(instance_id)
+    }
+
     pub fn add(&mut self, evidence: CapabilityEvidence) {
         self.evidence.push(evidence);
     }
