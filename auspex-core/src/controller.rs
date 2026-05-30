@@ -4,6 +4,7 @@ use crate::fixtures::{
     HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
 };
 use crate::instance_registry::InstanceRegistryStore;
+use crate::omegon_control::OmegonInstanceDescriptor;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::instance_registry::{
     default_instance_registry_path, persist as persist_instance_registry,
@@ -340,6 +341,47 @@ impl AppController {
         crate::fleet_projection::FleetRuntimeProjection::from_instances(
             &self.instance_registry.instances,
         )
+    }
+
+    pub fn apply_instance_descriptor(
+        &mut self,
+        instance_id: &str,
+        descriptor: &OmegonInstanceDescriptor,
+    ) -> bool {
+        let mut updated = false;
+        if let Some(record) = self
+            .instance_registry
+            .instances
+            .iter_mut()
+            .find(|record| record.identity.instance_id == instance_id)
+        {
+            crate::descriptor_ingest::apply_descriptor_to_observed_state(
+                instance_id,
+                &mut record.observed,
+                descriptor,
+            );
+            updated = true;
+        }
+        if updated {
+            if let Some(record) = self.instance_registry.find(instance_id).cloned() {
+                self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
+                    instance_id: record.identity.instance_id.clone(),
+                    route_id: format!("instance:{}", record.identity.instance_id),
+                    role: format!("{:?}", record.identity.role),
+                    profile: record.identity.profile.clone(),
+                    session_key: format!("instance:{}", record.identity.instance_id),
+                    base_url: Some(record.observed.control_plane.base_url.clone())
+                        .filter(|url| !url.is_empty()),
+                    model: record.desired.policy.model.clone(),
+                    dispatcher_instance_id: None,
+                    registry_record: Some(record),
+                });
+                self.instance_registry = self.attached_instance_engine.registry_store().clone();
+            }
+            self.refresh_telemetry_snapshot();
+            self.persist_instance_registry();
+        }
+        updated
     }
 
     pub fn select_command_route(&mut self, route_id: &str) {
@@ -3089,6 +3131,41 @@ mod tests {
                 .iter()
                 .any(|r| r.route_id == "container:omg_slack_01")
         );
+    }
+
+    #[test]
+    fn apply_instance_descriptor_updates_projection_capability_evidence() {
+        let entry = crate::config::RemoteInstanceEntry {
+            label: "Discord Agent".into(),
+            base_url: "https://agents.styrene.dev:7842".into(),
+            role: crate::runtime_types::WorkerRole::DetachedService,
+            profile: "messaging-agent".into(),
+            token: Some("tok".into()),
+            ..Default::default()
+        };
+        let record = entry.to_instance_record("styrene-discord");
+        let mut controller = AppController::default().with_instance_registry(InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![record],
+        });
+        let descriptor = crate::omegon_control::OmegonInstanceDescriptor {
+            control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
+                schema_version: 2,
+                omegon_version: Some("0.25.4".into()),
+                capabilities: vec!["state.snapshot".into()],
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+
+        assert!(controller.apply_instance_descriptor("remote:styrene-discord", &descriptor));
+
+        let projection = controller.fleet_runtime_projection();
+        assert_eq!(projection.summary.compatible_instances, 1);
+        let capabilities = projection.instances[0].capabilities.as_ref().unwrap();
+        assert!(capabilities.has_present(&crate::capability_registry::CapabilityKey::tool(
+            "state.snapshot",
+        )));
     }
 
     #[test]
