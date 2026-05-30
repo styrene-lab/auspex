@@ -49,7 +49,7 @@ Bring Auspex back into parity with the current Omegon/Flynt/Armory integration m
 ## Open Questions
 
 - Auspex requires Omegon 0.25.x+ for this parity program; older incompatible releases such as 0.23 are unsupported rather than degraded.
-- [assumption] Omegon 0.25 still speaks control-plane schema 2 for the surfaces Auspex currently consumes.
+- Local Omegon source shows `/api/startup` uses web startup schema `2`, while `OmegonInstanceDescriptor` and `OmegonControlPlane` use `omegon_traits::IPC_PROTOCOL_VERSION`, currently `1`; Auspex compatibility code must distinguish these schema surfaces.
 - What is the minimal runtime endpoint/handshake Auspex can implement first without blocking on deeper ACP proxy work?
 
 ## Open Questions

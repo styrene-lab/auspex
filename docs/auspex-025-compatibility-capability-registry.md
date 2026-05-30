@@ -45,7 +45,7 @@ Auspex should add a compatibility/capability registry slice that treats Omegon i
 ## Open Questions
 
 - Auspex requires Omegon 0.25.x+; pre-0.25 instances are unsupported rather than degraded.
-- [assumption] Omegon control-plane schema remains `2` across the supported 0.25 line; this must be verified against runtime discovery/state snapshots.
+- Local Omegon source resolves the schema question: `/api/startup` `WebStartupInfo` uses schema `2`, but `OmegonInstanceDescriptor` and `OmegonControlPlane` use `omegon_traits::IPC_PROTOCOL_VERSION`, currently `1`.
 - What exact ACP/session-info fields expose extension initialize metadata, and which should become Auspex instance registry fields?
 - Should Auspex capability registry persist per-instance capability snapshots, or derive them live on demand?
 - What approval model maps existing Auspex operator security tiers to Omegon HostAction approval states?

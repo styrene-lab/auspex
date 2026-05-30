@@ -6,7 +6,9 @@ Auspex targets the Omegon 0.25 release line and newer compatible 0.x releases th
 [omegon]
 minimum_version = "0.25.0"
 maximum_tested_version = "0.25.4"
-control_plane_schema = 2
+web_startup_schema = 2
+instance_descriptor_schema = 1
+control_plane_protocol = 1
 required_surfaces = [
   "acp.initialize.metadata",
   "nex_capability.read_only",
@@ -27,7 +29,9 @@ Auspex should not attach blindly to arbitrary Omegon instances. It declares the 
 
 - Minimum Omegon: `0.25.0`
 - Maximum tested Omegon: `0.25.4`
-- Control-plane schema: `2`
+- Web startup schema: `2`
+- Instance descriptor schema: `1`
+- Control-plane protocol/schema: `1`
 - Older Omegon versions, including `0.23.x`, are unsupported.
 
 ## Rationale
