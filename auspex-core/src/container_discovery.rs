@@ -131,23 +131,8 @@ pub fn probe_health(host_port: u16) -> bool {
     }
 }
 
-/// Fetch the omegon version from a container's startup endpoint.
-#[cfg(not(target_arch = "wasm32"))]
-fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
-    let url = format!("http://127.0.0.1:{host_port}/api/startup");
-    let output = std::process::Command::new("curl")
-        .args(["-sf", "--max-time", "2", &url])
-        .stdout(std::process::Stdio::piped())
-        .stderr(std::process::Stdio::null())
-        .output()
-        .ok()?;
-
-    if !output.status.success() {
-        return None;
-    }
-
-    let body = String::from_utf8_lossy(&output.stdout);
-    let startup: serde_json::Value = serde_json::from_str(&body).ok()?;
+fn parse_startup_info(body: &str) -> Option<(String, String, Vec<String>)> {
+    let startup: serde_json::Value = serde_json::from_str(body).ok()?;
 
     let token = startup
         .get("token")
@@ -156,7 +141,8 @@ fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
         .to_string();
 
     let omegon_version = startup
-        .pointer("/instance_descriptor/identity/omegon_version")
+        .pointer("/instance_descriptor/control_plane/omegon_version")
+        .or_else(|| startup.pointer("/instance_descriptor/identity/omegon_version"))
         .or_else(|| startup.get("omegon_version"))
         .and_then(|v| v.as_str())
         .unwrap_or("")
@@ -174,6 +160,25 @@ fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
         .unwrap_or_default();
 
     Some((token, omegon_version, capabilities))
+}
+
+/// Fetch the omegon version from a container's startup endpoint.
+#[cfg(not(target_arch = "wasm32"))]
+fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
+    let url = format!("http://127.0.0.1:{host_port}/api/startup");
+    let output = std::process::Command::new("curl")
+        .args(["-sf", "--max-time", "2", &url])
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::null())
+        .output()
+        .ok()?;
+
+    if !output.status.success() {
+        return None;
+    }
+
+    let body = String::from_utf8_lossy(&output.stdout);
+    parse_startup_info(&body)
 }
 
 /// Convert a discovered container into an `InstanceRecord`.
@@ -318,6 +323,37 @@ mod tests {
         });
 
         assert_eq!(extract_host_port(&container), None);
+    }
+
+    #[test]
+    fn parse_startup_info_prefers_control_plane_version_and_capabilities() {
+        let body = r#"{
+            "token": "secret-token",
+            "omegon_version": "0.24.0",
+            "instance_descriptor": {
+                "identity": { "omegon_version": "0.25.0" },
+                "control_plane": {
+                    "omegon_version": "0.25.4",
+                    "capabilities": ["state.snapshot", "events.stream", 42]
+                }
+            }
+        }"#;
+
+        let (token, version, capabilities) = parse_startup_info(body).unwrap();
+
+        assert_eq!(token, "secret-token");
+        assert_eq!(version, "0.25.4");
+        assert_eq!(capabilities, vec!["state.snapshot", "events.stream"]);
+    }
+
+    #[test]
+    fn parse_startup_info_falls_back_to_top_level_version() {
+        let body = r#"{ "omegon_version": "0.25.4" }"#;
+
+        let (_token, version, capabilities) = parse_startup_info(body).unwrap();
+
+        assert_eq!(version, "0.25.4");
+        assert!(capabilities.is_empty());
     }
 
     #[test]
