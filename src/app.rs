@@ -1550,7 +1550,11 @@ pub fn App() -> Element {
                                             onclick: {
                                                 let key = item.key.clone();
                                                 move |_| {
-                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
+                                                    let is_selected = {
+                                                        let current = selected_cockpit_entity.read();
+                                                        current.as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone()))
+                                                    };
+                                                    if is_selected {
                                                         selected_cockpit_entity.set(None);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
@@ -3207,7 +3211,11 @@ fn render_cockpit_top_rail(
                                     onclick: {
                                         let key = item.key.clone();
                                         move |_| {
-                                            if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                            let is_selected = {
+                                                let current = selected_cockpit_entity.read();
+                                                current.as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone()))
+                                            };
+                                            if is_selected {
                                                 selected_cockpit_entity.set(None);
                                             } else {
                                                 selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
@@ -3238,7 +3246,11 @@ fn render_cockpit_top_rail(
                                     onclick: {
                                         let key = item.key.clone();
                                         move |_| {
-                                            if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone())) {
+                                            let is_selected = {
+                                                let current = selected_cockpit_entity.read();
+                                                current.as_ref() == Some(&SelectedCockpitEntity::ActivityActor(key.clone()))
+                                            };
+                                            if is_selected {
                                                 selected_cockpit_entity.set(None);
                                             } else {
                                                 selected_cockpit_entity.set(Some(SelectedCockpitEntity::ActivityActor(key.clone())));
