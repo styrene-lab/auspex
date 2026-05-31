@@ -366,6 +366,36 @@ impl AppController {
     }
 
 
+
+    pub fn seed_demo_gateway_fleet(&mut self) {
+        let mut store = InstanceRegistryStore::default();
+        store.upsert(crate::gateway_projection::fixtures::demo_instance(
+            "primary-local",
+            "0.25.6",
+            true,
+            true,
+            &["state.snapshot", "omegon/context/status"],
+        ));
+        store.upsert(crate::gateway_projection::fixtures::demo_instance(
+            "worker-cold",
+            "0.25.6",
+            false,
+            true,
+            &["state.snapshot"],
+        ));
+        store.upsert(crate::gateway_projection::fixtures::demo_instance(
+            "legacy-peer",
+            "0.23.0",
+            true,
+            false,
+            &["state.snapshot"],
+        ));
+        self.instance_registry = store;
+        self.rebuild_attached_instances();
+        self.refresh_telemetry_snapshot();
+        self.project_gateway_fleet_to_cop();
+    }
+
     pub fn project_gateway_fleet_to_cop(&mut self) {
         let projection = self.gateway_fleet_status();
         crate::cop_surface::apply_gateway_fleet_projection(&mut self.cop_state, &projection);

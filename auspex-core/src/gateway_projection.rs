@@ -292,6 +292,48 @@ fn capability_match(
     })
 }
 
+
+#[cfg(any(test, feature = "desktop"))]
+pub mod fixtures {
+    pub fn demo_instance(
+        id: &str,
+        version: &str,
+        ready: bool,
+        with_profile: bool,
+        capabilities: &[&str],
+    ) -> crate::runtime_types::InstanceRecord {
+        let control_plane = crate::runtime_types::ObservedControlPlane {
+            schema_version: 2,
+            omegon_version: version.into(),
+            base_url: format!("http://127.0.0.1/{id}"),
+            ..Default::default()
+        };
+        crate::runtime_types::InstanceRecord {
+            schema_version: 1,
+            identity: crate::runtime_types::WorkerIdentity {
+                instance_id: id.into(),
+                role: crate::runtime_types::WorkerRole::PrimaryDriver,
+                profile: "auspex-orchestrator".into(),
+                status: crate::runtime_types::WorkerLifecycleState::Ready,
+                created_at: "2026-05-30T00:00:00Z".into(),
+                updated_at: "2026-05-30T00:00:00Z".into(),
+            },
+            observed: crate::runtime_types::ObservedWorkerState {
+                control_plane: control_plane.clone(),
+                health: crate::runtime_types::ObservedHealth { ready, ..Default::default() },
+                compatibility: Some(crate::compatibility::assess_observed_control_plane(&control_plane)),
+                operational_profile: with_profile.then(|| crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
+                capabilities: Some(crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                    id.to_string(),
+                    capabilities.iter().copied(),
+                )),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

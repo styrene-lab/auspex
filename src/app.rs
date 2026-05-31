@@ -5524,6 +5524,12 @@ fn render_gateway_cop_workspace(mut controller: Signal<auspex_core::controller::
                     onclick: move |_| controller.write().project_gateway_fleet_to_cop(),
                     "Refresh Fleet"
                 }
+                button {
+                    class: "cop-refresh-button",
+                    r#type: "button",
+                    onclick: move |_| controller.write().seed_demo_gateway_fleet(),
+                    "Load Demo Fleet"
+                }
             }
             {render_cop_surface(controller.read().cop_state())}
         }

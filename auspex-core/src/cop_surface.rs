@@ -503,39 +503,11 @@ mod tests {
 
 
 
-    fn gateway_test_record(id: &str, version: &str, ready: bool) -> crate::runtime_types::InstanceRecord {
-        let control_plane = crate::runtime_types::ObservedControlPlane {
-            schema_version: 2,
-            omegon_version: version.into(),
-            base_url: format!("http://127.0.0.1/{id}"),
-            ..Default::default()
-        };
-        crate::runtime_types::InstanceRecord {
-            schema_version: 1,
-            identity: crate::runtime_types::WorkerIdentity {
-                instance_id: id.into(),
-                role: crate::runtime_types::WorkerRole::PrimaryDriver,
-                profile: "auspex-orchestrator".into(),
-                status: crate::runtime_types::WorkerLifecycleState::Ready,
-                created_at: "2026-05-30T00:00:00Z".into(),
-                updated_at: "2026-05-30T00:00:00Z".into(),
-            },
-            observed: crate::runtime_types::ObservedWorkerState {
-                control_plane: control_plane.clone(),
-                health: crate::runtime_types::ObservedHealth { ready, ..Default::default() },
-                compatibility: Some(crate::compatibility::assess_observed_control_plane(&control_plane)),
-                operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
-                ..Default::default()
-            },
-            ..Default::default()
-        }
-    }
-
     #[test]
     fn gateway_fleet_projection_renders_non_empty_rows() {
         let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
             crate::fleet_projection::FleetRuntimeProjection::from_instances(&[
-                gateway_test_record("primary", "0.25.6", true),
+                crate::gateway_projection::fixtures::demo_instance("primary", "0.25.6", true, true, &["state.snapshot"]),
             ]),
         );
         let mut state = CopDisplayState::default();
