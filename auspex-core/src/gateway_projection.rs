@@ -293,7 +293,6 @@ fn capability_match(
 }
 
 
-#[cfg(any(test, feature = "desktop"))]
 pub mod fixtures {
     pub fn demo_instance(
         id: &str,
