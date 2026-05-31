@@ -416,6 +416,70 @@ pub fn apply_gateway_fleet_projection(
     );
 }
 
+
+/// Render local Omegon discovery candidates into COP regions.
+pub fn apply_local_omegon_discovery(
+    state: &mut CopDisplayState,
+    candidates: &[crate::local_omegon_discovery::LocalOmegonCandidate],
+) {
+    state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East]);
+    let owned = candidates
+        .iter()
+        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::AuspexOwned)
+        .count();
+    let user_owned = candidates
+        .iter()
+        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::UserOwned)
+        .count();
+    let unknown = candidates
+        .iter()
+        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::Unknown)
+        .count();
+
+    state.write(
+        CopRegion::North,
+        ContentType::StatusCard,
+        Some("Local Omegon Discovery".into()),
+        serde_json::json!({
+            "label": "Local Omegon",
+            "status": if candidates.is_empty() { "none" } else { "discovered" },
+            "detail": format!("{} local candidate(s): {owned} Auspex-owned, {user_owned} user-owned, {unknown} unknown", candidates.len()),
+            "severity": if candidates.is_empty() { "warning" } else { "active" }
+        }),
+    );
+    state.write(
+        CopRegion::Center,
+        ContentType::Table,
+        Some("Local Candidates".into()),
+        serde_json::json!({
+            "columns": ["Source", "Ownership", "PID", "Startup URL", "State URL", "Command"],
+            "rows": candidates.iter().map(|candidate| {
+                serde_json::json!([
+                    format!("{:?}", candidate.source),
+                    format!("{:?}", candidate.ownership),
+                    candidate.pid.map(|pid| pid.to_string()).unwrap_or_else(|| "—".into()),
+                    candidate.startup_url.clone().unwrap_or_else(|| "—".into()),
+                    candidate.state_url.clone().unwrap_or_else(|| "—".into()),
+                    candidate.command.clone().unwrap_or_else(|| "—".into()),
+                ])
+            }).collect::<Vec<_>>()
+        }),
+    );
+    state.write(
+        CopRegion::East,
+        ContentType::KvGrid,
+        Some("Discovery Summary".into()),
+        serde_json::json!({
+            "pairs": [
+                {"key": "Total", "value": candidates.len()},
+                {"key": "Auspex-owned", "value": owned},
+                {"key": "User-owned", "value": user_owned},
+                {"key": "Unknown", "value": unknown}
+            ]
+        }),
+    );
+}
+
 /// The five standard segmenta regions.
 pub fn default_segmenta_regions() -> Vec<CopRegion> {
     vec![
@@ -502,6 +566,26 @@ mod tests {
     use super::*;
 
 
+
+
+    #[test]
+    fn apply_local_omegon_discovery_writes_candidate_rows() {
+        let candidates = vec![crate::local_omegon_discovery::LocalOmegonCandidate::from_process_table(
+            202,
+            "/Users/wilson/.cargo/bin/omegon serve --control-port 7842 --strict-port",
+        )];
+        let mut state = CopDisplayState::default();
+
+        apply_local_omegon_discovery(&mut state, &candidates);
+
+        let center = state.region(&CopRegion::Center).unwrap();
+        let rows = center.data.get("rows").and_then(|value| value.as_array()).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][1], "UserOwned");
+        assert_eq!(rows[0][2], "202");
+        assert_eq!(rows[0][3], "http://127.0.0.1:7842/api/startup");
+        assert_eq!(state.active_regions(), &[CopRegion::North, CopRegion::Center, CopRegion::East]);
+    }
 
     #[test]
     fn gateway_fleet_projection_renders_non_empty_rows() {

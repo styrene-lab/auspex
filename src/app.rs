@@ -5562,14 +5562,19 @@ fn render_gateway_cop_workspace(mut controller: Signal<auspex_core::controller::
                 button {
                     class: "cop-refresh-button",
                     r#type: "button",
-                    onclick: move |_| controller.write().project_gateway_fleet_to_cop(),
-                    "Refresh Fleet"
+                    onclick: move |_| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        controller.write().discover_local_omegon_to_cop();
+                        #[cfg(target_arch = "wasm32")]
+                        controller.write().project_gateway_fleet_to_cop();
+                    },
+                    "Discover Local"
                 }
                 button {
                     class: "cop-refresh-button",
                     r#type: "button",
-                    onclick: move |_| controller.write().seed_demo_gateway_fleet(),
-                    "Load Demo Fleet"
+                    onclick: move |_| controller.write().project_gateway_fleet_to_cop(),
+                    "Refresh Fleet"
                 }
             }
             {render_cop_surface(controller.read().cop_state())}

@@ -400,6 +400,13 @@ impl AppController {
         let projection = self.gateway_fleet_status();
         crate::cop_surface::apply_gateway_fleet_projection(&mut self.cop_state, &projection);
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn discover_local_omegon_to_cop(&mut self) -> Vec<crate::local_omegon_discovery::LocalOmegonCandidate> {
+        let candidates = crate::local_omegon_discovery::discover_process_table_candidates();
+        crate::cop_surface::apply_local_omegon_discovery(&mut self.cop_state, &candidates);
+        candidates
+    }
     pub fn apply_instance_descriptor(
         &mut self,
         instance_id: &str,
