@@ -1329,6 +1329,7 @@ pub fn App() -> Element {
     };
 
     let cockpit_center_body_for_blockout = cockpit_center_body.clone();
+    let selected_cockpit_entity_snapshot = selected_cockpit_entity.read().clone();
 
     rsx! {
         div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
@@ -1392,7 +1393,7 @@ pub fn App() -> Element {
                     div { class: "debug-shell-right-host",
                         {render_cockpit_sidecar(
                             &session,
-                            selected_cockpit_entity.read().clone(),
+                            selected_cockpit_entity_snapshot.clone(),
                             CockpitSidecarActions {
                                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
@@ -1476,7 +1477,7 @@ pub fn App() -> Element {
                                 div { class: "cockpit-panel-preview-rail",
                                     for item in &cockpit.deployment.preview {
                                         button {
-                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                            class: if selected_cockpit_entity_snapshot.as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
                                             r#type: "button",
                                             onclick: {
                                                 let key = item.key.clone();
@@ -1545,7 +1546,7 @@ pub fn App() -> Element {
                                 div { class: "cockpit-panel-preview-rail",
                                     for item in &cockpit.activity.preview {
                                         button {
-                                            class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                            class: if selected_cockpit_entity_snapshot.as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
                                             r#type: "button",
                                             onclick: {
                                                 let key = item.key.clone();
@@ -1570,7 +1571,7 @@ pub fn App() -> Element {
 
                         {render_cockpit_sidecar(
                             &controller.read().session_data(),
-                            selected_cockpit_entity.read().clone(),
+                            selected_cockpit_entity_snapshot.clone(),
                             CockpitSidecarActions {
                                 on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
                                     let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
@@ -3170,6 +3171,7 @@ fn render_cockpit_top_rail(
     cockpit: &CockpitSummaryModel,
     mut selected_cockpit_entity: Signal<Option<SelectedCockpitEntity>>,
 ) -> Element {
+    let selected_cockpit_entity_snapshot = selected_cockpit_entity.read().clone();
     rsx! {
         div { class: "cockpit-top-rail",
             header { class: "cockpit-spine",
@@ -3206,7 +3208,7 @@ fn render_cockpit_top_rail(
                         div { class: "cockpit-panel-preview-rail",
                             for item in &cockpit.deployment.preview {
                                 button {
-                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    class: if selected_cockpit_entity_snapshot.as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
                                     r#type: "button",
                                     onclick: {
                                         let key = item.key.clone();
@@ -3241,7 +3243,7 @@ fn render_cockpit_top_rail(
                         div { class: "cockpit-panel-preview-rail",
                             for item in &cockpit.activity.preview {
                                 button {
-                                    class: if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
+                                    class: if selected_cockpit_entity_snapshot.as_ref() == Some(&SelectedCockpitEntity::ActivityActor(item.key.clone())) { "cockpit-panel-preview-chip cockpit-panel-preview-chip-selected" } else { "cockpit-panel-preview-chip" },
                                     r#type: "button",
                                     onclick: {
                                         let key = item.key.clone();
