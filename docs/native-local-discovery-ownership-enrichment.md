@@ -57,11 +57,11 @@ A de-duplicated list of `LocalOmegonCandidate` records with explicit ownership.
 
 ## Tasks
 
-- [ ] Add `discover_owned_pid_candidate()`.
-- [ ] Add `discover_known_control_port_candidates()`.
-- [ ] Add `merge_local_omegon_candidates()`.
-- [ ] Add `discover_local_omegon_candidates()` orchestration function.
-- [ ] Update controller to use aggregate discovery, not only process table.
-- [ ] Add unit tests for ownership upgrade, URL de-duplication, and unknown known-port candidates.
+- [x] Add `discover_owned_pid_candidate()`.
+- [x] Add `discover_known_control_port_candidates()`.
+- [x] Add `merge_local_omegon_candidates()`.
+- [x] Add `discover_local_omegon_candidates()` orchestration function.
+- [x] Update controller to use aggregate discovery, not only process table.
+- [x] Add unit tests for ownership upgrade, URL de-duplication, and unknown known-port candidates.
 
 ## Open Questions

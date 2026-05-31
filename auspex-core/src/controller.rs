@@ -4,11 +4,11 @@ use crate::fixtures::{
     HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
 };
 use crate::instance_registry::InstanceRegistryStore;
-use crate::omegon_control::OmegonInstanceDescriptor;
 #[cfg(not(target_arch = "wasm32"))]
 use crate::instance_registry::{
     default_instance_registry_path, persist as persist_instance_registry,
 };
+use crate::omegon_control::OmegonInstanceDescriptor;
 use crate::remote_session::{DispatcherSwitchCommandOutcome, RemoteHostSession};
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 use crate::session_event::SessionEvent;
@@ -349,7 +349,9 @@ impl AppController {
         )
     }
 
-    pub fn gateway_instances_list(&self) -> crate::gateway_projection::GatewayInstancesListResponse {
+    pub fn gateway_instances_list(
+        &self,
+    ) -> crate::gateway_projection::GatewayInstancesListResponse {
         crate::gateway_projection::GatewayInstancesListResponse::from_fleet(
             self.fleet_runtime_projection(),
         )
@@ -364,8 +366,6 @@ impl AppController {
             query,
         )
     }
-
-
 
     pub fn seed_demo_gateway_fleet(&mut self) {
         let mut store = InstanceRegistryStore::default();
@@ -402,8 +402,10 @@ impl AppController {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn discover_local_omegon_to_cop(&mut self) -> Vec<crate::local_omegon_discovery::LocalOmegonCandidate> {
-        let candidates = crate::local_omegon_discovery::discover_process_table_candidates();
+    pub fn discover_local_omegon_to_cop(
+        &mut self,
+    ) -> Vec<crate::local_omegon_discovery::LocalOmegonCandidate> {
+        let candidates = crate::local_omegon_discovery::discover_local_omegon_candidates();
         crate::cop_surface::apply_local_omegon_discovery(&mut self.cop_state, &candidates);
         candidates
     }
@@ -428,18 +430,19 @@ impl AppController {
         }
         if updated {
             if let Some(record) = self.instance_registry.find(instance_id).cloned() {
-                self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
-                    instance_id: record.identity.instance_id.clone(),
-                    route_id: format!("instance:{}", record.identity.instance_id),
-                    role: format!("{:?}", record.identity.role),
-                    profile: record.identity.profile.clone(),
-                    session_key: format!("instance:{}", record.identity.instance_id),
-                    base_url: Some(record.observed.control_plane.base_url.clone())
-                        .filter(|url| !url.is_empty()),
-                    model: record.desired.policy.model.clone(),
-                    dispatcher_instance_id: None,
-                    registry_record: Some(record),
-                });
+                self.attached_instance_engine
+                    .attach_instance(AttachedInstanceRecord {
+                        instance_id: record.identity.instance_id.clone(),
+                        route_id: format!("instance:{}", record.identity.instance_id),
+                        role: format!("{:?}", record.identity.role),
+                        profile: record.identity.profile.clone(),
+                        session_key: format!("instance:{}", record.identity.instance_id),
+                        base_url: Some(record.observed.control_plane.base_url.clone())
+                            .filter(|url| !url.is_empty()),
+                        model: record.desired.policy.model.clone(),
+                        dispatcher_instance_id: None,
+                        registry_record: Some(record),
+                    });
                 self.instance_registry = self.attached_instance_engine.registry_store().clone();
             }
             self.refresh_telemetry_snapshot();
@@ -847,11 +850,10 @@ impl AppController {
                 }
                 if !omegon_version.is_empty() {
                     record.observed.control_plane.omegon_version = omegon_version.clone();
-                    record.observed.compatibility = Some(
-                        crate::compatibility::assess_observed_control_plane(
+                    record.observed.compatibility =
+                        Some(crate::compatibility::assess_observed_control_plane(
                             &record.observed.control_plane,
-                        ),
-                    );
+                        ));
                 }
                 if !capabilities.is_empty() {
                     record.observed.capabilities = Some(
@@ -906,11 +908,10 @@ impl AppController {
                     record.observed.health.ready = *ready;
                     if !omegon_version.is_empty() {
                         record.observed.control_plane.omegon_version = omegon_version.clone();
-                        record.observed.compatibility = Some(
-                            crate::compatibility::assess_observed_control_plane(
+                        record.observed.compatibility =
+                            Some(crate::compatibility::assess_observed_control_plane(
                                 &record.observed.control_plane,
-                            ),
-                        );
+                            ));
                     }
                     if !capabilities.is_empty() {
                         record.observed.capabilities = Some(
@@ -1302,7 +1303,11 @@ impl AppController {
 
         if let Some(control_plane) = descriptor.control_plane.as_ref() {
             record.observed.control_plane.schema_version = control_plane.schema_version;
-            if let Some(version) = control_plane.omegon_version.as_ref().filter(|v| !v.is_empty()) {
+            if let Some(version) = control_plane
+                .omegon_version
+                .as_ref()
+                .filter(|v| !v.is_empty())
+            {
                 record.observed.control_plane.omegon_version = version.clone();
             }
             if let Some(base_url) = control_plane.base_url.as_ref().filter(|v| !v.is_empty()) {
@@ -1319,17 +1324,19 @@ impl AppController {
             );
         }
         let record = record.clone();
-        self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
-            instance_id: record.identity.instance_id.clone(),
-            route_id: format!("instance:{}", record.identity.instance_id),
-            role: format!("{:?}", record.identity.role),
-            profile: record.identity.profile.clone(),
-            session_key: format!("instance:{}", record.identity.instance_id),
-            base_url: Some(record.observed.control_plane.base_url.clone()).filter(|url| !url.is_empty()),
-            model: record.desired.policy.model.clone(),
-            dispatcher_instance_id: None,
-            registry_record: Some(record),
-        });
+        self.attached_instance_engine
+            .attach_instance(AttachedInstanceRecord {
+                instance_id: record.identity.instance_id.clone(),
+                route_id: format!("instance:{}", record.identity.instance_id),
+                role: format!("{:?}", record.identity.role),
+                profile: record.identity.profile.clone(),
+                session_key: format!("instance:{}", record.identity.instance_id),
+                base_url: Some(record.observed.control_plane.base_url.clone())
+                    .filter(|url| !url.is_empty()),
+                model: record.desired.policy.model.clone(),
+                dispatcher_instance_id: None,
+                registry_record: Some(record),
+            });
         self.instance_registry = self.attached_instance_engine.registry_store().clone();
         self.refresh_telemetry_snapshot();
         self.persist_instance_registry();
@@ -1977,7 +1984,9 @@ pub async fn probe_remote_instances(
                         Ok(v) => {
                             let version = v
                                 .pointer("/instance_descriptor/control_plane/omegon_version")
-                                .or_else(|| v.pointer("/instance_descriptor/identity/omegon_version"))
+                                .or_else(|| {
+                                    v.pointer("/instance_descriptor/identity/omegon_version")
+                                })
                                 .or_else(|| v.get("omegon_version"))
                                 .and_then(|v| v.as_str())
                                 .map(str::to_string)
@@ -3263,10 +3272,11 @@ mod tests {
             ..Default::default()
         };
         let record = entry.to_instance_record("styrene-discord");
-        let mut controller = AppController::default().with_instance_registry(InstanceRegistryStore {
-            schema_version: 1,
-            instances: vec![record],
-        });
+        let mut controller =
+            AppController::default().with_instance_registry(InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
         let descriptor = crate::omegon_control::OmegonInstanceDescriptor {
             control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
                 schema_version: 2,
@@ -3282,9 +3292,11 @@ mod tests {
         let projection = controller.fleet_runtime_projection();
         assert_eq!(projection.summary.compatible_instances, 1);
         let capabilities = projection.instances[0].capabilities.as_ref().unwrap();
-        assert!(capabilities.has_present(&crate::capability_registry::CapabilityKey::tool(
-            "state.snapshot",
-        )));
+        assert!(
+            capabilities.has_present(&crate::capability_registry::CapabilityKey::tool(
+                "state.snapshot",
+            ))
+        );
     }
 
     #[test]
@@ -3428,7 +3440,12 @@ mod tests {
         assert!(controller.remote_instances_needing_probe().is_empty());
 
         // Simulate failed probe.
-        controller.apply_remote_probe_results(&[("remote:test".into(), false, String::new(), Vec::new())]);
+        controller.apply_remote_probe_results(&[(
+            "remote:test".into(),
+            false,
+            String::new(),
+            Vec::new(),
+        )]);
 
         // Now needs probing again (lost health).
         assert_eq!(controller.remote_instances_needing_probe().len(), 1);
@@ -3555,7 +3572,6 @@ mod tests {
         );
     }
 
-
     #[test]
     fn project_gateway_fleet_to_cop_uses_registry_projection() {
         let control_plane = crate::runtime_types::ObservedControlPlane {
@@ -3578,9 +3594,18 @@ mod tests {
                 },
                 observed: crate::runtime_types::ObservedWorkerState {
                     control_plane: control_plane.clone(),
-                    health: crate::runtime_types::ObservedHealth { ready: true, ..Default::default() },
-                    compatibility: Some(crate::compatibility::assess_observed_control_plane(&control_plane)),
-                    operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
+                    health: crate::runtime_types::ObservedHealth {
+                        ready: true,
+                        ..Default::default()
+                    },
+                    compatibility: Some(crate::compatibility::assess_observed_control_plane(
+                        &control_plane,
+                    )),
+                    operational_profile: Some(
+                        crate::operational_profile::OperationalProfile::auspex_orchestrator(
+                            "0.2.0",
+                        ),
+                    ),
                     ..Default::default()
                 },
                 ..Default::default()
@@ -3590,12 +3615,21 @@ mod tests {
 
         controller.project_gateway_fleet_to_cop();
 
-        let center = controller.cop_state().region(&crate::cop_surface::CopRegion::Center).unwrap();
+        let center = controller
+            .cop_state()
+            .region(&crate::cop_surface::CopRegion::Center)
+            .unwrap();
         let rows = center.data.get("rows").and_then(|v| v.as_array()).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][0], "primary");
-        let north = controller.cop_state().region(&crate::cop_surface::CopRegion::North).unwrap();
-        assert_eq!(north.data.get("status").and_then(|v| v.as_str()), Some("full"));
+        let north = controller
+            .cop_state()
+            .region(&crate::cop_surface::CopRegion::North)
+            .unwrap();
+        assert_eq!(
+            north.data.get("status").and_then(|v| v.as_str()),
+            Some("full")
+        );
     }
 
     #[test]
