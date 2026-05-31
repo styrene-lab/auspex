@@ -154,6 +154,15 @@ pub struct PolicyDecision {
 }
 ```
 
+Followups must be normalized before decisions are returned:
+
+- each set is deduplicated
+- obligations remove matching supererogations
+- ordering is deterministic for audit stability
+- future XOR/dominance relationships are declared centrally, not by caller convention
+
+See [[policy-followup-normalization-exclusivity]].
+
 Semantics:
 
 ```text
