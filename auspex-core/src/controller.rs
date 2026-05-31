@@ -365,6 +365,11 @@ impl AppController {
         )
     }
 
+
+    pub fn project_gateway_fleet_to_cop(&mut self) {
+        let projection = self.gateway_fleet_status();
+        crate::cop_surface::apply_gateway_fleet_projection(&mut self.cop_state, &projection);
+    }
     pub fn apply_instance_descriptor(
         &mut self,
         instance_id: &str,

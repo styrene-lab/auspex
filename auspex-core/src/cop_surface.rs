@@ -345,6 +345,73 @@ impl CopDisplayState {
     }
 }
 
+
+/// Render the read-only gateway fleet projection into COP regions.
+pub fn apply_gateway_fleet_projection(
+    state: &mut CopDisplayState,
+    projection: &crate::gateway_projection::GatewayProjectionResponse,
+) {
+    state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+    state.write(
+        CopRegion::North,
+        ContentType::StatusCard,
+        Some("Fleet Gateway".into()),
+        serde_json::json!({
+            "label": "Auspex Gateway",
+            "status": format!("{:?}", projection.degradation.mode).to_ascii_lowercase(),
+            "detail": projection.degradation.reasons.join("; "),
+            "severity": match projection.degradation.mode {
+                crate::gateway_projection::GatewayDegradationMode::Full => "healthy",
+                crate::gateway_projection::GatewayDegradationMode::Degraded => "warning",
+                crate::gateway_projection::GatewayDegradationMode::AcpOnly => "degraded",
+                crate::gateway_projection::GatewayDegradationMode::Unsupported => "critical",
+            }
+        }),
+    );
+    state.write(
+        CopRegion::Center,
+        ContentType::Table,
+        Some("Deployed Fleet".into()),
+        serde_json::json!({
+            "columns": ["Instance", "Role", "Profile", "Ready", "Compatibility", "Base URL"],
+            "rows": projection.fleet.instances.iter().map(|instance| {
+                serde_json::json!([
+                    instance.instance_id,
+                    instance.role,
+                    instance.profile,
+                    instance.ready,
+                    instance.compatibility.as_ref().map(|c| format!("{:?}", c.status).to_ascii_lowercase()).unwrap_or_else(|| "unknown".into()),
+                    instance.base_url,
+                ])
+            }).collect::<Vec<_>>()
+        }),
+    );
+    state.write(
+        CopRegion::East,
+        ContentType::KvGrid,
+        Some("Fleet Summary".into()),
+        serde_json::json!({
+            "pairs": [
+                {"key": "Total", "value": projection.fleet.summary.total_instances},
+                {"key": "Ready", "value": projection.fleet.summary.ready_instances},
+                {"key": "Compatible", "value": projection.fleet.summary.compatible_instances},
+                {"key": "Unsupported", "value": projection.fleet.summary.unsupported_instances},
+                {"key": "Pending HostActions", "value": projection.fleet.summary.pending_host_actions}
+            ]
+        }),
+    );
+    state.write(
+        CopRegion::South,
+        ContentType::AlertFeed,
+        Some("Gateway Degradation".into()),
+        serde_json::json!({
+            "items": projection.degradation.reasons.iter().map(|reason| {
+                serde_json::json!({"message": reason, "severity": "warn", "source": "auspex/gateway"})
+            }).collect::<Vec<_>>()
+        }),
+    );
+}
+
 /// The five standard segmenta regions.
 pub fn default_segmenta_regions() -> Vec<CopRegion> {
     vec![
@@ -429,6 +496,42 @@ pub fn cop_tool_definitions() -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+    #[test]
+    fn apply_gateway_fleet_projection_writes_owned_cop_regions() {
+        let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
+            crate::fleet_projection::FleetRuntimeProjection::from_instances(&[]),
+        );
+        let mut state = CopDisplayState::default();
+
+        apply_gateway_fleet_projection(&mut state, &projection);
+
+        assert!(state.region(&CopRegion::North).is_some());
+        assert!(state.region(&CopRegion::Center).is_some());
+        assert!(state.region(&CopRegion::East).is_some());
+        assert!(state.region(&CopRegion::South).is_some());
+        assert!(state.region(&CopRegion::West).is_none());
+        assert_eq!(state.active_regions(), &[CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+    }
+
+    #[test]
+    fn gateway_fleet_projection_center_table_uses_projection_not_registry_shape() {
+        let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
+            crate::fleet_projection::FleetRuntimeProjection::from_instances(&[]),
+        );
+        let mut state = CopDisplayState::default();
+
+        apply_gateway_fleet_projection(&mut state, &projection);
+
+        let center = state.region(&CopRegion::Center).unwrap();
+        assert_eq!(center.content_type, ContentType::Table);
+        assert_eq!(center.title.as_deref(), Some("Deployed Fleet"));
+        assert!(center.data.get("columns").is_some());
+        assert!(center.data.get("rows").is_some());
+        assert!(center.data.get("instances").is_none());
+    }
+
 
     #[test]
     fn write_replaces_region_content() {
