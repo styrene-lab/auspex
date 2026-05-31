@@ -42,7 +42,7 @@ auspex/instances/list
 auspex/capabilities/query
 ```
 
-The API remains an internal Rust/controller API for now. Transport exposure comes after DTO stability.
+The API remains an internal Rust/controller API for now. Transport exposure comes after DTO stability. The first consumer should be Auspex-owned, not Flynt.
 
 ## Remaining implementation deltas
 
@@ -68,6 +68,7 @@ Reject the implementation if it:
 - hides unsupported/degraded instances;
 - collapses `auspex/*`, `omegon/*`, `styrene/*`, HostAction, Nex, Armory, and generic tool capabilities into indistinguishable strings;
 - produces non-deterministic JSON output for the same fleet state;
+- couples the first consumer to Flynt, which is a separate application/project rather than an Auspex-owned surface;
 - makes empty fleet look healthy;
 - makes a fleet with no compatible instances look degraded rather than unsupported.
 

@@ -337,6 +337,94 @@ mod tests {
     }
 
 
+
+    #[test]
+    fn golden_empty_fleet_status_json_is_stable() {
+        let response = GatewayProjectionResponse::fleet_status(FleetRuntimeProjection::from_instances(&[]));
+        let actual = serde_json::to_value(&response).unwrap();
+        let expected = serde_json::json!({
+            "schema_version": 1,
+            "method": "fleet-status",
+            "degradation": {
+                "mode": "degraded",
+                "reasons": ["no fleet instances are registered"],
+                "unavailable_surfaces": ["auspex/dispatch/submit"],
+                "fallback_surfaces": ["auspex/fleet/status"]
+            },
+            "fleet": {
+                "schema_version": 1,
+                "instances": [],
+                "host_action_queue": [],
+                "summary": {
+                    "total_instances": 0,
+                    "ready_instances": 0,
+                    "compatible_instances": 0,
+                    "unsupported_instances": 0,
+                    "pending_host_actions": 0
+                }
+            }
+        });
+
+        assert_eq!(actual, expected);
+    }
+
+    #[test]
+    fn golden_instances_list_json_excludes_raw_registry_shape() {
+        let response = GatewayInstancesListResponse::from_fleet(FleetRuntimeProjection::from_instances(&[instance(
+            "primary",
+            "0.25.6",
+            true,
+            &["state.snapshot"],
+        )]));
+        let actual = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["degradation"]["mode"], "full");
+        assert_eq!(actual["instances"].as_array().unwrap().len(), 1);
+        assert_eq!(actual["instances"][0]["instance_id"], "primary");
+        assert!(actual["instances"][0].get("desired").is_none());
+        assert!(actual["instances"][0].get("observed").is_none());
+        assert!(actual["instances"][0].get("ownership").is_none());
+    }
+
+    #[test]
+    fn golden_capability_query_json_is_stable_and_namespaced() {
+        let fleet = FleetRuntimeProjection::from_instances(&[
+            instance("primary", "0.25.6", true, &["omegon/context/status"]),
+            instance("worker", "0.25.6", true, &["events.stream"]),
+        ]);
+        let response = GatewayCapabilitiesQueryResponse::from_fleet(
+            &fleet,
+            CapabilityKey::tool("omegon/context/status"),
+        );
+        let actual = serde_json::to_value(&response).unwrap();
+
+        assert_eq!(actual["schema_version"], 1);
+        assert_eq!(actual["query"]["kind"], "tool");
+        assert_eq!(actual["query"]["name"], "omegon/context/status");
+        assert_eq!(actual["matches"].as_array().unwrap().len(), 1);
+        assert_eq!(actual["matches"][0]["instance_id"], "primary");
+        assert_eq!(actual["matches"][0]["namespace"], "omegon");
+        assert_eq!(actual["matches"][0]["compatibility"], "compatible");
+    }
+
+    #[test]
+    fn no_compatible_instances_is_unsupported_not_degraded() {
+        let fleet = FleetRuntimeProjection::from_instances(&[instance(
+            "old",
+            "0.23.0",
+            false,
+            &["state.snapshot"],
+        )]);
+        let response = GatewayProjectionResponse::fleet_status(fleet);
+
+        assert_eq!(response.degradation.mode, GatewayDegradationMode::Unsupported);
+        assert!(response
+            .degradation
+            .unavailable_surfaces
+            .contains(&"auspex/host-actions/*".to_string()));
+    }
+
     #[test]
     fn method_registry_is_read_only_and_canonical() {
         let methods = projection_method_registry();
