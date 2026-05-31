@@ -1364,25 +1364,45 @@ pub fn App() -> Element {
                             EventHandler::new({
                                 let mut controller = controller;
                                 move |instance_id: Option<String>| {
-                                    if let Some(id) = &instance_id {
-                                        selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(id.clone())));
-                                    } else {
-                                        selected_cockpit_entity.set(None);
+                                    let next_selection = instance_id
+                                        .as_ref()
+                                        .map(|id| SelectedCockpitEntity::DeploymentInstance(id.clone()));
+                                    let selection_changed = {
+                                        let current = selected_cockpit_entity.read();
+                                        *current != next_selection
+                                    };
+                                    if selection_changed {
+                                        selected_cockpit_entity.set(next_selection);
                                     }
+
+                                    let next_workspace = if instance_id.is_some() {
+                                        Workspace::Chat
+                                    } else {
+                                        Workspace::Cop
+                                    };
+                                    let workspace_changed = {
+                                        let current = workspace.read();
+                                        *current != next_workspace
+                                    };
+
                                     {
                                         let mut ctrl = controller.write();
-                                        if let Some(id) = &instance_id {
-                                            ctrl.select_command_route_for_instance(id);
+                                        let focused_changed = ctrl.focused_instance_id() != instance_id.as_deref();
+                                        if focused_changed {
+                                            if let Some(id) = &instance_id {
+                                                ctrl.select_command_route_for_instance(id);
+                                            }
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            ctrl.focus_instance(instance_id.as_deref());
                                         }
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        ctrl.focus_instance(instance_id.as_deref());
+                                    }
+
+                                    if workspace_changed {
+                                        workspace.set(next_workspace);
                                     }
                                     if instance_id.is_some() {
-                                        workspace.set(Workspace::Chat);
-                                    } else {
-                                        workspace.set(Workspace::Cop);
+                                        chat_last_activity.set(Some(std::time::Instant::now()));
                                     }
-                                    chat_last_activity.set(Some(std::time::Instant::now()));
                                 }
                             }),
                         )}
