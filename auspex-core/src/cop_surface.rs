@@ -402,12 +402,16 @@ pub fn apply_gateway_fleet_projection(
     );
     state.write(
         CopRegion::South,
-        ContentType::AlertFeed,
+        ContentType::TextBlock,
         Some("Gateway Degradation".into()),
         serde_json::json!({
-            "items": projection.degradation.reasons.iter().map(|reason| {
-                serde_json::json!({"message": reason, "severity": "warn", "source": "auspex/gateway"})
-            }).collect::<Vec<_>>()
+            "text": if projection.degradation.reasons.is_empty() {
+                "No degradation detected".to_string()
+            } else {
+                projection.degradation.reasons.join("\n")
+            },
+            "unavailable_surfaces": projection.degradation.unavailable_surfaces,
+            "fallback_surfaces": projection.degradation.fallback_surfaces
         }),
     );
 }
@@ -496,6 +500,71 @@ pub fn cop_tool_definitions() -> Vec<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+
+
+    fn gateway_test_record(id: &str, version: &str, ready: bool) -> crate::runtime_types::InstanceRecord {
+        let control_plane = crate::runtime_types::ObservedControlPlane {
+            schema_version: 2,
+            omegon_version: version.into(),
+            base_url: format!("http://127.0.0.1/{id}"),
+            ..Default::default()
+        };
+        crate::runtime_types::InstanceRecord {
+            schema_version: 1,
+            identity: crate::runtime_types::WorkerIdentity {
+                instance_id: id.into(),
+                role: crate::runtime_types::WorkerRole::PrimaryDriver,
+                profile: "auspex-orchestrator".into(),
+                status: crate::runtime_types::WorkerLifecycleState::Ready,
+                created_at: "2026-05-30T00:00:00Z".into(),
+                updated_at: "2026-05-30T00:00:00Z".into(),
+            },
+            observed: crate::runtime_types::ObservedWorkerState {
+                control_plane: control_plane.clone(),
+                health: crate::runtime_types::ObservedHealth { ready, ..Default::default() },
+                compatibility: Some(crate::compatibility::assess_observed_control_plane(&control_plane)),
+                operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
+                ..Default::default()
+            },
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn gateway_fleet_projection_renders_non_empty_rows() {
+        let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
+            crate::fleet_projection::FleetRuntimeProjection::from_instances(&[
+                gateway_test_record("primary", "0.25.6", true),
+            ]),
+        );
+        let mut state = CopDisplayState::default();
+
+        apply_gateway_fleet_projection(&mut state, &projection);
+
+        let center = state.region(&CopRegion::Center).unwrap();
+        let rows = center.data.get("rows").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], "primary");
+        assert_eq!(rows[0][3], true);
+        assert_eq!(rows[0][4], "compatible");
+    }
+
+    #[test]
+    fn gateway_fleet_projection_refresh_is_idempotent_for_degradation_region() {
+        let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
+            crate::fleet_projection::FleetRuntimeProjection::from_instances(&[]),
+        );
+        let mut state = CopDisplayState::default();
+
+        apply_gateway_fleet_projection(&mut state, &projection);
+        let first = state.region(&CopRegion::South).unwrap().data.clone();
+        apply_gateway_fleet_projection(&mut state, &projection);
+        let second = state.region(&CopRegion::South).unwrap().data.clone();
+
+        assert_eq!(first, second);
+        assert_eq!(state.region(&CopRegion::South).unwrap().content_type, ContentType::TextBlock);
+    }
 
 
     #[test]

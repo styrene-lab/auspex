@@ -3518,6 +3518,49 @@ mod tests {
         );
     }
 
+
+    #[test]
+    fn project_gateway_fleet_to_cop_uses_registry_projection() {
+        let control_plane = crate::runtime_types::ObservedControlPlane {
+            schema_version: 2,
+            omegon_version: "0.25.6".into(),
+            base_url: "http://127.0.0.1:7842".into(),
+            ..Default::default()
+        };
+        let controller = AppController::default().with_instance_registry(InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![crate::runtime_types::InstanceRecord {
+                schema_version: 1,
+                identity: crate::runtime_types::WorkerIdentity {
+                    instance_id: "primary".into(),
+                    role: crate::runtime_types::WorkerRole::PrimaryDriver,
+                    profile: "auspex-orchestrator".into(),
+                    status: crate::runtime_types::WorkerLifecycleState::Ready,
+                    created_at: "2026-05-30T00:00:00Z".into(),
+                    updated_at: "2026-05-30T00:00:00Z".into(),
+                },
+                observed: crate::runtime_types::ObservedWorkerState {
+                    control_plane: control_plane.clone(),
+                    health: crate::runtime_types::ObservedHealth { ready: true, ..Default::default() },
+                    compatibility: Some(crate::compatibility::assess_observed_control_plane(&control_plane)),
+                    operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
+                    ..Default::default()
+                },
+                ..Default::default()
+            }],
+        });
+        let mut controller = controller;
+
+        controller.project_gateway_fleet_to_cop();
+
+        let center = controller.cop_state().region(&crate::cop_surface::CopRegion::Center).unwrap();
+        let rows = center.data.get("rows").and_then(|v| v.as_array()).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0][0], "primary");
+        let north = controller.cop_state().region(&crate::cop_surface::CopRegion::North).unwrap();
+        assert_eq!(north.data.get("status").and_then(|v| v.as_str()), Some("full"));
+    }
+
     #[test]
     fn non_cop_tool_does_not_affect_cop_state() {
         let json = r#"{
