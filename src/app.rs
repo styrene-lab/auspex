@@ -1376,8 +1376,11 @@ pub fn App() -> Element {
                                         #[cfg(not(target_arch = "wasm32"))]
                                         ctrl.focus_instance(instance_id.as_deref());
                                     }
-                                    // Switch to chat when focusing any agent.
-                                    workspace.set(Workspace::Chat);
+                                    if instance_id.is_some() {
+                                        workspace.set(Workspace::Chat);
+                                    } else {
+                                        workspace.set(Workspace::Cop);
+                                    }
                                     chat_last_activity.set(Some(std::time::Instant::now()));
                                 }
                             }),
@@ -1479,7 +1482,11 @@ pub fn App() -> Element {
                                                 let key = item.key.clone();
                                                 let mut controller = controller;
                                                 move |_| {
-                                                    if selected_cockpit_entity.read().as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone())) {
+                                                    let is_selected = {
+                                                        let current = selected_cockpit_entity.read();
+                                                        current.as_ref() == Some(&SelectedCockpitEntity::DeploymentInstance(key.clone()))
+                                                    };
+                                                    if is_selected {
                                                         selected_cockpit_entity.set(None);
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         controller.write().focus_instance(None);
