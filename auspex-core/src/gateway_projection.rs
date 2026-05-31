@@ -312,8 +312,20 @@ pub mod fixtures {
             schema_version: 1,
             identity: crate::runtime_types::WorkerIdentity {
                 instance_id: id.into(),
-                role: crate::runtime_types::WorkerRole::PrimaryDriver,
-                profile: "auspex-orchestrator".into(),
+                role: if id.contains("bot") {
+                    crate::runtime_types::WorkerRole::DetachedService
+                } else if id.contains("worker") {
+                    crate::runtime_types::WorkerRole::SupervisedChild
+                } else {
+                    crate::runtime_types::WorkerRole::PrimaryDriver
+                },
+                profile: if id.contains("discord") {
+                    "discord-bot".into()
+                } else if id.contains("worker") {
+                    "coding-agent-worker".into()
+                } else {
+                    "coding-agent-primary".into()
+                },
                 status: crate::runtime_types::WorkerLifecycleState::Ready,
                 created_at: "2026-05-30T00:00:00Z".into(),
                 updated_at: "2026-05-30T00:00:00Z".into(),

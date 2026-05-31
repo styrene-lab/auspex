@@ -370,25 +370,25 @@ impl AppController {
     pub fn seed_demo_gateway_fleet(&mut self) {
         let mut store = InstanceRegistryStore::default();
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
-            "primary-local",
+            "coding-agent-primary",
             "0.25.6",
             true,
             true,
-            &["state.snapshot", "omegon/context/status"],
+            &["state.snapshot", "events.stream", "omegon/context/status"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
-            "worker-cold",
+            "coding-agent-worker",
             "0.25.6",
-            false,
             true,
-            &["state.snapshot"],
+            true,
+            &["state.snapshot", "events.stream", "omegon/dispatch/worker"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
-            "legacy-peer",
-            "0.23.0",
+            "discord-bot",
+            "0.25.6",
             true,
             false,
-            &["state.snapshot"],
+            &["state.snapshot", "discord.gateway", "discord.messages.send"],
         ));
         self.instance_registry = store;
         self.rebuild_attached_instances();
