@@ -1194,7 +1194,7 @@ pub fn App() -> Element {
 
     let cockpit_center_body = rsx! {
         if *workspace.read() == Workspace::Cop {
-            {render_cop_surface(controller.read().cop_state())}
+            {render_gateway_cop_workspace(controller)}
         } else if *workspace.read() == Workspace::Graph {
             GraphScreen { data: controller.read().session_data() }
         } else if *workspace.read() == Workspace::Deploy {
@@ -5511,6 +5511,24 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 }
 
 // ── COP Display Surface rendering ───────────────────────────
+
+
+fn render_gateway_cop_workspace(mut controller: Signal<auspex_core::controller::AppController>) -> Element {
+    rsx! {
+        div { class: "cop-workspace-shell",
+            div { class: "cop-toolbar",
+                div { class: "cop-toolbar-title", "COP View: Fleet Projection" }
+                button {
+                    class: "cop-refresh-button",
+                    r#type: "button",
+                    onclick: move |_| controller.write().project_gateway_fleet_to_cop(),
+                    "Refresh Fleet"
+                }
+            }
+            {render_cop_surface(controller.read().cop_state())}
+        }
+    }
+}
 
 fn render_cop_surface(cop_state: &auspex_core::cop_surface::CopDisplayState) -> Element {
     use auspex_core::cop_surface::default_segmenta_regions;
