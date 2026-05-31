@@ -44,8 +44,12 @@ styrene-identity
 styrene-rbac
   -> roster, role, coarse capability, signed hub grants
 
-Auspex AuthorizationRequest/AuthorizationDecision
-  -> stable internal interface for action/resource/context decisions
+styrene-policy
+  -> generic principal/action/resource/context request + decision substrate
+  -> reasons, obligations, and supererogations
+
+omegon-policy / auspex-policy
+  -> domain-specific policy layers using styrene-policy primitives
 
 Cedar-backed evaluator, after a simple native adapter spike
   -> policy-as-data for contextual authorization
@@ -95,7 +99,7 @@ AuthorizationDecision {
 }
 ```
 
-The first evaluator can be a small Rust implementation that maps local Auspex actions to required capabilities and context gates. Then Cedar can be introduced behind the same trait if the spike confirms dependency/MSRV cost is acceptable.
+The first evaluator can be a small Rust implementation in `styrene-policy` that maps actions to required capabilities and context gates. Then Cedar can be introduced behind the same trait if the spike confirms dependency/MSRV cost is acceptable. Auspex/Omegon-specific semantics should live in `auspex-policy` or `omegon-policy`, not in the generic substrate.
 
 ## Initial deny defaults
 
