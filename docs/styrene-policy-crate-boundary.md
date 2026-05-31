@@ -125,33 +125,51 @@ If the decision is allowed but obligations are present, the caller must satisfy/
 
 Supererogations are recommended but non-mandatory actions that improve safety, operator comprehension, audit richness, or future recoverability.
 
-Examples:
+Supererogations must be a **superset-capable mirror** of obligations: anything that can be mandatory should also be expressible as recommended. A policy may not require a signature, but the system should always be able to say that a signature would be appreciated.
+
+Canonical shape:
 
 ```rust
-pub enum PolicySupererogation {
-    RecommendAuditNote,
-    RecommendOperatorConfirmation,
-    RecommendRuntimeReprobe,
-    RecommendCapabilityRefresh,
-    RecommendDryRun,
-    RecommendPostActionVerification,
-    RecommendHumanReadableExplanation,
+pub enum PolicyFollowup {
+    Approval,
+    Audit,
+    Signature,
+    FreshIdentity,
+    OwnershipProof,
+    RuntimeCompatibility,
+    AuditNote,
+    OperatorConfirmation,
+    RuntimeReprobe,
+    CapabilityRefresh,
+    DryRun,
+    PostActionVerification,
+    HumanReadableExplanation,
+}
+
+pub struct PolicyDecision {
+    pub effect: PolicyEffect,
+    pub reasons: Vec<PolicyReason>,
+    pub obligations: Vec<PolicyFollowup>,
+    pub supererogations: Vec<PolicyFollowup>,
 }
 ```
 
 Semantics:
 
 ```text
-Supererogations do not block action execution. They are advisory improvements surfaced to the caller/COP/operator.
+obligations      = must do before/during action
+supererogations  = should do if cheap/available; never blocks execution
 ```
 
 This lets policy say:
 
 ```text
-Allowed, audit required, and a dry-run is recommended.
+Allowed, audit required, signature recommended, dry-run recommended.
 ```
 
 without conflating hard requirements and good operational practice.
+
+If supererogations become operational overhead, callers may drop or coalesce them internally. They should remain in the policy vocabulary so richer operators, audits, and future automation can use them.
 
 ## Domain extensions
 
@@ -193,6 +211,7 @@ Biscuit remains a strong later candidate for attenuated/delegated grants, especi
 - `styrene-rbac` remains simple and reusable.
 - Auspex avoids hidden ad hoc policy conditionals.
 - COP/audit can display reasons, obligations, and supererogations.
+- Supererogations preserve optional safety affordances without turning them into hard gates.
 - Domain-specific policy can grow without bloating the generic substrate.
 - Browser/server mode can reuse the same request/decision shape later.
 

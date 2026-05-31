@@ -47,6 +47,7 @@ styrene-rbac
 styrene-policy
   -> generic principal/action/resource/context request + decision substrate
   -> reasons, obligations, and supererogations
+  -> supererogations are a superset-capable mirror of obligations
 
 omegon-policy / auspex-policy
   -> domain-specific policy layers using styrene-policy primitives
