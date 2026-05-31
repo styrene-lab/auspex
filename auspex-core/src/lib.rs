@@ -39,6 +39,8 @@ pub mod gateway_projection;
 pub mod host_action_policy;
 pub mod instance_registry;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod local_omegon_discovery;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod ipc_client;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tls_config;
