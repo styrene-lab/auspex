@@ -309,15 +309,32 @@ fn instance_record_from_startup_descriptor(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn blocking_get_text(url: &str) -> Result<String, String> {
-    reqwest::blocking::Client::builder()
+    // reqwest::blocking owns a Tokio runtime internally. Dioxus desktop event
+    // handlers may run inside an async runtime context, and dropping that
+    // blocking client/runtime there panics (Tokio: "Cannot drop a runtime in
+    // a context where blocking is not allowed"). Run the blocking probe on a
+    // plain OS thread so the internal runtime is created and dropped outside
+    // Auspex's async UI context.
+    let url = url.to_string();
+    let panic_url = url.clone();
+    std::thread::spawn(move || blocking_get_text_on_thread(&url))
+        .join()
+        .map_err(|_| format!("GET {panic_url} panicked"))?
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn blocking_get_text_on_thread(url: &str) -> Result<String, String> {
+    let client = reqwest::blocking::Client::builder()
         .timeout(std::time::Duration::from_secs(3))
         .build()
-        .map_err(|error| format!("could not build HTTP client: {error}"))?
+        .map_err(|error| format!("could not build HTTP client: {error}"))?;
+    let response = client
         .get(url)
         .send()
         .map_err(|error| format!("GET {url} failed: {error}"))?
         .error_for_status()
-        .map_err(|error| format!("GET {url} returned error: {error}"))?
+        .map_err(|error| format!("GET {url} returned error: {error}"))?;
+    response
         .text()
         .map_err(|error| format!("could not read {url}: {error}"))
 }
