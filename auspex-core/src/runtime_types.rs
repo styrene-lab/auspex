@@ -464,7 +464,9 @@ impl WorkerRole {
         match role.replace('_', "-").to_ascii_lowercase().as_str() {
             "primary-driver" | "primary" | "driver" => Self::PrimaryDriver,
             "supervised-child" | "delegate" | "worker" | "embedded-backend" => Self::SupervisedChild,
-            "detached-service" | "remote-agent" | "service" => Self::DetachedService,
+            "detached-service" | "remote-agent" | "service" | "host" | "control-plane" => {
+                Self::DetachedService
+            }
             _ => Self::PrimaryDriver,
         }
     }

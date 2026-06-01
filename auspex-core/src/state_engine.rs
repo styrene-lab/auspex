@@ -573,10 +573,15 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
 }
 
 fn infer_worker_role(instance: &AttachedInstanceRecord) -> crate::runtime_types::WorkerRole {
+    if let Some(record) = instance.registry_record.as_ref() {
+        return record.identity.role;
+    }
     if instance.dispatcher_instance_id.is_some() {
         crate::runtime_types::WorkerRole::PrimaryDriver
-    } else {
+    } else if instance.role.is_empty() {
         crate::runtime_types::WorkerRole::DetachedService
+    } else {
+        crate::runtime_types::WorkerRole::from_descriptor_role(&instance.role)
     }
 }
 
