@@ -136,7 +136,7 @@ pub fn probe_local_omegon_candidate_read_only(
             );
         }
     };
-    let controller = match crate::controller::AppController::from_remote_snapshot_json(&state_body) {
+    let mut controller = match crate::controller::AppController::from_remote_snapshot_json(&state_body) {
         Ok(controller) => controller,
         Err(error) => {
             return LocalOmegonProbeResult::failed(
@@ -148,6 +148,12 @@ pub fn probe_local_omegon_candidate_read_only(
             );
         }
     };
+    if let Some(record) = instance_record_from_startup_descriptor(&startup) {
+        controller = controller.with_instance_registry(crate::instance_registry::InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![record],
+        });
+    }
 
     let descriptor = startup.instance_descriptor.as_ref();
     let instance_id = descriptor.map(|descriptor| descriptor.identity.instance_id.clone());
@@ -171,6 +177,134 @@ pub fn probe_local_omegon_candidate_read_only(
         evidence: "startup/state probes succeeded; attached read-only projection".into(),
         controller: Some(controller),
     }
+}
+
+
+fn worker_role_from_descriptor(role: &str) -> crate::runtime_types::WorkerRole {
+    match role.replace('_', "-").as_str() {
+        "supervised-child" => crate::runtime_types::WorkerRole::SupervisedChild,
+        "detached-service" => crate::runtime_types::WorkerRole::DetachedService,
+        _ => crate::runtime_types::WorkerRole::PrimaryDriver,
+    }
+}
+
+fn lifecycle_from_descriptor(status: &str) -> crate::runtime_types::WorkerLifecycleState {
+    match status.replace('_', "-").as_str() {
+        "busy" => crate::runtime_types::WorkerLifecycleState::Busy,
+        "degraded" => crate::runtime_types::WorkerLifecycleState::Degraded,
+        "lost" => crate::runtime_types::WorkerLifecycleState::Lost,
+        "exited" => crate::runtime_types::WorkerLifecycleState::Exited,
+        _ => crate::runtime_types::WorkerLifecycleState::Ready,
+    }
+}
+
+fn instance_record_from_startup_descriptor(
+    startup: &OmegonStartupInfo,
+) -> Option<crate::runtime_types::InstanceRecord> {
+    let descriptor = startup.instance_descriptor.as_ref()?;
+    let control_plane = descriptor.control_plane.as_ref();
+    let instance_id = if descriptor.identity.instance_id.is_empty() {
+        "local-omegon".into()
+    } else {
+        descriptor.identity.instance_id.clone()
+    };
+    let now = "probe-local".to_string();
+    let observed_control_plane = crate::runtime_types::ObservedControlPlane {
+        schema_version: startup.schema_version,
+        omegon_version: control_plane
+            .and_then(|control_plane| control_plane.omegon_version.clone())
+            .unwrap_or_default(),
+        base_url: control_plane
+            .and_then(|control_plane| control_plane.base_url.clone())
+            .or_else(|| Some(startup.http_base.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        startup_url: control_plane
+            .and_then(|control_plane| control_plane.startup_url.clone())
+            .or_else(|| Some(startup.startup_url.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        health_url: control_plane
+            .and_then(|control_plane| control_plane.health_url.clone())
+            .or_else(|| Some(startup.health_url.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        ready_url: control_plane
+            .and_then(|control_plane| control_plane.ready_url.clone())
+            .or_else(|| Some(startup.ready_url.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        ws_url: control_plane
+            .and_then(|control_plane| control_plane.ws_url.clone())
+            .or_else(|| Some(startup.ws_url.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        acp_url: control_plane
+            .and_then(|control_plane| control_plane.acp_url.clone())
+            .or_else(|| startup.acp_url.clone().filter(|value| !value.is_empty())),
+        auth_mode: control_plane
+            .and_then(|control_plane| control_plane.auth_mode.clone())
+            .or_else(|| Some(startup.auth_mode.clone()).filter(|value| !value.is_empty()))
+            .unwrap_or_default(),
+        token_ref: control_plane.and_then(|control_plane| control_plane.token_ref.clone()),
+        transport_security: control_plane.and_then(|control_plane| control_plane.transport_security.clone()),
+        mtls: control_plane.and_then(|control_plane| control_plane.mtls),
+        last_ready_at: Some(now.clone()),
+        ..Default::default()
+    };
+    let compatibility = crate::compatibility::assess_observed_control_plane(&observed_control_plane);
+    let capabilities = control_plane
+        .map(|control_plane| control_plane.capabilities.clone())
+        .unwrap_or_default();
+
+    Some(crate::runtime_types::InstanceRecord {
+        schema_version: 1,
+        identity: crate::runtime_types::WorkerIdentity {
+            instance_id: instance_id.clone(),
+            role: worker_role_from_descriptor(&descriptor.identity.role),
+            profile: descriptor.identity.profile.clone(),
+            status: lifecycle_from_descriptor(&descriptor.identity.status),
+            created_at: now.clone(),
+            updated_at: now.clone(),
+        },
+        ownership: crate::runtime_types::WorkerOwnership {
+            owner_kind: crate::runtime_types::OwnerKind::External,
+            owner_id: descriptor
+                .session
+                .as_ref()
+                .and_then(|session| session.session_id.clone())
+                .unwrap_or_else(|| "local-probe".into()),
+            parent_instance_id: None,
+        },
+        desired: crate::runtime_types::DesiredWorkerState::default(),
+        observed: crate::runtime_types::ObservedWorkerState {
+            placement: crate::runtime_types::ObservedPlacement {
+                placement_id: descriptor
+                    .runtime
+                    .as_ref()
+                    .and_then(|runtime| runtime.placement_id.clone())
+                    .unwrap_or_else(|| "local-process".into()),
+                host: descriptor
+                    .runtime
+                    .as_ref()
+                    .and_then(|runtime| runtime.host.clone())
+                    .unwrap_or_else(|| "localhost".into()),
+                pid: descriptor.runtime.as_ref().and_then(|runtime| runtime.pid),
+                ..Default::default()
+            },
+            control_plane: observed_control_plane,
+            health: crate::runtime_types::ObservedHealth {
+                ready: true,
+                last_seen_at: Some(now.clone()),
+                freshness: Some(crate::runtime_types::InstanceFreshness::Fresh),
+                ..Default::default()
+            },
+            exit: crate::runtime_types::ObservedExit::default(),
+            compatibility: Some(compatibility),
+            operational_profile: None,
+            capabilities: Some(
+                crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                    instance_id,
+                    capabilities,
+                ),
+            ),
+        },
+    })
 }
 
 #[cfg(not(target_arch = "wasm32"))]
