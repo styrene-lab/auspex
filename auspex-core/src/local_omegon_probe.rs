@@ -250,6 +250,13 @@ fn instance_record_from_startup_descriptor(
             instance_id: instance_id.clone(),
             role: crate::runtime_types::WorkerRole::from_descriptor_role(&descriptor.identity.role),
             profile: descriptor.identity.profile.clone(),
+            raw_role: Some(descriptor.identity.role.clone()).filter(|value| !value.is_empty()),
+            raw_profile: Some(descriptor.identity.profile.clone()).filter(|value| !value.is_empty()),
+            raw_runtime_profile: descriptor
+                .runtime
+                .as_ref()
+                .and_then(|runtime| runtime.runtime_profile.clone())
+                .filter(|value| !value.is_empty()),
             status: lifecycle_from_descriptor(&descriptor.identity.status),
             created_at: now.clone(),
             updated_at: now.clone(),

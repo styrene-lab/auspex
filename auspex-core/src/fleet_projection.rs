@@ -74,6 +74,12 @@ pub struct FleetInstanceProjection {
     pub instance_id: String,
     pub role: String,
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_runtime_profile: Option<String>,
     pub lifecycle: WorkerLifecycleState,
     pub ready: bool,
     pub base_url: String,
@@ -94,6 +100,9 @@ impl FleetInstanceProjection {
             instance_id: record.identity.instance_id.clone(),
             role: record.identity.role.label().into(),
             profile: record.identity.profile.clone(),
+            raw_role: record.identity.raw_role.clone(),
+            raw_profile: record.identity.raw_profile.clone(),
+            raw_runtime_profile: record.identity.raw_runtime_profile.clone(),
             lifecycle: record.identity.status,
             ready: record.observed.health.ready,
             base_url: record.observed.control_plane.base_url.clone(),
@@ -149,6 +158,9 @@ mod tests {
                 instance_id: id.into(),
                 role: WorkerRole::PrimaryDriver,
                 profile: "auspex-orchestrator".into(),
+                raw_role: None,
+                raw_profile: None,
+                raw_runtime_profile: None,
                 status: WorkerLifecycleState::Ready,
                 created_at: "2026-05-30T00:00:00Z".into(),
                 updated_at: "2026-05-30T00:00:00Z".into(),

@@ -348,6 +348,9 @@ impl RemoteInstanceEntry {
                 instance_id: format!("remote:{name}"),
                 role: self.role,
                 profile: self.profile.clone(),
+                raw_role: None,
+                raw_profile: None,
+                raw_runtime_profile: None,
                 status: crate::runtime_types::WorkerLifecycleState::Requested,
                 created_at: now.clone(),
                 updated_at: now.clone(),
@@ -425,9 +428,11 @@ impl RemoteInstanceEntry {
                     },
                 )),
                 operational_profile: None,
-                capabilities: Some(crate::capability_registry::InstanceCapabilitySnapshot::empty(
-                    format!("remote:{name}"),
-                )),
+                capabilities: Some(
+                    crate::capability_registry::InstanceCapabilitySnapshot::empty(format!(
+                        "remote:{name}"
+                    )),
+                ),
             },
         }
     }

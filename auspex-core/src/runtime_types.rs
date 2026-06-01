@@ -139,6 +139,12 @@ pub struct WorkerIdentity {
     pub instance_id: String,
     pub role: WorkerRole,
     pub profile: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_role: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub raw_runtime_profile: Option<String>,
     pub status: WorkerLifecycleState,
     pub created_at: String,
     pub updated_at: String,

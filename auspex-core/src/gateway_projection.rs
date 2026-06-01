@@ -108,9 +108,21 @@ pub struct GatewayMethodDescriptor {
 
 pub fn projection_method_registry() -> Vec<GatewayMethodDescriptor> {
     vec![
-        GatewayMethodDescriptor { name: METHOD_FLEET_STATUS.into(), method: GatewayProjectionMethod::FleetStatus, read_only: true },
-        GatewayMethodDescriptor { name: METHOD_INSTANCES_LIST.into(), method: GatewayProjectionMethod::InstancesList, read_only: true },
-        GatewayMethodDescriptor { name: METHOD_CAPABILITIES_QUERY.into(), method: GatewayProjectionMethod::CapabilitiesQuery, read_only: true },
+        GatewayMethodDescriptor {
+            name: METHOD_FLEET_STATUS.into(),
+            method: GatewayProjectionMethod::FleetStatus,
+            read_only: true,
+        },
+        GatewayMethodDescriptor {
+            name: METHOD_INSTANCES_LIST.into(),
+            method: GatewayProjectionMethod::InstancesList,
+            read_only: true,
+        },
+        GatewayMethodDescriptor {
+            name: METHOD_CAPABILITIES_QUERY.into(),
+            method: GatewayProjectionMethod::CapabilitiesQuery,
+            read_only: true,
+        },
     ]
 }
 
@@ -207,7 +219,10 @@ impl GatewayDegradation {
                 mode: GatewayDegradationMode::Degraded,
                 reasons,
                 unavailable_surfaces,
-                fallback_surfaces: vec!["auspex/fleet/status".into(), "auspex/instances/list".into()],
+                fallback_surfaces: vec![
+                    "auspex/fleet/status".into(),
+                    "auspex/instances/list".into(),
+                ],
             }
         }
     }
@@ -244,7 +259,11 @@ impl GatewayCapabilitiesQueryResponse {
             .iter()
             .filter_map(|instance| capability_match(instance, &query))
             .collect();
-        Self { schema_version: GATEWAY_PROJECTION_SCHEMA_VERSION, query, matches }
+        Self {
+            schema_version: GATEWAY_PROJECTION_SCHEMA_VERSION,
+            query,
+            matches,
+        }
     }
 }
 
@@ -292,7 +311,6 @@ fn capability_match(
     })
 }
 
-
 pub mod fixtures {
     pub fn demo_instance(
         id: &str,
@@ -325,6 +343,9 @@ pub mod fixtures {
                 } else {
                     "coding-agent-primary".into()
                 },
+                raw_role: None,
+                raw_profile: None,
+                raw_runtime_profile: None,
                 status: crate::runtime_types::WorkerLifecycleState::Ready,
                 created_at: "2026-05-30T00:00:00Z".into(),
                 updated_at: "2026-05-30T00:00:00Z".into(),
@@ -369,6 +390,9 @@ mod tests {
                 instance_id: id.into(),
                 role: WorkerRole::PrimaryDriver,
                 profile: "auspex-orchestrator".into(),
+                raw_role: None,
+                raw_profile: None,
+                raw_runtime_profile: None,
                 status: WorkerLifecycleState::Ready,
                 created_at: "2026-05-30T00:00:00Z".into(),
                 updated_at: "2026-05-30T00:00:00Z".into(),
@@ -376,24 +400,30 @@ mod tests {
             desired: DesiredWorkerState::default(),
             observed: ObservedWorkerState {
                 control_plane: control_plane.clone(),
-                health: ObservedHealth { ready, ..Default::default() },
+                health: ObservedHealth {
+                    ready,
+                    ..Default::default()
+                },
                 compatibility: Some(assess_observed_control_plane(&control_plane)),
-                operational_profile: Some(crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0")),
-                capabilities: Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
-                    id.to_string(),
-                    capabilities.iter().copied(),
-                )),
+                operational_profile: Some(
+                    crate::operational_profile::OperationalProfile::auspex_orchestrator("0.2.0"),
+                ),
+                capabilities: Some(
+                    InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                        id.to_string(),
+                        capabilities.iter().copied(),
+                    ),
+                ),
                 ..Default::default()
             },
             ..Default::default()
         }
     }
 
-
-
     #[test]
     fn golden_empty_fleet_status_json_is_stable() {
-        let response = GatewayProjectionResponse::fleet_status(FleetRuntimeProjection::from_instances(&[]));
+        let response =
+            GatewayProjectionResponse::fleet_status(FleetRuntimeProjection::from_instances(&[]));
         let actual = serde_json::to_value(&response).unwrap();
         let expected = serde_json::json!({
             "schema_version": 1,
@@ -423,12 +453,10 @@ mod tests {
 
     #[test]
     fn golden_instances_list_json_excludes_raw_registry_shape() {
-        let response = GatewayInstancesListResponse::from_fleet(FleetRuntimeProjection::from_instances(&[instance(
-            "primary",
-            "0.25.6",
-            true,
-            &["state.snapshot"],
-        )]));
+        let response =
+            GatewayInstancesListResponse::from_fleet(FleetRuntimeProjection::from_instances(&[
+                instance("primary", "0.25.6", true, &["state.snapshot"]),
+            ]));
         let actual = serde_json::to_value(&response).unwrap();
 
         assert_eq!(actual["schema_version"], 1);
@@ -471,11 +499,16 @@ mod tests {
         )]);
         let response = GatewayProjectionResponse::fleet_status(fleet);
 
-        assert_eq!(response.degradation.mode, GatewayDegradationMode::Unsupported);
-        assert!(response
-            .degradation
-            .unavailable_surfaces
-            .contains(&"auspex/host-actions/*".to_string()));
+        assert_eq!(
+            response.degradation.mode,
+            GatewayDegradationMode::Unsupported
+        );
+        assert!(
+            response
+                .degradation
+                .unavailable_surfaces
+                .contains(&"auspex/host-actions/*".to_string())
+        );
     }
 
     #[test]
@@ -484,15 +517,31 @@ mod tests {
 
         assert_eq!(methods.len(), 3);
         assert!(methods.iter().all(|method| method.read_only));
-        assert!(methods.iter().any(|method| method.name == METHOD_FLEET_STATUS));
-        assert_eq!(GatewayProjectionMethod::FleetStatus.as_str(), METHOD_FLEET_STATUS);
+        assert!(
+            methods
+                .iter()
+                .any(|method| method.name == METHOD_FLEET_STATUS)
+        );
+        assert_eq!(
+            GatewayProjectionMethod::FleetStatus.as_str(),
+            METHOD_FLEET_STATUS
+        );
     }
 
     #[test]
     fn capability_namespace_detects_first_party_surfaces() {
-        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::tool("omegon/context/status")), CapabilityNamespace::Omegon);
-        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::tool("styrene/identity/attest")), CapabilityNamespace::Styrene);
-        assert_eq!(CapabilityNamespace::from_key(&CapabilityKey::host_action("package.install@1")), CapabilityNamespace::HostAction);
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("omegon/context/status")),
+            CapabilityNamespace::Omegon
+        );
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("styrene/identity/attest")),
+            CapabilityNamespace::Styrene
+        );
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::host_action("package.install@1")),
+            CapabilityNamespace::HostAction
+        );
     }
 
     #[test]
@@ -503,8 +552,19 @@ mod tests {
         let response = GatewayProjectionResponse::fleet_status(fleet);
 
         assert_eq!(response.degradation.mode, GatewayDegradationMode::Degraded);
-        assert!(response.degradation.reasons.iter().any(|reason| reason.contains("operational profile")));
-        assert!(response.degradation.unavailable_surfaces.contains(&"auspex/host-actions/*".to_string()));
+        assert!(
+            response
+                .degradation
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("operational profile"))
+        );
+        assert!(
+            response
+                .degradation
+                .unavailable_surfaces
+                .contains(&"auspex/host-actions/*".to_string())
+        );
     }
 
     #[test]
@@ -525,13 +585,16 @@ mod tests {
 
     #[test]
     fn empty_fleet_projection_degrades_without_dispatch() {
-        let response = GatewayProjectionResponse::fleet_status(FleetRuntimeProjection::from_instances(&[]));
+        let response =
+            GatewayProjectionResponse::fleet_status(FleetRuntimeProjection::from_instances(&[]));
 
         assert_eq!(response.degradation.mode, GatewayDegradationMode::Degraded);
-        assert!(response
-            .degradation
-            .unavailable_surfaces
-            .contains(&"auspex/dispatch/submit".to_string()));
+        assert!(
+            response
+                .degradation
+                .unavailable_surfaces
+                .contains(&"auspex/dispatch/submit".to_string())
+        );
     }
 
     #[test]
@@ -557,11 +620,13 @@ mod tests {
         let response = GatewayProjectionResponse::fleet_status(fleet);
 
         assert_eq!(response.degradation.mode, GatewayDegradationMode::Degraded);
-        assert!(response
-            .degradation
-            .reasons
-            .iter()
-            .any(|reason| reason.contains("unsupported")));
+        assert!(
+            response
+                .degradation
+                .reasons
+                .iter()
+                .any(|reason| reason.contains("unsupported"))
+        );
     }
 
     #[test]

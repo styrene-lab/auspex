@@ -530,12 +530,14 @@ pub fn apply_local_omegon_probe_result(
             ContentType::Table,
             Some("Attached Fleet".into()),
             serde_json::json!({
-                "columns": ["Instance", "Role", "Profile", "Ready", "Compatibility"],
+                "columns": ["Instance", "Raw Role", "Role", "Raw Profile", "Runtime Profile", "Ready", "Compatibility"],
                 "rows": projection.fleet.instances.iter().map(|instance| {
                     serde_json::json!([
                         instance.instance_id,
+                        instance.raw_role.clone().unwrap_or_else(|| "—".into()),
                         instance.role,
-                        instance.profile,
+                        instance.raw_profile.clone().unwrap_or_else(|| instance.profile.clone()),
+                        instance.raw_runtime_profile.clone().unwrap_or_else(|| "—".into()),
                         instance.ready,
                         format!("{:?}", instance.compatibility_status),
                     ])

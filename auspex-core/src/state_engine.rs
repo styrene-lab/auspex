@@ -481,6 +481,12 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                 instance_id: instance.instance_id.clone(),
                 role: infer_worker_role(instance),
                 profile: instance.profile.clone(),
+                raw_role: instance.registry_record.as_ref().and_then(|record| record.identity.raw_role.clone()),
+                raw_profile: instance.registry_record.as_ref().and_then(|record| record.identity.raw_profile.clone()),
+                raw_runtime_profile: instance
+                    .registry_record
+                    .as_ref()
+                    .and_then(|record| record.identity.raw_runtime_profile.clone()),
                 status: crate::runtime_types::WorkerLifecycleState::Ready,
                 created_at: String::new(),
                 updated_at: String::new(),
@@ -801,6 +807,9 @@ mod tests {
                     instance_id: "omg_dispatcher_01HVTEST".into(),
                     role: crate::runtime_types::WorkerRole::PrimaryDriver,
                     profile: "primary-interactive".into(),
+                    raw_role: None,
+                    raw_profile: None,
+                    raw_runtime_profile: None,
                     status: crate::runtime_types::WorkerLifecycleState::Ready,
                     created_at: "2026-04-06T00:00:00Z".into(),
                     updated_at: "2026-04-06T00:00:01Z".into(),
@@ -1203,6 +1212,9 @@ mod tests {
                     instance_id: "omg_service_01HVTEST".into(),
                     role: crate::runtime_types::WorkerRole::DetachedService,
                     profile: "background-sync".into(),
+                    raw_role: None,
+                    raw_profile: None,
+                    raw_runtime_profile: None,
                     status: crate::runtime_types::WorkerLifecycleState::Ready,
                     created_at: String::new(),
                     updated_at: String::new(),

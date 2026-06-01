@@ -185,7 +185,8 @@ fn fetch_startup_info(host_port: u16) -> Option<(String, String, Vec<String>)> {
 #[cfg(not(target_arch = "wasm32"))]
 pub fn container_to_instance_record(container: &DiscoveredContainer) -> InstanceRecord {
     let ready = probe_health(container.host_port);
-    let (token, omegon_version, capabilities) = fetch_startup_info(container.host_port).unwrap_or_default();
+    let (token, omegon_version, capabilities) =
+        fetch_startup_info(container.host_port).unwrap_or_default();
 
     let base_url = format!("http://127.0.0.1:{}", container.host_port);
     let now = std::time::SystemTime::now()
@@ -199,6 +200,9 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
             instance_id: format!("container:{}", container.name),
             role: WorkerRole::DetachedService,
             profile: "container-agent".into(),
+            raw_role: None,
+            raw_profile: None,
+            raw_runtime_profile: None,
             status: if ready {
                 WorkerLifecycleState::Ready
             } else {
@@ -238,12 +242,20 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 ws_url: format!(
                     "ws://127.0.0.1:{}/ws{}",
                     container.host_port,
-                    if token.is_empty() { String::new() } else { format!("?token={token}") }
+                    if token.is_empty() {
+                        String::new()
+                    } else {
+                        format!("?token={token}")
+                    }
                 ),
                 acp_url: Some(format!(
                     "ws://127.0.0.1:{}/acp{}",
                     container.host_port,
-                    if token.is_empty() { String::new() } else { format!("?token={token}") }
+                    if token.is_empty() {
+                        String::new()
+                    } else {
+                        format!("?token={token}")
+                    }
                 )),
                 auth_mode: "ephemeral-bearer".into(),
                 token_ref: if token.is_empty() { None } else { Some(token) },
@@ -269,13 +281,14 @@ pub fn container_to_instance_record(container: &DiscoveredContainer) -> Instance
                 exit: Default::default(),
                 compatibility: Some(assess_observed_control_plane(&control_plane)),
                 operational_profile: None,
-                capabilities: Some(InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
-                    format!("container:{}", container.name),
-                    capabilities,
-                )),
+                capabilities: Some(
+                    InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
+                        format!("container:{}", container.name),
+                        capabilities,
+                    ),
+                ),
             }
         },
-
     }
 }
 
