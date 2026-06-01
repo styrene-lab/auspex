@@ -5553,8 +5553,9 @@ fn audit_kind_label(kind: AuditEntryKind) -> &'static str {
 
 // ── COP Display Surface rendering ───────────────────────────
 
-
-fn render_gateway_cop_workspace(mut controller: Signal<auspex_core::controller::AppController>) -> Element {
+fn render_gateway_cop_workspace(
+    mut controller: Signal<auspex_core::controller::AppController>,
+) -> Element {
     rsx! {
         div { class: "cop-workspace-shell",
             div { class: "cop-toolbar",
@@ -5569,6 +5570,15 @@ fn render_gateway_cop_workspace(mut controller: Signal<auspex_core::controller::
                         controller.write().project_gateway_fleet_to_cop();
                     },
                     "Discover Local"
+                }
+                button {
+                    class: "cop-refresh-button",
+                    r#type: "button",
+                    onclick: move |_| {
+                        #[cfg(not(target_arch = "wasm32"))]
+                        controller.write().probe_first_local_omegon_to_cop();
+                    },
+                    "Attach Probe"
                 }
                 button {
                     class: "cop-refresh-button",

@@ -501,6 +501,76 @@ pub fn apply_local_omegon_discovery_with_policy(
     );
 }
 
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn apply_local_omegon_probe_result(
+    state: &mut CopDisplayState,
+    result: &crate::local_omegon_probe::LocalOmegonProbeResult,
+) {
+    state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+    let status = format!("{:?}", result.status);
+    let allowed = result.policy.is_allowed();
+    state.write(
+        CopRegion::North,
+        ContentType::StatusCard,
+        Some("Local Attach Probe".into()),
+        serde_json::json!({
+            "label": "Local Omegon Attach",
+            "status": status,
+            "detail": result.evidence,
+            "severity": if allowed { "active" } else { "warning" },
+            "policy": format!("{:?}", result.policy.effect),
+        }),
+    );
+
+    let mut rows = vec![
+        serde_json::json!(["Startup URL", result.startup_url.clone().unwrap_or_else(|| "—".into())]),
+        serde_json::json!(["State URL", result.state_url.clone().unwrap_or_else(|| "—".into())]),
+        serde_json::json!(["Instance ID", result.instance_id.clone().unwrap_or_else(|| "—".into())]),
+        serde_json::json!(["Omegon Version", result.omegon_version.clone().unwrap_or_else(|| "—".into())]),
+        serde_json::json!(["Capabilities", result.capabilities.len().to_string()]),
+    ];
+    if let Some(controller) = result.controller.as_ref() {
+        let projection = controller.fleet_runtime_projection();
+        rows.push(serde_json::json!(["Projection Total", projection.summary.total_instances.to_string()]));
+        rows.push(serde_json::json!(["Projection Ready", projection.summary.ready_instances.to_string()]));
+        rows.push(serde_json::json!(["Projection Compatible", projection.summary.compatible_instances.to_string()]));
+    }
+    state.write(
+        CopRegion::Center,
+        ContentType::Table,
+        Some("Probe Evidence".into()),
+        serde_json::json!({
+            "columns": ["Field", "Value"],
+            "rows": rows,
+        }),
+    );
+
+    state.write(
+        CopRegion::East,
+        ContentType::KvGrid,
+        Some("Authorization".into()),
+        serde_json::json!({
+            "pairs": [
+                {"key": "Effect", "value": format!("{:?}", result.policy.effect)},
+                {"key": "Obligations", "value": result.policy.obligations.len()},
+                {"key": "Supererogations", "value": result.policy.supererogations.len()},
+                {"key": "Reasons", "value": result.policy.reasons.len()}
+            ]
+        }),
+    );
+
+    state.write(
+        CopRegion::South,
+        ContentType::TextBlock,
+        Some("Probe Notes".into()),
+        serde_json::json!({
+            "text": result.policy.reasons.iter().map(|reason| format!("{}: {}", reason.code, reason.message)).collect::<Vec<_>>().join("
+"),
+        }),
+    );
+}
+
 /// The five standard segmenta regions.
 pub fn default_segmenta_regions() -> Vec<CopRegion> {
     vec![

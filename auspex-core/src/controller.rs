@@ -422,6 +422,28 @@ impl AppController {
         );
         candidates
     }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn probe_first_local_omegon_to_cop(
+        &mut self,
+    ) -> Option<crate::local_omegon_probe::LocalOmegonProbeResult> {
+        let candidates = crate::local_omegon_discovery::discover_local_omegon_candidates();
+        let candidate = candidates
+            .iter()
+            .find(|candidate| candidate.startup_url.is_some())
+            .cloned()?;
+        let result = crate::local_omegon_probe::probe_local_omegon_candidate_read_only(
+            &candidate,
+            crate::authorization::attach_probe_principal(),
+        );
+        if let Some(controller) = result.controller.as_ref() {
+            self.instance_registry = controller.instance_registry.clone();
+            self.rebuild_attached_instances();
+            self.refresh_telemetry_snapshot();
+        }
+        crate::cop_surface::apply_local_omegon_probe_result(&mut self.cop_state, &result);
+        Some(result)
+    }
     pub fn apply_instance_descriptor(
         &mut self,
         instance_id: &str,
