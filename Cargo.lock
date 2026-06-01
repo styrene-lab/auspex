@@ -353,6 +353,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "styrene-policy",
  "thiserror 2.0.18",
  "tokio",
  "tokio-tungstenite",
@@ -6466,6 +6467,14 @@ dependencies = [
  "thiserror 1.0.69",
  "tokio",
  "tracing",
+]
+
+[[package]]
+name = "styrene-policy"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

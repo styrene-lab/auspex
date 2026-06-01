@@ -43,6 +43,7 @@ futures-util = "0.3"
 tungstenite = { version = "0.28", default-features = false }
 rmp-serde = "1"
 omegon-traits = "0.20"
+styrene-policy = { path = "../../worktrees/styrene-rs-policy/crates/libs/styrene-policy", features = ["config"] }
 
 # Desktop-only: async WebSocket via tokio
 tokio-tungstenite = { version = "0.28", optional = true, default-features = false, features = ["connect", "handshake", "rustls-tls-webpki-roots"] }

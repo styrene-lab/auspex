@@ -27,20 +27,21 @@ pub mod session_event;
 
 // Infrastructure
 pub mod audit_timeline;
+pub mod authorization;
 pub mod capability_registry;
 pub mod command_transport;
+pub mod compatibility;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod container_discovery;
-pub mod compatibility;
 pub mod descriptor_ingest;
 pub mod event_stream;
 pub mod fleet_projection;
 pub mod gateway_projection;
 pub mod host_action_policy;
 pub mod instance_registry;
-pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ipc_client;
+pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tls_config;
 
