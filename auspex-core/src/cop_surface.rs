@@ -523,52 +523,100 @@ pub fn apply_local_omegon_probe_result(
         }),
     );
 
-    let mut rows = vec![
+    let projection = result.controller.as_ref().map(|controller| controller.gateway_fleet_status());
+    if let Some(projection) = projection.as_ref() {
+        state.write(
+            CopRegion::Center,
+            ContentType::Table,
+            Some("Attached Fleet".into()),
+            serde_json::json!({
+                "columns": ["Instance", "Role", "Profile", "Ready", "Compatibility"],
+                "rows": projection.fleet.instances.iter().map(|instance| {
+                    serde_json::json!([
+                        instance.instance_id,
+                        instance.role,
+                        instance.profile,
+                        instance.ready,
+                        format!("{:?}", instance.compatibility),
+                    ])
+                }).collect::<Vec<_>>()
+            }),
+        );
+        state.write(
+            CopRegion::East,
+            ContentType::KvGrid,
+            Some("Fleet + Authorization".into()),
+            serde_json::json!({
+                "pairs": [
+                    {"key": "Total", "value": projection.fleet.summary.total_instances},
+                    {"key": "Ready", "value": projection.fleet.summary.ready_instances},
+                    {"key": "Compatible", "value": projection.fleet.summary.compatible_instances},
+                    {"key": "Unsupported", "value": projection.fleet.summary.unsupported_instances},
+                    {"key": "Policy", "value": format!("{:?}", result.policy.effect)},
+                    {"key": "Obligations", "value": result.policy.obligations.len()}
+                ]
+            }),
+        );
+    } else {
+        state.write(
+            CopRegion::Center,
+            ContentType::Table,
+            Some("Probe Evidence".into()),
+            serde_json::json!({
+                "columns": ["Field", "Value"],
+                "rows": probe_evidence_rows(result),
+            }),
+        );
+        state.write(
+            CopRegion::East,
+            ContentType::KvGrid,
+            Some("Authorization".into()),
+            serde_json::json!({
+                "pairs": [
+                    {"key": "Effect", "value": format!("{:?}", result.policy.effect)},
+                    {"key": "Obligations", "value": result.policy.obligations.len()},
+                    {"key": "Supererogations", "value": result.policy.supererogations.len()},
+                    {"key": "Reasons", "value": result.policy.reasons.len()}
+                ]
+            }),
+        );
+    }
+
+    let mut notes = probe_evidence_rows(result)
+        .into_iter()
+        .filter_map(|row| {
+            let row = row.as_array()?;
+            Some(format!("{}: {}", row.first()?.as_str()?, row.get(1)?.as_str()?))
+        })
+        .collect::<Vec<_>>();
+    notes.extend(
+        result
+            .policy
+            .reasons
+            .iter()
+            .map(|reason| format!("{}: {}", reason.code, reason.message)),
+    );
+    state.write(
+        CopRegion::South,
+        ContentType::TextBlock,
+        Some("Probe Evidence + Notes".into()),
+        serde_json::json!({
+            "text": notes.join("\n"),
+        }),
+    );
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn probe_evidence_rows(
+    result: &crate::local_omegon_probe::LocalOmegonProbeResult,
+) -> Vec<serde_json::Value> {
+    vec![
         serde_json::json!(["Startup URL", result.startup_url.clone().unwrap_or_else(|| "—".into())]),
         serde_json::json!(["State URL", result.state_url.clone().unwrap_or_else(|| "—".into())]),
         serde_json::json!(["Instance ID", result.instance_id.clone().unwrap_or_else(|| "—".into())]),
         serde_json::json!(["Omegon Version", result.omegon_version.clone().unwrap_or_else(|| "—".into())]),
         serde_json::json!(["Capabilities", result.capabilities.len().to_string()]),
-    ];
-    if let Some(controller) = result.controller.as_ref() {
-        let projection = controller.fleet_runtime_projection();
-        rows.push(serde_json::json!(["Projection Total", projection.summary.total_instances.to_string()]));
-        rows.push(serde_json::json!(["Projection Ready", projection.summary.ready_instances.to_string()]));
-        rows.push(serde_json::json!(["Projection Compatible", projection.summary.compatible_instances.to_string()]));
-    }
-    state.write(
-        CopRegion::Center,
-        ContentType::Table,
-        Some("Probe Evidence".into()),
-        serde_json::json!({
-            "columns": ["Field", "Value"],
-            "rows": rows,
-        }),
-    );
-
-    state.write(
-        CopRegion::East,
-        ContentType::KvGrid,
-        Some("Authorization".into()),
-        serde_json::json!({
-            "pairs": [
-                {"key": "Effect", "value": format!("{:?}", result.policy.effect)},
-                {"key": "Obligations", "value": result.policy.obligations.len()},
-                {"key": "Supererogations", "value": result.policy.supererogations.len()},
-                {"key": "Reasons", "value": result.policy.reasons.len()}
-            ]
-        }),
-    );
-
-    state.write(
-        CopRegion::South,
-        ContentType::TextBlock,
-        Some("Probe Notes".into()),
-        serde_json::json!({
-            "text": result.policy.reasons.iter().map(|reason| format!("{}: {}", reason.code, reason.message)).collect::<Vec<_>>().join("
-"),
-        }),
-    );
+    ]
 }
 
 /// The five standard segmenta regions.
