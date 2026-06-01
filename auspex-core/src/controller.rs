@@ -405,8 +405,21 @@ impl AppController {
     pub fn discover_local_omegon_to_cop(
         &mut self,
     ) -> Vec<crate::local_omegon_discovery::LocalOmegonCandidate> {
-        let candidates = crate::local_omegon_discovery::discover_local_omegon_candidates();
-        crate::cop_surface::apply_local_omegon_discovery(&mut self.cop_state, &candidates);
+        let policy = crate::authorization::authorize_local_omegon_action(
+            crate::authorization::discovery_principal(),
+            crate::authorization::LocalOmegonAction::Discover,
+            crate::authorization::local_host_resource(),
+        );
+        let candidates = if policy.is_allowed() {
+            crate::local_omegon_discovery::discover_local_omegon_candidates()
+        } else {
+            Vec::new()
+        };
+        crate::cop_surface::apply_local_omegon_discovery_with_policy(
+            &mut self.cop_state,
+            &candidates,
+            Some(&policy),
+        );
         candidates
     }
     pub fn apply_instance_descriptor(

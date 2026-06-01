@@ -132,6 +132,15 @@ pub fn local_host_resource() -> ResourceRef {
     ResourceRef::new("auspex", "local-host", "localhost")
 }
 
+pub fn discovery_principal() -> PrincipalRef {
+    PrincipalRef {
+        identity_hash: None,
+        role: Some("local-observer".into()),
+        capabilities: vec![LocalOmegonAction::Discover.capability().into()],
+        can_sign: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

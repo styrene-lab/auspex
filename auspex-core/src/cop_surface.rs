@@ -345,13 +345,17 @@ impl CopDisplayState {
     }
 }
 
-
 /// Render the read-only gateway fleet projection into COP regions.
 pub fn apply_gateway_fleet_projection(
     state: &mut CopDisplayState,
     projection: &crate::gateway_projection::GatewayProjectionResponse,
 ) {
-    state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+    state.set_layout(vec![
+        CopRegion::North,
+        CopRegion::Center,
+        CopRegion::East,
+        CopRegion::South,
+    ]);
     state.write(
         CopRegion::North,
         ContentType::StatusCard,
@@ -416,24 +420,37 @@ pub fn apply_gateway_fleet_projection(
     );
 }
 
-
 /// Render local Omegon discovery candidates into COP regions.
 pub fn apply_local_omegon_discovery(
     state: &mut CopDisplayState,
     candidates: &[crate::local_omegon_discovery::LocalOmegonCandidate],
 ) {
+    apply_local_omegon_discovery_with_policy(state, candidates, None);
+}
+
+pub fn apply_local_omegon_discovery_with_policy(
+    state: &mut CopDisplayState,
+    candidates: &[crate::local_omegon_discovery::LocalOmegonCandidate],
+    policy: Option<&styrene_policy::PolicyDecision>,
+) {
     state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East]);
     let owned = candidates
         .iter()
-        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::AuspexOwned)
+        .filter(|candidate| {
+            candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::AuspexOwned
+        })
         .count();
     let user_owned = candidates
         .iter()
-        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::UserOwned)
+        .filter(|candidate| {
+            candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::UserOwned
+        })
         .count();
     let unknown = candidates
         .iter()
-        .filter(|candidate| candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::Unknown)
+        .filter(|candidate| {
+            candidate.ownership == crate::local_omegon_discovery::LocalOmegonOwnership::Unknown
+        })
         .count();
 
     state.write(
@@ -444,7 +461,8 @@ pub fn apply_local_omegon_discovery(
             "label": "Local Omegon",
             "status": if candidates.is_empty() { "none" } else { "discovered" },
             "detail": format!("{} local candidate(s): {owned} Auspex-owned, {user_owned} user-owned, {unknown} unknown", candidates.len()),
-            "severity": if candidates.is_empty() { "warning" } else { "active" }
+            "severity": if candidates.is_empty() { "warning" } else { "active" },
+            "policy": policy.map(|decision| format!("{:?}", decision.effect)).unwrap_or_else(|| "not evaluated".into())
         }),
     );
     state.write(
@@ -474,7 +492,10 @@ pub fn apply_local_omegon_discovery(
                 {"key": "Total", "value": candidates.len()},
                 {"key": "Auspex-owned", "value": owned},
                 {"key": "User-owned", "value": user_owned},
-                {"key": "Unknown", "value": unknown}
+                {"key": "Unknown", "value": unknown},
+                {"key": "Policy", "value": policy.map(|decision| format!("{:?}", decision.effect)).unwrap_or_else(|| "not evaluated".into())},
+                {"key": "Obligations", "value": policy.map(|decision| decision.obligations.len()).unwrap_or(0)},
+                {"key": "Reasons", "value": policy.map(|decision| decision.reasons.len()).unwrap_or(0)}
             ]
         }),
     );
@@ -565,33 +586,45 @@ pub fn cop_tool_definitions() -> Vec<serde_json::Value> {
 mod tests {
     use super::*;
 
-
-
-
     #[test]
     fn apply_local_omegon_discovery_writes_candidate_rows() {
-        let candidates = vec![crate::local_omegon_discovery::LocalOmegonCandidate::from_process_table(
-            202,
-            "/Users/wilson/.cargo/bin/omegon serve --control-port 7842 --strict-port",
-        )];
+        let candidates = vec![
+            crate::local_omegon_discovery::LocalOmegonCandidate::from_process_table(
+                202,
+                "/Users/wilson/.cargo/bin/omegon serve --control-port 7842 --strict-port",
+            ),
+        ];
         let mut state = CopDisplayState::default();
 
         apply_local_omegon_discovery(&mut state, &candidates);
 
         let center = state.region(&CopRegion::Center).unwrap();
-        let rows = center.data.get("rows").and_then(|value| value.as_array()).unwrap();
+        let rows = center
+            .data
+            .get("rows")
+            .and_then(|value| value.as_array())
+            .unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][1], "UserOwned");
         assert_eq!(rows[0][2], "202");
         assert_eq!(rows[0][3], "http://127.0.0.1:7842/api/startup");
-        assert_eq!(state.active_regions(), &[CopRegion::North, CopRegion::Center, CopRegion::East]);
+        assert_eq!(
+            state.active_regions(),
+            &[CopRegion::North, CopRegion::Center, CopRegion::East]
+        );
     }
 
     #[test]
     fn gateway_fleet_projection_renders_non_empty_rows() {
         let projection = crate::gateway_projection::GatewayProjectionResponse::fleet_status(
             crate::fleet_projection::FleetRuntimeProjection::from_instances(&[
-                crate::gateway_projection::fixtures::demo_instance("primary", "0.25.6", true, true, &["state.snapshot"]),
+                crate::gateway_projection::fixtures::demo_instance(
+                    "primary",
+                    "0.25.6",
+                    true,
+                    true,
+                    &["state.snapshot"],
+                ),
             ]),
         );
         let mut state = CopDisplayState::default();
@@ -619,9 +652,11 @@ mod tests {
         let second = state.region(&CopRegion::South).unwrap().data.clone();
 
         assert_eq!(first, second);
-        assert_eq!(state.region(&CopRegion::South).unwrap().content_type, ContentType::TextBlock);
+        assert_eq!(
+            state.region(&CopRegion::South).unwrap().content_type,
+            ContentType::TextBlock
+        );
     }
-
 
     #[test]
     fn apply_gateway_fleet_projection_writes_owned_cop_regions() {
@@ -637,7 +672,15 @@ mod tests {
         assert!(state.region(&CopRegion::East).is_some());
         assert!(state.region(&CopRegion::South).is_some());
         assert!(state.region(&CopRegion::West).is_none());
-        assert_eq!(state.active_regions(), &[CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+        assert_eq!(
+            state.active_regions(),
+            &[
+                CopRegion::North,
+                CopRegion::Center,
+                CopRegion::East,
+                CopRegion::South
+            ]
+        );
     }
 
     #[test]
@@ -656,7 +699,6 @@ mod tests {
         assert!(center.data.get("rows").is_some());
         assert!(center.data.get("instances").is_none());
     }
-
 
     #[test]
     fn write_replaces_region_content() {
