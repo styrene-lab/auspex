@@ -92,7 +92,7 @@ impl FleetInstanceProjection {
     pub fn from_instance_record(record: &InstanceRecord) -> Self {
         Self {
             instance_id: record.identity.instance_id.clone(),
-            role: format!("{:?}", record.identity.role),
+            role: record.identity.role.label().into(),
             profile: record.identity.profile.clone(),
             lifecycle: record.identity.status,
             ready: record.observed.health.ready,

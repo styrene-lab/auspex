@@ -443,7 +443,7 @@ impl AppController {
                 self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
                     instance_id: record.identity.instance_id.clone(),
                     route_id: route_id.clone(),
-                    role: format!("{:?}", record.identity.role),
+                    role: record.identity.role.label().into(),
                     profile: record.identity.profile.clone(),
                     session_key: format!("instance:{}", record.identity.instance_id),
                     base_url: Some(record.observed.control_plane.base_url.clone())
@@ -487,7 +487,7 @@ impl AppController {
                     .attach_instance(AttachedInstanceRecord {
                         instance_id: record.identity.instance_id.clone(),
                         route_id: format!("instance:{}", record.identity.instance_id),
-                        role: format!("{:?}", record.identity.role),
+                        role: record.identity.role.label().into(),
                         profile: record.identity.profile.clone(),
                         session_key: format!("instance:{}", record.identity.instance_id),
                         base_url: Some(record.observed.control_plane.base_url.clone())
@@ -775,7 +775,7 @@ impl AppController {
             .attach_instance(AttachedInstanceRecord {
                 instance_id: instance_id.clone(),
                 route_id: format!("container:{instance_id}"),
-                role: format!("{:?}", record.identity.role),
+                role: record.identity.role.label().into(),
                 profile: record.identity.profile.clone(),
                 session_key: format!("container:{instance_id}"),
                 base_url,
@@ -994,7 +994,7 @@ impl AppController {
             .attach_instance(AttachedInstanceRecord {
                 instance_id: instance_id.clone(),
                 route_id: format!("remote:{instance_id}"),
-                role: format!("{:?}", record.identity.role),
+                role: record.identity.role.label().into(),
                 profile: record.identity.profile.clone(),
                 session_key: format!("remote:{instance_id}"),
                 base_url,
@@ -1381,7 +1381,7 @@ impl AppController {
             .attach_instance(AttachedInstanceRecord {
                 instance_id: record.identity.instance_id.clone(),
                 route_id: format!("instance:{}", record.identity.instance_id),
-                role: format!("{:?}", record.identity.role),
+                role: record.identity.role.label().into(),
                 profile: record.identity.profile.clone(),
                 session_key: format!("instance:{}", record.identity.instance_id),
                 base_url: Some(record.observed.control_plane.base_url.clone())

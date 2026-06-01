@@ -180,14 +180,6 @@ pub fn probe_local_omegon_candidate_read_only(
 }
 
 
-fn worker_role_from_descriptor(role: &str) -> crate::runtime_types::WorkerRole {
-    match role.replace('_', "-").as_str() {
-        "supervised-child" => crate::runtime_types::WorkerRole::SupervisedChild,
-        "detached-service" => crate::runtime_types::WorkerRole::DetachedService,
-        _ => crate::runtime_types::WorkerRole::PrimaryDriver,
-    }
-}
-
 fn lifecycle_from_descriptor(status: &str) -> crate::runtime_types::WorkerLifecycleState {
     match status.replace('_', "-").as_str() {
         "busy" => crate::runtime_types::WorkerLifecycleState::Busy,
@@ -256,7 +248,7 @@ fn instance_record_from_startup_descriptor(
         schema_version: 1,
         identity: crate::runtime_types::WorkerIdentity {
             instance_id: instance_id.clone(),
-            role: worker_role_from_descriptor(&descriptor.identity.role),
+            role: crate::runtime_types::WorkerRole::from_descriptor_role(&descriptor.identity.role),
             profile: descriptor.identity.profile.clone(),
             status: lifecycle_from_descriptor(&descriptor.identity.status),
             created_at: now.clone(),

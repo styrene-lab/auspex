@@ -459,6 +459,25 @@ pub enum WorkerRole {
     DetachedService,
 }
 
+impl WorkerRole {
+    pub fn from_descriptor_role(role: &str) -> Self {
+        match role.replace('_', "-").to_ascii_lowercase().as_str() {
+            "primary-driver" | "primary" | "driver" => Self::PrimaryDriver,
+            "supervised-child" | "delegate" | "worker" | "embedded-backend" => Self::SupervisedChild,
+            "detached-service" | "remote-agent" | "service" => Self::DetachedService,
+            _ => Self::PrimaryDriver,
+        }
+    }
+
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::PrimaryDriver => "primary-driver",
+            Self::SupervisedChild => "supervised-child",
+            Self::DetachedService => "detached-service",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum OwnerKind {
@@ -828,4 +847,14 @@ network_policy = "restricted"
         assert_eq!(child.parallelism_limit, Some(4));
         assert_eq!(child.network_policy.as_deref(), Some("restricted"));
     }
+
+    #[test]
+    fn descriptor_role_normalization_accepts_snake_and_kebab_case() {
+        assert_eq!(WorkerRole::from_descriptor_role("primary_driver"), WorkerRole::PrimaryDriver);
+        assert_eq!(WorkerRole::from_descriptor_role("primary-driver"), WorkerRole::PrimaryDriver);
+        assert_eq!(WorkerRole::from_descriptor_role("supervised_child"), WorkerRole::SupervisedChild);
+        assert_eq!(WorkerRole::from_descriptor_role("detached_service"), WorkerRole::DetachedService);
+        assert_eq!(WorkerRole::PrimaryDriver.label(), "primary-driver");
+    }
+
 }
