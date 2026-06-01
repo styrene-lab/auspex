@@ -377,14 +377,16 @@ pub fn apply_gateway_fleet_projection(
         ContentType::Table,
         Some("Deployed Fleet".into()),
         serde_json::json!({
-            "columns": ["Instance", "Role", "Profile", "Ready", "Compatibility", "Base URL"],
+            "columns": ["Instance", "Raw Role", "Role", "Raw Profile", "Runtime Profile", "Ready", "Compatibility", "Base URL"],
             "rows": projection.fleet.instances.iter().map(|instance| {
                 serde_json::json!([
                     instance.instance_id,
+                    instance.raw_role.clone().unwrap_or_else(|| "—".into()),
                     instance.role,
-                    instance.profile,
+                    instance.raw_profile.clone().unwrap_or_else(|| instance.profile.clone()),
+                    instance.raw_runtime_profile.clone().unwrap_or_else(|| "—".into()),
                     instance.ready,
-                    instance.compatibility.as_ref().map(|c| format!("{:?}", c.status).to_ascii_lowercase()).unwrap_or_else(|| "unknown".into()),
+                    format!("{:?}", instance.compatibility_status).to_ascii_lowercase(),
                     instance.base_url,
                 ])
             }).collect::<Vec<_>>()
@@ -755,8 +757,8 @@ mod tests {
         let rows = center.data.get("rows").and_then(|v| v.as_array()).unwrap();
         assert_eq!(rows.len(), 1);
         assert_eq!(rows[0][0], "primary");
-        assert_eq!(rows[0][3], true);
-        assert_eq!(rows[0][4], "compatible");
+        assert_eq!(rows[0][5], true);
+        assert_eq!(rows[0][6], "compatible");
     }
 
     #[test]
