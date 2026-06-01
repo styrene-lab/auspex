@@ -25,7 +25,12 @@ impl FleetRuntimeProjection {
             .map(FleetInstanceProjection::from_instance_record)
             .collect();
         let summary = FleetRuntimeSummary::from_instances(&projected);
-        Self { schema_version: 1, instances: projected, host_action_queue: Vec::new(), summary }
+        Self {
+            schema_version: 1,
+            instances: projected,
+            host_action_queue: Vec::new(),
+            summary,
+        }
     }
 }
 
@@ -76,6 +81,7 @@ pub struct FleetInstanceProjection {
     pub acp_url: Option<String>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub compatibility: Option<CompatibilityAssessment>,
+    pub compatibility_status: CompatibilityStatus,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub operational_profile: Option<OperationalProfile>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -92,6 +98,12 @@ impl FleetInstanceProjection {
             ready: record.observed.health.ready,
             base_url: record.observed.control_plane.base_url.clone(),
             acp_url: record.observed.control_plane.acp_url.clone(),
+            compatibility_status: record
+                .observed
+                .compatibility
+                .as_ref()
+                .map(|compatibility| compatibility.status.clone())
+                .unwrap_or(CompatibilityStatus::Unknown),
             compatibility: record.observed.compatibility.clone(),
             operational_profile: record.observed.operational_profile.clone(),
             capabilities: record.observed.capabilities.clone(),

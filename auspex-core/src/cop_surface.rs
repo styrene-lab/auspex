@@ -537,7 +537,7 @@ pub fn apply_local_omegon_probe_result(
                         instance.role,
                         instance.profile,
                         instance.ready,
-                        format!("{:?}", instance.compatibility),
+                        format!("{:?}", instance.compatibility_status),
                     ])
                 }).collect::<Vec<_>>()
             }),
