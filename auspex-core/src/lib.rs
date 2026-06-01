@@ -43,6 +43,8 @@ pub mod instance_registry;
 pub mod ipc_client;
 pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
+pub mod local_omegon_probe;
+#[cfg(not(target_arch = "wasm32"))]
 pub mod tls_config;
 
 // State machines

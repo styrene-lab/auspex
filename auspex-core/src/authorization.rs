@@ -141,6 +141,15 @@ pub fn discovery_principal() -> PrincipalRef {
     }
 }
 
+pub fn attach_probe_principal() -> PrincipalRef {
+    PrincipalRef {
+        identity_hash: Some("local-operator-dev-principal".into()),
+        role: Some("operator".into()),
+        capabilities: vec![LocalOmegonAction::Attach.capability().into()],
+        can_sign: false,
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
