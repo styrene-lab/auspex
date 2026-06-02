@@ -59,7 +59,11 @@ pub enum CapabilityNamespace {
     Styrene,
     HostAction,
     Nex,
+    NexSubstrate,
     Armory,
+    Evidence,
+    ProjectRules,
+    TddSavepoint,
     Tool,
     Binary,
     Package,
@@ -87,8 +91,22 @@ impl CapabilityNamespace {
                     Self::Omegon
                 } else if key.name.starts_with("styrene/") {
                     Self::Styrene
+                } else if key.name.starts_with("nex_substrate")
+                    || key.name.starts_with("nex-substrate")
+                    || key.name.starts_with("nex/substrate")
+                {
+                    Self::NexSubstrate
                 } else if key.name.starts_with("nex") || key.name.starts_with("nex/") {
                     Self::Nex
+                } else if key.name.starts_with("evidence.") || key.name.starts_with("evidence/") {
+                    Self::Evidence
+                } else if key.name.starts_with("project-rules.") || key.name.starts_with("project_rules.") {
+                    Self::ProjectRules
+                } else if key.name.starts_with("tdd_savepoint.")
+                    || key.name.starts_with("tdd-savepoint.")
+                    || key.name.starts_with("tdd.savepoint.")
+                {
+                    Self::TddSavepoint
                 } else if key.name.starts_with("armory") || key.name.starts_with("armory/") {
                     Self::Armory
                 } else {
@@ -172,6 +190,7 @@ impl GatewayDegradation {
 
         let mut reasons = Vec::new();
         let mut unavailable_surfaces = Vec::new();
+        let mut fallback_surfaces = Vec::new();
         if fleet.summary.unsupported_instances > 0 {
             reasons.push(format!(
                 "{} unsupported instance(s) present",
@@ -212,6 +231,63 @@ impl GatewayDegradation {
             unavailable_surfaces.push("auspex/host-actions/*".into());
         }
 
+        let missing_evidence_read_model = fleet
+            .instances
+            .iter()
+            .filter(|instance| instance.ready)
+            .filter(|instance| {
+                !instance
+                    .operational_profile
+                    .as_ref()
+                    .is_some_and(|profile| profile.capabilities.evidence_read_model)
+            })
+            .count();
+        if missing_evidence_read_model > 0 {
+            reasons.push(format!(
+                "{} ready instance(s) have no evidence substrate read model",
+                missing_evidence_read_model
+            ));
+            unavailable_surfaces.push("omegon/evidence/*".into());
+        }
+
+        let missing_project_rules = fleet
+            .instances
+            .iter()
+            .filter(|instance| instance.ready)
+            .filter(|instance| {
+                !instance
+                    .operational_profile
+                    .as_ref()
+                    .is_some_and(|profile| profile.capabilities.project_rules)
+            })
+            .count();
+        if missing_project_rules > 0 {
+            reasons.push(format!(
+                "{} ready instance(s) have no project-rules read model",
+                missing_project_rules
+            ));
+            fallback_surfaces.push("project-rules:not-evaluated".into());
+        }
+
+        let missing_nex_substrate = fleet
+            .instances
+            .iter()
+            .filter(|instance| instance.ready)
+            .filter(|instance| {
+                !instance
+                    .operational_profile
+                    .as_ref()
+                    .is_some_and(|profile| profile.capabilities.nex_substrate)
+            })
+            .count();
+        if missing_nex_substrate > 0 {
+            reasons.push(format!(
+                "{} ready instance(s) have no Nex substrate report",
+                missing_nex_substrate
+            ));
+            fallback_surfaces.push("nex-substrate:advisory-degraded".into());
+        }
+
         if reasons.is_empty() {
             Self::default()
         } else {
@@ -219,10 +295,14 @@ impl GatewayDegradation {
                 mode: GatewayDegradationMode::Degraded,
                 reasons,
                 unavailable_surfaces,
-                fallback_surfaces: vec![
-                    "auspex/fleet/status".into(),
-                    "auspex/instances/list".into(),
-                ],
+                fallback_surfaces: {
+                    let mut surfaces = vec![
+                        "auspex/fleet/status".into(),
+                        "auspex/instances/list".into(),
+                    ];
+                    surfaces.extend(fallback_surfaces);
+                    surfaces
+                },
             }
         }
     }
@@ -643,4 +723,25 @@ mod tests {
         assert_eq!(response.matches.len(), 1);
         assert_eq!(response.matches[0].instance_id, "primary");
     }
+
+    #[test]
+    fn capability_namespace_detects_omegon_026_evidence_surfaces() {
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("evidence.map.read")),
+            CapabilityNamespace::Evidence
+        );
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("project-rules.check")),
+            CapabilityNamespace::ProjectRules
+        );
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("nex_substrate.devenv.inspect")),
+            CapabilityNamespace::NexSubstrate
+        );
+        assert_eq!(
+            CapabilityNamespace::from_key(&CapabilityKey::tool("tdd_savepoint.evidence")),
+            CapabilityNamespace::TddSavepoint
+        );
+    }
+
 }

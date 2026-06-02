@@ -134,6 +134,26 @@ impl OperationalProfile {
                 package_reconciliation: has_capability("package.install@1"),
                 audit: false,
                 fleet_projection: has_capability("state.snapshot"),
+                evidence_read_model: capabilities.iter().any(|capability| {
+                    capability.starts_with("evidence.")
+                        || capability.starts_with("evidence/")
+                        || capability == "evidence.map.read"
+                }),
+                project_rules: capabilities.iter().any(|capability| {
+                    capability.starts_with("project-rules.")
+                        || capability.starts_with("project_rules.")
+                        || capability == "project-rules.check"
+                }),
+                nex_substrate: capabilities.iter().any(|capability| {
+                    capability.starts_with("nex_substrate.")
+                        || capability.starts_with("nex-substrate.")
+                        || capability.starts_with("nex/substrate")
+                }),
+                tdd_savepoint: capabilities.iter().any(|capability| {
+                    capability.starts_with("tdd_savepoint.")
+                        || capability.starts_with("tdd-savepoint.")
+                        || capability.starts_with("tdd.savepoint.")
+                }),
             },
             policy: OperationalPolicy::default_orchestrator(),
             meta,
@@ -191,6 +211,14 @@ pub struct OperationalCapabilities {
     pub audit: bool,
     #[serde(default)]
     pub fleet_projection: bool,
+    #[serde(default)]
+    pub evidence_read_model: bool,
+    #[serde(default)]
+    pub project_rules: bool,
+    #[serde(default)]
+    pub nex_substrate: bool,
+    #[serde(default)]
+    pub tdd_savepoint: bool,
 }
 
 impl OperationalCapabilities {
@@ -203,6 +231,10 @@ impl OperationalCapabilities {
             package_reconciliation: true,
             audit: true,
             fleet_projection: true,
+            evidence_read_model: true,
+            project_rules: true,
+            nex_substrate: true,
+            tdd_savepoint: true,
         }
     }
 
@@ -218,6 +250,10 @@ impl OperationalCapabilities {
             package_reconciliation: bool_field(value, "package_reconciliation"),
             audit: bool_field(value, "audit"),
             fleet_projection: bool_field(value, "fleet_projection"),
+            evidence_read_model: bool_field(value, "evidence_read_model"),
+            project_rules: bool_field(value, "project_rules"),
+            nex_substrate: bool_field(value, "nex_substrate"),
+            tdd_savepoint: bool_field(value, "tdd_savepoint"),
         }
     }
 }
@@ -445,7 +481,15 @@ mod tests {
             },
             control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
                 omegon_version: Some("0.25.4".into()),
-                capabilities: vec!["state.snapshot".into(), "prompt.submit".into(), "shutdown".into()],
+                capabilities: vec![
+                    "state.snapshot".into(),
+                    "prompt.submit".into(),
+                    "shutdown".into(),
+                    "evidence.map.read".into(),
+                    "project-rules.check".into(),
+                    "nex_substrate.devenv.inspect".into(),
+                    "tdd_savepoint.evidence".into(),
+                ],
                 ..Default::default()
             }),
             runtime: Some(crate::omegon_control::OmegonRuntimeDescriptor {
@@ -468,6 +512,10 @@ mod tests {
         assert_eq!(profile.required_profile, "primary_interactive");
         assert!(profile.capabilities.instance_registry);
         assert!(profile.capabilities.dispatch);
+        assert!(profile.capabilities.evidence_read_model);
+        assert!(profile.capabilities.project_rules);
+        assert!(profile.capabilities.nex_substrate);
+        assert!(profile.capabilities.tdd_savepoint);
         assert!(!profile.capabilities.host_actions);
         assert_eq!(profile.meta.get("source").and_then(|v| v.as_str()), Some("derived_from_omegon_state"));
         assert_eq!(profile.meta.get("harness_principal_id").and_then(|v| v.as_str()), Some("local-operator"));

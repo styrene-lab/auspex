@@ -91,4 +91,20 @@ Acceptance:
 - Missing signer blocks actions requiring signature.
 - COP shows principal identity/role/capability summary for policy decisions.
 
+## 6. Nex sandbox dogfood lane
+
+Problem: native Auspex needs a validation path proving our own Nex/Omegon sandboxing capabilities can launch constrained Omegon runtimes with limited credentials and produce evidence/project-rules outputs.
+
+Acceptance:
+
+- Native Auspex can inspect Nex substrate reports read-only and render advisory status in COP.
+- Missing Nex is degraded/advisory, not fatal.
+- Auspex can render a sandbox launch plan without executing it.
+- Plan includes workspace, command, credential grants, network scope, expected evidence outputs, and cleanup handle.
+- Native Auspex can eventually launch one constrained Omegon sandbox as `AuspexOwned`.
+- Sandboxed Omegon attach/probe validates compatibility, operational profile, capability snapshot, and evidence/project-rules substrate.
+- No ambient secrets are inherited; credential grants are explicit, scoped, visible, and auditable.
+
+See [[native-auspex-nex-sandbox-dogfood-lane]].
+
 ## Open Questions
