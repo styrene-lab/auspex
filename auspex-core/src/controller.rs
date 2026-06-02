@@ -458,6 +458,7 @@ impl AppController {
                 self.rebuild_attached_instances();
             }
             self.refresh_telemetry_snapshot();
+            self.persist_instance_registry();
         }
         crate::cop_surface::apply_local_omegon_probe_result(&mut self.cop_state, &result);
         Some(result)
