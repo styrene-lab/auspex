@@ -8,7 +8,7 @@ repository = "https://github.com/styrene-lab/auspex"
 
 [package.metadata.omegon]
 minimum_version = "0.25.0"
-maximum_tested_version = "0.25.6"
+maximum_tested_version = "0.26.0"
 control_plane_schema = 2
 
 [features]

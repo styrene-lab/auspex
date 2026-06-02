@@ -6,11 +6,11 @@
 //! says we have audited.
 
 /// Highest Omegon release line audited by this Auspex build.
-pub const MAXIMUM_TESTED_OMEGON_VERSION: &str = "0.25.6";
+pub const MAXIMUM_TESTED_OMEGON_VERSION: &str = "0.26.0";
 
 /// Exact local/source `omegon-traits` version this crate is expected to compile
 /// against while Auspex declares `MAXIMUM_TESTED_OMEGON_VERSION` above.
-pub const EXPECTED_OMEGON_TRAITS_VERSION: &str = "0.25.6";
+pub const EXPECTED_OMEGON_TRAITS_VERSION: &str = "0.26.0";
 
 /// Actual linked `omegon-traits` package version.
 pub const LINKED_OMEGON_TRAITS_VERSION: &str = env!("AUSPEX_LINKED_OMEGON_TRAITS_VERSION");

@@ -45,10 +45,10 @@ impl OperationalProfile {
 
         let name = string_field(info, "name")?;
         let version = string_field(info, "version").unwrap_or_default();
-        let recommended_profile = string_field(info, "recommended_profile")
-            .unwrap_or_else(|| name.clone());
-        let required_profile = string_field(info, "required_profile")
-            .unwrap_or_else(|| recommended_profile.clone());
+        let recommended_profile =
+            string_field(info, "recommended_profile").unwrap_or_else(|| name.clone());
+        let required_profile =
+            string_field(info, "required_profile").unwrap_or_else(|| recommended_profile.clone());
         let capability_contract_version = info
             .get("capability_contract_version")
             .and_then(|value| value.as_u64())
@@ -68,6 +68,76 @@ impl OperationalProfile {
             policy: OperationalPolicy::from_metadata(policy),
             meta: BTreeMap::new(),
         })
+    }
+
+
+    pub fn from_omegon_runtime_evidence(
+        instance: &crate::omegon_control::OmegonInstanceDescriptor,
+        harness: Option<&serde_json::Value>,
+    ) -> Self {
+        let runtime = instance.runtime.as_ref();
+        let control_plane = instance.control_plane.as_ref();
+        let runtime_profile = runtime
+            .and_then(|runtime| runtime.runtime_profile.clone())
+            .or_else(|| {
+                harness
+                    .and_then(|harness| harness.get("runtime_profile"))
+                    .and_then(|value| value.as_str())
+                    .map(str::to_string)
+            })
+            .unwrap_or_else(|| "unknown".into());
+        let version = control_plane
+            .and_then(|control_plane| control_plane.omegon_version.clone())
+            .unwrap_or_default();
+        let capabilities = control_plane
+            .map(|control_plane| control_plane.capabilities.as_slice())
+            .unwrap_or(&[]);
+        let has_capability = |needle: &str| capabilities.iter().any(|capability| capability == needle);
+        let has_host_action = capabilities.iter().any(|capability| {
+            capability.contains('@') || capability.starts_with("host_action.") || capability.starts_with("host-action.")
+        });
+
+        let mut meta = BTreeMap::new();
+        meta.insert("source".into(), serde_json::Value::String("derived_from_omegon_state".into()));
+        meta.insert("raw_runtime_profile".into(), serde_json::Value::String(runtime_profile.clone()));
+        if let Some(runtime) = runtime {
+            if let Some(value) = runtime.autonomy_mode.as_ref() {
+                meta.insert("raw_autonomy_mode".into(), serde_json::Value::String(value.clone()));
+            }
+            if let Some(value) = runtime.context_class.as_ref() {
+                meta.insert("raw_context_class".into(), serde_json::Value::String(value.clone()));
+            }
+            if let Some(value) = runtime.capability_tier.as_ref() {
+                meta.insert("raw_capability_tier".into(), serde_json::Value::String(value.clone()));
+            }
+        }
+        if let Some(harness) = harness {
+            for key in ["operating_profile", "authorization", "principal_id", "identity_issuer", "posture", "session_kind"] {
+                if let Some(value) = harness.get(key).and_then(|value| value.as_str()) {
+                    meta.insert(format!("harness_{key}"), serde_json::Value::String(value.into()));
+                }
+            }
+        }
+
+        Self {
+            name: "omegon-runtime-derived".into(),
+            version,
+            scope: OperationalScope::Host,
+            recommended_profile: runtime_profile.clone(),
+            required_profile: runtime_profile,
+            capability_contract_version: 1,
+            capabilities: OperationalCapabilities {
+                instance_registry: has_capability("state.snapshot") || has_capability("session.list"),
+                dispatch: has_capability("prompt.submit"),
+                supervision: has_capability("dispatcher.switch") || has_capability("turn.cancel"),
+                host_actions: has_host_action,
+                package_reconciliation: has_capability("package.install@1"),
+                audit: false,
+                fleet_projection: has_capability("state.snapshot"),
+            },
+            policy: OperationalPolicy::default_orchestrator(),
+            meta,
+        }
     }
 
     pub fn is_required_profile_satisfied_by(&self, profile: &str) -> bool {
@@ -137,7 +207,9 @@ impl OperationalCapabilities {
     }
 
     fn from_metadata(value: Option<&serde_json::Value>) -> Self {
-        let Some(value) = value else { return Self::default(); };
+        let Some(value) = value else {
+            return Self::default();
+        };
         Self {
             instance_registry: bool_field(value, "instance_registry"),
             dispatch: bool_field(value, "dispatch"),
@@ -151,7 +223,10 @@ impl OperationalCapabilities {
 }
 
 fn bool_field(value: &serde_json::Value, field: &str) -> bool {
-    value.get(field).and_then(|value| value.as_bool()).unwrap_or(false)
+    value
+        .get(field)
+        .and_then(|value| value.as_bool())
+        .unwrap_or(false)
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -175,7 +250,9 @@ impl OperationalPolicy {
     }
 
     fn from_metadata(value: Option<&serde_json::Value>) -> Self {
-        let Some(value) = value else { return Self::default(); };
+        let Some(value) = value else {
+            return Self::default();
+        };
         Self {
             host_action_mutation_requires_approval: bool_field(
                 value,
@@ -277,7 +354,10 @@ mod tests {
         assert_eq!(profile.required_profile, "auspex-orchestrator");
         assert!(profile.capabilities.dispatch);
         assert!(profile.capabilities.host_actions);
-        assert_eq!(profile.policy.unknown_host_actions, UnknownHostActionPolicy::Deny);
+        assert_eq!(
+            profile.policy.unknown_host_actions,
+            UnknownHostActionPolicy::Deny
+        );
         assert!(profile.policy.dispatch_requires_compatible_instance);
     }
 
@@ -348,6 +428,49 @@ mod tests {
         assert_eq!(profile.scope, OperationalScope::Project);
         assert_eq!(profile.required_profile, "flynt-agent");
         assert!(profile.capabilities.audit);
-        assert_eq!(profile.policy.cross_project_state, CrossProjectStatePolicy::Forbidden);
+        assert_eq!(
+            profile.policy.cross_project_state,
+            CrossProjectStatePolicy::Forbidden
+        );
     }
+
+    #[test]
+    fn derives_profile_from_omegon_runtime_evidence() {
+        let descriptor = crate::omegon_control::OmegonInstanceDescriptor {
+            identity: crate::omegon_control::OmegonInstanceIdentity {
+                instance_id: "web-compat".into(),
+                role: "primary_driver".into(),
+                profile: "long-running-daemon".into(),
+                status: "ready".into(),
+            },
+            control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
+                omegon_version: Some("0.25.4".into()),
+                capabilities: vec!["state.snapshot".into(), "prompt.submit".into(), "shutdown".into()],
+                ..Default::default()
+            }),
+            runtime: Some(crate::omegon_control::OmegonRuntimeDescriptor {
+                runtime_profile: Some("primary_interactive".into()),
+                autonomy_mode: Some("operator_driven".into()),
+                capability_tier: Some("victory".into()),
+                context_class: Some("Squad".into()),
+                ..Default::default()
+            }),
+            ..Default::default()
+        };
+        let harness = serde_json::json!({
+            "operating_profile": "anonymous / Architect / Medium / Clan",
+            "principal_id": "local-operator"
+        });
+
+        let profile = OperationalProfile::from_omegon_runtime_evidence(&descriptor, Some(&harness));
+
+        assert_eq!(profile.name, "omegon-runtime-derived");
+        assert_eq!(profile.required_profile, "primary_interactive");
+        assert!(profile.capabilities.instance_registry);
+        assert!(profile.capabilities.dispatch);
+        assert!(!profile.capabilities.host_actions);
+        assert_eq!(profile.meta.get("source").and_then(|v| v.as_str()), Some("derived_from_omegon_state"));
+        assert_eq!(profile.meta.get("harness_principal_id").and_then(|v| v.as_str()), Some("local-operator"));
+    }
+
 }

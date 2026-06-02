@@ -10,7 +10,10 @@ pub struct CapabilityKey {
 
 impl CapabilityKey {
     pub fn new(kind: CapabilityKind, name: impl Into<String>) -> Self {
-        Self { kind, name: name.into() }
+        Self {
+            kind,
+            name: name.into(),
+        }
     }
 
     pub fn binary(name: impl Into<String>) -> Self {
@@ -59,11 +62,27 @@ pub struct CapabilityEvidence {
 
 impl CapabilityEvidence {
     pub fn present(key: CapabilityKey, source: CapabilitySource) -> Self {
-        Self { key, status: CapabilityStatus::Present, source, detail: None, observed_at: None }
+        Self {
+            key,
+            status: CapabilityStatus::Present,
+            source,
+            detail: None,
+            observed_at: None,
+        }
     }
 
-    pub fn installable(key: CapabilityKey, source: CapabilitySource, detail: impl Into<String>) -> Self {
-        Self { key, status: CapabilityStatus::Installable, source, detail: Some(detail.into()), observed_at: None }
+    pub fn installable(
+        key: CapabilityKey,
+        source: CapabilitySource,
+        detail: impl Into<String>,
+    ) -> Self {
+        Self {
+            key,
+            status: CapabilityStatus::Installable,
+            source,
+            detail: Some(detail.into()),
+            observed_at: None,
+        }
     }
 }
 
@@ -97,7 +116,10 @@ pub struct InstanceCapabilitySnapshot {
 
 impl InstanceCapabilitySnapshot {
     pub fn new(instance_id: impl Into<String>) -> Self {
-        Self { instance_id: instance_id.into(), evidence: Vec::new() }
+        Self {
+            instance_id: instance_id.into(),
+            evidence: Vec::new(),
+        }
     }
 
     pub fn empty(instance_id: impl Into<String>) -> Self {
@@ -154,6 +176,9 @@ mod tests {
         );
 
         assert_eq!(evidence.status, CapabilityStatus::Installable);
-        assert_eq!(evidence.detail.as_deref(), Some("create project Nex overlay with package d2"));
+        assert_eq!(
+            evidence.detail.as_deref(),
+            Some("create project Nex overlay with package d2")
+        );
     }
 }

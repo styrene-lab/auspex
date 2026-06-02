@@ -102,7 +102,10 @@ mod tests {
     fn package_install_requires_approval_and_audit() {
         let decision = classify_host_action("package.install@1");
 
-        assert_eq!(decision.class, HostActionPolicyClass::MutatingRequiresApproval);
+        assert_eq!(
+            decision.class,
+            HostActionPolicyClass::MutatingRequiresApproval
+        );
         assert!(decision.requires_approval);
         assert!(decision.audit_required);
     }

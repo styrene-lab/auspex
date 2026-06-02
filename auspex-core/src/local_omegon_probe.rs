@@ -148,7 +148,9 @@ pub fn probe_local_omegon_candidate_read_only(
             );
         }
     };
-    if let Some(record) = instance_record_from_startup_descriptor(&startup) {
+    let state_json: Option<serde_json::Value> = serde_json::from_str(&state_body).ok();
+    let harness = state_json.as_ref().and_then(|state| state.get("harness"));
+    if let Some(record) = instance_record_from_startup_descriptor(&startup, harness) {
         controller = controller.with_instance_registry(crate::instance_registry::InstanceRegistryStore {
             schema_version: 1,
             instances: vec![record],
@@ -192,6 +194,7 @@ fn lifecycle_from_descriptor(status: &str) -> crate::runtime_types::WorkerLifecy
 
 fn instance_record_from_startup_descriptor(
     startup: &OmegonStartupInfo,
+    harness: Option<&serde_json::Value>,
 ) -> Option<crate::runtime_types::InstanceRecord> {
     let descriptor = startup.instance_descriptor.as_ref()?;
     let control_plane = descriptor.control_plane.as_ref();
@@ -295,7 +298,10 @@ fn instance_record_from_startup_descriptor(
             },
             exit: crate::runtime_types::ObservedExit::default(),
             compatibility: Some(compatibility),
-            operational_profile: None,
+            operational_profile: Some(crate::operational_profile::OperationalProfile::from_omegon_runtime_evidence(
+                descriptor,
+                harness,
+            )),
             capabilities: Some(
                 crate::capability_registry::InstanceCapabilitySnapshot::from_instance_descriptor_capabilities(
                     instance_id,

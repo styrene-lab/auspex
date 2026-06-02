@@ -347,7 +347,8 @@ impl OmegonCompatibilityManifest {
             manifest.web_startup_schema = manifest.control_plane_schema;
         }
         if manifest.instance_descriptor_schema == 0 {
-            manifest.instance_descriptor_schema = crate::compatibility::INSTANCE_DESCRIPTOR_SCHEMA_VERSION;
+            manifest.instance_descriptor_schema =
+                crate::compatibility::INSTANCE_DESCRIPTOR_SCHEMA_VERSION;
         }
         if manifest.control_plane_protocol == 0 {
             manifest.control_plane_protocol = crate::compatibility::CONTROL_PLANE_PROTOCOL_VERSION;
@@ -1661,7 +1662,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.25.99".into());
+            .omegon_version = Some("0.26.99".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning

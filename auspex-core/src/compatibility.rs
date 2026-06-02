@@ -27,7 +27,10 @@ pub struct CompatibilityIssue {
 
 impl CompatibilityIssue {
     fn new(code: impl Into<String>, detail: impl Into<String>) -> Self {
-        Self { code: code.into(), detail: detail.into() }
+        Self {
+            code: code.into(),
+            detail: detail.into(),
+        }
     }
 }
 
@@ -198,10 +201,12 @@ mod tests {
         let assessment = assess_observed_control_plane(&observed("0.23.0", 2));
 
         assert_eq!(assessment.status, CompatibilityStatus::Unsupported);
-        assert!(assessment
-            .issues
-            .iter()
-            .any(|issue| issue.code == "omegon_version_unsupported"));
+        assert!(
+            assessment
+                .issues
+                .iter()
+                .any(|issue| issue.code == "omegon_version_unsupported")
+        );
     }
 
     #[test]
@@ -209,10 +214,12 @@ mod tests {
         let assessment = assess_observed_control_plane(&observed("0.25.4", 1));
 
         assert_eq!(assessment.status, CompatibilityStatus::Unsupported);
-        assert!(assessment
-            .issues
-            .iter()
-            .any(|issue| issue.code == "web_startup_schema_mismatch"));
+        assert!(
+            assessment
+                .issues
+                .iter()
+                .any(|issue| issue.code == "web_startup_schema_mismatch")
+        );
     }
 
     #[test]
@@ -220,9 +227,11 @@ mod tests {
         let assessment = assess_observed_control_plane(&observed("unknown", 2));
 
         assert_eq!(assessment.status, CompatibilityStatus::Unknown);
-        assert!(assessment
-            .issues
-            .iter()
-            .any(|issue| issue.code == "missing_omegon_version"));
+        assert!(
+            assessment
+                .issues
+                .iter()
+                .any(|issue| issue.code == "missing_omegon_version")
+        );
     }
 }
