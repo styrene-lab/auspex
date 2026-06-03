@@ -58,6 +58,27 @@ impl InstanceRegistryStore {
             .iter()
             .find(|r| r.identity.instance_id == instance_id)
     }
+
+    /// Return a copy suitable for process startup rehydration. Persisted
+    /// observations are last-known evidence only until this process reprobes
+    /// them, so do not treat ready/fresh persisted health as live authority.
+    pub fn stale_rehydrated(mut self) -> Self {
+        for record in &mut self.instances {
+            if record.ownership.owner_kind == crate::runtime_types::OwnerKind::External
+                && record.desired.backend.kind == crate::runtime_types::BackendKind::LocalProcess
+            {
+                record.observed.health.ready = false;
+                record.observed.health.freshness =
+                    Some(crate::runtime_types::InstanceFreshness::Stale);
+                if record.identity.status == crate::runtime_types::WorkerLifecycleState::Ready
+                    || record.identity.status == crate::runtime_types::WorkerLifecycleState::Busy
+                {
+                    record.identity.status = crate::runtime_types::WorkerLifecycleState::Degraded;
+                }
+            }
+        }
+        self
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -189,6 +210,38 @@ mod tests {
                 capabilities: None,
             },
         }
+    }
+
+    #[test]
+    fn stale_rehydrated_marks_external_local_observations_stale_without_losing_evidence() {
+        let mut record = sample_record("local-observed");
+        record.ownership.owner_kind = OwnerKind::External;
+        record.ownership.owner_id = "operator-owned".into();
+        record.desired.backend.kind = BackendKind::LocalProcess;
+        record.identity.status = WorkerLifecycleState::Ready;
+        record.observed.health.ready = true;
+        record.observed.health.freshness = Some(crate::runtime_types::InstanceFreshness::Fresh);
+        record.observed.compatibility = Some(crate::compatibility::assess_observed_control_plane(
+            &record.observed.control_plane,
+        ));
+        let startup_url = record.observed.control_plane.startup_url.clone();
+        let compatibility = record.observed.compatibility.clone();
+
+        let rehydrated = InstanceRegistryStore {
+            schema_version: 1,
+            instances: vec![record],
+        }
+        .stale_rehydrated();
+
+        let observed = &rehydrated.instances[0];
+        assert_eq!(observed.observed.health.ready, false);
+        assert_eq!(
+            observed.observed.health.freshness,
+            Some(crate::runtime_types::InstanceFreshness::Stale)
+        );
+        assert_eq!(observed.identity.status, WorkerLifecycleState::Degraded);
+        assert_eq!(observed.observed.control_plane.startup_url, startup_url);
+        assert_eq!(observed.observed.compatibility, compatibility);
     }
 
     #[test]

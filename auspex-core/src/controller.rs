@@ -309,6 +309,17 @@ impl AppController {
     }
 
     pub fn with_instance_registry(mut self, instance_registry: InstanceRegistryStore) -> Self {
+        self.instance_registry = instance_registry.stale_rehydrated();
+        self.rebuild_attached_instances();
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
+        self
+    }
+
+    pub fn with_fresh_instance_registry(
+        mut self,
+        instance_registry: InstanceRegistryStore,
+    ) -> Self {
         self.instance_registry = instance_registry;
         self.rebuild_attached_instances();
         self.refresh_telemetry_snapshot();
@@ -440,18 +451,19 @@ impl AppController {
             self.instance_registry = controller.instance_registry.clone();
             if let Some(record) = self.instance_registry.instances.first().cloned() {
                 let route_id = format!("instance:{}", record.identity.instance_id);
-                self.attached_instance_engine.attach_instance(AttachedInstanceRecord {
-                    instance_id: record.identity.instance_id.clone(),
-                    route_id: route_id.clone(),
-                    role: record.identity.role.label().into(),
-                    profile: record.identity.profile.clone(),
-                    session_key: format!("instance:{}", record.identity.instance_id),
-                    base_url: Some(record.observed.control_plane.base_url.clone())
-                        .filter(|url| !url.is_empty()),
-                    model: record.desired.policy.model.clone(),
-                    dispatcher_instance_id: None,
-                    registry_record: Some(record),
-                });
+                self.attached_instance_engine
+                    .attach_instance(AttachedInstanceRecord {
+                        instance_id: record.identity.instance_id.clone(),
+                        route_id: route_id.clone(),
+                        role: record.identity.role.label().into(),
+                        profile: record.identity.profile.clone(),
+                        session_key: format!("instance:{}", record.identity.instance_id),
+                        base_url: Some(record.observed.control_plane.base_url.clone())
+                            .filter(|url| !url.is_empty()),
+                        model: record.desired.policy.model.clone(),
+                        dispatcher_instance_id: None,
+                        registry_record: Some(record),
+                    });
                 self.attached_instance_engine.select_command_route(route_id);
                 self.instance_registry = self.attached_instance_engine.registry_store().clone();
             } else {
