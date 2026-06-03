@@ -176,7 +176,7 @@ pub fn probe_local_omegon_candidate_read_only(
         instance_id,
         omegon_version,
         capabilities,
-        evidence: "startup/state probes succeeded; attached read-only projection".into(),
+        evidence: "startup/state probes succeeded; observed read-only projection".into(),
         controller: Some(controller),
     }
 }

@@ -4387,7 +4387,7 @@ fn build_cockpit_summary_model(
         .active_delegate_count
         .max(session.active_delegates.len());
     let deployment_primary = format!(
-        "{} total · {} live · {} stale",
+        "{} total · {} fresh · {} stale",
         session.telemetry.lifecycle.counts.total_attached,
         session.telemetry.lifecycle.counts.fresh,
         session.telemetry.lifecycle.counts.stale
@@ -4494,7 +4494,7 @@ fn build_cockpit_summary_model(
             preview: vec![],
         },
         deployment: TruthPanelModel {
-            label: "Deployment",
+            label: "Runtime Observations",
             tag: deployment_tag,
             primary: deployment_primary,
             secondary: vec![deployment_secondary_1, deployment_secondary_2],
@@ -4710,7 +4710,7 @@ fn render_selected_deployment_cop(
     };
     let footer = rsx! { button { class: "transcript-focus-link", r#type: "button", onclick: move |_| on_return.call(()), "Return to chat COP" } };
     render_focus_host_shell(FocusHostShell {
-        title: "Deployment drilldown",
+        title: "Runtime observation drilldown",
         kicker: "Operator-selected COP occupant",
         body,
         footer: Some(footer),
@@ -5578,7 +5578,7 @@ fn render_gateway_cop_workspace(
                         #[cfg(not(target_arch = "wasm32"))]
                         controller.write().probe_first_local_omegon_to_cop();
                     },
-                    "Attach Probe"
+                    "Probe Runtime"
                 }
                 button {
                     class: "cop-refresh-button",

@@ -515,9 +515,9 @@ pub fn apply_local_omegon_probe_result(
     state.write(
         CopRegion::North,
         ContentType::StatusCard,
-        Some("Local Attach Probe".into()),
+        Some("Local Runtime Probe".into()),
         serde_json::json!({
-            "label": "Local Omegon Attach",
+            "label": "Local Omegon Probe",
             "status": status,
             "detail": result.evidence,
             "severity": if allowed { "active" } else { "warning" },
@@ -530,7 +530,7 @@ pub fn apply_local_omegon_probe_result(
         state.write(
             CopRegion::Center,
             ContentType::Table,
-            Some("Attached Fleet".into()),
+            Some("Observed Runtimes".into()),
             serde_json::json!({
                 "columns": ["Instance", "Raw Role", "Role", "Raw Profile", "Runtime Profile", "Ready", "Compatibility"],
                 "rows": projection.fleet.instances.iter().map(|instance| {
@@ -549,7 +549,7 @@ pub fn apply_local_omegon_probe_result(
         state.write(
             CopRegion::East,
             ContentType::KvGrid,
-            Some("Fleet + Authorization".into()),
+            Some("Observation + Authorization".into()),
             serde_json::json!({
                 "pairs": [
                     {"key": "Total", "value": projection.fleet.summary.total_instances},
