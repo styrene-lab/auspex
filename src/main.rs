@@ -82,8 +82,32 @@ fn main() {
 #[cfg(target_arch = "wasm32")]
 fn main() {
     let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
+    inject_web_styles();
 
     dioxus::LaunchBuilder::web()
         .with_context(bootstrap)
         .launch(app::App);
+}
+
+#[cfg(target_arch = "wasm32")]
+fn inject_web_styles() {
+    use wasm_bindgen::JsCast;
+
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let Some(document) = window.document() else {
+        return;
+    };
+    if document.get_element_by_id("auspex-main-css").is_some() {
+        return;
+    }
+    let Ok(style) = document.create_element("style") else {
+        return;
+    };
+    style.set_id("auspex-main-css");
+    style.set_text_content(Some(include_str!("../assets/main.css")));
+    if let Some(head) = document.head() {
+        let _ = head.append_child(&style.dyn_into::<web_sys::Node>().unwrap());
+    }
 }
