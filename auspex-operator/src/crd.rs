@@ -195,7 +195,7 @@ fn default_role() -> String {
 }
 
 fn default_image() -> String {
-    "ghcr.io/styrene-lab/omegon-agents:0.23".to_string()
+    "ghcr.io/styrene-lab/omegon:0.26.5".to_string()
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]
@@ -226,6 +226,18 @@ pub struct SlackSpec {
     pub workspace: Option<String>,
     #[serde(default)]
     pub operators: Vec<String>,
+    /// Default Slack channel ID for outbound messages when a tool call does
+    /// not specify one explicitly.
+    #[serde(default, rename = "defaultChannel", alias = "default_channel")]
+    pub default_channel: Option<String>,
+    /// Only process channel messages that mention the bot. DMs are still
+    /// processed by Vox. Defaults to true for public-facing agents.
+    #[serde(
+        default = "default_true",
+        rename = "requireMention",
+        alias = "require_mention"
+    )]
+    pub require_mention: bool,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize, JsonSchema)]

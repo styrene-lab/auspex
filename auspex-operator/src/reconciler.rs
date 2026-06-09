@@ -530,17 +530,18 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         "configMap": { "name": format!("{name}-vox") },
     })];
 
-    if agent.spec.agent == AUSPEX_PRIMARY_AGENT_ID {
-        volumes.push(json!({
-            "name": "agent-catalog",
-            "configMap": { "name": format!("{name}-catalog") },
-        }));
-        volume_mounts.push(json!({
-            "name": "agent-catalog",
-            "mountPath": format!("/data/omegon/catalog/{AUSPEX_PRIMARY_AGENT_ID}"),
-            "readOnly": true,
-        }));
-    }
+    volumes.push(json!({
+        "name": "agent-catalog",
+        "configMap": {
+            "name": format!("{name}-catalog"),
+            "optional": true,
+        },
+    }));
+    volume_mounts.push(json!({
+        "name": "agent-catalog",
+        "mountPath": format!("/data/omegon/catalog/{}", agent.spec.agent),
+        "readOnly": true,
+    }));
 
     if has_aether {
         // Shared volume for Unix socket between agent and styrened sidecar.
@@ -634,10 +635,18 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         }));
     }
 
-    let mut env_from = vec![];
     if let Some(ref secret_name) = agent.spec.secrets.secret_name {
-        env_from.push(json!({"secretRef": {"name": secret_name}}));
+        volume_mounts.push(json!({
+            "name": "runtime-secrets",
+            "mountPath": "/run/omegon/secrets",
+            "readOnly": true,
+        }));
+        volumes.push(json!({
+            "name": "runtime-secrets",
+            "secret": { "secretName": secret_name },
+        }));
     }
+    let env_from: Vec<serde_json::Value> = vec![];
 
     // Prompt/output mounts for bounded modes.
     if is_bounded {
@@ -763,7 +772,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let mut agent_container = json!({
         "name": "agent",
         "image": &agent.spec.image,
-        "command": ["/usr/local/bin/omegon"],
+        "command": ["omegon"],
         "args": args,
         "env": env,
         "envFrom": env_from,
@@ -1171,34 +1180,36 @@ mod tests {
     }
 
     #[test]
-    fn primary_coordinator_mounts_seed_catalog() {
+    fn daemon_agents_mount_optional_catalog_by_agent_id() {
         let agent = daemon_agent(serde_json::json!({
             "apiVersion": "styrene.sh/v1alpha1",
             "kind": "OmegonAgent",
             "metadata": {
-                "name": "auspex-primary",
+                "name": "release-manager",
                 "namespace": "omegon-agents"
             },
             "spec": {
-                "agent": "styrene.auspex-primary",
-                "model": "anthropic:claude-sonnet-4-6",
-                "role": "primary-driver",
+                "agent": "styrene.release-manager-agent",
+                "model": "openai-codex:gpt-5.5",
+                "role": "detached-service",
                 "mode": "daemon"
             }
         }));
 
-        let template = pod_spec(&agent, "auspex-primary");
+        let template = pod_spec(&agent, "release-manager");
         let agent_container = &template.spec["containers"][0];
 
+        let catalog_volume = template.spec["volumes"]
+            .as_array()
+            .expect("volumes")
+            .iter()
+            .find(|volume| volume["name"] == "agent-catalog")
+            .expect("agent catalog volume");
         assert_eq!(
-            template.spec["volumes"]
-                .as_array()
-                .expect("volumes")
-                .iter()
-                .find(|volume| volume["name"] == "agent-catalog")
-                .expect("agent catalog volume")["configMap"]["name"],
-            "auspex-primary-catalog"
+            catalog_volume["configMap"]["name"],
+            "release-manager-catalog"
         );
+        assert_eq!(catalog_volume["configMap"]["optional"], true);
         assert_eq!(
             agent_container["volumeMounts"]
                 .as_array()
@@ -1206,7 +1217,62 @@ mod tests {
                 .iter()
                 .find(|mount| mount["name"] == "agent-catalog")
                 .expect("agent catalog mount")["mountPath"],
-            "/data/omegon/catalog/styrene.auspex-primary"
+            "/data/omegon/catalog/styrene.release-manager-agent"
+        );
+    }
+
+
+
+    #[test]
+    fn connector_secret_mounts_as_files_and_configures_vox_paths() {
+        let agent = daemon_agent(serde_json::json!({
+            "apiVersion": "styrene.sh/v1alpha1",
+            "kind": "OmegonAgent",
+            "metadata": {
+                "name": "release-manager",
+                "namespace": "omegon-agents"
+            },
+            "spec": {
+                "agent": "styrene.release-manager-agent",
+                "model": "ollama-cloud:gpt-oss:120b-cloud",
+                "role": "detached-service",
+                "mode": "daemon",
+                "vox": {
+                    "connectors": ["discord", "slack"],
+                    "discord": { "requireMention": true, "guildId": "D123" },
+                    "slack": {
+                        "workspace": "styrene",
+                        "defaultChannel": "C123",
+                        "requireMention": true
+                    }
+                },
+                "secrets": {
+                    "secretName": "release-manager-public-connectors"
+                }
+            }
+        }));
+
+        let template = pod_spec(&agent, "release-manager");
+        let agent_container = &template.spec["containers"][0];
+
+        assert!(agent_container["envFrom"].as_array().expect("envFrom").is_empty());
+        assert_eq!(
+            agent_container["volumeMounts"]
+                .as_array()
+                .expect("volume mounts")
+                .iter()
+                .find(|mount| mount["name"] == "runtime-secrets")
+                .expect("runtime secrets mount")["mountPath"],
+            "/run/omegon/secrets"
+        );
+        assert_eq!(
+            template.spec["volumes"]
+                .as_array()
+                .expect("volumes")
+                .iter()
+                .find(|volume| volume["name"] == "runtime-secrets")
+                .expect("runtime secrets volume")["secret"]["secretName"],
+            "release-manager-public-connectors"
         );
     }
 
