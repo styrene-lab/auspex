@@ -51,10 +51,12 @@ jobs:
           ref: feat/conversations-pages
           path: styrene-rs
 
-      - name: Link Omegon at expected sibling path
+      - name: Link path dependencies at expected sibling paths
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/../worktrees"
           ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
           ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../styrene-rs"
+          ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../worktrees/styrene-rs-policy"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -106,6 +108,8 @@ jobs:
           cp -a . "$context/auspex"
           cp -a omegon "$context/omegon"
           cp -a styrene-rs "$context/styrene-rs"
+          mkdir -p "$context/worktrees"
+          cp -a styrene-rs "$context/worktrees/styrene-rs-policy"
           echo "path=${context}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR

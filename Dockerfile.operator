@@ -1,9 +1,13 @@
 FROM rust:1.88-bookworm AS builder
 WORKDIR /build
 
-# Copy dependency crates first for layer caching
+# Copy dependency crates first for layer caching. auspex-core currently
+# references styrene-policy through ../../worktrees/styrene-rs-policy, so the
+# image context provides both the canonical styrene-rs sibling and that worktree
+# compatibility path.
 COPY omegon/ /build/omegon/
 COPY styrene-rs/ /build/styrene-rs/
+COPY worktrees/styrene-rs-policy/ /worktrees/styrene-rs-policy/
 
 # Copy auspex workspace
 COPY auspex/ /build/auspex/
