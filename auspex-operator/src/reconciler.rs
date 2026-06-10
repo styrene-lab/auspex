@@ -488,6 +488,12 @@ async fn reconcile_service(
 fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
     let is_bounded = matches!(agent.spec.mode, AgentMode::Job | AgentMode::Cronjob);
     let has_aether = agent.spec.vox.connectors.iter().any(|c| c == "aether");
+    let has_public_vox = agent
+        .spec
+        .vox
+        .connectors
+        .iter()
+        .any(|c| matches!(c.as_str(), "discord" | "slack"));
     let control_tls = resolved_control_tls(agent, name);
     let control_tls_args_enabled =
         omegon_runtime_flag_enabled("AUSPEX_ENABLE_OMEGON_CONTROL_TLS_ARGS");
@@ -555,6 +561,17 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         "mountPath": format!("/data/omegon/catalog/{}", agent.spec.agent),
         "readOnly": true,
     }));
+
+    if has_public_vox {
+        volumes.push(json!({
+            "name": "omegon-extensions",
+            "emptyDir": {},
+        }));
+        volume_mounts.push(json!({
+            "name": "omegon-extensions",
+            "mountPath": "/data/omegon/extensions",
+        }));
+    }
 
     if has_aether {
         // Shared volume for Unix socket between agent and styrened sidecar.
@@ -889,9 +906,32 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
         }));
     }
 
-    // Init container: copy aether extension binary into shared volume.
-    let init_containers = if has_aether {
-        json!([{
+    // Init containers install required native extensions into the shared
+    // extension volume before Omegon starts. Public connector agents use the
+    // published static-musl Vox artifact so the binary runs inside the Omegon
+    // runtime image without depending on the runner's glibc.
+    let mut init_containers = Vec::new();
+    if has_public_vox {
+        init_containers.push(json!({
+            "name": "install-vox",
+            "image": "alpine:3.20",
+            "command": ["/bin/sh", "-c", "set -euo pipefail\n\
+                apk add --no-cache ca-certificates curl tar\n\
+                mkdir -p /work /extensions/vox\n\
+                curl -fsSL https://github.com/styrene-lab/vox/releases/download/v0.1.3/vox-0.1.3-x86_64-unknown-linux-musl.tar.gz -o /work/vox.tar.gz\n\
+                tar -xzf /work/vox.tar.gz -C /work\n\
+                root=$(find /work -mindepth 1 -maxdepth 1 -type d -name 'vox-*' | head -n1)\n\
+                cp -a \"$root\"/* /extensions/vox/\n\
+                chmod +x /extensions/vox/vox\n\
+                /extensions/vox/vox --help >/dev/null"],
+            "volumeMounts": [
+                { "name": "omegon-extensions", "mountPath": "/extensions" },
+            ],
+        }));
+    }
+
+    if has_aether {
+        init_containers.push(json!({
             "name": "install-aether",
             "image": aether_image(),
             "command": ["/bin/sh", "-c",
@@ -902,10 +942,8 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
             "volumeMounts": [
                 { "name": "extensions", "mountPath": "/extensions" },
             ],
-        }])
-    } else {
-        json!([])
-    };
+        }));
+    }
 
     // Annotations for SBOM, profile, and Vault injection.
     let mut annotations = serde_json::Map::new();
@@ -1234,8 +1272,6 @@ mod tests {
         );
     }
 
-
-
     #[test]
     fn connector_secret_mounts_as_files_and_configures_vox_paths() {
         let agent = daemon_agent(serde_json::json!({
@@ -1268,7 +1304,12 @@ mod tests {
         let template = pod_spec(&agent, "release-manager");
         let agent_container = &template.spec["containers"][0];
 
-        assert!(agent_container["envFrom"].as_array().expect("envFrom").is_empty());
+        assert!(
+            agent_container["envFrom"]
+                .as_array()
+                .expect("envFrom")
+                .is_empty()
+        );
         assert_eq!(
             agent_container["volumeMounts"]
                 .as_array()
