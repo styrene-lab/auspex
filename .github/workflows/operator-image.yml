@@ -72,7 +72,7 @@ jobs:
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: wasm32-unknown-unknown
+          targets: wasm32-unknown-unknown,x86_64-unknown-linux-musl
 
       - name: Cache Rust build outputs
         uses: Swatinem/rust-cache@v2
@@ -99,8 +99,10 @@ jobs:
 
       - name: Build operator (Linux)
         run: |
-          cargo build --release -p auspex-operator
-          cp target/release/auspex-operator dist/auspex-operator
+          sudo apt-get update
+          sudo apt-get install -y musl-tools
+          cargo build --release -p auspex-operator --target x86_64-unknown-linux-musl
+          cp target/x86_64-unknown-linux-musl/release/auspex-operator dist/auspex-operator
 
       # --- Assemble the OCI image ---
 
