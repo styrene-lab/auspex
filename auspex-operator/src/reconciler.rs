@@ -500,6 +500,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
 
     let mut env = vec![
         json!({"name": "VOX_CONFIG_PATH", "value": "/config/vox"}),
+        json!({"name": "VOX_CONFIG", "value": "/config/vox/vox.toml"}),
         json!({"name": "AETHER_WORKER_ROLE", "value": &agent.spec.role}),
         json!({
             "name": "OMEGON_TERMINAL_TOOL",
