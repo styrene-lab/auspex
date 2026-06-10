@@ -26,6 +26,10 @@ env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository_owner }}/auspex-operator
 
+concurrency:
+  group: operator-image-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   build:
     name: Build operator + web UI
@@ -70,8 +74,19 @@ jobs:
         with:
           targets: wasm32-unknown-unknown
 
+      - name: Cache Rust build outputs
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: |
+            .
+            omegon
+            styrene-rs
+            worktrees/styrene-rs-policy
+
       - name: Install trunk
-        run: cargo install trunk
+        uses: jetli/trunk-action@v0.5.0
+        with:
+          version: v0.21.14
 
       # --- Build the WASM web UI ---
 
@@ -134,6 +149,8 @@ jobs:
           file: ${{ steps.context.outputs.path }}/auspex/Dockerfile.operator
           push: true
           tags: ${{ steps.meta.outputs.image }}:${{ steps.meta.outputs.tag }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       # --- SBOM + signing ---
 

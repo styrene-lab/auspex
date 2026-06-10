@@ -1,25 +1,12 @@
-FROM rust:1.88-bookworm AS builder
-WORKDIR /build
-
-# Copy dependency crates first for layer caching. auspex-core currently
-# references styrene-policy through ../../worktrees/styrene-rs-policy, so the
-# image context provides both the canonical styrene-rs sibling and that worktree
-# compatibility path.
-COPY omegon/ /build/omegon/
-COPY styrene-rs/ /build/styrene-rs/
-COPY worktrees/styrene-rs-policy/ /build/worktrees/styrene-rs-policy/
-
-# Copy auspex workspace
-COPY auspex/ /build/auspex/
-
-WORKDIR /build/auspex
-RUN cargo build --release -p auspex-operator
-
-# Runtime
+# CI builds the operator binary before invoking docker/build-push-action.
+# Keep this image assembly stage thin so the workflow does not compile the
+# release binary twice.
 FROM debian:bookworm-slim
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 
-COPY --from=builder /build/auspex/target/release/auspex-operator /usr/local/bin/auspex-operator
+COPY auspex/dist/auspex-operator /usr/local/bin/auspex-operator
 COPY auspex/dist/ /ui/dist/
 
 ENV AUSPEX_WEB_UI_PATH=/ui/dist
