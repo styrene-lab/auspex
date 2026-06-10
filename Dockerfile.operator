@@ -7,7 +7,7 @@ WORKDIR /build
 # compatibility path.
 COPY omegon/ /build/omegon/
 COPY styrene-rs/ /build/styrene-rs/
-COPY worktrees/styrene-rs-policy/ /worktrees/styrene-rs-policy/
+COPY worktrees/styrene-rs-policy/ /build/worktrees/styrene-rs-policy/
 
 # Copy auspex workspace
 COPY auspex/ /build/auspex/
