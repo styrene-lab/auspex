@@ -1,7 +1,8 @@
-# CI builds the operator binary before invoking docker/build-push-action.
-# Keep this image assembly stage thin so the workflow does not compile the
+# CI builds the operator binary on GitHub's Ubuntu runner before invoking
+# docker/build-push-action. Use a runtime with a compatible glibc for that
+# prebuilt binary while keeping image assembly thin so CI does not compile the
 # release binary twice.
-FROM debian:bookworm-slim
+FROM ubuntu:24.04
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates \
     && rm -rf /var/lib/apt/lists/*
