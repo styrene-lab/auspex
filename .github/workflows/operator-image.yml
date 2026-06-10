@@ -51,12 +51,19 @@ jobs:
           ref: feat/conversations-pages
           path: styrene-rs
 
+      - name: Check out styrene-rs policy worktree for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/styrene-rs
+          ref: feature/styrene-policy-crate
+          path: worktrees/styrene-rs-policy
+
       - name: Link path dependencies at expected sibling paths
         run: |
           mkdir -p "$GITHUB_WORKSPACE/../worktrees"
           ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
           ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../styrene-rs"
-          ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../worktrees/styrene-rs-policy"
+          ln -sfn "$GITHUB_WORKSPACE/worktrees/styrene-rs-policy" "$GITHUB_WORKSPACE/../worktrees/styrene-rs-policy"
 
       - name: Install Rust
         uses: dtolnay/rust-toolchain@stable
@@ -109,7 +116,7 @@ jobs:
           cp -a omegon "$context/omegon"
           cp -a styrene-rs "$context/styrene-rs"
           mkdir -p "$context/worktrees"
-          cp -a styrene-rs "$context/worktrees/styrene-rs-policy"
+          cp -a worktrees/styrene-rs-policy "$context/worktrees/styrene-rs-policy"
           echo "path=${context}" >> "$GITHUB_OUTPUT"
 
       - name: Log in to GHCR
