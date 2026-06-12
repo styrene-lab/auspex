@@ -919,7 +919,7 @@ fn pod_spec(agent: &OmegonAgent, name: &str) -> PodTemplate {
             "command": ["/bin/sh", "-c", "set -euo pipefail\n\
                 apk add --no-cache ca-certificates curl tar\n\
                 mkdir -p /work /extensions/vox\n\
-                curl -fsSL https://github.com/styrene-lab/vox/releases/download/v0.1.4/vox-0.1.4-x86_64-unknown-linux-musl.tar.gz -o /work/vox.tar.gz\n\
+                curl -fsSL https://github.com/styrene-lab/vox/releases/download/v0.1.5/vox-0.1.5-x86_64-unknown-linux-musl.tar.gz -o /work/vox.tar.gz\n\
                 tar -xzf /work/vox.tar.gz -C /work\n\
                 root=$(find /work -mindepth 1 -maxdepth 1 -type d -name 'vox-*' | head -n1)\n\
                 cp -a \"$root\"/* /extensions/vox/\n\
