@@ -67,6 +67,27 @@ pub struct OmegonControlPlaneDescriptor {
     pub capabilities: Vec<String>,
 }
 
+impl OmegonControlPlaneDescriptor {
+    pub fn assistant_list_url(&self) -> Option<String> {
+        self.base_url
+            .as_deref()
+            .map(str::trim)
+            .filter(|base_url| !base_url.is_empty())
+            .map(|base_url| {
+                format!(
+                    "{}/api/capabilities/assistants",
+                    base_url.trim_end_matches('/')
+                )
+            })
+    }
+}
+
+pub fn parse_assistant_list_response(
+    body: &str,
+) -> Result<OmegonAssistantListResponse, serde_json::Error> {
+    serde_json::from_str(body)
+}
+
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct OmegonRuntimeDescriptor {
     pub backend: Option<String>,
@@ -1155,6 +1176,43 @@ mod assistant_capability_tests {
         assert_eq!(
             response.assistants[1].launch_readiness.blockers[0].kind,
             "required_secret_missing"
+        );
+    }
+
+    #[test]
+    fn assistant_list_url_uses_trimmed_base_url() {
+        let descriptor = OmegonControlPlaneDescriptor {
+            base_url: Some("http://127.0.0.1:7842/".into()),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            descriptor.assistant_list_url().as_deref(),
+            Some("http://127.0.0.1:7842/api/capabilities/assistants")
+        );
+    }
+
+    #[test]
+    fn assistant_list_url_requires_base_url() {
+        let descriptor = OmegonControlPlaneDescriptor::default();
+        assert_eq!(descriptor.assistant_list_url(), None);
+    }
+
+    #[test]
+    fn parse_assistant_list_response_uses_shared_dto() {
+        let response = parse_assistant_list_response(
+            r#"{"assistants":[{"id":"daily","name":"Daily","launch_readiness":{"status":"degraded","blockers":[],"warnings":[{"kind":"optional_secret_missing","id":"BRAVE_API_KEY"}]}}]}"#,
+        )
+        .unwrap();
+
+        assert_eq!(response.assistants[0].id, "daily");
+        assert_eq!(
+            response.assistants[0].launch_readiness.status,
+            OmegonAssistantLaunchStatus::Degraded
+        );
+        assert_eq!(
+            response.assistants[0].launch_readiness.warnings[0].kind,
+            "optional_secret_missing"
         );
     }
 
