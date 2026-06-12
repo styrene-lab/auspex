@@ -25,6 +25,7 @@ enum Workspace {
     Chat,
     Deploy,
     Session,
+    Assistants,
     Graph,
     Workflow,
     Audit,
@@ -828,6 +829,7 @@ pub fn App() -> Element {
     let composer_ready_notice = use_signal(|| None::<String>);
     let mut workspace = use_signal(|| Workspace::Cop);
     let deploy_workspace = use_signal(AgentDeployWorkspaceState::default);
+    let assistant_workspace = use_signal(AssistantWorkspaceState::default);
     let mut chat_last_activity: Signal<Option<std::time::Instant>> = use_signal(|| None);
     let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
@@ -1211,6 +1213,8 @@ pub fn App() -> Element {
             {render_agent_deploy_workspace(deploy_workspace, event_stream, workspace, chat_last_activity)}
         } else if *workspace.read() == Workspace::Workflow {
             WorkflowBuilderScreen {}
+        } else if *workspace.read() == Workspace::Assistants {
+            {render_assistant_workspace(assistant_workspace, &controller.read().session_data())}
         } else if *workspace.read() == Workspace::Audit {
             {render_audit_workspace(
                 controller.read().audit_timeline(),
@@ -3904,6 +3908,107 @@ fn render_agent_deploy_workspace(
     }
 }
 
+fn assistant_status_label(
+    status: auspex_core::omegon_control::OmegonAssistantLaunchStatus,
+) -> &'static str {
+    match status {
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready => "ready",
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded => "degraded",
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked => "blocked",
+    }
+}
+
+fn render_assistant_workspace(
+    state: Signal<AssistantWorkspaceState>,
+    session: &auspex_core::fixtures::SessionData,
+) -> Element {
+    let endpoint = assistant_endpoint_from_session(session);
+    let session_snapshot = session.clone();
+    let snapshot = state.read().clone();
+    let mut assistants = snapshot.assistants.clone();
+    assistants.sort_by_key(|assistant| match assistant.launch_readiness.status {
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready => 0,
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded => 1,
+        auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked => 2,
+    });
+
+    rsx! {
+        section { class: "deploy-workspace assistant-workspace",
+            div { class: "deploy-workspace-header",
+                div {
+                    p { class: "eyebrow", "OMEGON ASSISTANTS" }
+                    h2 { "Assistant readiness" }
+                    p { class: "panel-muted",
+                        "Launch readiness is calculated by the attached Omegon capability surface; Auspex only displays and operationalizes it."
+                    }
+                }
+                button {
+                    class: "deploy-refresh",
+                    r#type: "button",
+                    disabled: snapshot.loading,
+                    onclick: move |_| {
+                        let mut state = state;
+                        let session = session_snapshot.clone();
+                        spawn(async move {
+                            refresh_assistant_workspace(&mut state, &session).await;
+                        });
+                    },
+                    if snapshot.loading { "Loading" } else { "Refresh" }
+                }
+            }
+
+            section { class: "deploy-panel",
+                div { class: "deploy-section-title",
+                    h3 { "Capability endpoint" }
+                    span { if endpoint.is_some() { "attached" } else { "missing" } }
+                }
+                code {
+                    {endpoint.as_deref().unwrap_or("No attached Omegon /api/capabilities/assistants endpoint.")}
+                }
+                if let Some(error) = snapshot.error.as_deref() {
+                    p { class: "deploy-error", "{error}" }
+                } else if let Some(message) = snapshot.message.as_deref() {
+                    p { class: "deploy-message", "{message}" }
+                }
+            }
+
+            section { class: "deploy-panel",
+                div { class: "deploy-section-title",
+                    h3 { "Readiness cards" }
+                    span { "{assistants.len()} assistants" }
+                }
+                div { class: "deploy-package-list",
+                    if assistants.is_empty() {
+                        div { class: "deploy-package",
+                            span { class: "deploy-package-title", "No assistant capabilities loaded" }
+                            span { class: "deploy-package-desc", "Refresh after attaching an Omegon runtime that exposes assistant capability surfaces." }
+                        }
+                    } else {
+                        for assistant in assistants {
+                            {
+                                let model = assistant.model.as_deref().unwrap_or("model pending");
+                                let status = assistant_status_label(assistant.launch_readiness.status);
+                                rsx! {
+                                    div { class: "deploy-package", "data-state": status,
+                                        span { class: "deploy-package-title", "{assistant.name}" }
+                                        span { class: "deploy-package-desc", "{assistant.description}" }
+                                        span { class: "deploy-package-meta",
+                                            "{assistant.id} · {assistant.domain} · {model}"
+                                        }
+                                        span { class: "deploy-package-meta",
+                                            "{status} · {assistant.blocker_count} blockers · {assistant.warning_count} warnings · {assistant.required_secret_count} required secrets"
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
 fn build_deploy_preflight(
     package: Option<&DeployPackageModel>,
     state: &AgentDeployWorkspaceState,
@@ -4303,6 +4408,7 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
                     button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
                     button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
+                    button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
                     button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
                     button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
@@ -4599,6 +4705,7 @@ fn workspace_label(workspace: Workspace) -> &'static str {
         Workspace::Chat => "Chat",
         Workspace::Deploy => "Deploy",
         Workspace::Session => "Session",
+        Workspace::Assistants => "Assistants",
         Workspace::Graph => "Graph",
         Workspace::Workflow => "Workflow",
         Workspace::Audit => "Audit",
