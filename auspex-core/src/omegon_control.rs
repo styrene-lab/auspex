@@ -191,6 +191,105 @@ pub struct OmegonStateSnapshot {
     pub daemon_sessions: Option<DaemonSessionsSnapshot>,
 }
 
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonAssistantListResponse {
+    #[serde(default)]
+    pub assistants: Vec<OmegonAssistantListItem>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonAssistantListItem {
+    #[serde(default)]
+    pub id: String,
+    #[serde(default)]
+    pub name: String,
+    #[serde(default)]
+    pub description: String,
+    #[serde(default)]
+    pub domain: String,
+    #[serde(default)]
+    pub model: Option<String>,
+    #[serde(default)]
+    pub launch_readiness: OmegonAssistantLaunchReadiness,
+    #[serde(default)]
+    pub required_secret_count: usize,
+    #[serde(default)]
+    pub optional_secret_count: usize,
+    #[serde(default)]
+    pub blocker_count: usize,
+    #[serde(default)]
+    pub warning_count: usize,
+    #[serde(default)]
+    pub trust: OmegonCapabilityTrustSummary,
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+pub struct OmegonAssistantLaunchReadiness {
+    #[serde(default)]
+    pub status: OmegonAssistantLaunchStatus,
+    #[serde(default)]
+    pub blockers: Vec<OmegonAssistantLaunchBlocker>,
+    #[serde(default)]
+    pub warnings: Vec<OmegonAssistantLaunchWarning>,
+}
+
+impl Default for OmegonAssistantLaunchReadiness {
+    fn default() -> Self {
+        Self {
+            status: OmegonAssistantLaunchStatus::Blocked,
+            blockers: Vec::new(),
+            warnings: Vec::new(),
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum OmegonAssistantLaunchStatus {
+    Ready,
+    Degraded,
+    #[default]
+    Blocked,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonAssistantLaunchBlocker {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub id: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonAssistantLaunchWarning {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub id: String,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonCapabilityTrustSummary {
+    #[serde(default)]
+    pub local_runtime: bool,
+    #[serde(default)]
+    pub container_runtime: bool,
+    #[serde(default)]
+    pub network_capable: bool,
+    #[serde(default)]
+    pub host_action_capable: bool,
+    #[serde(default)]
+    pub process_spawn_capable: bool,
+    #[serde(default)]
+    pub browser_action_capable: bool,
+    #[serde(default)]
+    pub secret_bound: bool,
+    #[serde(default)]
+    pub state_changing: bool,
+    #[serde(default)]
+    pub read_only: bool,
+}
+
 /// Snapshot of the daemon session router's multiplexed sessions.
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
 pub struct DaemonSessionsSnapshot {
@@ -985,5 +1084,88 @@ mod tests {
             }
             other => panic!("expected FamilyVitalSigns, got {other:?}"),
         }
+    }
+}
+
+#[cfg(test)]
+mod assistant_capability_tests {
+    use super::*;
+
+    #[test]
+    fn parses_assistant_list_readiness_without_reinferring_status() {
+        let response: OmegonAssistantListResponse = serde_json::from_str(
+            r#"{
+                "assistants": [
+                    {
+                        "id": "daily",
+                        "name": "Daily Operator",
+                        "description": "Routine project work",
+                        "domain": "ops",
+                        "model": "anthropic:claude-opus-4-6",
+                        "launch_readiness": {
+                            "status": "ready",
+                            "blockers": [],
+                            "warnings": []
+                        },
+                        "required_secret_count": 1,
+                        "optional_secret_count": 0,
+                        "blocker_count": 0,
+                        "warning_count": 0,
+                        "trust": {
+                            "local_runtime": true,
+                            "container_runtime": false,
+                            "network_capable": true,
+                            "host_action_capable": false,
+                            "process_spawn_capable": false,
+                            "browser_action_capable": false,
+                            "secret_bound": true,
+                            "state_changing": true,
+                            "read_only": false
+                        }
+                    },
+                    {
+                        "id": "blocked",
+                        "name": "Blocked Operator",
+                        "launch_readiness": {
+                            "status": "blocked",
+                            "blockers": [{"kind": "required_secret_missing", "id": "ANTHROPIC_API_KEY"}],
+                            "warnings": []
+                        },
+                        "required_secret_count": 1,
+                        "optional_secret_count": 0,
+                        "blocker_count": 1,
+                        "warning_count": 0
+                    }
+                ]
+            }"#,
+        )
+        .unwrap();
+
+        assert_eq!(response.assistants.len(), 2);
+        assert_eq!(
+            response.assistants[0].launch_readiness.status,
+            OmegonAssistantLaunchStatus::Ready
+        );
+        assert!(response.assistants[0].trust.secret_bound);
+        assert_eq!(response.assistants[0].blocker_count, 0);
+        assert_eq!(
+            response.assistants[1].launch_readiness.status,
+            OmegonAssistantLaunchStatus::Blocked
+        );
+        assert_eq!(
+            response.assistants[1].launch_readiness.blockers[0].kind,
+            "required_secret_missing"
+        );
+    }
+
+    #[test]
+    fn missing_assistant_readiness_defaults_blocked() {
+        let response: OmegonAssistantListResponse =
+            serde_json::from_str(r#"{"assistants":[{"id":"unknown","name":"Unknown"}]}"#).unwrap();
+
+        assert_eq!(
+            response.assistants[0].launch_readiness.status,
+            OmegonAssistantLaunchStatus::Blocked
+        );
     }
 }
