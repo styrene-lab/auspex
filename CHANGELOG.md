@@ -7,6 +7,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+- Added the first Auspex-side Omegon assistant workspace plumbing, deriving the assistant capability endpoint from attached session telemetry and loading typed assistant readiness cards from `/api/capabilities/assistants`.
+
 ### Changed
 - Removed the inactive Scribe workspace from active navigation; Flynt remains the task board, Sentry remains execution, and Auspex focuses on workflow handoff, command, and observability surfaces.
 - Reframed the active Graph workspace around deployed-agent topology instead of design-tree/tasking state, preserving Flynt as the task/board owner.

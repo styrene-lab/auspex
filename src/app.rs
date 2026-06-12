@@ -162,6 +162,16 @@ struct AgentDeployWorkspaceState {
     error: Option<String>,
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[allow(dead_code)]
+struct AssistantWorkspaceState {
+    endpoint: Option<String>,
+    assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
+    loading: bool,
+    message: Option<String>,
+    error: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct DeployPreflightModel {
     can_deploy: bool,
@@ -2723,6 +2733,25 @@ fn agent_direct_line_detail(descriptor: &auspex_core::fixtures::InstanceDescript
     format!("{profile} · {runtime} · {workspace}")
 }
 
+#[allow(dead_code)]
+fn assistant_endpoint_from_session(session: &auspex_core::fixtures::SessionData) -> Option<String> {
+    session
+        .telemetry
+        .control_plane
+        .as_ref()
+        .and_then(|control_plane| control_plane.base_url.as_deref())
+        .map(str::trim)
+        .filter(|base_url| !base_url.is_empty())
+        .map(|base_url| {
+            auspex_core::omegon_control::OmegonControlPlaneDescriptor {
+                base_url: Some(base_url.to_string()),
+                ..Default::default()
+            }
+            .assistant_list_url()
+            .expect("non-empty base URL should produce assistant endpoint")
+        })
+}
+
 fn control_plane_security_label(
     control_plane: Option<&auspex_core::fixtures::InstanceControlPlaneData>,
 ) -> String {
@@ -4028,6 +4057,31 @@ fn operator_websocket_url(acp_proxy: &str, token: &str) -> Option<String> {
     Some(format!("{acp_proxy}{token_query}"))
 }
 
+#[allow(dead_code)]
+async fn refresh_assistant_workspace(
+    state: &mut Signal<AssistantWorkspaceState>,
+    session: &auspex_core::fixtures::SessionData,
+) {
+    let endpoint = assistant_endpoint_from_session(session);
+    state.write().loading = true;
+    let result = load_assistant_workspace(endpoint.clone()).await;
+    let mut state = state.write();
+    state.loading = false;
+    state.endpoint = endpoint;
+    match result {
+        Ok(assistants) => {
+            state.assistants = assistants;
+            state.error = None;
+            state
+                .message
+                .get_or_insert_with(|| "Assistant readiness loaded.".into());
+        }
+        Err(error) => {
+            state.error = Some(error);
+        }
+    }
+}
+
 async fn refresh_deploy_workspace(state: &mut Signal<AgentDeployWorkspaceState>) {
     state.write().loading = true;
     let result = load_deploy_workspace(state.read().form.api_token.trim().to_string()).await;
@@ -4081,6 +4135,27 @@ async fn deploy_selected_package(state: &mut Signal<AgentDeployWorkspaceState>) 
             state.write().error = Some(error);
         }
     }
+}
+
+#[cfg(target_arch = "wasm32")]
+#[allow(dead_code)]
+async fn load_assistant_workspace(
+    endpoint: Option<String>,
+) -> Result<Vec<auspex_core::omegon_control::OmegonAssistantListItem>, String> {
+    let endpoint =
+        endpoint.ok_or_else(|| "No Omegon capability endpoint is attached.".to_string())?;
+    let response = operator_get(&endpoint, "").await?;
+    let parsed = auspex_core::omegon_control::parse_assistant_list_response(&response)
+        .map_err(|error| format!("assistant list JSON failed: {error}"))?;
+    Ok(parsed.assistants)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
+async fn load_assistant_workspace(
+    _endpoint: Option<String>,
+) -> Result<Vec<auspex_core::omegon_control::OmegonAssistantListItem>, String> {
+    Ok(Vec::new())
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -5865,27 +5940,27 @@ mod tests {
     use super::{
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
-        audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
-        build_chat_acp_surface_model, build_chat_empty_state_model, build_deploy_preflight,
-        build_dispatch_context_strip_model, build_left_rail_inventory,
-        build_provider_blocked_composer_model, build_settings_panel_model, chat_status_tone,
-        context_window_label, control_plane_security_label, derive_acp_url_from_ws,
-        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
-        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
-        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
-        should_expand_tool_output, system_block_class, system_block_tone,
-        system_notice_summary_label, terminal_tool_context, text_block_class, text_block_tone,
-        tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
-        tool_status_label, tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
-        transcript_disclosure_open,
+        assistant_endpoint_from_session, audit_entry_matches_filters, audit_kind_key,
+        block_origin_label, build_audit_panel_model, build_chat_acp_surface_model,
+        build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
+        build_left_rail_inventory, build_provider_blocked_composer_model,
+        build_settings_panel_model, chat_status_tone, context_window_label,
+        control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
+        find_transcript_anchor, looks_like_structured_payload, redact_ws_token,
+        render_chat_status_banner, render_dispatch_context_strip, should_collapse_agent_payload,
+        should_expand_system_notice, should_expand_tool_args, should_expand_tool_output,
+        system_block_class, system_block_tone, system_notice_summary_label, terminal_tool_context,
+        text_block_class, text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
+        tool_result_label, tool_status_label, tool_visual_state, transcript_block_dom_id,
+        transcript_disclosure_meta, transcript_disclosure_open,
     };
     use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use auspex_core::controller::{AppController, SessionMode};
     use auspex_core::event_stream::EventStreamHandle;
     use auspex_core::fixtures::{
-        ActivityKind, AttributedText, BlockOrigin, DevScenario, HostSessionSummary,
-        InstanceControlPlaneData, MessageRole, MockHostSession, OriginKind, SystemNoticeKind,
-        ToolCard, TranscriptData,
+        ActivityKind, AttributedText, BlockOrigin, ControlPlaneTelemetryData, DevScenario,
+        HostSessionSummary, InstanceControlPlaneData, MessageRole, MockHostSession, OriginKind,
+        SystemNoticeKind, ToolCard, TranscriptData,
     };
     #[cfg(not(target_arch = "wasm32"))]
     use auspex_core::runtime_types::TargetedCommand;
@@ -5900,6 +5975,33 @@ mod tests {
         assert_eq!(
             redact_ws_token("ws://127.0.0.1:7842/acp?token=secret"),
             "ws://127.0.0.1:7842/acp?token=..."
+        );
+    }
+
+    #[test]
+    fn assistant_endpoint_from_session_uses_control_plane_base_url() {
+        let session = auspex_core::fixtures::SessionData {
+            telemetry: auspex_core::fixtures::SessionTelemetryData {
+                control_plane: Some(ControlPlaneTelemetryData {
+                    base_url: Some("http://127.0.0.1:7842/".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(
+            assistant_endpoint_from_session(&session).as_deref(),
+            Some("http://127.0.0.1:7842/api/capabilities/assistants")
+        );
+    }
+
+    #[test]
+    fn assistant_endpoint_from_session_requires_base_url() {
+        assert_eq!(
+            assistant_endpoint_from_session(&auspex_core::fixtures::SessionData::default()),
+            None
         );
     }
 
