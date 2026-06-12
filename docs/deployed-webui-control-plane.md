@@ -70,7 +70,7 @@ That workspace reads `/api/packages` and `/api/fleet`, then posts
 {
   "name": "home-media-operator",
   "namespace": "omegon-agents",
-  "image": "ghcr.io/styrene-lab/omegon-agents:0.23",
+  "image": "ghcr.io/styrene-lab/omegon:0.26.5",
   "model": "anthropic:claude-sonnet-4-6",
   "secretName": "optional-env-secret",
   "authJsonSecret": "agent-auth-json",
@@ -155,7 +155,7 @@ Example overlay:
   "armory": "profile/security-review",
   "mode": "daemon",
   "role": "security-reviewer",
-  "image": "ghcr.io/styrene-lab/omegon-agents:0.23",
+  "image": "ghcr.io/styrene-lab/omegon:0.26.5",
   "model": "anthropic:claude-sonnet-4-6",
   "posture": "architect",
   "namespace": "omegon-agents",

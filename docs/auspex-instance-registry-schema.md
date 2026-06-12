@@ -65,7 +65,7 @@ Use one file per worker instance in a registry directory such as:
   "desired": {
     "backend": {
       "kind": "kubernetes",
-      "image": "ghcr.io/org/omegon:v0.15.7",
+      "image": "ghcr.io/org/omegon:0.26.5",
       "namespace": "auspex",
       "resources": {
         "cpu": "500m",

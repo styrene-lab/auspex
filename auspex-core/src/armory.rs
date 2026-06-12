@@ -901,7 +901,7 @@ mod tests {
             armory: "profile/security-review".into(),
             mode: "job".into(),
             role: "supervised-child".into(),
-            image: "ghcr.io/styrene-lab/omegon-agents:0.23".into(),
+            image: "ghcr.io/styrene-lab/omegon:0.26.5".into(),
             model: "anthropic:claude-sonnet-4-6".into(),
             required_secrets: vec!["ANTHROPIC_API_KEY".into()],
             ..Default::default()

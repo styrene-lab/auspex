@@ -100,7 +100,9 @@ impl CapabilityNamespace {
                     Self::Nex
                 } else if key.name.starts_with("evidence.") || key.name.starts_with("evidence/") {
                     Self::Evidence
-                } else if key.name.starts_with("project-rules.") || key.name.starts_with("project_rules.") {
+                } else if key.name.starts_with("project-rules.")
+                    || key.name.starts_with("project_rules.")
+                {
                     Self::ProjectRules
                 } else if key.name.starts_with("tdd_savepoint.")
                     || key.name.starts_with("tdd-savepoint.")
@@ -296,10 +298,8 @@ impl GatewayDegradation {
                 reasons,
                 unavailable_surfaces,
                 fallback_surfaces: {
-                    let mut surfaces = vec![
-                        "auspex/fleet/status".into(),
-                        "auspex/instances/list".into(),
-                    ];
+                    let mut surfaces =
+                        vec!["auspex/fleet/status".into(), "auspex/instances/list".into()];
                     surfaces.extend(fallback_surfaces);
                     surfaces
                 },
@@ -743,5 +743,4 @@ mod tests {
             CapabilityNamespace::TddSavepoint
         );
     }
-
 }

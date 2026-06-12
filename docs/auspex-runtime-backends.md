@@ -46,7 +46,7 @@ Defaults:
 - `spec.posture`: `architect`
 - `spec.terminalTool`: `false`
 - `spec.model`: `AUSPEX_PRIMARY_AGENT_MODEL`, else `anthropic:claude-sonnet-4-6`
-- `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon-agents:0.23`
+- `spec.image`: `AUSPEX_PRIMARY_AGENT_IMAGE`, else `ghcr.io/styrene-lab/omegon:0.26.5`
 
 Set `AUSPEX_BOOTSTRAP_PRIMARY_AGENT=false` to disable bootstrap when GitOps owns the primary agent manifest. Set `AUSPEX_PRIMARY_AGENT_AUTH_JSON_SECRET` to attach the narrow Kubernetes Secret that carries provider `auth.json` credentials for the primary agent. Set `AUSPEX_PRIMARY_AGENT_SECRET` only for broad environment-style runtime tokens that cannot use file projection; it is higher blast radius because all Secret keys are exposed through `envFrom`.
 
@@ -83,14 +83,14 @@ profiles {
   }
   ["homelab-container"] {
     backend = "oci-container"
-    image = "ghcr.io/styrene-lab/omegon:v0.23.0"
+    image = "ghcr.io/styrene-lab/omegon:0.26.5"
     namespace = "auspex"
     resources { cpu = "1"; memory = "2Gi" }
     restart_on_exit = true
   }
   ["k8s-worker"] {
     backend = "kubernetes"
-    image = "ghcr.io/styrene-lab/omegon:v0.23.0"
+    image = "ghcr.io/styrene-lab/omegon:0.26.5"
     namespace = "agents"
     max_instances = 8
     resources { cpu = "500m"; memory = "1Gi" }
@@ -124,7 +124,7 @@ This is the internal shape Auspex uses regardless of backend. It combines a reso
     "model": "anthropic:claude-haiku",
     "thinking_level": "low",
     "max_runtime_seconds": 900,
-    "image": "ghcr.io/styrene-lab/omegon:v0.23.0",
+    "image": "ghcr.io/styrene-lab/omegon:0.26.5",
     "namespace": "auspex",
     "resources": {
       "cpu": "500m",

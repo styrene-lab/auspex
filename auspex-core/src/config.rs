@@ -452,7 +452,7 @@ backend = "local-process"
 
 [profiles.homelab-container]
 backend = "oci-container"
-image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+image = "ghcr.io/styrene-lab/omegon:0.26.5"
 namespace = "auspex"
 restart_on_exit = true
 omegon_flags = ["--strict-port", "--model", "anthropic:claude-haiku"]
@@ -472,7 +472,7 @@ RUST_BACKTRACE = "1"
 
 [profiles.k8s-worker]
 backend = "kubernetes"
-image = "ghcr.io/styrene-lab/omegon:v0.15.25"
+image = "ghcr.io/styrene-lab/omegon:0.26.5"
 namespace = "agents"
 max_instances = 8
 requires = ["kubectl", "helm"]
@@ -497,7 +497,7 @@ memory = "1Gi"
         assert_eq!(homelab.backend, "oci-container");
         assert_eq!(
             homelab.image.as_deref(),
-            Some("ghcr.io/styrene-lab/omegon:v0.15.25")
+            Some("ghcr.io/styrene-lab/omegon:0.26.5")
         );
         assert!(homelab.restart_on_exit);
         assert_eq!(

@@ -1,4 +1,4 @@
-use crate::authorization::{authorize_local_omegon_action, runtime_resource, LocalOmegonAction};
+use crate::authorization::{LocalOmegonAction, authorize_local_omegon_action, runtime_resource};
 use crate::local_omegon_discovery::LocalOmegonCandidate;
 use crate::omegon_control::OmegonStartupInfo;
 use styrene_policy::{PolicyDecision, PrincipalRef};
@@ -72,7 +72,9 @@ pub fn probe_local_omegon_candidate_read_only(
     let resource = candidate
         .pid
         .map(|pid| runtime_resource(format!("pid:{pid}")))
-        .unwrap_or_else(|| runtime_resource(startup_url.clone().unwrap_or_else(|| "unknown".into())));
+        .unwrap_or_else(|| {
+            runtime_resource(startup_url.clone().unwrap_or_else(|| "unknown".into()))
+        });
     let policy = authorize_local_omegon_action(principal, LocalOmegonAction::Attach, resource);
     if !policy.is_allowed() {
         return LocalOmegonProbeResult::denied(policy, startup_url);
@@ -136,25 +138,27 @@ pub fn probe_local_omegon_candidate_read_only(
             );
         }
     };
-    let mut controller = match crate::controller::AppController::from_remote_snapshot_json(&state_body) {
-        Ok(controller) => controller,
-        Err(error) => {
-            return LocalOmegonProbeResult::failed(
-                LocalOmegonProbeStatus::StateParseFailed,
-                policy,
-                Some(startup_url),
-                Some(state_url),
-                format!("invalid state payload: {error}"),
-            );
-        }
-    };
+    let mut controller =
+        match crate::controller::AppController::from_remote_snapshot_json(&state_body) {
+            Ok(controller) => controller,
+            Err(error) => {
+                return LocalOmegonProbeResult::failed(
+                    LocalOmegonProbeStatus::StateParseFailed,
+                    policy,
+                    Some(startup_url),
+                    Some(state_url),
+                    format!("invalid state payload: {error}"),
+                );
+            }
+        };
     let state_json: Option<serde_json::Value> = serde_json::from_str(&state_body).ok();
     let harness = state_json.as_ref().and_then(|state| state.get("harness"));
     if let Some(record) = instance_record_from_startup_descriptor(&startup, harness) {
-        controller = controller.with_instance_registry(crate::instance_registry::InstanceRegistryStore {
-            schema_version: 1,
-            instances: vec![record],
-        });
+        controller =
+            controller.with_instance_registry(crate::instance_registry::InstanceRegistryStore {
+                schema_version: 1,
+                instances: vec![record],
+            });
     }
 
     let descriptor = startup.instance_descriptor.as_ref();
@@ -180,7 +184,6 @@ pub fn probe_local_omegon_candidate_read_only(
         controller: Some(controller),
     }
 }
-
 
 fn lifecycle_from_descriptor(status: &str) -> crate::runtime_types::WorkerLifecycleState {
     match status.replace('_', "-").as_str() {
@@ -237,12 +240,14 @@ fn instance_record_from_startup_descriptor(
             .or_else(|| Some(startup.auth_mode.clone()).filter(|value| !value.is_empty()))
             .unwrap_or_default(),
         token_ref: control_plane.and_then(|control_plane| control_plane.token_ref.clone()),
-        transport_security: control_plane.and_then(|control_plane| control_plane.transport_security.clone()),
+        transport_security: control_plane
+            .and_then(|control_plane| control_plane.transport_security.clone()),
         mtls: control_plane.and_then(|control_plane| control_plane.mtls),
         last_ready_at: Some(now.clone()),
         ..Default::default()
     };
-    let compatibility = crate::compatibility::assess_observed_control_plane(&observed_control_plane);
+    let compatibility =
+        crate::compatibility::assess_observed_control_plane(&observed_control_plane);
     let capabilities = control_plane
         .map(|control_plane| control_plane.capabilities.clone())
         .unwrap_or_default();
@@ -352,7 +357,10 @@ fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
         return Some(startup.startup_url.replace("/api/startup", "/api/state"));
     }
     if !startup.http_base.is_empty() {
-        return Some(format!("{}/api/state", startup.http_base.trim_end_matches('/')));
+        return Some(format!(
+            "{}/api/state",
+            startup.http_base.trim_end_matches('/')
+        ));
     }
     None
 }

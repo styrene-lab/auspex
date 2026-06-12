@@ -3793,7 +3793,7 @@ fn render_agent_deploy_workspace(
                             span { "Image" }
                             input {
                                 value: snapshot.form.image.clone(),
-                                placeholder: "ghcr.io/styrene-lab/omegon-agents:0.23",
+                                placeholder: "ghcr.io/styrene-lab/omegon:0.26.5",
                                 oninput: move |event| state.write().form.image = event.value(),
                             }
                         }
@@ -7045,7 +7045,7 @@ mod tests {
             posture: "fabricator".into(),
             role: "detached-service".into(),
             mode: "daemon".into(),
-            image: "ghcr.io/styrene-lab/omegon-agents:0.23".into(),
+            image: "ghcr.io/styrene-lab/omegon:0.26.5".into(),
             required_secrets: vec!["ANTHROPIC_API_KEY".into()],
             ..Default::default()
         };
@@ -7094,7 +7094,7 @@ mod tests {
             posture: "explorator".into(),
             role: "detached-service".into(),
             mode: "daemon".into(),
-            image: "ghcr.io/styrene-lab/omegon-agents:0.23".into(),
+            image: "ghcr.io/styrene-lab/omegon:0.26.5".into(),
             required_secrets: vec!["ANTHROPIC_API_KEY".into()],
             ..Default::default()
         };

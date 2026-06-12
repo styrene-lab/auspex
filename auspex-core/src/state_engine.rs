@@ -481,8 +481,14 @@ fn synthesize_instance_record(instance: &AttachedInstanceRecord) -> InstanceReco
                 instance_id: instance.instance_id.clone(),
                 role: infer_worker_role(instance),
                 profile: instance.profile.clone(),
-                raw_role: instance.registry_record.as_ref().and_then(|record| record.identity.raw_role.clone()),
-                raw_profile: instance.registry_record.as_ref().and_then(|record| record.identity.raw_profile.clone()),
+                raw_role: instance
+                    .registry_record
+                    .as_ref()
+                    .and_then(|record| record.identity.raw_role.clone()),
+                raw_profile: instance
+                    .registry_record
+                    .as_ref()
+                    .and_then(|record| record.identity.raw_profile.clone()),
                 raw_runtime_profile: instance
                     .registry_record
                     .as_ref()

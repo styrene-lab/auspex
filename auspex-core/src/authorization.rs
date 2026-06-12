@@ -83,7 +83,10 @@ pub fn local_omegon_policy_request(
 
     PolicyRequest {
         principal,
-        action: ActionRef { namespace: "".into(), name: action.capability().into() },
+        action: ActionRef {
+            namespace: "".into(),
+            name: action.capability().into(),
+        },
         resource,
         context,
     }
@@ -121,7 +124,7 @@ pub fn authorize_local_omegon_action(
         return decision.normalized();
     }
     let request = local_omegon_policy_request(principal, action, resource);
-    NativePolicyEngine::default().authorize(&request)
+    NativePolicyEngine.authorize(&request)
 }
 
 pub fn runtime_resource(instance_id: impl Into<String>) -> ResourceRef {
@@ -167,7 +170,10 @@ mod tests {
     #[test]
     fn discovery_is_allowed_without_identity_when_capability_present() {
         let decision = authorize_local_omegon_action(
-            PrincipalRef { capabilities: vec!["auspex.discovery.local.read".into()], ..PrincipalRef::anonymous() },
+            PrincipalRef {
+                capabilities: vec!["auspex.discovery.local.read".into()],
+                ..PrincipalRef::anonymous()
+            },
             LocalOmegonAction::Discover,
             local_host_resource(),
         );
@@ -179,13 +185,21 @@ mod tests {
     #[test]
     fn attach_is_denied_without_identity() {
         let decision = authorize_local_omegon_action(
-            PrincipalRef { capabilities: vec!["auspex.instance.attach".into()], ..PrincipalRef::anonymous() },
+            PrincipalRef {
+                capabilities: vec!["auspex.instance.attach".into()],
+                ..PrincipalRef::anonymous()
+            },
             LocalOmegonAction::Attach,
             runtime_resource("runtime-1"),
         );
 
         assert_eq!(decision.effect, PolicyEffect::Deny);
-        assert!(decision.reasons.iter().any(|reason| reason.code == "identity.required"));
+        assert!(
+            decision
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "identity.required")
+        );
     }
 
     #[test]
@@ -211,6 +225,11 @@ mod tests {
         );
 
         assert_eq!(decision.effect, PolicyEffect::Deny);
-        assert!(decision.reasons.iter().any(|reason| reason.code == "capability.missing"));
+        assert!(
+            decision
+                .reasons
+                .iter()
+                .any(|reason| reason.code == "capability.missing")
+        );
     }
 }

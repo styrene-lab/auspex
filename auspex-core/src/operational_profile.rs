@@ -70,7 +70,6 @@ impl OperationalProfile {
         })
     }
 
-
     pub fn from_omegon_runtime_evidence(
         instance: &crate::omegon_control::OmegonInstanceDescriptor,
         harness: Option<&serde_json::Value>,
@@ -92,29 +91,57 @@ impl OperationalProfile {
         let capabilities = control_plane
             .map(|control_plane| control_plane.capabilities.as_slice())
             .unwrap_or(&[]);
-        let has_capability = |needle: &str| capabilities.iter().any(|capability| capability == needle);
+        let has_capability =
+            |needle: &str| capabilities.iter().any(|capability| capability == needle);
         let has_host_action = capabilities.iter().any(|capability| {
-            capability.contains('@') || capability.starts_with("host_action.") || capability.starts_with("host-action.")
+            capability.contains('@')
+                || capability.starts_with("host_action.")
+                || capability.starts_with("host-action.")
         });
 
         let mut meta = BTreeMap::new();
-        meta.insert("source".into(), serde_json::Value::String("derived_from_omegon_state".into()));
-        meta.insert("raw_runtime_profile".into(), serde_json::Value::String(runtime_profile.clone()));
+        meta.insert(
+            "source".into(),
+            serde_json::Value::String("derived_from_omegon_state".into()),
+        );
+        meta.insert(
+            "raw_runtime_profile".into(),
+            serde_json::Value::String(runtime_profile.clone()),
+        );
         if let Some(runtime) = runtime {
             if let Some(value) = runtime.autonomy_mode.as_ref() {
-                meta.insert("raw_autonomy_mode".into(), serde_json::Value::String(value.clone()));
+                meta.insert(
+                    "raw_autonomy_mode".into(),
+                    serde_json::Value::String(value.clone()),
+                );
             }
             if let Some(value) = runtime.context_class.as_ref() {
-                meta.insert("raw_context_class".into(), serde_json::Value::String(value.clone()));
+                meta.insert(
+                    "raw_context_class".into(),
+                    serde_json::Value::String(value.clone()),
+                );
             }
             if let Some(value) = runtime.capability_tier.as_ref() {
-                meta.insert("raw_capability_tier".into(), serde_json::Value::String(value.clone()));
+                meta.insert(
+                    "raw_capability_tier".into(),
+                    serde_json::Value::String(value.clone()),
+                );
             }
         }
         if let Some(harness) = harness {
-            for key in ["operating_profile", "authorization", "principal_id", "identity_issuer", "posture", "session_kind"] {
+            for key in [
+                "operating_profile",
+                "authorization",
+                "principal_id",
+                "identity_issuer",
+                "posture",
+                "session_kind",
+            ] {
                 if let Some(value) = harness.get(key).and_then(|value| value.as_str()) {
-                    meta.insert(format!("harness_{key}"), serde_json::Value::String(value.into()));
+                    meta.insert(
+                        format!("harness_{key}"),
+                        serde_json::Value::String(value.into()),
+                    );
                 }
             }
         }
@@ -127,7 +154,8 @@ impl OperationalProfile {
             required_profile: runtime_profile,
             capability_contract_version: 1,
             capabilities: OperationalCapabilities {
-                instance_registry: has_capability("state.snapshot") || has_capability("session.list"),
+                instance_registry: has_capability("state.snapshot")
+                    || has_capability("session.list"),
                 dispatch: has_capability("prompt.submit"),
                 supervision: has_capability("dispatcher.switch") || has_capability("turn.cancel"),
                 host_actions: has_host_action,
@@ -517,8 +545,16 @@ mod tests {
         assert!(profile.capabilities.nex_substrate);
         assert!(profile.capabilities.tdd_savepoint);
         assert!(!profile.capabilities.host_actions);
-        assert_eq!(profile.meta.get("source").and_then(|v| v.as_str()), Some("derived_from_omegon_state"));
-        assert_eq!(profile.meta.get("harness_principal_id").and_then(|v| v.as_str()), Some("local-operator"));
+        assert_eq!(
+            profile.meta.get("source").and_then(|v| v.as_str()),
+            Some("derived_from_omegon_state")
+        );
+        assert_eq!(
+            profile
+                .meta
+                .get("harness_principal_id")
+                .and_then(|v| v.as_str()),
+            Some("local-operator")
+        );
     }
-
 }

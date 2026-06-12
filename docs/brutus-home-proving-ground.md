@@ -39,7 +39,7 @@ truth.
   Vault/VSO/CSI materialization of the same provider `auth.json` grant.
 - Identity: enabled through `spec.identity.provision`
 - Control plane: WSS/HTTPS TLS enabled through `spec.controlPlane.tls`
-- Image: temporarily `ghcr.io/styrene-lab/omegon-agents:0.23`
+- Image: temporarily `ghcr.io/styrene-lab/omegon:0.26.5`
 
 The image is intentionally still the shared fallback. Once the profile build lane
 is stable, pin each resource to the profile-specific image digest built from:

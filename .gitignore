@@ -19,3 +19,7 @@ tmp/
 node_modules/
 site/dist/
 .wrangler/
+
+# Flynt local workspace/index artifacts
+.flynt/
+.flynt-local/

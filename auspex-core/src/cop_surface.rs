@@ -503,13 +503,17 @@ pub fn apply_local_omegon_discovery_with_policy(
     );
 }
 
-
 #[cfg(not(target_arch = "wasm32"))]
 pub fn apply_local_omegon_probe_result(
     state: &mut CopDisplayState,
     result: &crate::local_omegon_probe::LocalOmegonProbeResult,
 ) {
-    state.set_layout(vec![CopRegion::North, CopRegion::Center, CopRegion::East, CopRegion::South]);
+    state.set_layout(vec![
+        CopRegion::North,
+        CopRegion::Center,
+        CopRegion::East,
+        CopRegion::South,
+    ]);
     let status = format!("{:?}", result.status);
     let allowed = result.policy.is_allowed();
     state.write(
@@ -525,7 +529,10 @@ pub fn apply_local_omegon_probe_result(
         }),
     );
 
-    let projection = result.controller.as_ref().map(|controller| controller.gateway_fleet_status());
+    let projection = result
+        .controller
+        .as_ref()
+        .map(|controller| controller.gateway_fleet_status());
     if let Some(projection) = projection.as_ref() {
         state.write(
             CopRegion::Center,
@@ -590,7 +597,11 @@ pub fn apply_local_omegon_probe_result(
         .into_iter()
         .filter_map(|row| {
             let row = row.as_array()?;
-            Some(format!("{}: {}", row.first()?.as_str()?, row.get(1)?.as_str()?))
+            Some(format!(
+                "{}: {}",
+                row.first()?.as_str()?,
+                row.get(1)?.as_str()?
+            ))
         })
         .collect::<Vec<_>>();
     notes.extend(
@@ -615,10 +626,22 @@ fn probe_evidence_rows(
     result: &crate::local_omegon_probe::LocalOmegonProbeResult,
 ) -> Vec<serde_json::Value> {
     vec![
-        serde_json::json!(["Startup URL", result.startup_url.clone().unwrap_or_else(|| "—".into())]),
-        serde_json::json!(["State URL", result.state_url.clone().unwrap_or_else(|| "—".into())]),
-        serde_json::json!(["Instance ID", result.instance_id.clone().unwrap_or_else(|| "—".into())]),
-        serde_json::json!(["Omegon Version", result.omegon_version.clone().unwrap_or_else(|| "—".into())]),
+        serde_json::json!([
+            "Startup URL",
+            result.startup_url.clone().unwrap_or_else(|| "—".into())
+        ]),
+        serde_json::json!([
+            "State URL",
+            result.state_url.clone().unwrap_or_else(|| "—".into())
+        ]),
+        serde_json::json!([
+            "Instance ID",
+            result.instance_id.clone().unwrap_or_else(|| "—".into())
+        ]),
+        serde_json::json!([
+            "Omegon Version",
+            result.omegon_version.clone().unwrap_or_else(|| "—".into())
+        ]),
         serde_json::json!(["Capabilities", result.capabilities.len().to_string()]),
     ]
 }

@@ -469,7 +469,9 @@ impl WorkerRole {
     pub fn from_descriptor_role(role: &str) -> Self {
         match role.replace('_', "-").to_ascii_lowercase().as_str() {
             "primary-driver" | "primary" | "driver" => Self::PrimaryDriver,
-            "supervised-child" | "delegate" | "worker" | "embedded-backend" => Self::SupervisedChild,
+            "supervised-child" | "delegate" | "worker" | "embedded-backend" => {
+                Self::SupervisedChild
+            }
             "detached-service" | "remote-agent" | "service" | "host" | "control-plane" => {
                 Self::DetachedService
             }
@@ -585,7 +587,7 @@ mod tests {
           "desired": {
             "backend": {
               "kind": "kubernetes",
-              "image": "ghcr.io/org/omegon:v0.15.7",
+              "image": "ghcr.io/org/omegon:0.26.5",
               "namespace": "auspex",
               "resources": {
                 "cpu": "500m",
@@ -692,7 +694,7 @@ mod tests {
             "model": "anthropic:claude-haiku",
             "thinking_level": "low",
             "max_runtime_seconds": 900,
-            "image": "ghcr.io/org/omegon:v0.15.7",
+            "image": "ghcr.io/org/omegon:0.26.5",
             "namespace": "auspex",
             "resources": {
               "cpu": "500m",
@@ -858,11 +860,22 @@ network_policy = "restricted"
 
     #[test]
     fn descriptor_role_normalization_accepts_snake_and_kebab_case() {
-        assert_eq!(WorkerRole::from_descriptor_role("primary_driver"), WorkerRole::PrimaryDriver);
-        assert_eq!(WorkerRole::from_descriptor_role("primary-driver"), WorkerRole::PrimaryDriver);
-        assert_eq!(WorkerRole::from_descriptor_role("supervised_child"), WorkerRole::SupervisedChild);
-        assert_eq!(WorkerRole::from_descriptor_role("detached_service"), WorkerRole::DetachedService);
+        assert_eq!(
+            WorkerRole::from_descriptor_role("primary_driver"),
+            WorkerRole::PrimaryDriver
+        );
+        assert_eq!(
+            WorkerRole::from_descriptor_role("primary-driver"),
+            WorkerRole::PrimaryDriver
+        );
+        assert_eq!(
+            WorkerRole::from_descriptor_role("supervised_child"),
+            WorkerRole::SupervisedChild
+        );
+        assert_eq!(
+            WorkerRole::from_descriptor_role("detached_service"),
+            WorkerRole::DetachedService
+        );
         assert_eq!(WorkerRole::PrimaryDriver.label(), "primary-driver");
     }
-
 }
