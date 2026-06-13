@@ -4335,14 +4335,14 @@ async fn refresh_assistant_workspace(
             if !selected_still_exists {
                 state.selected_id = assistants.first().map(|assistant| assistant.id.clone());
             }
+            let loaded_count = assistants.len();
             state.assistants = assistants;
             state.error = None;
-            state
-                .message
-                .get_or_insert_with(|| "Assistant readiness loaded.".into());
+            state.message = Some(format!("Loaded {loaded_count} assistant readiness cards."));
         }
         Err(error) => {
             state.error = Some(error);
+            state.message = None;
         }
     }
 }
