@@ -6376,6 +6376,23 @@ mod tests {
     }
 
     #[test]
+    fn assistant_refresh_success_clears_selection_when_empty() {
+        let mut state = super::AssistantWorkspaceState {
+            selected_id: Some("stale".into()),
+            ..Default::default()
+        };
+
+        apply_assistant_refresh_success(&mut state, Vec::new());
+
+        assert_eq!(state.selected_id, None);
+        assert_eq!(state.assistants.len(), 0);
+        assert_eq!(
+            state.message.as_deref(),
+            Some("Loaded 0 assistant readiness cards.")
+        );
+    }
+
+    #[test]
     fn assistant_trust_badges_surface_high_risk_capabilities() {
         let trust = auspex_core::omegon_control::OmegonCapabilityTrustSummary {
             state_changing: true,
