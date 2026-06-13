@@ -6216,9 +6216,9 @@ mod tests {
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
         apply_assistant_refresh_success, assistant_endpoint_from_session, assistant_status_counts,
-        audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
-        build_chat_acp_surface_model, build_chat_empty_state_model, build_deploy_preflight,
-        build_dispatch_context_strip_model, build_left_rail_inventory,
+        assistant_trust_badges, audit_entry_matches_filters, audit_kind_key, block_origin_label,
+        build_audit_panel_model, build_chat_acp_surface_model, build_chat_empty_state_model,
+        build_deploy_preflight, build_dispatch_context_strip_model, build_left_rail_inventory,
         build_provider_blocked_composer_model, build_settings_panel_model, chat_status_tone,
         context_window_label, control_plane_security_label, derive_acp_url_from_ws,
         dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
@@ -6372,6 +6372,37 @@ mod tests {
         );
 
         assert_eq!(state.selected_id.as_deref(), Some("alpha"));
+    }
+
+    #[test]
+    fn assistant_trust_badges_surface_high_risk_capabilities() {
+        let trust = auspex_core::omegon_control::OmegonCapabilityTrustSummary {
+            state_changing: true,
+            secret_bound: true,
+            network_capable: true,
+            host_action_capable: true,
+            process_spawn_capable: true,
+            ..Default::default()
+        };
+
+        assert_eq!(
+            assistant_trust_badges(&trust),
+            vec![
+                "state-changing",
+                "secret-bound",
+                "network",
+                "host-action",
+                "process-spawn"
+            ]
+        );
+    }
+
+    #[test]
+    fn assistant_trust_badges_default_to_pending() {
+        assert_eq!(
+            assistant_trust_badges(&Default::default()),
+            vec!["trust pending"]
+        );
     }
 
     #[test]
