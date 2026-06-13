@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 - Added the first Auspex-side Omegon assistant workspace plumbing, deriving the assistant capability endpoint from attached session telemetry and loading typed assistant readiness cards from `/api/capabilities/assistants`.
-- Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including selectable blocker, warning, secret, and trust-posture details.
+- Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including readiness totals, selectable blocker, warning, secret, and trust-posture details.
 
 ### Changed
 - Removed the inactive Scribe workspace from active navigation; Flynt remains the task board, Sentry remains execution, and Auspex focuses on workflow handoff, command, and observability surfaces.

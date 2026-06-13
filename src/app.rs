@@ -3997,6 +3997,35 @@ fn render_assistant_workspace(
         .as_ref()
         .map(|assistant| assistant_status_label(assistant.launch_readiness.status))
         .unwrap_or("none");
+    let ready_count = assistants
+        .iter()
+        .filter(|assistant| {
+            assistant.launch_readiness.status
+                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready
+        })
+        .count();
+    let degraded_count = assistants
+        .iter()
+        .filter(|assistant| {
+            assistant.launch_readiness.status
+                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded
+        })
+        .count();
+    let blocked_count = assistants
+        .iter()
+        .filter(|assistant| {
+            assistant.launch_readiness.status
+                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked
+        })
+        .count();
+    let blocker_total: usize = assistants
+        .iter()
+        .map(|assistant| assistant.blocker_count)
+        .sum();
+    let warning_total: usize = assistants
+        .iter()
+        .map(|assistant| assistant.warning_count)
+        .sum();
 
     rsx! {
         section { class: "deploy-workspace assistant-workspace",
@@ -4035,6 +4064,20 @@ fn render_assistant_workspace(
                     p { class: "deploy-error", "{error}" }
                 } else if let Some(message) = snapshot.message.as_deref() {
                     p { class: "deploy-message", "{message}" }
+                }
+            }
+
+            section { class: "deploy-panel",
+                div { class: "deploy-section-title",
+                    h3 { "Readiness summary" }
+                    span { "{assistants.len()} assistants" }
+                }
+                div { class: "deploy-lifecycle-steps",
+                    span { class: "deploy-lifecycle-step", "data-state": "ok", "{ready_count} ready" }
+                    span { class: "deploy-lifecycle-step", "data-state": "warn", "{degraded_count} degraded" }
+                    span { class: "deploy-lifecycle-step", "data-state": "failed", "{blocked_count} blocked" }
+                    span { class: "deploy-lifecycle-step", "data-state": if blocker_total == 0 { "ok" } else { "failed" }, "{blocker_total} blockers" }
+                    span { class: "deploy-lifecycle-step", "data-state": if warning_total == 0 { "ok" } else { "warn" }, "{warning_total} warnings" }
                 }
             }
 
