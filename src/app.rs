@@ -4333,6 +4333,11 @@ fn apply_assistant_refresh_success(
     state.message = Some(format!("Loaded {loaded_count} assistant readiness cards."));
 }
 
+fn apply_assistant_refresh_failure(state: &mut AssistantWorkspaceState, error: String) {
+    state.error = Some(error);
+    state.message = None;
+}
+
 #[allow(dead_code)]
 async fn refresh_assistant_workspace(
     state: &mut Signal<AssistantWorkspaceState>,
@@ -4349,8 +4354,7 @@ async fn refresh_assistant_workspace(
             apply_assistant_refresh_success(&mut state, assistants);
         }
         Err(error) => {
-            state.error = Some(error);
-            state.message = None;
+            apply_assistant_refresh_failure(&mut state, error);
         }
     }
 }
@@ -6215,21 +6219,21 @@ mod tests {
     use super::{
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
-        apply_assistant_refresh_success, assistant_endpoint_from_session,
-        assistant_readiness_items, assistant_status_counts, assistant_status_label,
-        assistant_trust_badges, audit_entry_matches_filters, audit_kind_key, block_origin_label,
-        build_audit_panel_model, build_chat_acp_surface_model, build_chat_empty_state_model,
-        build_deploy_preflight, build_dispatch_context_strip_model, build_left_rail_inventory,
-        build_provider_blocked_composer_model, build_settings_panel_model, chat_status_tone,
-        context_window_label, control_plane_security_label, derive_acp_url_from_ws,
-        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
-        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
-        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
-        should_expand_tool_output, system_block_class, system_block_tone,
-        system_notice_summary_label, terminal_tool_context, text_block_class, text_block_tone,
-        tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
-        tool_status_label, tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
-        transcript_disclosure_open,
+        apply_assistant_refresh_failure, apply_assistant_refresh_success,
+        assistant_endpoint_from_session, assistant_readiness_items, assistant_status_counts,
+        assistant_status_label, assistant_trust_badges, audit_entry_matches_filters,
+        audit_kind_key, block_origin_label, build_audit_panel_model, build_chat_acp_surface_model,
+        build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
+        build_left_rail_inventory, build_provider_blocked_composer_model,
+        build_settings_panel_model, chat_status_tone, context_window_label,
+        control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
+        find_transcript_anchor, looks_like_structured_payload, redact_ws_token,
+        render_chat_status_banner, render_dispatch_context_strip, should_collapse_agent_payload,
+        should_expand_system_notice, should_expand_tool_args, should_expand_tool_output,
+        system_block_class, system_block_tone, system_notice_summary_label, terminal_tool_context,
+        text_block_class, text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
+        tool_result_label, tool_status_label, tool_visual_state, transcript_block_dom_id,
+        transcript_disclosure_meta, transcript_disclosure_open,
     };
     use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use auspex_core::controller::{AppController, SessionMode};
@@ -6443,6 +6447,19 @@ mod tests {
             state.message.as_deref(),
             Some("Loaded 0 assistant readiness cards.")
         );
+    }
+
+    #[test]
+    fn assistant_refresh_failure_clears_stale_success_message() {
+        let mut state = super::AssistantWorkspaceState {
+            message: Some("Loaded 2 assistant readiness cards.".into()),
+            ..Default::default()
+        };
+
+        apply_assistant_refresh_failure(&mut state, "network unavailable".into());
+
+        assert_eq!(state.error.as_deref(), Some("network unavailable"));
+        assert_eq!(state.message, None);
     }
 
     #[test]
