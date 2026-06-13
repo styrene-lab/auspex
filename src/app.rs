@@ -6294,6 +6294,22 @@ mod tests {
     }
 
     #[test]
+    fn assistant_endpoint_from_session_rejects_blank_base_url() {
+        let session = auspex_core::fixtures::SessionData {
+            telemetry: auspex_core::fixtures::SessionTelemetryData {
+                control_plane: Some(ControlPlaneTelemetryData {
+                    base_url: Some("   ".into()),
+                    ..Default::default()
+                }),
+                ..Default::default()
+            },
+            ..Default::default()
+        };
+
+        assert_eq!(assistant_endpoint_from_session(&session), None);
+    }
+
+    #[test]
     fn assistant_endpoint_from_session_requires_base_url() {
         assert_eq!(
             assistant_endpoint_from_session(&auspex_core::fixtures::SessionData::default()),
