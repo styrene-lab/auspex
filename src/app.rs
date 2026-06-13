@@ -3970,6 +3970,38 @@ fn assistant_readiness_items<'a>(
     items
 }
 
+fn assistant_status_counts(
+    assistants: &[auspex_core::omegon_control::OmegonAssistantListItem],
+) -> (usize, usize, usize, usize, usize) {
+    let mut ready_count = 0;
+    let mut degraded_count = 0;
+    let mut blocked_count = 0;
+    let mut blocker_total = 0;
+    let mut warning_total = 0;
+
+    for assistant in assistants {
+        match assistant.launch_readiness.status {
+            auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready => ready_count += 1,
+            auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded => {
+                degraded_count += 1;
+            }
+            auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked => {
+                blocked_count += 1;
+            }
+        }
+        blocker_total += assistant.blocker_count;
+        warning_total += assistant.warning_count;
+    }
+
+    (
+        ready_count,
+        degraded_count,
+        blocked_count,
+        blocker_total,
+        warning_total,
+    )
+}
+
 fn render_assistant_workspace(
     mut state: Signal<AssistantWorkspaceState>,
     session: &auspex_core::fixtures::SessionData,
@@ -3997,35 +4029,8 @@ fn render_assistant_workspace(
         .as_ref()
         .map(|assistant| assistant_status_label(assistant.launch_readiness.status))
         .unwrap_or("none");
-    let ready_count = assistants
-        .iter()
-        .filter(|assistant| {
-            assistant.launch_readiness.status
-                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready
-        })
-        .count();
-    let degraded_count = assistants
-        .iter()
-        .filter(|assistant| {
-            assistant.launch_readiness.status
-                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded
-        })
-        .count();
-    let blocked_count = assistants
-        .iter()
-        .filter(|assistant| {
-            assistant.launch_readiness.status
-                == auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked
-        })
-        .count();
-    let blocker_total: usize = assistants
-        .iter()
-        .map(|assistant| assistant.blocker_count)
-        .sum();
-    let warning_total: usize = assistants
-        .iter()
-        .map(|assistant| assistant.warning_count)
-        .sum();
+    let (ready_count, degraded_count, blocked_count, blocker_total, warning_total) =
+        assistant_status_counts(&assistants);
 
     rsx! {
         section { class: "deploy-workspace assistant-workspace",
@@ -6202,8 +6207,8 @@ mod tests {
     use super::{
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
-        assistant_endpoint_from_session, audit_entry_matches_filters, audit_kind_key,
-        block_origin_label, build_audit_panel_model, build_chat_acp_surface_model,
+        assistant_endpoint_from_session, assistant_status_counts, audit_entry_matches_filters,
+        audit_kind_key, block_origin_label, build_audit_panel_model, build_chat_acp_surface_model,
         build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
         build_left_rail_inventory, build_provider_blocked_composer_model,
         build_settings_panel_model, chat_status_tone, context_window_label,
@@ -6265,6 +6270,45 @@ mod tests {
             assistant_endpoint_from_session(&auspex_core::fixtures::SessionData::default()),
             None
         );
+    }
+
+    #[test]
+    fn assistant_status_counts_include_readiness_and_issue_totals() {
+        use auspex_core::omegon_control::{
+            OmegonAssistantLaunchReadiness, OmegonAssistantLaunchStatus, OmegonAssistantListItem,
+        };
+
+        let assistants = vec![
+            OmegonAssistantListItem {
+                launch_readiness: OmegonAssistantLaunchReadiness {
+                    status: OmegonAssistantLaunchStatus::Ready,
+                    ..Default::default()
+                },
+                blocker_count: 0,
+                warning_count: 1,
+                ..Default::default()
+            },
+            OmegonAssistantListItem {
+                launch_readiness: OmegonAssistantLaunchReadiness {
+                    status: OmegonAssistantLaunchStatus::Degraded,
+                    ..Default::default()
+                },
+                blocker_count: 1,
+                warning_count: 2,
+                ..Default::default()
+            },
+            OmegonAssistantListItem {
+                launch_readiness: OmegonAssistantLaunchReadiness {
+                    status: OmegonAssistantLaunchStatus::Blocked,
+                    ..Default::default()
+                },
+                blocker_count: 3,
+                warning_count: 0,
+                ..Default::default()
+            },
+        ];
+
+        assert_eq!(assistant_status_counts(&assistants), (1, 1, 1, 4, 3));
     }
 
     #[test]
