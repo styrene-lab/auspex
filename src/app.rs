@@ -168,6 +168,7 @@ struct AgentDeployWorkspaceState {
 struct AssistantWorkspaceState {
     endpoint: Option<String>,
     assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
+    selected_id: Option<String>,
     loading: bool,
     message: Option<String>,
     error: Option<String>,
@@ -3970,7 +3971,7 @@ fn assistant_readiness_items<'a>(
 }
 
 fn render_assistant_workspace(
-    state: Signal<AssistantWorkspaceState>,
+    mut state: Signal<AssistantWorkspaceState>,
     session: &auspex_core::fixtures::SessionData,
 ) -> Element {
     let endpoint = assistant_endpoint_from_session(session);
@@ -3982,6 +3983,20 @@ fn render_assistant_workspace(
         auspex_core::omegon_control::OmegonAssistantLaunchStatus::Degraded => 1,
         auspex_core::omegon_control::OmegonAssistantLaunchStatus::Blocked => 2,
     });
+    let selected_assistant = snapshot
+        .selected_id
+        .as_deref()
+        .and_then(|selected| {
+            assistants
+                .iter()
+                .find(|assistant| assistant.id == selected)
+                .cloned()
+        })
+        .or_else(|| assistants.first().cloned());
+    let selected_status = selected_assistant
+        .as_ref()
+        .map(|assistant| assistant_status_label(assistant.launch_readiness.status))
+        .unwrap_or("none");
 
     rsx! {
         section { class: "deploy-workspace assistant-workspace",
@@ -4039,38 +4054,61 @@ fn render_assistant_workspace(
                             {
                                 let model = assistant.model.as_deref().unwrap_or("model pending");
                                 let status = assistant_status_label(assistant.launch_readiness.status);
-                                let trust_badges = assistant_trust_badges(&assistant.trust);
-                                let readiness_items = assistant_readiness_items(
-                                    &assistant.launch_readiness.blockers,
-                                    &assistant.launch_readiness.warnings,
-                                );
+                                let is_selected = snapshot.selected_id.as_deref() == Some(assistant.id.as_str());
+                                let assistant_id = assistant.id.clone();
                                 rsx! {
-                                    div { class: "deploy-package", "data-state": status,
+                                    button {
+                                        class: if is_selected { "deploy-package deploy-package-active" } else { "deploy-package" },
+                                        "data-state": status,
+                                        r#type: "button",
+                                        onclick: move |_| state.write().selected_id = Some(assistant_id.clone()),
                                         span { class: "deploy-package-title", "{assistant.name}" }
                                         span { class: "deploy-package-desc", "{assistant.description}" }
-                                        span { class: "deploy-package-meta",
-                                            "{assistant.id} · {assistant.domain} · {model}"
-                                        }
+                                        span { class: "deploy-package-meta", "{assistant.id} · {assistant.domain} · {model}" }
                                         span { class: "deploy-package-meta",
                                             "{status} · {assistant.blocker_count} blockers · {assistant.warning_count} warnings · {assistant.required_secret_count} required secrets · {assistant.optional_secret_count} optional secrets"
-                                        }
-                                        div { class: "deploy-lifecycle-steps",
-                                            for badge in trust_badges {
-                                                span { class: "deploy-lifecycle-step", "data-state": "ok", "{badge}" }
-                                            }
-                                        }
-                                        if !readiness_items.is_empty() {
-                                            div { class: "deploy-status-stack",
-                                                for (tone, kind, id) in readiness_items {
-                                                    span { class: "fleet-card-meta", "{tone}: {kind} {id}" }
-                                                }
-                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
+            }
+
+            section { class: "deploy-panel",
+                div { class: "deploy-section-title",
+                    h3 { "Selected readiness" }
+                    span { "{selected_status}" }
+                }
+                if let Some(assistant) = selected_assistant {
+                    {
+                        let trust_badges = assistant_trust_badges(&assistant.trust);
+                        let readiness_items = assistant_readiness_items(
+                            &assistant.launch_readiness.blockers,
+                            &assistant.launch_readiness.warnings,
+                        );
+                        rsx! {
+                            div { class: "deploy-status-stack",
+                                strong { "{assistant.name}" }
+                                span { class: "fleet-card-meta", "{assistant.id} · {assistant.domain}" }
+                                div { class: "deploy-lifecycle-steps",
+                                    for badge in trust_badges {
+                                        span { class: "deploy-lifecycle-step", "data-state": "ok", "{badge}" }
+                                    }
+                                }
+                                if readiness_items.is_empty() {
+                                    span { class: "fleet-card-meta", "No blockers or warnings reported." }
+                                } else {
+                                    for (tone, kind, id) in readiness_items {
+                                        span { class: "fleet-card-meta", "{tone}: {kind} {id}" }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    p { class: "panel-muted", "Select an assistant after loading readiness cards." }
                 }
             }
         }
@@ -4243,6 +4281,12 @@ async fn refresh_assistant_workspace(
     state.endpoint = endpoint;
     match result {
         Ok(assistants) => {
+            let selected_still_exists = state.selected_id.as_deref().is_some_and(|selected| {
+                assistants.iter().any(|assistant| assistant.id == selected)
+            });
+            if !selected_still_exists {
+                state.selected_id = assistants.first().map(|assistant| assistant.id.clone());
+            }
             state.assistants = assistants;
             state.error = None;
             state
