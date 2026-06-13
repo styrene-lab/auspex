@@ -4316,6 +4316,23 @@ fn operator_websocket_url(acp_proxy: &str, token: &str) -> Option<String> {
     Some(format!("{acp_proxy}{token_query}"))
 }
 
+fn apply_assistant_refresh_success(
+    state: &mut AssistantWorkspaceState,
+    assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
+) {
+    let selected_still_exists = state
+        .selected_id
+        .as_deref()
+        .is_some_and(|selected| assistants.iter().any(|assistant| assistant.id == selected));
+    if !selected_still_exists {
+        state.selected_id = assistants.first().map(|assistant| assistant.id.clone());
+    }
+    let loaded_count = assistants.len();
+    state.assistants = assistants;
+    state.error = None;
+    state.message = Some(format!("Loaded {loaded_count} assistant readiness cards."));
+}
+
 #[allow(dead_code)]
 async fn refresh_assistant_workspace(
     state: &mut Signal<AssistantWorkspaceState>,
@@ -4329,16 +4346,7 @@ async fn refresh_assistant_workspace(
     state.endpoint = endpoint;
     match result {
         Ok(assistants) => {
-            let selected_still_exists = state.selected_id.as_deref().is_some_and(|selected| {
-                assistants.iter().any(|assistant| assistant.id == selected)
-            });
-            if !selected_still_exists {
-                state.selected_id = assistants.first().map(|assistant| assistant.id.clone());
-            }
-            let loaded_count = assistants.len();
-            state.assistants = assistants;
-            state.error = None;
-            state.message = Some(format!("Loaded {loaded_count} assistant readiness cards."));
+            apply_assistant_refresh_success(&mut state, assistants);
         }
         Err(error) => {
             state.error = Some(error);
@@ -6207,19 +6215,20 @@ mod tests {
     use super::{
         AgentDeployFormState, AgentDeployWorkspaceState, AuditFilters, DeployPackageModel,
         DeploySecretGrantModel, SettingsAuthAction, Workspace, app_surface_state, app_surface_tone,
-        assistant_endpoint_from_session, assistant_status_counts, audit_entry_matches_filters,
-        audit_kind_key, block_origin_label, build_audit_panel_model, build_chat_acp_surface_model,
-        build_chat_empty_state_model, build_deploy_preflight, build_dispatch_context_strip_model,
-        build_left_rail_inventory, build_provider_blocked_composer_model,
-        build_settings_panel_model, chat_status_tone, context_window_label,
-        control_plane_security_label, derive_acp_url_from_ws, dispatch_targeted_command,
-        find_transcript_anchor, looks_like_structured_payload, redact_ws_token,
-        render_chat_status_banner, render_dispatch_context_strip, should_collapse_agent_payload,
-        should_expand_system_notice, should_expand_tool_args, should_expand_tool_output,
-        system_block_class, system_block_tone, system_notice_summary_label, terminal_tool_context,
-        text_block_class, text_block_tone, tool_block_class, tool_block_tone, tool_partial_label,
-        tool_result_label, tool_status_label, tool_visual_state, transcript_block_dom_id,
-        transcript_disclosure_meta, transcript_disclosure_open,
+        apply_assistant_refresh_success, assistant_endpoint_from_session, assistant_status_counts,
+        audit_entry_matches_filters, audit_kind_key, block_origin_label, build_audit_panel_model,
+        build_chat_acp_surface_model, build_chat_empty_state_model, build_deploy_preflight,
+        build_dispatch_context_strip_model, build_left_rail_inventory,
+        build_provider_blocked_composer_model, build_settings_panel_model, chat_status_tone,
+        context_window_label, control_plane_security_label, derive_acp_url_from_ws,
+        dispatch_targeted_command, find_transcript_anchor, looks_like_structured_payload,
+        redact_ws_token, render_chat_status_banner, render_dispatch_context_strip,
+        should_collapse_agent_payload, should_expand_system_notice, should_expand_tool_args,
+        should_expand_tool_output, system_block_class, system_block_tone,
+        system_notice_summary_label, terminal_tool_context, text_block_class, text_block_tone,
+        tool_block_class, tool_block_tone, tool_partial_label, tool_result_label,
+        tool_status_label, tool_visual_state, transcript_block_dom_id, transcript_disclosure_meta,
+        transcript_disclosure_open,
     };
     use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
     use auspex_core::controller::{AppController, SessionMode};
@@ -6309,6 +6318,60 @@ mod tests {
         ];
 
         assert_eq!(assistant_status_counts(&assistants), (1, 1, 1, 4, 3));
+    }
+
+    #[test]
+    fn assistant_refresh_success_preserves_existing_selection() {
+        use auspex_core::omegon_control::OmegonAssistantListItem;
+
+        let mut state = super::AssistantWorkspaceState {
+            selected_id: Some("beta".into()),
+            error: Some("stale error".into()),
+            message: Some("stale message".into()),
+            ..Default::default()
+        };
+
+        apply_assistant_refresh_success(
+            &mut state,
+            vec![
+                OmegonAssistantListItem {
+                    id: "alpha".into(),
+                    ..Default::default()
+                },
+                OmegonAssistantListItem {
+                    id: "beta".into(),
+                    ..Default::default()
+                },
+            ],
+        );
+
+        assert_eq!(state.selected_id.as_deref(), Some("beta"));
+        assert_eq!(state.assistants.len(), 2);
+        assert_eq!(state.error, None);
+        assert_eq!(
+            state.message.as_deref(),
+            Some("Loaded 2 assistant readiness cards.")
+        );
+    }
+
+    #[test]
+    fn assistant_refresh_success_selects_first_when_selection_disappears() {
+        use auspex_core::omegon_control::OmegonAssistantListItem;
+
+        let mut state = super::AssistantWorkspaceState {
+            selected_id: Some("missing".into()),
+            ..Default::default()
+        };
+
+        apply_assistant_refresh_success(
+            &mut state,
+            vec![OmegonAssistantListItem {
+                id: "alpha".into(),
+                ..Default::default()
+            }],
+        );
+
+        assert_eq!(state.selected_id.as_deref(), Some("alpha"));
     }
 
     #[test]
