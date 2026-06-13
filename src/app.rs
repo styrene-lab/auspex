@@ -6463,6 +6463,26 @@ mod tests {
     }
 
     #[test]
+    fn assistant_refresh_failure_preserves_current_cards_and_selection() {
+        use auspex_core::omegon_control::OmegonAssistantListItem;
+
+        let mut state = super::AssistantWorkspaceState {
+            selected_id: Some("alpha".into()),
+            assistants: vec![OmegonAssistantListItem {
+                id: "alpha".into(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        };
+
+        apply_assistant_refresh_failure(&mut state, "timeout".into());
+
+        assert_eq!(state.selected_id.as_deref(), Some("alpha"));
+        assert_eq!(state.assistants.len(), 1);
+        assert_eq!(state.error.as_deref(), Some("timeout"));
+    }
+
+    #[test]
     fn assistant_trust_badges_surface_high_risk_capabilities() {
         let trust = auspex_core::omegon_control::OmegonCapabilityTrustSummary {
             state_changing: true,
