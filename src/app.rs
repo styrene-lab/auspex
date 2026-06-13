@@ -3918,6 +3918,57 @@ fn assistant_status_label(
     }
 }
 
+fn assistant_trust_badges(
+    trust: &auspex_core::omegon_control::OmegonCapabilityTrustSummary,
+) -> Vec<&'static str> {
+    let mut badges = Vec::new();
+    if trust.read_only {
+        badges.push("read-only");
+    }
+    if trust.state_changing {
+        badges.push("state-changing");
+    }
+    if trust.secret_bound {
+        badges.push("secret-bound");
+    }
+    if trust.network_capable {
+        badges.push("network");
+    }
+    if trust.host_action_capable {
+        badges.push("host-action");
+    }
+    if trust.process_spawn_capable {
+        badges.push("process-spawn");
+    }
+    if trust.browser_action_capable {
+        badges.push("browser-action");
+    }
+    if trust.local_runtime {
+        badges.push("local-runtime");
+    }
+    if trust.container_runtime {
+        badges.push("container-runtime");
+    }
+    if badges.is_empty() {
+        badges.push("trust pending");
+    }
+    badges
+}
+
+fn assistant_readiness_items<'a>(
+    blockers: &'a [auspex_core::omegon_control::OmegonAssistantLaunchBlocker],
+    warnings: &'a [auspex_core::omegon_control::OmegonAssistantLaunchWarning],
+) -> Vec<(&'static str, &'a str, &'a str)> {
+    let mut items = Vec::new();
+    for blocker in blockers {
+        items.push(("blocker", blocker.kind.as_str(), blocker.id.as_str()));
+    }
+    for warning in warnings {
+        items.push(("warning", warning.kind.as_str(), warning.id.as_str()));
+    }
+    items
+}
+
 fn render_assistant_workspace(
     state: Signal<AssistantWorkspaceState>,
     session: &auspex_core::fixtures::SessionData,
@@ -3988,6 +4039,11 @@ fn render_assistant_workspace(
                             {
                                 let model = assistant.model.as_deref().unwrap_or("model pending");
                                 let status = assistant_status_label(assistant.launch_readiness.status);
+                                let trust_badges = assistant_trust_badges(&assistant.trust);
+                                let readiness_items = assistant_readiness_items(
+                                    &assistant.launch_readiness.blockers,
+                                    &assistant.launch_readiness.warnings,
+                                );
                                 rsx! {
                                     div { class: "deploy-package", "data-state": status,
                                         span { class: "deploy-package-title", "{assistant.name}" }
@@ -3996,7 +4052,19 @@ fn render_assistant_workspace(
                                             "{assistant.id} · {assistant.domain} · {model}"
                                         }
                                         span { class: "deploy-package-meta",
-                                            "{status} · {assistant.blocker_count} blockers · {assistant.warning_count} warnings · {assistant.required_secret_count} required secrets"
+                                            "{status} · {assistant.blocker_count} blockers · {assistant.warning_count} warnings · {assistant.required_secret_count} required secrets · {assistant.optional_secret_count} optional secrets"
+                                        }
+                                        div { class: "deploy-lifecycle-steps",
+                                            for badge in trust_badges {
+                                                span { class: "deploy-lifecycle-step", "data-state": "ok", "{badge}" }
+                                            }
+                                        }
+                                        if !readiness_items.is_empty() {
+                                            div { class: "deploy-status-stack",
+                                                for (tone, kind, id) in readiness_items {
+                                                    span { class: "fleet-card-meta", "{tone}: {kind} {id}" }
+                                                }
+                                            }
                                         }
                                     }
                                 }
