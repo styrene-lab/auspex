@@ -914,6 +914,50 @@ fn validate_startup_info(startup: &OmegonStartupInfo) -> Result<Option<String>, 
     validate_omegon_version(startup)
 }
 
+#[cfg(any(not(target_arch = "wasm32"), test))]
+fn existing_omegon_is_auspex_primary_from_startup(startup: &OmegonStartupInfo) -> bool {
+    let Some(descriptor) = startup.instance_descriptor.as_ref() else {
+        return false;
+    };
+
+    let identity_profile_matches = descriptor.identity.profile == "styrene.auspex-agent"
+        || descriptor.identity.profile == "auspex-agent";
+    let runtime_profile_matches = descriptor
+        .runtime
+        .as_ref()
+        .and_then(|runtime| runtime.runtime_profile.as_deref())
+        .is_some_and(|profile| profile == "auspex-primary" || profile == "auspex-agent");
+    let cwd_matches = descriptor
+        .workspace
+        .as_ref()
+        .and_then(|workspace| workspace.cwd.as_deref())
+        .is_some_and(|cwd| cwd.contains("auspex"));
+
+    identity_profile_matches || runtime_profile_matches || cwd_matches
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn existing_omegon_is_auspex_primary(startup_url: &str) -> bool {
+    let client = crate::tls_config::apply_reqwest_roots(
+        reqwest::Client::builder().timeout(Duration::from_secs(2)),
+    )
+    .ok()
+    .and_then(|builder| builder.build().ok());
+    let Some(client) = client else { return false };
+    let Ok(response) = client.get(startup_url).send().await else {
+        return false;
+    };
+    if !response.status().is_success() {
+        return false;
+    }
+    let Ok(body) = response.text().await else {
+        return false;
+    };
+    serde_json::from_str::<OmegonStartupInfo>(&body)
+        .map(|startup| existing_omegon_is_auspex_primary_from_startup(&startup))
+        .unwrap_or(false)
+}
+
 /// Locate the Omegon binary.
 ///
 /// Priority order:
@@ -1062,23 +1106,32 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     use tokio::io::AsyncBufReadExt;
 
     if omegon_is_running_async().await {
-        clear_owned_omegon_pid();
-        let default_state_url = if crate::tls_config::omegon_control_tls_args_from_env()
+        let default_startup_url = if crate::tls_config::omegon_control_tls_args_from_env()
             .map(|args| !args.is_empty())
             .unwrap_or(false)
         {
-            DEFAULT_TLS_STATE_URL
+            DEFAULT_TLS_STATE_URL.replace("/api/state", "/api/startup")
         } else {
-            DEFAULT_STATE_URL
+            DEFAULT_STATE_URL.replace("/api/state", "/api/startup")
         };
-        match bootstrap_from_http_state_async(default_state_url, &ConnectHints::from_env()).await {
-            Ok(result) => return result,
-            Err(error) => {
-                eprintln!(
-                    "auspex: existing local Omegon at {default_state_url} failed bootstrap ({error}); reaping conflicting owned instances and spawning fresh one"
-                );
-                reap_conflicting_omegon_children();
+        if existing_omegon_is_auspex_primary(&default_startup_url).await {
+            let default_state_url = default_startup_url.replace("/api/startup", "/api/state");
+            match bootstrap_from_http_state_async(&default_state_url, &ConnectHints::from_env())
+                .await
+            {
+                Ok(result) => return result,
+                Err(error) => {
+                    eprintln!(
+                        "auspex: existing Auspex primary Omegon at {default_state_url} failed bootstrap ({error}); reaping and spawning fresh one"
+                    );
+                    reap_conflicting_omegon_children();
+                }
             }
+        } else {
+            eprintln!(
+                "auspex: default Omegon control port is occupied by a non-Auspex-primary runtime; reaping it so Auspex can launch styrene.auspex-agent"
+            );
+            reap_default_omegon_control_port_processes();
         }
     }
 
@@ -1530,6 +1583,45 @@ fn install_auspex_omegon_assets() {
 #[cfg(not(target_arch = "wasm32"))]
 fn provider_status_key(name: &str) -> &str {
     name.split('/').next().unwrap_or(name).trim()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn reap_default_omegon_control_port_processes() {
+    for pid in default_omegon_control_port_pids() {
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn default_omegon_control_port_pids() -> Vec<u32> {
+    let output = match std::process::Command::new("ps")
+        .args(["ax", "-o", "pid=,command="])
+        .output()
+    {
+        Ok(output) => output,
+        Err(_) => return Vec::new(),
+    };
+
+    if !output.status.success() {
+        return Vec::new();
+    }
+
+    String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .filter_map(|line| {
+            let trimmed = line.trim();
+            let (pid, command) = trimmed.split_once(' ')?;
+            if command.contains("omegon")
+                && command.contains("serve")
+                && command.contains("--control-port 7842")
+            {
+                return pid.parse::<u32>().ok();
+            }
+            None
+        })
+        .collect()
 }
 
 #[cfg(not(target_arch = "wasm32"))]
