@@ -1,0 +1,4 @@
+{"section":"Architecture","content":"Auspex requires a first-class Auspex-owned primary Omegon; generic local attachment is insufficient for the default product state.","confidence":1.0}
+{"section":"Runtime","content":"The primary Auspex Omegon should launch via `omegon serve --agent <auspex-agent bundle> --control-port 7842 --strict-port` when available.","confidence":1.0}
+{"section":"Known Limitation","content":"Anthropic Fable routing is temporarily unavailable; avoid `anthropic:claude-fable-5` until restored.","confidence":1.0}
+{"section":"Safety","content":"Auspex-owned runtimes may be lifecycle-managed; user-owned and unknown Omegon processes are attach/probe only unless policy grants control.","confidence":1.0}

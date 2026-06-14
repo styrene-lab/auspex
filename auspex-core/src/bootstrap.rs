@@ -230,6 +230,8 @@ const OWNED_OMEGON_PID_FILE: &str = "auspex-owned-omegon.pid";
 const AUSPEX_OMEGON_POSTURE: &str = "architect";
 #[cfg(not(target_arch = "wasm32"))]
 const AUSPEX_OMEGON_THINKING: &str = "medium";
+#[cfg(not(target_arch = "wasm32"))]
+const AUSPEX_AGENT_BUNDLE_REL: &str = "agents/auspex-agent";
 
 #[cfg(not(target_arch = "wasm32"))]
 const SPAWN_TIMEOUT: Duration = Duration::from_secs(15);
@@ -295,14 +297,18 @@ impl ConnectHints {
         // must be captured at compile time rather than through `std::env`.
         // If neither query params nor a build-time override are present, default
         // to the page origin (auspex-operator fleet API) with the agent state path.
+        let page_origin = window.as_ref().and_then(|w| w.location().origin().ok());
+        let local_dev_startup_url = page_origin.as_deref().and_then(|origin| {
+            if origin == "http://127.0.0.1:8080" || origin == "http://localhost:8080" {
+                Some("http://127.0.0.1:7842/api/startup".to_string())
+            } else {
+                None
+            }
+        });
         let startup_url = get("startup")
             .or_else(|| option_env!("AUSPEX_OMEGON_STARTUP_URL").map(str::to_string))
-            .or_else(|| {
-                window
-                    .as_ref()
-                    .and_then(|w| w.location().origin().ok())
-                    .map(|origin| format!("{origin}/api/state"))
-            });
+            .or(local_dev_startup_url)
+            .or_else(|| page_origin.map(|origin| format!("{origin}/api/state")));
         let ws_url = get("ws").or_else(|| option_env!("AUSPEX_OMEGON_WS_URL").map(str::to_string));
         let ws_token =
             get("token").or_else(|| option_env!("AUSPEX_OMEGON_WS_TOKEN").map(str::to_string));
@@ -993,6 +999,39 @@ fn auspex_workspace_root() -> Option<PathBuf> {
         .find(|root| root.join("Cargo.toml").exists() && root.join("auspex-core").exists())
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn auspex_agent_bundle_path() -> Option<PathBuf> {
+    auspex_workspace_root()
+        .map(|root| root.join(AUSPEX_AGENT_BUNDLE_REL))
+        .filter(|path| path.join("agent.toml").exists())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn build_omegon_serve_args(
+    agent_bundle: Option<&std::path::Path>,
+    model: &str,
+    tls_args: &[String],
+) -> Vec<String> {
+    let mut args = vec![
+        "--posture".to_string(),
+        AUSPEX_OMEGON_POSTURE.to_string(),
+        "serve".to_string(),
+    ];
+    if let Some(agent_bundle) = agent_bundle {
+        args.push("--agent".to_string());
+        args.push(agent_bundle.display().to_string());
+    }
+    args.extend([
+        "--control-port".to_string(),
+        "7842".to_string(),
+        "--strict-port".to_string(),
+        "--model".to_string(),
+        model.to_string(),
+    ]);
+    args.extend(tls_args.iter().cloned());
+    args
+}
+
 /// Spawn the owned Omegon backend, verify the launcher contract,
 /// then bootstrap from the control plane.
 ///
@@ -1061,18 +1100,9 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     if let Some(root) = auspex_workspace_root() {
         command.current_dir(root);
     }
-    command
-        .arg("--posture")
-        .arg(AUSPEX_OMEGON_POSTURE)
-        .arg("serve")
-        .arg("--control-port")
-        .arg("7842")
-        .arg("--strict-port")
-        .arg("--model")
-        .arg(model);
-    for arg in tls_args {
-        command.arg(arg);
-    }
+    let agent_bundle = auspex_agent_bundle_path();
+    let args = build_omegon_serve_args(agent_bundle.as_deref(), &model, &tls_args);
+    command.args(args);
     let mut child = match command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1584,6 +1614,46 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn build_omegon_serve_args_includes_auspex_agent_bundle() {
+        let bundle = PathBuf::from("/tmp/auspex/agents/auspex-agent");
+        let args = build_omegon_serve_args(Some(&bundle), "openai-codex:gpt-5.4", &[]);
+
+        assert_eq!(args[0..3], ["--posture", "architect", "serve"]);
+        assert!(
+            args.windows(2)
+                .any(|window| window == ["--agent", "/tmp/auspex/agents/auspex-agent"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|window| window == ["--control-port", "7842"])
+        );
+        assert!(args.iter().any(|arg| arg == "--strict-port"));
+        assert!(
+            args.windows(2)
+                .any(|window| window == ["--model", "openai-codex:gpt-5.4"])
+        );
+    }
+
+    #[test]
+    fn build_omegon_serve_args_omits_agent_when_bundle_missing() {
+        let args = build_omegon_serve_args(
+            None,
+            "anthropic:claude-sonnet-4-6",
+            &["--rpc-tls-cert".into(), "cert.pem".into()],
+        );
+
+        assert!(!args.iter().any(|arg| arg == "--agent"));
+        assert!(
+            args.windows(2)
+                .any(|window| window == ["--model", "anthropic:claude-sonnet-4-6"])
+        );
+        assert!(
+            args.windows(2)
+                .any(|window| window == ["--rpc-tls-cert", "cert.pem"])
+        );
     }
 
     #[test]

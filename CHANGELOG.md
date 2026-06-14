@@ -8,10 +8,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
+- Added a repo-owned `agents/auspex-agent` bundle and tested native bootstrap launch arguments for the primary Omegon `omegon serve --agent` path.
 - Added the first Auspex-side Omegon assistant workspace plumbing, deriving the assistant capability endpoint from attached session telemetry and loading typed assistant readiness cards from `/api/capabilities/assistants` with tested trimmed and blank control-plane base URLs.
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
+- Refactored the assistant workspace out of the legacy cockpit center stage into a dedicated assistant-first shell/stage with shared workspace navigation.
 - Made Assistants the default and first workspace tab so Auspex opens directly into assistant readiness instead of the legacy COP view.
 - Web builds can now consume compile-time `AUSPEX_OMEGON_STARTUP_URL`, `AUSPEX_OMEGON_WS_URL`, and `AUSPEX_OMEGON_WS_TOKEN` overrides for local `dx serve` attachment to an Omegon control plane.
 - Removed the inactive Scribe workspace from active navigation; Flynt remains the task board, Sentry remains execution, and Auspex focuses on workflow handoff, command, and observability surfaces.

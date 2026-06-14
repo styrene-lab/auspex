@@ -1347,7 +1347,13 @@ pub fn App() -> Element {
     let selected_cockpit_entity_snapshot = selected_cockpit_entity.read().clone();
 
     rsx! {
-        div { class: if SHELL_BLOCKOUT_MODE { "shell shell-cockpit shell-blockout-mode" } else { "shell shell-cockpit" },
+        div { class: if SHELL_BLOCKOUT_MODE {
+                "shell shell-cockpit shell-blockout-mode"
+            } else if *workspace.read() == Workspace::Assistants {
+                "shell shell-cockpit shell-assistant-focus"
+            } else {
+                "shell shell-cockpit"
+            },
             div { class: "cockpit-canvas", "aria-hidden": "true",
                 div { class: "cockpit-bg-svg", "aria-hidden": "true" }
             }
@@ -1457,7 +1463,7 @@ pub fn App() -> Element {
                 }
             }
 
-            if !SHELL_BLOCKOUT_MODE {
+            if !SHELL_BLOCKOUT_MODE && *workspace.read() != Workspace::Assistants {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
             }
 
@@ -1484,6 +1490,10 @@ pub fn App() -> Element {
                             }
                         }
                     }
+                }
+            } else if *workspace.read() == Workspace::Assistants {
+                div { class: "assistant-shell assistant-shell-single",
+                    {render_assistant_stage(workspace, cockpit_center_body)}
                 }
             } else {
                 div { class: "cockpit-console-shell",
@@ -1947,7 +1957,7 @@ pub fn App() -> Element {
             }
 
             // ── Bottom bar ──────────────────────────────────────────────
-            footer { class: "bottombar",
+            footer { class: if *workspace.read() == Workspace::Assistants { "bottombar bottombar-assistant-focus" } else { "bottombar" },
                 // Bottom-left corner box — org/operator identity
                 div { class: "bottombar-org",
                     span { class: "bottombar-label", "Operator" }
@@ -4002,13 +4012,19 @@ fn assistant_status_counts(
     )
 }
 
-fn render_assistant_workspace(
-    mut state: Signal<AssistantWorkspaceState>,
-    session: &auspex_core::fixtures::SessionData,
-) -> Element {
-    let endpoint = assistant_endpoint_from_session(session);
-    let session_snapshot = session.clone();
-    let snapshot = state.read().clone();
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AssistantWorkspaceModel {
+    assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
+    selected_assistant: Option<auspex_core::omegon_control::OmegonAssistantListItem>,
+    selected_status: &'static str,
+    ready_count: usize,
+    degraded_count: usize,
+    blocked_count: usize,
+    blocker_total: usize,
+    warning_total: usize,
+}
+
+fn build_assistant_workspace_model(snapshot: &AssistantWorkspaceState) -> AssistantWorkspaceModel {
     let mut assistants = snapshot.assistants.clone();
     assistants.sort_by_key(|assistant| match assistant.launch_readiness.status {
         auspex_core::omegon_control::OmegonAssistantLaunchStatus::Ready => 0,
@@ -4031,6 +4047,29 @@ fn render_assistant_workspace(
         .unwrap_or("none");
     let (ready_count, degraded_count, blocked_count, blocker_total, warning_total) =
         assistant_status_counts(&assistants);
+
+    AssistantWorkspaceModel {
+        assistants,
+        selected_assistant,
+        selected_status,
+        ready_count,
+        degraded_count,
+        blocked_count,
+        blocker_total,
+        warning_total,
+    }
+}
+
+fn render_assistant_workspace(
+    mut state: Signal<AssistantWorkspaceState>,
+    session: &auspex_core::fixtures::SessionData,
+) -> Element {
+    let endpoint = assistant_endpoint_from_session(session);
+    let session_snapshot = session.clone();
+    let snapshot = state.read().clone();
+    let model = build_assistant_workspace_model(&snapshot);
+    let assistants = model.assistants.clone();
+    let selected_assistant = model.selected_assistant.clone();
 
     rsx! {
         section { class: "assistant-workspace",
@@ -4064,23 +4103,23 @@ fn render_assistant_workspace(
 
             section { class: "assistant-summary",
                 div { class: "assistant-summary-metric", "data-state": "ok",
-                    span { class: "assistant-summary-value", "{ready_count}" }
+                    span { class: "assistant-summary-value", "{model.ready_count}" }
                     span { class: "assistant-summary-label", "ready" }
                 }
                 div { class: "assistant-summary-metric", "data-state": "warn",
-                    span { class: "assistant-summary-value", "{degraded_count}" }
+                    span { class: "assistant-summary-value", "{model.degraded_count}" }
                     span { class: "assistant-summary-label", "degraded" }
                 }
                 div { class: "assistant-summary-metric", "data-state": "failed",
-                    span { class: "assistant-summary-value", "{blocked_count}" }
+                    span { class: "assistant-summary-value", "{model.blocked_count}" }
                     span { class: "assistant-summary-label", "blocked" }
                 }
-                div { class: "assistant-summary-metric", "data-state": if blocker_total == 0 { "ok" } else { "failed" },
-                    span { class: "assistant-summary-value", "{blocker_total}" }
+                div { class: "assistant-summary-metric", "data-state": if model.blocker_total == 0 { "ok" } else { "failed" },
+                    span { class: "assistant-summary-value", "{model.blocker_total}" }
                     span { class: "assistant-summary-label", "blockers" }
                 }
-                div { class: "assistant-summary-metric", "data-state": if warning_total == 0 { "ok" } else { "warn" },
-                    span { class: "assistant-summary-value", "{warning_total}" }
+                div { class: "assistant-summary-metric", "data-state": if model.warning_total == 0 { "ok" } else { "warn" },
+                    span { class: "assistant-summary-value", "{model.warning_total}" }
                     span { class: "assistant-summary-label", "warnings" }
                 }
             }
@@ -4145,7 +4184,7 @@ fn render_assistant_workspace(
                 section { class: "assistant-detail-panel",
                     div { class: "assistant-section-title",
                         h3 { "Selected readiness" }
-                        span { "{selected_status}" }
+                        span { "{model.selected_status}" }
                     }
                     if let Some(assistant) = selected_assistant {
                         {
@@ -4595,19 +4634,34 @@ async fn operator_post(path: &str, token: &str, body: serde_json::Value) -> Resu
     Ok(text)
 }
 
-fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) -> Element {
+fn render_workspace_nav(mut workspace: Signal<Workspace>) -> Element {
+    rsx! {
+        nav { class: "cockpit-workspace-nav",
+            button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
+            button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
+            button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
+            button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
+            button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
+            button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
+            button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
+        }
+    }
+}
+
+fn render_assistant_stage(workspace: Signal<Workspace>, body: Element) -> Element {
+    rsx! {
+        main { class: "assistant-stage",
+            {render_workspace_nav(workspace)}
+            {body}
+        }
+    }
+}
+
+fn render_cockpit_center_stage(workspace: Signal<Workspace>, body: Element) -> Element {
     rsx! {
         section { class: "cockpit-cop-stage",
             section { class: "cockpit-cop-bay cockpit-focus-host",
-                nav { class: "cockpit-workspace-nav",
-                    button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
-                    button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
-                    button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
-                    button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
-                    button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
-                    button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
-                    button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
-                }
+                {render_workspace_nav(workspace)}
                 {body}
             }
         }
