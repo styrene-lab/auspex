@@ -289,19 +289,28 @@ impl ConnectHints {
                 .filter(|s| !s.is_empty())
         };
 
-        // When no explicit startup URL is provided, default to the page origin
-        // (auspex-operator fleet API) with the agent state path.
-        let startup_url = get("startup").or_else(|| {
-            window
-                .as_ref()
-                .and_then(|w| w.location().origin().ok())
-                .map(|origin| format!("{origin}/api/state"))
-        });
+        // When no explicit startup URL is provided, prefer a compile-time dev
+        // override injected by the web build. Browser WASM cannot read process
+        // env vars at runtime, so `AUSPEX_OMEGON_STARTUP_URL=... dx serve`
+        // must be captured at compile time rather than through `std::env`.
+        // If neither query params nor a build-time override are present, default
+        // to the page origin (auspex-operator fleet API) with the agent state path.
+        let startup_url = get("startup")
+            .or_else(|| option_env!("AUSPEX_OMEGON_STARTUP_URL").map(str::to_string))
+            .or_else(|| {
+                window
+                    .as_ref()
+                    .and_then(|w| w.location().origin().ok())
+                    .map(|origin| format!("{origin}/api/state"))
+            });
+        let ws_url = get("ws").or_else(|| option_env!("AUSPEX_OMEGON_WS_URL").map(str::to_string));
+        let ws_token =
+            get("token").or_else(|| option_env!("AUSPEX_OMEGON_WS_TOKEN").map(str::to_string));
 
         Self {
-            ws_url: get("ws"),
+            ws_url,
             startup_url,
-            ws_token: get("token"),
+            ws_token,
         }
     }
 }
