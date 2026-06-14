@@ -828,7 +828,7 @@ pub fn App() -> Element {
     let mut command_transport = use_signal(|| None::<CommandTransport>);
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
-    let mut workspace = use_signal(|| Workspace::Cop);
+    let mut workspace = use_signal(|| Workspace::Assistants);
     let deploy_workspace = use_signal(AgentDeployWorkspaceState::default);
     let assistant_workspace = use_signal(AssistantWorkspaceState::default);
     let mut chat_last_activity: Signal<Option<std::time::Instant>> = use_signal(|| None);
@@ -4033,38 +4033,64 @@ fn render_assistant_workspace(
         assistant_status_counts(&assistants);
 
     rsx! {
-        section { class: "deploy-workspace assistant-workspace",
-            div { class: "deploy-workspace-header",
-                div {
+        section { class: "assistant-workspace",
+            div { class: "assistant-hero",
+                div { class: "assistant-hero-copy",
                     p { class: "eyebrow", "OMEGON ASSISTANTS" }
                     h2 { "Assistant readiness" }
                     p { class: "panel-muted",
-                        "Launch readiness is calculated by the attached Omegon capability surface; Auspex only displays and operationalizes it."
+                        "Launch readiness is calculated by the attached Omegon capability surface; Auspex displays runtime truth without re-inferring it."
                     }
                 }
-                button {
-                    class: "deploy-refresh",
-                    r#type: "button",
-                    disabled: snapshot.loading,
-                    onclick: move |_| {
-                        let mut state = state;
-                        let session = session_snapshot.clone();
-                        spawn(async move {
-                            refresh_assistant_workspace(&mut state, &session).await;
-                        });
-                    },
-                    if snapshot.loading { "Loading" } else { "Refresh" }
+                div { class: "assistant-hero-actions",
+                    span { class: if endpoint.is_some() { "assistant-endpoint-pill attached" } else { "assistant-endpoint-pill missing" },
+                        if endpoint.is_some() { "endpoint attached" } else { "endpoint missing" }
+                    }
+                    button {
+                        class: "assistant-refresh",
+                        r#type: "button",
+                        disabled: snapshot.loading,
+                        onclick: move |_| {
+                            let mut state = state;
+                            let session = session_snapshot.clone();
+                            spawn(async move {
+                                refresh_assistant_workspace(&mut state, &session).await;
+                            });
+                        },
+                        if snapshot.loading { "Loading" } else { "Refresh readiness" }
+                    }
                 }
             }
 
-            section { class: "deploy-panel",
-                div { class: "deploy-section-title",
+            section { class: "assistant-summary",
+                div { class: "assistant-summary-metric", "data-state": "ok",
+                    span { class: "assistant-summary-value", "{ready_count}" }
+                    span { class: "assistant-summary-label", "ready" }
+                }
+                div { class: "assistant-summary-metric", "data-state": "warn",
+                    span { class: "assistant-summary-value", "{degraded_count}" }
+                    span { class: "assistant-summary-label", "degraded" }
+                }
+                div { class: "assistant-summary-metric", "data-state": "failed",
+                    span { class: "assistant-summary-value", "{blocked_count}" }
+                    span { class: "assistant-summary-label", "blocked" }
+                }
+                div { class: "assistant-summary-metric", "data-state": if blocker_total == 0 { "ok" } else { "failed" },
+                    span { class: "assistant-summary-value", "{blocker_total}" }
+                    span { class: "assistant-summary-label", "blockers" }
+                }
+                div { class: "assistant-summary-metric", "data-state": if warning_total == 0 { "ok" } else { "warn" },
+                    span { class: "assistant-summary-value", "{warning_total}" }
+                    span { class: "assistant-summary-label", "warnings" }
+                }
+            }
+
+            section { class: "assistant-endpoint-panel",
+                div { class: "assistant-section-title",
                     h3 { "Capability endpoint" }
                     span { if endpoint.is_some() { "attached" } else { "missing" } }
                 }
-                code {
-                    {endpoint.as_deref().unwrap_or("No attached Omegon /api/capabilities/assistants endpoint.")}
-                }
+                code { {endpoint.as_deref().unwrap_or("No attached Omegon /api/capabilities/assistants endpoint.")} }
                 if let Some(error) = snapshot.error.as_deref() {
                     p { class: "deploy-error", "{error}" }
                 } else if let Some(message) = snapshot.message.as_deref() {
@@ -4072,49 +4098,42 @@ fn render_assistant_workspace(
                 }
             }
 
-            section { class: "deploy-panel",
-                div { class: "deploy-section-title",
-                    h3 { "Readiness summary" }
-                    span { "{assistants.len()} assistants" }
-                }
-                div { class: "deploy-lifecycle-steps",
-                    span { class: "deploy-lifecycle-step", "data-state": "ok", "{ready_count} ready" }
-                    span { class: "deploy-lifecycle-step", "data-state": "warn", "{degraded_count} degraded" }
-                    span { class: "deploy-lifecycle-step", "data-state": "failed", "{blocked_count} blocked" }
-                    span { class: "deploy-lifecycle-step", "data-state": if blocker_total == 0 { "ok" } else { "failed" }, "{blocker_total} blockers" }
-                    span { class: "deploy-lifecycle-step", "data-state": if warning_total == 0 { "ok" } else { "warn" }, "{warning_total} warnings" }
-                }
-            }
-
-            section { class: "deploy-panel",
-                div { class: "deploy-section-title",
-                    h3 { "Readiness cards" }
-                    span { "{assistants.len()} assistants" }
-                }
-                div { class: "deploy-package-list",
-                    if assistants.is_empty() {
-                        div { class: "deploy-package",
-                            span { class: "deploy-package-title", "No assistant capabilities loaded" }
-                            span { class: "deploy-package-desc", "Refresh after attaching an Omegon runtime that exposes assistant capability surfaces." }
-                        }
-                    } else {
-                        for assistant in assistants {
-                            {
-                                let model = assistant.model.as_deref().unwrap_or("model pending");
-                                let status = assistant_status_label(assistant.launch_readiness.status);
-                                let is_selected = snapshot.selected_id.as_deref() == Some(assistant.id.as_str());
-                                let assistant_id = assistant.id.clone();
-                                rsx! {
-                                    button {
-                                        class: if is_selected { "deploy-package deploy-package-active" } else { "deploy-package" },
-                                        "data-state": status,
-                                        r#type: "button",
-                                        onclick: move |_| state.write().selected_id = Some(assistant_id.clone()),
-                                        span { class: "deploy-package-title", "{assistant.name}" }
-                                        span { class: "deploy-package-desc", "{assistant.description}" }
-                                        span { class: "deploy-package-meta", "{assistant.id} · {assistant.domain} · {model}" }
-                                        span { class: "deploy-package-meta",
-                                            "{status} · {assistant.blocker_count} blockers · {assistant.warning_count} warnings · {assistant.required_secret_count} required secrets · {assistant.optional_secret_count} optional secrets"
+            div { class: "assistant-main-grid",
+                section { class: "assistant-roster-panel",
+                    div { class: "assistant-section-title",
+                        h3 { "Assistant roster" }
+                        span { "{assistants.len()} assistants" }
+                    }
+                    div { class: "assistant-roster-list",
+                        if assistants.is_empty() {
+                            div { class: "assistant-empty-card",
+                                strong { "No assistant capabilities loaded" }
+                                span { "Refresh after attaching an Omegon runtime that exposes assistant capability surfaces." }
+                            }
+                        } else {
+                            for assistant in assistants {
+                                {
+                                    let model = assistant.model.as_deref().unwrap_or("model pending");
+                                    let status = assistant_status_label(assistant.launch_readiness.status);
+                                    let is_selected = snapshot.selected_id.as_deref() == Some(assistant.id.as_str());
+                                    let assistant_id = assistant.id.clone();
+                                    rsx! {
+                                        button {
+                                            class: if is_selected { "assistant-card assistant-card-active" } else { "assistant-card" },
+                                            "data-state": status,
+                                            r#type: "button",
+                                            onclick: move |_| state.write().selected_id = Some(assistant_id.clone()),
+                                            div { class: "assistant-card-heading",
+                                                strong { "{assistant.name}" }
+                                                span { "{status}" }
+                                            }
+                                            span { class: "assistant-card-desc", "{assistant.description}" }
+                                            span { class: "assistant-card-meta", "{assistant.id} · {assistant.domain} · {model}" }
+                                            div { class: "assistant-card-counts",
+                                                span { "{assistant.blocker_count} blockers" }
+                                                span { "{assistant.warning_count} warnings" }
+                                                span { "{assistant.required_secret_count} required secrets" }
+                                            }
                                         }
                                     }
                                 }
@@ -4122,41 +4141,45 @@ fn render_assistant_workspace(
                         }
                     }
                 }
-            }
 
-            section { class: "deploy-panel",
-                div { class: "deploy-section-title",
-                    h3 { "Selected readiness" }
-                    span { "{selected_status}" }
-                }
-                if let Some(assistant) = selected_assistant {
-                    {
-                        let trust_badges = assistant_trust_badges(&assistant.trust);
-                        let readiness_items = assistant_readiness_items(
-                            &assistant.launch_readiness.blockers,
-                            &assistant.launch_readiness.warnings,
-                        );
-                        rsx! {
-                            div { class: "deploy-status-stack",
-                                strong { "{assistant.name}" }
-                                span { class: "fleet-card-meta", "{assistant.id} · {assistant.domain}" }
-                                div { class: "deploy-lifecycle-steps",
-                                    for badge in trust_badges {
-                                        span { class: "deploy-lifecycle-step", "data-state": "ok", "{badge}" }
+                section { class: "assistant-detail-panel",
+                    div { class: "assistant-section-title",
+                        h3 { "Selected readiness" }
+                        span { "{selected_status}" }
+                    }
+                    if let Some(assistant) = selected_assistant {
+                        {
+                            let trust_badges = assistant_trust_badges(&assistant.trust);
+                            let readiness_items = assistant_readiness_items(
+                                &assistant.launch_readiness.blockers,
+                                &assistant.launch_readiness.warnings,
+                            );
+                            rsx! {
+                                div { class: "assistant-detail-stack",
+                                    div { class: "assistant-detail-heading",
+                                        strong { "{assistant.name}" }
+                                        span { "{assistant.id} · {assistant.domain}" }
                                     }
-                                }
-                                if readiness_items.is_empty() {
-                                    span { class: "fleet-card-meta", "No blockers or warnings reported." }
-                                } else {
-                                    for (tone, kind, id) in readiness_items {
-                                        span { class: "fleet-card-meta", "{tone}: {kind} {id}" }
+                                    div { class: "assistant-badge-row",
+                                        for badge in trust_badges {
+                                            span { class: "assistant-trust-badge", "{badge}" }
+                                        }
+                                    }
+                                    div { class: "assistant-issue-list",
+                                        if readiness_items.is_empty() {
+                                            span { class: "assistant-issue ok", "No blockers or warnings reported." }
+                                        } else {
+                                            for (tone, kind, id) in readiness_items {
+                                                span { class: "assistant-issue", "data-state": tone, "{tone}: {kind} {id}" }
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
+                    } else {
+                        p { class: "panel-muted", "Select an assistant after loading readiness cards." }
                     }
-                } else {
-                    p { class: "panel-muted", "Select an assistant after loading readiness cards." }
                 }
             }
         }
@@ -4577,10 +4600,10 @@ fn render_cockpit_center_stage(mut workspace: Signal<Workspace>, body: Element) 
         section { class: "cockpit-cop-stage",
             section { class: "cockpit-cop-bay cockpit-focus-host",
                 nav { class: "cockpit-workspace-nav",
+                    button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
                     button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
                     button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
                     button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
-                    button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
                     button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
                     button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
                     button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }

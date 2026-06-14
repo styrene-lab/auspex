@@ -12,6 +12,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
+- Made Assistants the default and first workspace tab so Auspex opens directly into assistant readiness instead of the legacy COP view.
 - Web builds can now consume compile-time `AUSPEX_OMEGON_STARTUP_URL`, `AUSPEX_OMEGON_WS_URL`, and `AUSPEX_OMEGON_WS_TOKEN` overrides for local `dx serve` attachment to an Omegon control plane.
 - Removed the inactive Scribe workspace from active navigation; Flynt remains the task board, Sentry remains execution, and Auspex focuses on workflow handoff, command, and observability surfaces.
 - Reframed the active Graph workspace around deployed-agent topology instead of design-tree/tasking state, preserving Flynt as the task/board owner.
