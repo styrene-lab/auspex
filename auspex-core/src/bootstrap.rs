@@ -1132,6 +1132,11 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
                 "auspex: default Omegon control port is occupied by a non-Auspex-primary runtime; reaping it so Auspex can launch styrene.auspex-agent"
             );
             reap_default_omegon_control_port_processes();
+            if !wait_for_default_omegon_control_port_release().await {
+                return BootstrapResult::startup_failure(
+                    "Default Omegon control port 7842 stayed occupied after reaping the non-Auspex runtime; refusing to spawn styrene.auspex-agent over an active listener.".into(),
+                );
+            }
         }
     }
 
@@ -1180,9 +1185,16 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         }
     };
 
+    let mut stderr_lines = child
+        .stderr
+        .take()
+        .map(tokio::io::BufReader::new)
+        .map(|reader| reader.lines());
+
     let reader = tokio::io::BufReader::new(stdout);
     let mut lines = reader.lines();
     let mut startup_info: Option<OmegonStartupInfo> = None;
+    let mut startup_stderr = Vec::new();
 
     let deadline = tokio::time::sleep(SPAWN_TIMEOUT);
     tokio::pin!(deadline);
@@ -1207,13 +1219,34 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
                     Err(_) => break,
                 }
             }
+            stderr = async {
+                match stderr_lines.as_mut() {
+                    Some(lines) => lines.next_line().await,
+                    None => std::future::pending().await,
+                }
+            } => {
+                if let Ok(Some(line)) = stderr {
+                    let trimmed = line.trim();
+                    if !trimmed.is_empty() {
+                        startup_stderr.push(trimmed.to_string());
+                        if startup_stderr.len() > 8 {
+                            startup_stderr.remove(0);
+                        }
+                    }
+                }
+            }
             _ = &mut deadline => break,
         }
     }
 
     let Some(info) = startup_info else {
+        let stderr_tail = if startup_stderr.is_empty() {
+            String::new()
+        } else {
+            format!(" stderr: {}", startup_stderr.join(" | "))
+        };
         return BootstrapResult::startup_failure(format!(
-            "Owned Omegon backend at {label} did not emit a startup JSON line within {}s.",
+            "Owned Omegon backend at {label} did not emit a startup JSON line within {}s.{stderr_tail}",
             SPAWN_TIMEOUT.as_secs()
         ));
     };
@@ -1583,6 +1616,17 @@ fn install_auspex_omegon_assets() {
 #[cfg(not(target_arch = "wasm32"))]
 fn provider_status_key(name: &str) -> &str {
     name.split('/').next().unwrap_or(name).trim()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn wait_for_default_omegon_control_port_release() -> bool {
+    for _ in 0..20 {
+        if !omegon_is_running_async().await {
+            return true;
+        }
+        tokio::time::sleep(SPAWN_POLL).await;
+    }
+    false
 }
 
 #[cfg(not(target_arch = "wasm32"))]

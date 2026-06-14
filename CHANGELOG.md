@@ -13,6 +13,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
+- Native bootstrap waits for the default Omegon control port to close before relaunching and includes child stderr in startup timeout failures.
+- Native desktop assistant readiness now fetches the attached Omegon capability endpoint instead of returning an empty placeholder roster.
 - Native bootstrap now distinguishes an existing Auspex primary Omegon from an unrelated local Omegon on the default control port before deciding whether to attach or relaunch.
 - Auto-load assistant readiness once an attached Omegon assistant capability endpoint appears, instead of requiring the operator to press refresh first.
 - Clarified assistant-first cockpit summary copy when the expected `styrene.auspex-agent` primary is not attached.

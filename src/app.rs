@@ -4536,9 +4536,34 @@ async fn load_assistant_workspace(
 #[cfg(not(target_arch = "wasm32"))]
 #[allow(dead_code)]
 async fn load_assistant_workspace(
-    _endpoint: Option<String>,
+    endpoint: Option<String>,
 ) -> Result<Vec<auspex_core::omegon_control::OmegonAssistantListItem>, String> {
-    Ok(Vec::new())
+    let endpoint =
+        endpoint.ok_or_else(|| "No Omegon capability endpoint is attached.".to_string())?;
+    let client = auspex_core::tls_config::apply_reqwest_roots(
+        reqwest::Client::builder().timeout(std::time::Duration::from_secs(5)),
+    )
+    .map_err(|error| format!("assistant list client setup failed: {error}"))?
+    .build()
+    .map_err(|error| format!("assistant list client failed: {error}"))?;
+    let response = client
+        .get(&endpoint)
+        .send()
+        .await
+        .map_err(|error| format!("assistant list request failed: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "assistant list request returned {}",
+            response.status()
+        ));
+    }
+    let body = response
+        .text()
+        .await
+        .map_err(|error| format!("assistant list response failed: {error}"))?;
+    let parsed = auspex_core::omegon_control::parse_assistant_list_response(&body)
+        .map_err(|error| format!("assistant list JSON failed: {error}"))?;
+    Ok(parsed.assistants)
 }
 
 #[cfg(target_arch = "wasm32")]
