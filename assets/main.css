@@ -5867,3 +5867,128 @@ body {
   min-height: 5.4rem;
   padding: 0.75rem 0.9rem;
 }
+
+/* Assistant product shell override: this surface is not the cockpit. */
+.shell-assistant-focus {
+  position: fixed;
+  inset: 0;
+  display: block;
+  min-height: 100vh;
+  overflow: auto;
+  padding: 0;
+  background:
+    radial-gradient(circle at 18% 0%, rgba(42, 180, 200, 0.14), transparent 32rem),
+    linear-gradient(180deg, #06080e 0%, #08101a 48%, #05070c 100%);
+}
+
+.shell-assistant-focus .assistant-shell-single {
+  width: min(100vw - 2rem, 1480px);
+  margin: 1rem auto;
+}
+
+.shell-assistant-focus .assistant-stage {
+  min-height: calc(100vh - 2rem);
+  border: 1px solid rgba(42, 180, 200, 0.34);
+  border-radius: 20px;
+  background: rgba(8, 14, 24, 0.9);
+  box-shadow: 0 24px 80px rgba(0, 0, 0, 0.48);
+}
+
+.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid rgba(42, 180, 200, 0.18);
+  background: rgba(6, 10, 17, 0.88);
+}
+
+.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav .tab {
+  min-height: 2.5rem;
+  padding: 0 1rem;
+}
+
+.shell-assistant-focus .assistant-workspace {
+  display: grid;
+  gap: 0.85rem;
+  max-width: none;
+  padding: 0.9rem;
+  margin: 0;
+}
+
+.shell-assistant-focus .assistant-hero {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  min-height: auto;
+  padding: 1.35rem 1.5rem;
+}
+
+.shell-assistant-focus .assistant-hero h2 {
+  margin: 0.25rem 0 0;
+  font-size: clamp(2rem, 3.6vw, 3.8rem);
+  line-height: 0.95;
+}
+
+.shell-assistant-focus .assistant-hero .panel-muted {
+  max-width: 58rem;
+  margin-top: 0.9rem;
+  font-size: clamp(1rem, 1.5vw, 1.25rem);
+  line-height: 1.45;
+}
+
+.shell-assistant-focus .assistant-hero-actions {
+  min-width: min(34vw, 28rem);
+  justify-content: end;
+  align-self: end;
+}
+
+.shell-assistant-focus .assistant-summary {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 0.7rem;
+}
+
+.shell-assistant-focus .assistant-summary-metric {
+  min-height: 5.25rem;
+  padding: 0.95rem 1rem;
+}
+
+.shell-assistant-focus .assistant-summary-value {
+  font-size: clamp(2rem, 3vw, 3rem);
+}
+
+.shell-assistant-focus .assistant-grid {
+  display: grid;
+  grid-template-columns: minmax(24rem, 0.95fr) minmax(28rem, 1.05fr);
+  gap: 0.85rem;
+  min-height: 0;
+}
+
+.shell-assistant-focus .assistant-roster-panel,
+.shell-assistant-focus .assistant-detail-panel {
+  min-height: 18rem;
+  padding: 1rem;
+}
+
+.shell-assistant-focus .assistant-runtime-panel,
+.shell-assistant-focus .assistant-endpoint-panel,
+.shell-assistant-focus .bottombar,
+.shell-assistant-focus .bottombar-assistant-focus,
+.shell-assistant-focus .cockpit-top-rail,
+.shell-assistant-focus .cockpit-console-side,
+.shell-assistant-focus .cockpit-canvas {
+  display: none !important;
+}
+
+@media (max-width: 1100px) {
+  .shell-assistant-focus .assistant-shell-single {
+    width: calc(100vw - 1rem);
+    margin: 0.5rem auto;
+  }
+
+  .shell-assistant-focus .assistant-hero,
+  .shell-assistant-focus .assistant-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-assistant-focus .assistant-summary {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}

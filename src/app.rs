@@ -14,8 +14,8 @@ use auspex_core::ipc_client::IpcEventStreamHandle;
 use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
-const LAYOUT_DEBUG_ENABLED: bool = true;
-const SHELL_BLOCKOUT_MODE: bool = true;
+const LAYOUT_DEBUG_ENABLED: bool = false;
+const SHELL_BLOCKOUT_MODE: bool = false;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
 
@@ -1351,12 +1351,14 @@ pub fn App() -> Element {
         div { class: if SHELL_BLOCKOUT_MODE {
                 "shell shell-cockpit shell-blockout-mode"
             } else if *workspace.read() == Workspace::Assistants {
-                "shell shell-cockpit shell-assistant-focus"
+                "shell shell-assistant-focus"
             } else {
                 "shell shell-cockpit"
             },
-            div { class: "cockpit-canvas", "aria-hidden": "true",
-                div { class: "cockpit-bg-svg", "aria-hidden": "true" }
+            if *workspace.read() != Workspace::Assistants {
+                div { class: "cockpit-canvas", "aria-hidden": "true",
+                    div { class: "cockpit-bg-svg", "aria-hidden": "true" }
+                }
             }
 
             if LAYOUT_DEBUG_ENABLED {
@@ -1371,7 +1373,7 @@ pub fn App() -> Element {
                 }
             }
 
-            if SHELL_BLOCKOUT_MODE {
+            if SHELL_BLOCKOUT_MODE && *workspace.read() != Workspace::Assistants {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
                 div { class: "debug-shell-main",
                     div { class: "cockpit-console-side cockpit-console-side-left debug-shell-left-host",
@@ -1468,7 +1470,11 @@ pub fn App() -> Element {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
             }
 
-            if !readiness.ready && !matches!(controller.read().shell_state(), auspex_core::fixtures::ShellState::Failed) {
+            if *workspace.read() == Workspace::Assistants {
+                div { class: "assistant-shell assistant-shell-single",
+                    {render_assistant_stage(workspace, cockpit_center_body)}
+                }
+            } else if !readiness.ready && !matches!(controller.read().shell_state(), auspex_core::fixtures::ShellState::Failed) {
                 div { class: "cockpit-layout cockpit-layout-readiness",
                     section {
                         class: "state-screen state-screen-starting",
@@ -1491,10 +1497,6 @@ pub fn App() -> Element {
                             }
                         }
                     }
-                }
-            } else if *workspace.read() == Workspace::Assistants {
-                div { class: "assistant-shell assistant-shell-single",
-                    {render_assistant_stage(workspace, cockpit_center_body)}
                 }
             } else {
                 div { class: "cockpit-console-shell",
@@ -1958,21 +1960,23 @@ pub fn App() -> Element {
             }
 
             // ── Bottom bar ──────────────────────────────────────────────
-            footer { class: if *workspace.read() == Workspace::Assistants { "bottombar bottombar-assistant-focus" } else { "bottombar" },
-                // Bottom-left corner box — org/operator identity
-                div { class: "bottombar-org",
-                    span { class: "bottombar-label", "Operator" }
-                }
+            if *workspace.read() != Workspace::Assistants {
+                footer { class: "bottombar",
+                    // Bottom-left corner box — org/operator identity
+                    div { class: "bottombar-org",
+                        span { class: "bottombar-label", "Operator" }
+                    }
 
-                // Bottom-center — instrumentation
-                div { class: "bottombar-instruments",
-                    span { class: "instrument", "CANARY-RADIUS-PASS-2" }
-                    span { class: "instrument", "{controller.read().summary().connection}" }
-                    span { class: "instrument", "{context_status}" }
-                }
+                    // Bottom-center — instrumentation
+                    div { class: "bottombar-instruments",
+                        span { class: "instrument", "CANARY-RADIUS-PASS-2" }
+                        span { class: "instrument", "{controller.read().summary().connection}" }
+                        span { class: "instrument", "{context_status}" }
+                    }
 
-                // Bottom-right corner box — reserved aperture
-                div { class: "bottombar-reserved" }
+                    // Bottom-right corner box — reserved aperture
+                    div { class: "bottombar-reserved" }
+                }
             }
         }
     }
