@@ -822,6 +822,14 @@ pub fn App() -> Element {
             None
         }
     });
+    #[cfg(target_arch = "wasm32")]
+    let web_http_state_url: Option<String> = bootstrap.as_ref().and_then(|b| {
+        if let auspex_core::bootstrap::BootstrapSource::HttpState { url } = &b.source {
+            Some(url.clone())
+        } else {
+            None
+        }
+    });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
     let mut ipc_event_stream = use_signal(|| None::<IpcEventStreamHandle>);
@@ -1003,6 +1011,26 @@ pub fn App() -> Element {
                 #[cfg(target_arch = "wasm32")]
                 gloo_timers::future::TimeoutFuture::new(150).await;
             }
+        }
+    });
+
+    #[cfg(target_arch = "wasm32")]
+    use_future(move || {
+        let url = web_http_state_url.clone();
+        let mut controller = controller;
+        let mut event_stream = event_stream;
+        async move {
+            let Some(url) = url else { return };
+            let hints = auspex_core::bootstrap::ConnectHints::from_url_params();
+            let result = auspex_core::bootstrap::complete_http_bootstrap(&url, &hints).await;
+            if let Some(stream) = result.event_stream {
+                event_stream.set(Some(stream));
+            }
+            let mut c = result.controller;
+            if let Some(note) = result.note {
+                c.set_bootstrap_note(Some(note));
+            }
+            controller.set(c);
         }
     });
 
