@@ -4770,17 +4770,24 @@ fn build_cockpit_summary_model(
         })
         .unwrap_or("endpoint unreported");
     let primary_missing = attached_id == "unreported-instance" && attached_role == "attached";
-    let attached_primary = if primary_missing {
+    let assistant_primary_expected = workspace == Workspace::Assistants && primary_missing;
+    let attached_primary = if assistant_primary_expected {
+        "Auspex primary agent not attached".into()
+    } else if primary_missing {
         "Primary runtime unbound".into()
     } else {
         format!("{attached_role} · {attached_id}")
     };
-    let attached_secondary_1 = if primary_missing {
+    let attached_secondary_1 = if assistant_primary_expected {
+        "Expected: styrene.auspex-agent".into()
+    } else if primary_missing {
         "Awaiting owned runtime identity".into()
     } else {
         format!("{attached_profile} · {attached_model}")
     };
-    let attached_secondary_2 = if primary_missing {
+    let attached_secondary_2 = if assistant_primary_expected {
+        "launch contract: omegon serve --agent agents/auspex-agent".into()
+    } else if primary_missing {
         "booting/attaching · no verified endpoint".into()
     } else if session.telemetry.lifecycle.counts.stale > 0 {
         format!("degraded · {attached_endpoint}")
@@ -7220,7 +7227,7 @@ mod tests {
         };
         let session = auspex_core::fixtures::SessionData::default();
         let model = super::build_cockpit_summary_model(
-            Workspace::Chat,
+            Workspace::Assistants,
             SessionMode::Live,
             &summary,
             &session,
@@ -7228,8 +7235,12 @@ mod tests {
 
         assert_eq!(model.attached.label, "Primary Omegon");
         assert_eq!(model.attached.tag, "ATTACHING");
-        assert_eq!(model.attached.primary, "Primary runtime unbound");
-        assert!(model.attached.secondary[1].contains("booting/attaching"));
+        assert_eq!(model.attached.primary, "Auspex primary agent not attached");
+        assert_eq!(
+            model.attached.secondary[0],
+            "Expected: styrene.auspex-agent"
+        );
+        assert!(model.attached.secondary[1].contains("omegon serve --agent"));
         assert!(model.deployment.preview.is_empty());
         assert!(model.activity.preview.is_empty());
     }

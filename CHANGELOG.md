@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
+- Clarified assistant-first cockpit summary copy when the expected `styrene.auspex-agent` primary is not attached.
 - Refactored the assistant workspace out of the legacy cockpit center stage into a dedicated assistant-first shell/stage with shared workspace navigation.
 - Made Assistants the default and first workspace tab so Auspex opens directly into assistant readiness instead of the legacy COP view.
 - Web builds can now consume compile-time `AUSPEX_OMEGON_STARTUP_URL`, `AUSPEX_OMEGON_WS_URL`, and `AUSPEX_OMEGON_WS_TOKEN` overrides for local `dx serve` attachment to an Omegon control plane.
