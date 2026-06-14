@@ -169,6 +169,7 @@ struct AssistantWorkspaceState {
     endpoint: Option<String>,
     assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
     selected_id: Option<String>,
+    auto_loaded_endpoint: Option<String>,
     loading: bool,
     message: Option<String>,
     error: Option<String>,
@@ -4067,6 +4068,16 @@ fn render_assistant_workspace(
     let endpoint = assistant_endpoint_from_session(session);
     let session_snapshot = session.clone();
     let snapshot = state.read().clone();
+    if endpoint.is_some()
+        && !snapshot.loading
+        && snapshot.auto_loaded_endpoint.as_deref() != endpoint.as_deref()
+    {
+        let mut state = state;
+        let session = session_snapshot.clone();
+        spawn(async move {
+            refresh_assistant_workspace(&mut state, &session).await;
+        });
+    }
     let model = build_assistant_workspace_model(&snapshot);
     let assistants = model.assistants.clone();
     let selected_assistant = model.selected_assistant.clone();
@@ -4410,7 +4421,8 @@ async fn refresh_assistant_workspace(
     let result = load_assistant_workspace(endpoint.clone()).await;
     let mut state = state.write();
     state.loading = false;
-    state.endpoint = endpoint;
+    state.endpoint = endpoint.clone();
+    state.auto_loaded_endpoint = endpoint;
     match result {
         Ok(assistants) => {
             apply_assistant_refresh_success(&mut state, assistants);
