@@ -37,12 +37,69 @@ pub struct ReleasePreviewArtifact {
     pub content: String,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleasePreviewError {
+    RepoNotAllowed { repo: String },
+    NotReady { blockers: Vec<String> },
+}
+
+impl std::fmt::Display for ReleasePreviewError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::RepoNotAllowed { repo } => write!(f, "release repo is not allowlisted: {repo}"),
+            Self::NotReady { blockers } => write!(
+                f,
+                "release-agent preview is not ready: {}",
+                blockers.join(", ")
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ReleasePreviewError {}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct ReleasePreviewApproval {
+    pub approved_by: Option<String>,
+    pub approved_at: Option<String>,
+}
+
+impl ReleasePreviewApproval {
+    pub fn is_approved(&self) -> bool {
+        self.approved_by
+            .as_deref()
+            .is_some_and(|operator| !operator.trim().is_empty())
+            && self
+                .approved_at
+                .as_deref()
+                .is_some_and(|timestamp| !timestamp.trim().is_empty())
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct ReleaseAgentReadinessInputs {
     pub configured_secrets: BTreeSet<String>,
     pub model_available: bool,
     pub repo_allowlist: Vec<String>,
-    pub discord_channel_id: Option<String>,
+    pub preview_approval: ReleasePreviewApproval,
+    pub publish_target: Option<ReleasePublishTarget>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleasePublishTarget {
+    Discord { channel_id: Option<String> },
+}
+
+impl ReleasePublishTarget {
+    fn is_discord(&self) -> bool {
+        matches!(self, Self::Discord { .. })
+    }
+
+    fn discord_channel_id(&self) -> Option<&str> {
+        match self {
+            Self::Discord { channel_id } => channel_id.as_deref(),
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -121,14 +178,43 @@ pub fn write_release_preview_artifact(
     Ok(artifact)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+pub fn stage_release_preview_artifact(
+    release: &GitHubReleaseFixture,
+    output_dir: impl AsRef<Path>,
+    readiness: &ReleaseAgentReadiness,
+    repo_allowlist: &[String],
+) -> Result<ReleasePreviewArtifact, ReleasePreviewError> {
+    if !readiness.preview_ready {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: readiness.blockers.clone(),
+        });
+    }
+    if !repo_allowlist.iter().any(|repo| repo == &release.repo) {
+        return Err(ReleasePreviewError::RepoNotAllowed {
+            repo: release.repo.clone(),
+        });
+    }
+    write_release_preview_artifact(release, output_dir).map_err(|error| {
+        ReleasePreviewError::NotReady {
+            blockers: vec![format!("preview artifact write failed: {error}")],
+        }
+    })
+}
+
 pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseAgentReadiness {
     let mut blockers = Vec::new();
     let mut warnings = Vec::new();
     let has_github = inputs.configured_secrets.contains(GITHUB_TOKEN_SECRET);
     let has_discord = inputs.configured_secrets.contains(DISCORD_TOKEN_SECRET);
+    let target_is_discord = inputs
+        .publish_target
+        .as_ref()
+        .is_some_and(ReleasePublishTarget::is_discord);
     let has_channel = inputs
-        .discord_channel_id
-        .as_deref()
+        .publish_target
+        .as_ref()
+        .and_then(ReleasePublishTarget::discord_channel_id)
         .is_some_and(|channel| !channel.trim().is_empty());
 
     if !has_github {
@@ -143,20 +229,36 @@ pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseA
 
     let preview_ready = blockers.is_empty();
 
-    if preview_ready && !has_discord {
+    if preview_ready && target_is_discord && !has_discord {
         warnings.push(format!(
             "discord publish disabled: missing {DISCORD_TOKEN_SECRET}"
         ));
     }
-    if preview_ready && !has_channel {
+    if preview_ready && target_is_discord && !has_channel {
         warnings.push(format!(
             "discord publish disabled: missing {DISCORD_CHANNEL_CONFIG}"
         ));
     }
 
+    let discord_publish_ready = preview_ready
+        && target_is_discord
+        && has_discord
+        && has_channel
+        && inputs.preview_approval.is_approved();
+    if preview_ready
+        && target_is_discord
+        && has_discord
+        && has_channel
+        && !inputs.preview_approval.is_approved()
+    {
+        warnings.push(
+            "discord publish disabled: preview artifact is not operator-approved".to_string(),
+        );
+    }
+
     ReleaseAgentReadiness {
         preview_ready,
-        discord_publish_ready: preview_ready && has_discord && has_channel,
+        discord_publish_ready,
         blockers,
         warnings,
     }
@@ -281,13 +383,87 @@ mod tests {
         let _ = std::fs::remove_dir_all(output_dir);
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn release_preview_artifact_can_be_staged_end_to_end_when_ready_and_allowlisted() {
+        let release = vox_release();
+        let output_dir = std::env::temp_dir().join(format!(
+            "auspex-release-agent-stage-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&output_dir);
+        let readiness = ReleaseAgentReadiness {
+            preview_ready: true,
+            discord_publish_ready: false,
+            blockers: Vec::new(),
+            warnings: vec!["discord disabled".to_string()],
+        };
+
+        let artifact = stage_release_preview_artifact(
+            &release,
+            &output_dir,
+            &readiness,
+            &["styrene-lab/vox".to_string()],
+        )
+        .unwrap();
+
+        assert!(artifact.path.exists());
+        assert!(artifact.content.contains("publish_state: preview"));
+        let _ = std::fs::remove_dir_all(output_dir);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn release_preview_staging_rejects_non_allowlisted_repos() {
+        let mut release = vox_release();
+        release.repo = "other/repo".to_string();
+        let readiness = ReleaseAgentReadiness {
+            preview_ready: true,
+            discord_publish_ready: false,
+            blockers: Vec::new(),
+            warnings: Vec::new(),
+        };
+
+        let error = stage_release_preview_artifact(
+            &release,
+            "release-posts",
+            &readiness,
+            &["styrene-lab/vox".to_string()],
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            error,
+            ReleasePreviewError::RepoNotAllowed {
+                repo: "other/repo".to_string()
+            }
+        );
+    }
+
+    #[test]
+    fn release_agent_readiness_keeps_preview_clean_without_publish_target() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+        });
+
+        assert!(readiness.preview_ready);
+        assert!(!readiness.discord_publish_ready);
+        assert!(readiness.blockers.is_empty());
+        assert!(readiness.warnings.is_empty());
+    }
+
     #[test]
     fn release_agent_readiness_separates_preview_from_discord_publish() {
         let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
             configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
             model_available: true,
             repo_allowlist: vec!["styrene-lab/vox".to_string()],
-            discord_channel_id: None,
+            publish_target: Some(ReleasePublishTarget::Discord { channel_id: None }),
+            preview_approval: ReleasePreviewApproval::default(),
         });
 
         assert!(readiness.preview_ready);
@@ -307,7 +483,10 @@ mod tests {
             configured_secrets: BTreeSet::new(),
             model_available: true,
             repo_allowlist: vec!["styrene-lab/vox".to_string()],
-            discord_channel_id: Some("123".to_string()),
+            publish_target: Some(ReleasePublishTarget::Discord {
+                channel_id: Some("123".to_string()),
+            }),
+            preview_approval: ReleasePreviewApproval::default(),
         });
 
         assert!(!readiness.preview_ready);
@@ -321,7 +500,7 @@ mod tests {
     }
 
     #[test]
-    fn release_agent_readiness_allows_discord_publish_when_target_is_configured() {
+    fn release_agent_readiness_requires_approval_for_discord_publish() {
         let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
             configured_secrets: BTreeSet::from([
                 GITHUB_TOKEN_SECRET.to_string(),
@@ -329,7 +508,38 @@ mod tests {
             ]),
             model_available: true,
             repo_allowlist: vec!["styrene-lab/vox".to_string()],
-            discord_channel_id: Some("123".to_string()),
+            publish_target: Some(ReleasePublishTarget::Discord {
+                channel_id: Some("123".to_string()),
+            }),
+            preview_approval: ReleasePreviewApproval::default(),
+        });
+
+        assert!(readiness.preview_ready);
+        assert!(!readiness.discord_publish_ready);
+        assert!(
+            readiness
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("operator-approved"))
+        );
+    }
+
+    #[test]
+    fn release_agent_readiness_allows_discord_publish_after_approval() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([
+                GITHUB_TOKEN_SECRET.to_string(),
+                DISCORD_TOKEN_SECRET.to_string(),
+            ]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: Some(ReleasePublishTarget::Discord {
+                channel_id: Some("123".to_string()),
+            }),
+            preview_approval: ReleasePreviewApproval {
+                approved_by: Some("operator".to_string()),
+                approved_at: Some("2026-06-15T00:00:00Z".to_string()),
+            },
         });
 
         assert!(readiness.preview_ready);

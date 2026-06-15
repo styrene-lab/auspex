@@ -38,4 +38,4 @@ required_config = ["release_agent.repos", "release_agent.preview_output"]
 
 [readiness.discord_publish]
 required_secrets = ["GITHUB_TOKEN", "VOX_DISCORD_BOT_TOKEN"]
-required_config = ["release_agent.discord.channel_id_env"]
+required_config = ["release_agent.discord.channel_id_env", "preview_approval.approved_by", "preview_approval.approved_at"]

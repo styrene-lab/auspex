@@ -8,13 +8,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Added a bounded Styrene release-agent manifest plus tested preview-mode GitHub release post generation, stable preview artifact emission, committed artifact drift coverage, and mode-specific readiness decisions.
+- Added a bounded Styrene release-agent manifest plus tested preview-mode GitHub release post generation, allowlisted staging, stable preview artifact emission, committed artifact drift coverage, and mode-specific readiness decisions.
 - Added a repo-owned `agents/auspex-agent` bundle and tested native bootstrap launch arguments for the primary Omegon `omegon serve --agent` path.
 - Added the first Auspex-side Omegon assistant workspace plumbing, deriving the assistant capability endpoint from attached session telemetry and loading typed assistant readiness cards from `/api/capabilities/assistants` with tested trimmed and blank control-plane base URLs.
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
-- Release-agent readiness separates GitHub-backed preview from Discord publishing so missing publish tokens do not block dry-run release post generation.
+- Release-agent readiness separates GitHub-backed preview from explicit publish targets so missing Discord tokens stay silent in preview-only mode, while Discord publishing still requires token, channel, and operator approval metadata.
 - Native bootstrap waits for the default Omegon control port to close before relaunching and includes child stderr in startup timeout failures.
 - Native desktop assistant readiness now fetches the attached Omegon capability endpoint instead of returning an empty placeholder roster.
 - Native bootstrap now distinguishes an existing Auspex primary Omegon from an unrelated local Omegon on the default control port before deciding whether to attach or relaunch.
