@@ -202,6 +202,194 @@ pub fn stage_release_preview_artifact(
     })
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ReleaseAgentPreviewRequest {
+    pub release: GitHubReleaseFixture,
+    pub output_dir: PathBuf,
+    pub repo_allowlist: Vec<String>,
+    pub configured_secrets: BTreeSet<String>,
+    pub model_available: bool,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn run_release_agent_preview(
+    request: ReleaseAgentPreviewRequest,
+) -> Result<ReleasePreviewArtifact, ReleasePreviewError> {
+    let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+        configured_secrets: request.configured_secrets,
+        model_available: request.model_available,
+        repo_allowlist: request.repo_allowlist.clone(),
+        preview_approval: ReleasePreviewApproval::default(),
+        publish_target: None,
+    });
+    stage_release_preview_artifact(
+        &request.release,
+        request.output_dir,
+        &readiness,
+        &request.repo_allowlist,
+    )
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn fetch_github_release(
+    repo: &str,
+    tag: &str,
+    token: &str,
+) -> Result<GitHubReleaseFixture, String> {
+    if token.trim().is_empty() {
+        return Err("GITHUB_TOKEN is required".to_string());
+    }
+    let url = format!(
+        "https://api.github.com/repos/{}/releases/tags/{}",
+        repo.trim_matches('/'),
+        tag
+    );
+    let client = reqwest::Client::builder()
+        .user_agent("auspex-release-agent/0.1")
+        .build()
+        .map_err(|error| format!("GitHub client setup failed: {error}"))?;
+    let response = client
+        .get(url)
+        .bearer_auth(token)
+        .header("Accept", "application/vnd.github+json")
+        .send()
+        .await
+        .map_err(|error| format!("GitHub release request failed: {error}"))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "GitHub release request returned {}",
+            response.status()
+        ));
+    }
+    let api: GitHubReleaseApiResponse = response
+        .json()
+        .await
+        .map_err(|error| format!("GitHub release JSON failed: {error}"))?;
+    Ok(api.into_fixture(repo.to_string()))
+}
+
+#[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
+struct GitHubReleaseApiResponse {
+    tag_name: String,
+    name: Option<String>,
+    body: Option<String>,
+    html_url: String,
+    published_at: Option<String>,
+}
+
+impl GitHubReleaseApiResponse {
+    fn into_fixture(self, repo: String) -> GitHubReleaseFixture {
+        GitHubReleaseFixture {
+            repo,
+            tag: self.tag_name.clone(),
+            name: self.name.unwrap_or(self.tag_name),
+            body: self.body.unwrap_or_default(),
+            html_url: self.html_url,
+            published_at: self.published_at.unwrap_or_default(),
+        }
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn approve_release_preview_artifact(
+    path: impl AsRef<Path>,
+    approval: &ReleasePreviewApproval,
+) -> Result<(), ReleasePreviewError> {
+    if !approval.is_approved() {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["approval metadata is incomplete".to_string()],
+        });
+    }
+    let path = path.as_ref();
+    let content = std::fs::read_to_string(path).map_err(|error| ReleasePreviewError::NotReady {
+        blockers: vec![format!("preview artifact read failed: {error}")],
+    })?;
+    let approved = apply_release_preview_approval(&content, approval)?;
+    std::fs::write(path, approved).map_err(|error| ReleasePreviewError::NotReady {
+        blockers: vec![format!("preview artifact write failed: {error}")],
+    })
+}
+
+pub fn apply_release_preview_approval(
+    content: &str,
+    approval: &ReleasePreviewApproval,
+) -> Result<String, ReleasePreviewError> {
+    if !approval.is_approved() {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["approval metadata is incomplete".to_string()],
+        });
+    }
+    let approved_by =
+        escape_frontmatter_string(approval.approved_by.as_deref().unwrap_or_default());
+    let approved_at =
+        escape_frontmatter_string(approval.approved_at.as_deref().unwrap_or_default());
+    let mut output = content.replace("publish_state: preview", "publish_state: approved");
+    if !output.contains("approved_by:") {
+        output = output.replace(
+            "publish_state: approved\n",
+            &format!(
+                "publish_state: approved\napproved_by: \"{approved_by}\"\napproved_at: \"{approved_at}\"\n"
+            ),
+        );
+    }
+    Ok(output)
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize)]
+pub struct DiscordDryRunPublish {
+    pub channel_id: String,
+    pub dedupe_key: String,
+    pub content: String,
+    pub would_post: bool,
+}
+
+pub fn build_discord_dry_run_publish(
+    artifact: &ReleasePreviewArtifact,
+    channel_id: &str,
+    approval: &ReleasePreviewApproval,
+) -> Result<DiscordDryRunPublish, ReleasePreviewError> {
+    if !approval.is_approved() {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["preview artifact is not operator-approved".to_string()],
+        });
+    }
+    if channel_id.trim().is_empty() {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec![format!("missing {DISCORD_CHANNEL_CONFIG}")],
+        });
+    }
+    let dedupe_key = frontmatter_value(&artifact.content, "dedupe_key").ok_or_else(|| {
+        ReleasePreviewError::NotReady {
+            blockers: vec!["preview artifact is missing dedupe_key".to_string()],
+        }
+    })?;
+    let body = artifact
+        .content
+        .split_once(
+            "---
+
+",
+        )
+        .map(|(_, body)| body.trim().to_string())
+        .unwrap_or_else(|| artifact.content.trim().to_string());
+    Ok(DiscordDryRunPublish {
+        channel_id: channel_id.trim().to_string(),
+        dedupe_key,
+        content: body,
+        would_post: false,
+    })
+}
+
+fn frontmatter_value(content: &str, key: &str) -> Option<String> {
+    content.lines().find_map(|line| {
+        let (candidate, value) = line.split_once(':')?;
+        if candidate.trim() != key {
+            return None;
+        }
+        Some(value.trim().trim_matches('"').to_string())
+    })
+}
+
 pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseAgentReadiness {
     let mut blockers = Vec::new();
     let mut warnings = Vec::new();
@@ -438,6 +626,84 @@ mod tests {
                 repo: "other/repo".to_string()
             }
         );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn release_agent_preview_runner_stages_preview_artifact() {
+        let release = vox_release();
+        let output_dir = std::env::temp_dir().join(format!(
+            "auspex-release-agent-runner-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&output_dir);
+
+        let artifact = run_release_agent_preview(ReleaseAgentPreviewRequest {
+            release,
+            output_dir: output_dir.clone(),
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+        })
+        .unwrap();
+
+        assert!(artifact.path.exists());
+        assert!(artifact.content.contains("publish_state: preview"));
+        let _ = std::fs::remove_dir_all(output_dir);
+    }
+
+    #[test]
+    fn release_preview_approval_updates_frontmatter() {
+        let release = vox_release();
+        let artifact = build_release_preview_artifact(&release, "release-posts");
+
+        let approved = apply_release_preview_approval(
+            &artifact.content,
+            &ReleasePreviewApproval {
+                approved_by: Some("operator".to_string()),
+                approved_at: Some("2026-06-15T00:00:00Z".to_string()),
+            },
+        )
+        .unwrap();
+
+        assert!(approved.contains("publish_state: approved"));
+        assert!(approved.contains("approved_by: \"operator\""));
+        assert!(approved.contains("approved_at: \"2026-06-15T00:00:00Z\""));
+    }
+
+    #[test]
+    fn discord_dry_run_requires_approved_preview() {
+        let release = vox_release();
+        let artifact = build_release_preview_artifact(&release, "release-posts");
+
+        let error =
+            build_discord_dry_run_publish(&artifact, "123", &ReleasePreviewApproval::default())
+                .unwrap_err();
+
+        assert_eq!(
+            error,
+            ReleasePreviewError::NotReady {
+                blockers: vec!["preview artifact is not operator-approved".to_string()]
+            }
+        );
+    }
+
+    #[test]
+    fn discord_dry_run_extracts_body_and_dedupe_key() {
+        let release = vox_release();
+        let artifact = build_release_preview_artifact(&release, "release-posts");
+        let approval = ReleasePreviewApproval {
+            approved_by: Some("operator".to_string()),
+            approved_at: Some("2026-06-15T00:00:00Z".to_string()),
+        };
+
+        let dry_run = build_discord_dry_run_publish(&artifact, "123", &approval).unwrap();
+
+        assert_eq!(dry_run.channel_id, "123");
+        assert_eq!(dry_run.dedupe_key, "styrene-lab/vox#v0.1.5");
+        assert!(!dry_run.would_post);
+        assert!(dry_run.content.contains("Vox v0.1.5 is out"));
+        assert!(!dry_run.content.contains("publish_state"));
     }
 
     #[test]
