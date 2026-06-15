@@ -106,6 +106,22 @@ pub struct ReleaseAgentReadinessInputs {
     pub repo_allowlist: Vec<String>,
     pub preview_approval: ReleasePreviewApproval,
     pub publish_target: Option<ReleasePublishTarget>,
+    pub execution_boundary: ReleaseAgentExecutionBoundary,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ReleaseAgentExecutionBoundary {
+    Inherited,
+    Oci {
+        image: Option<String>,
+        runtime_available: bool,
+    },
+}
+
+impl Default for ReleaseAgentExecutionBoundary {
+    fn default() -> Self {
+        Self::Inherited
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -129,6 +145,7 @@ impl ReleasePublishTarget {
 pub struct ReleaseAgentReadiness {
     pub preview_ready: bool,
     pub discord_publish_ready: bool,
+    pub execution_boundary_ready: bool,
     pub blockers: Vec<String>,
     pub warnings: Vec<String>,
 }
@@ -244,6 +261,7 @@ pub fn run_release_agent_preview(
         repo_allowlist: request.repo_allowlist.clone(),
         preview_approval: ReleasePreviewApproval::default(),
         publish_target: None,
+        execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
     });
     stage_release_preview_artifact(
         &request.release,
@@ -501,8 +519,28 @@ pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseA
     if inputs.repo_allowlist.is_empty() {
         blockers.push("release repo allowlist is empty".to_string());
     }
+    let execution_boundary_ready = match &inputs.execution_boundary {
+        ReleaseAgentExecutionBoundary::Inherited => true,
+        ReleaseAgentExecutionBoundary::Oci {
+            image,
+            runtime_available,
+        } => {
+            if image.as_deref().is_none_or(|image| image.trim().is_empty()) {
+                blockers.push("OCI execution boundary requires an image reference".to_string());
+                false
+            } else if !runtime_available {
+                warnings.push(
+                    "OCI execution boundary selected but no container runtime is available"
+                        .to_string(),
+                );
+                false
+            } else {
+                true
+            }
+        }
+    };
 
-    let preview_ready = blockers.is_empty();
+    let preview_ready = blockers.is_empty() && execution_boundary_ready;
 
     if preview_ready && target_is_discord && !has_discord {
         warnings.push(format!(
@@ -534,6 +572,7 @@ pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseA
     ReleaseAgentReadiness {
         preview_ready,
         discord_publish_ready,
+        execution_boundary_ready,
         blockers,
         warnings,
     }
@@ -670,6 +709,7 @@ mod tests {
         let readiness = ReleaseAgentReadiness {
             preview_ready: true,
             discord_publish_ready: false,
+            execution_boundary_ready: true,
             blockers: Vec::new(),
             warnings: vec!["discord disabled".to_string()],
         };
@@ -695,6 +735,7 @@ mod tests {
         let readiness = ReleaseAgentReadiness {
             preview_ready: true,
             discord_publish_ready: false,
+            execution_boundary_ready: true,
             blockers: Vec::new(),
             warnings: Vec::new(),
         };
@@ -829,6 +870,74 @@ mod tests {
     }
 
     #[test]
+    fn release_agent_preview_allows_oci_boundary_with_image_and_runtime() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                runtime_available: true,
+            },
+        });
+
+        assert!(readiness.preview_ready);
+        assert!(readiness.execution_boundary_ready);
+        assert!(readiness.blockers.is_empty());
+        assert!(readiness.warnings.is_empty());
+    }
+
+    #[test]
+    fn release_agent_preview_blocks_oci_boundary_without_image() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: None,
+                runtime_available: true,
+            },
+        });
+
+        assert!(!readiness.preview_ready);
+        assert!(!readiness.execution_boundary_ready);
+        assert!(
+            readiness
+                .blockers
+                .iter()
+                .any(|blocker| blocker.contains("image reference"))
+        );
+    }
+
+    #[test]
+    fn release_agent_preview_warns_for_oci_boundary_without_runtime() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                runtime_available: false,
+            },
+        });
+
+        assert!(!readiness.preview_ready);
+        assert!(!readiness.execution_boundary_ready);
+        assert!(
+            readiness
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("container runtime"))
+        );
+    }
+
+    #[test]
     fn release_agent_readiness_keeps_preview_clean_without_publish_target() {
         let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
             configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
@@ -836,6 +945,7 @@ mod tests {
             repo_allowlist: vec!["styrene-lab/vox".to_string()],
             publish_target: None,
             preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
         });
 
         assert!(readiness.preview_ready);
@@ -852,6 +962,7 @@ mod tests {
             repo_allowlist: vec!["styrene-lab/vox".to_string()],
             publish_target: Some(ReleasePublishTarget::Discord { channel_id: None }),
             preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
         });
 
         assert!(readiness.preview_ready);
@@ -875,6 +986,7 @@ mod tests {
                 channel_id: Some("123".to_string()),
             }),
             preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
         });
 
         assert!(!readiness.preview_ready);
@@ -900,6 +1012,7 @@ mod tests {
                 channel_id: Some("123".to_string()),
             }),
             preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
         });
 
         assert!(readiness.preview_ready);
@@ -928,6 +1041,7 @@ mod tests {
                 approved_by: Some("operator".to_string()),
                 approved_at: Some("2026-06-15T00:00:00Z".to_string()),
             },
+            execution_boundary: ReleaseAgentExecutionBoundary::Inherited,
         });
 
         assert!(readiness.preview_ready);

@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ## [Unreleased]
 
 ### Added
-- Added a bounded Styrene release-agent manifest plus tested preview-mode GitHub release post generation, allowlisted staging, stable preview artifact emission, structured artifact parsing/serialization, approval metadata mutation, Discord dry-run projection, committed artifact drift coverage, and mode-specific readiness decisions.
+- Added a bounded Styrene release-agent manifest plus tested preview-mode GitHub release post generation, allowlisted staging, stable preview artifact emission, structured artifact parsing/serialization, approval metadata mutation, Discord dry-run projection, committed artifact drift coverage, mode-specific readiness decisions, and typed inherited/OCI execution-boundary readiness.
 - Added a repo-owned `agents/auspex-agent` bundle and tested native bootstrap launch arguments for the primary Omegon `omegon serve --agent` path.
 - Added the first Auspex-side Omegon assistant workspace plumbing, deriving the assistant capability endpoint from attached session telemetry and loading typed assistant readiness cards from `/api/capabilities/assistants` with tested trimmed and blank control-plane base URLs.
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
