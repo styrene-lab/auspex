@@ -38,6 +38,29 @@ pub struct ReleasePreviewArtifact {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ParsedReleasePreviewArtifact {
+    pub title: String,
+    pub repo: String,
+    pub tag: String,
+    pub source_url: String,
+    pub dedupe_key: String,
+    pub targets: Vec<String>,
+    pub publish_state: String,
+    pub approved_by: Option<String>,
+    pub approved_at: Option<String>,
+    pub body: String,
+}
+
+impl ParsedReleasePreviewArtifact {
+    pub fn approval(&self) -> ReleasePreviewApproval {
+        ReleasePreviewApproval {
+            approved_by: self.approved_by.clone(),
+            approved_at: self.approved_at.clone(),
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ReleasePreviewError {
     RepoNotAllowed { repo: String },
     NotReady { blockers: Vec<String> },
@@ -310,6 +333,66 @@ pub fn approve_release_preview_artifact(
     })
 }
 
+pub fn parse_release_preview_artifact(
+    content: &str,
+) -> Result<ParsedReleasePreviewArtifact, ReleasePreviewError> {
+    let Some(rest) = content.strip_prefix("---\n") else {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["preview artifact is missing frontmatter".to_string()],
+        });
+    };
+    let Some((frontmatter, body)) = rest.split_once("---\n") else {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["preview artifact frontmatter is unterminated".to_string()],
+        });
+    };
+
+    Ok(ParsedReleasePreviewArtifact {
+        title: required_frontmatter_value(frontmatter, "title")?,
+        repo: required_frontmatter_value(frontmatter, "repo")?,
+        tag: required_frontmatter_value(frontmatter, "tag")?,
+        source_url: required_frontmatter_value(frontmatter, "source_url")?,
+        dedupe_key: required_frontmatter_value(frontmatter, "dedupe_key")?,
+        targets: frontmatter_array(frontmatter, "targets").unwrap_or_default(),
+        publish_state: required_frontmatter_value(frontmatter, "publish_state")?,
+        approved_by: frontmatter_value_from_block(frontmatter, "approved_by"),
+        approved_at: frontmatter_value_from_block(frontmatter, "approved_at"),
+        body: body.trim_start_matches('\n').to_string(),
+    })
+}
+
+pub fn serialize_release_preview_artifact(parsed: &ParsedReleasePreviewArtifact) -> String {
+    let targets = parsed
+        .targets
+        .iter()
+        .map(|target| format!("\"{}\"", escape_frontmatter_string(target)))
+        .collect::<Vec<_>>()
+        .join(", ");
+    let mut frontmatter = format!(
+        "---\ntitle: \"{}\"\nrepo: \"{}\"\ntag: \"{}\"\nsource_url: \"{}\"\ndedupe_key: \"{}\"\ntargets: [{}]\npublish_state: {}\n",
+        escape_frontmatter_string(&parsed.title),
+        escape_frontmatter_string(&parsed.repo),
+        escape_frontmatter_string(&parsed.tag),
+        escape_frontmatter_string(&parsed.source_url),
+        escape_frontmatter_string(&parsed.dedupe_key),
+        targets,
+        parsed.publish_state,
+    );
+    if let Some(approved_by) = parsed.approved_by.as_deref() {
+        frontmatter.push_str(&format!(
+            "approved_by: \"{}\"\n",
+            escape_frontmatter_string(approved_by)
+        ));
+    }
+    if let Some(approved_at) = parsed.approved_at.as_deref() {
+        frontmatter.push_str(&format!(
+            "approved_at: \"{}\"\n",
+            escape_frontmatter_string(approved_at)
+        ));
+    }
+    format!("{frontmatter}---\n\n{}", parsed.body)
+}
+
 pub fn apply_release_preview_approval(
     content: &str,
     approval: &ReleasePreviewApproval,
@@ -319,20 +402,11 @@ pub fn apply_release_preview_approval(
             blockers: vec!["approval metadata is incomplete".to_string()],
         });
     }
-    let approved_by =
-        escape_frontmatter_string(approval.approved_by.as_deref().unwrap_or_default());
-    let approved_at =
-        escape_frontmatter_string(approval.approved_at.as_deref().unwrap_or_default());
-    let mut output = content.replace("publish_state: preview", "publish_state: approved");
-    if !output.contains("approved_by:") {
-        output = output.replace(
-            "publish_state: approved\n",
-            &format!(
-                "publish_state: approved\napproved_by: \"{approved_by}\"\napproved_at: \"{approved_at}\"\n"
-            ),
-        );
-    }
-    Ok(output)
+    let mut parsed = parse_release_preview_artifact(content)?;
+    parsed.publish_state = "approved".to_string();
+    parsed.approved_by = approval.approved_by.clone();
+    parsed.approved_at = approval.approved_at.clone();
+    Ok(serialize_release_preview_artifact(&parsed))
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize)]
@@ -358,20 +432,14 @@ pub fn build_discord_dry_run_publish(
             blockers: vec![format!("missing {DISCORD_CHANNEL_CONFIG}")],
         });
     }
-    let dedupe_key = frontmatter_value(&artifact.content, "dedupe_key").ok_or_else(|| {
-        ReleasePreviewError::NotReady {
-            blockers: vec!["preview artifact is missing dedupe_key".to_string()],
-        }
-    })?;
-    let body = artifact
-        .content
-        .split_once(
-            "---
-
-",
-        )
-        .map(|(_, body)| body.trim().to_string())
-        .unwrap_or_else(|| artifact.content.trim().to_string());
+    let parsed = parse_release_preview_artifact(&artifact.content)?;
+    if parsed.publish_state != "approved" {
+        return Err(ReleasePreviewError::NotReady {
+            blockers: vec!["preview artifact is not approved".to_string()],
+        });
+    }
+    let dedupe_key = parsed.dedupe_key;
+    let body = parsed.body.trim().to_string();
     Ok(DiscordDryRunPublish {
         channel_id: channel_id.trim().to_string(),
         dedupe_key,
@@ -380,14 +448,33 @@ pub fn build_discord_dry_run_publish(
     })
 }
 
-fn frontmatter_value(content: &str, key: &str) -> Option<String> {
-    content.lines().find_map(|line| {
+fn required_frontmatter_value(frontmatter: &str, key: &str) -> Result<String, ReleasePreviewError> {
+    frontmatter_value_from_block(frontmatter, key).ok_or_else(|| ReleasePreviewError::NotReady {
+        blockers: vec![format!("preview artifact is missing {key}")],
+    })
+}
+
+fn frontmatter_value_from_block(frontmatter: &str, key: &str) -> Option<String> {
+    frontmatter.lines().find_map(|line| {
         let (candidate, value) = line.split_once(':')?;
         if candidate.trim() != key {
             return None;
         }
         Some(value.trim().trim_matches('"').to_string())
     })
+}
+
+fn frontmatter_array(frontmatter: &str, key: &str) -> Option<Vec<String>> {
+    let raw = frontmatter_value_from_block(frontmatter, key)?;
+    let raw = raw.trim().trim_start_matches('[').trim_end_matches(']');
+    if raw.trim().is_empty() {
+        return Some(Vec::new());
+    }
+    Some(
+        raw.split(',')
+            .map(|item| item.trim().trim_matches('"').to_string())
+            .collect(),
+    )
 }
 
 pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseAgentReadiness {
@@ -653,6 +740,35 @@ mod tests {
     }
 
     #[test]
+    fn release_preview_artifact_parses_and_roundtrips() {
+        let release = vox_release();
+        let artifact = build_release_preview_artifact(&release, "release-posts");
+
+        let parsed = parse_release_preview_artifact(&artifact.content).unwrap();
+        assert_eq!(parsed.repo, "styrene-lab/vox");
+        assert_eq!(parsed.tag, "v0.1.5");
+        assert_eq!(parsed.targets, ["preview"]);
+        assert_eq!(parsed.publish_state, "preview");
+        assert!(parsed.body.contains("Vox v0.1.5 is out"));
+        assert_eq!(
+            serialize_release_preview_artifact(&parsed),
+            artifact.content
+        );
+    }
+
+    #[test]
+    fn release_preview_artifact_parser_requires_schema_fields() {
+        let error = parse_release_preview_artifact("---\ntitle: \"x\"\n---\n\nbody").unwrap_err();
+
+        assert_eq!(
+            error,
+            ReleasePreviewError::NotReady {
+                blockers: vec!["preview artifact is missing repo".to_string()]
+            }
+        );
+    }
+
+    #[test]
     fn release_preview_approval_updates_frontmatter() {
         let release = vox_release();
         let artifact = build_release_preview_artifact(&release, "release-posts");
@@ -697,7 +813,13 @@ mod tests {
             approved_at: Some("2026-06-15T00:00:00Z".to_string()),
         };
 
-        let dry_run = build_discord_dry_run_publish(&artifact, "123", &approval).unwrap();
+        let approved_content =
+            apply_release_preview_approval(&artifact.content, &approval).unwrap();
+        let approved_artifact = ReleasePreviewArtifact {
+            path: artifact.path.clone(),
+            content: approved_content,
+        };
+        let dry_run = build_discord_dry_run_publish(&approved_artifact, "123", &approval).unwrap();
 
         assert_eq!(dry_run.channel_id, "123");
         assert_eq!(dry_run.dedupe_key, "styrene-lab/vox#v0.1.5");
