@@ -57,3 +57,4 @@ pub mod telemetry;
 // Orchestration
 pub mod bootstrap;
 pub mod controller;
+pub mod release_agent;

@@ -1,0 +1,8 @@
+{
+  "repo": "styrene-lab/vox",
+  "tag": "v0.1.5",
+  "name": "vox v0.1.5",
+  "body": "### Fixed\n- Kubernetes background integration for deploy-agent workflows.\n- Release installer path for clustered Vox integrations.\n",
+  "html_url": "https://github.com/styrene-lab/vox/releases/tag/v0.1.5",
+  "published_at": "2026-06-14T00:00:00Z"
+}

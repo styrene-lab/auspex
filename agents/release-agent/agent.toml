@@ -1,0 +1,41 @@
+[agent]
+id = "styrene.release-agent"
+name = "Styrene Release Agent"
+version = "0.1.0"
+description = "Generates and publishes staged posts for Styrene ecosystem GitHub releases. Preview mode is read-only; Discord publish mode requires explicit token and channel configuration."
+domain = "release"
+
+[settings]
+model = "anthropic:claude-sonnet-4-6"
+thinking_level = "medium"
+context_class = "standard"
+max_turns = 20
+
+[workflow]
+name = "styrene-release-publishing"
+
+[release_agent]
+mode = "preview"
+repos = [
+  "styrene-lab/omegon",
+  "styrene-lab/auspex",
+  "styrene-lab/vox",
+  "styrene-lab/styrened",
+]
+preview_output = "release-posts"
+
+[release_agent.discord]
+dry_run = true
+channel_id_env = "DISCORD_RELEASE_CHANNEL_ID"
+
+[secrets]
+required = ["GITHUB_TOKEN"]
+optional = ["VOX_DISCORD_BOT_TOKEN", "ANTHROPIC_API_KEY"]
+
+[readiness.preview]
+required_secrets = ["GITHUB_TOKEN"]
+required_config = ["release_agent.repos", "release_agent.preview_output"]
+
+[readiness.discord_publish]
+required_secrets = ["GITHUB_TOKEN", "VOX_DISCORD_BOT_TOKEN"]
+required_config = ["release_agent.discord.channel_id_env"]
