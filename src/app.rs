@@ -11,6 +11,9 @@ use auspex_core::event_stream::EventStreamHandle;
 use auspex_core::fixtures::TranscriptData;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::ipc_client::IpcEventStreamHandle;
+use auspex_core::release_agent::{
+    ReleaseAgentExecutionBoundary, release_agent_execution_boundary_summary,
+};
 use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -173,6 +176,47 @@ struct AssistantWorkspaceState {
     loading: bool,
     message: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct ReleaseAgentBoundaryViewModel {
+    substrate_label: String,
+    inherited_summary: String,
+    oci_summary: String,
+    oci_available: bool,
+}
+
+fn build_release_agent_boundary_view_model(
+    session: &auspex_core::fixtures::SessionData,
+) -> ReleaseAgentBoundaryViewModel {
+    const DEFAULT_OCI_IMAGE: &str = "ghcr.io/styrene-lab/omegon-full:0.27.0-local";
+
+    let substrate = session
+        .instance_descriptor
+        .as_ref()
+        .and_then(|descriptor| descriptor.runtime.as_ref())
+        .and_then(|runtime| runtime.execution_substrate.clone());
+    let substrate_label = substrate
+        .as_ref()
+        .map(|substrate| substrate.kind.clone())
+        .filter(|kind| !kind.trim().is_empty())
+        .unwrap_or_else(|| "unknown".to_string());
+    let oci_boundary = ReleaseAgentExecutionBoundary::Oci {
+        image: Some(DEFAULT_OCI_IMAGE.to_string()),
+        substrate: Box::new(substrate.clone()),
+    };
+    let oci_available = substrate.as_ref().is_some_and(|substrate| {
+        substrate.is_host_native() && substrate.capabilities.has_host_runtime
+    });
+
+    ReleaseAgentBoundaryViewModel {
+        substrate_label,
+        inherited_summary: release_agent_execution_boundary_summary(
+            &ReleaseAgentExecutionBoundary::Inherited,
+        ),
+        oci_summary: release_agent_execution_boundary_summary(&oci_boundary),
+        oci_available,
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4111,6 +4155,7 @@ fn render_assistant_workspace(
         });
     }
     let model = build_assistant_workspace_model(&snapshot);
+    let release_boundary = build_release_agent_boundary_view_model(session);
     let assistants = model.assistants.clone();
     let selected_assistant = model.selected_assistant.clone();
 
@@ -4177,6 +4222,19 @@ fn render_assistant_workspace(
                     p { class: "deploy-error", "{error}" }
                 } else if let Some(message) = snapshot.message.as_deref() {
                     p { class: "deploy-message", "{message}" }
+                }
+            }
+
+            section { class: "assistant-detail-panel release-agent-boundary",
+                div { class: "assistant-section-title",
+                    h3 { "Release-agent execution" }
+                    span { "{release_boundary.substrate_label}" }
+                }
+                div { class: "deploy-status-stack",
+                    span { class: "fleet-card-meta", "{release_boundary.inherited_summary}" }
+                    span { class: if release_boundary.oci_available { "fleet-card-meta" } else { "fleet-card-meta panel-muted" },
+                        "{release_boundary.oci_summary}"
+                    }
                 }
             }
 
@@ -6396,7 +6454,6 @@ mod tests {
         HostSessionSummary, InstanceControlPlaneData, MessageRole, MockHostSession, OriginKind,
         SystemNoticeKind, ToolCard, TranscriptData,
     };
-    #[cfg(not(target_arch = "wasm32"))]
     use auspex_core::runtime_types::TargetedCommand;
     use auspex_core::session_model::HostSessionModel;
 

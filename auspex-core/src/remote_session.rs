@@ -1361,6 +1361,7 @@ fn project_instance_descriptor(descriptor: &OmegonInstanceDescriptor) -> Instanc
                 namespace: runtime.namespace.clone(),
                 pod_name: runtime.pod_name.clone(),
                 container_name: runtime.container_name.clone(),
+                execution_substrate: runtime.execution_substrate.clone(),
             }),
         session: descriptor
             .session

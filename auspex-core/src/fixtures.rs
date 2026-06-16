@@ -208,6 +208,7 @@ pub struct InstanceRuntimeData {
     pub namespace: Option<String>,
     pub pod_name: Option<String>,
     pub container_name: Option<String>,
+    pub execution_substrate: Option<crate::omegon_control::OmegonExecutionSubstrate>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Default)]
