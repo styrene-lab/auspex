@@ -115,8 +115,54 @@ pub enum ReleaseAgentExecutionBoundary {
     Inherited,
     Oci {
         image: Option<String>,
-        runtime_available: bool,
+        substrate: Box<Option<crate::omegon_control::OmegonExecutionSubstrate>>,
     },
+}
+
+pub fn release_agent_execution_boundary_summary(
+    boundary: &ReleaseAgentExecutionBoundary,
+) -> String {
+    match boundary {
+        ReleaseAgentExecutionBoundary::Inherited => {
+            "execution boundary: inherited runtime".to_string()
+        }
+        ReleaseAgentExecutionBoundary::Oci { image, substrate } => {
+            let image = image
+                .as_deref()
+                .map(str::trim)
+                .filter(|image| !image.is_empty());
+            match substrate.as_ref() {
+                Some(substrate) if substrate.is_host_native() && substrate.capabilities.has_host_runtime => {
+                    format!(
+                        "execution boundary: host-shim OCI via {}",
+                        image.unwrap_or("<missing image>")
+                    )
+                }
+                Some(substrate) if substrate.is_host_native() => {
+                    "execution boundary: OCI requested but no host container runtime is available"
+                        .to_string()
+                }
+                Some(substrate) if substrate.is_host_shim_oci() => {
+                    "execution boundary: inherited host-shim OCI; recursive OCI launch blocked"
+                        .to_string()
+                }
+                Some(substrate) if substrate.is_orchestrated_container() => {
+                    format!(
+                        "execution boundary: orchestrated container ({}) uses inherited container runtime",
+                        substrate.kind
+                    )
+                }
+                Some(substrate) => format!(
+                    "execution boundary: OCI requested but substrate '{}' is not launch-capable",
+                    substrate.kind
+                ),
+                None => {
+                    "execution boundary: OCI requested but runtime substrate telemetry is unavailable"
+                        .to_string()
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -516,21 +562,54 @@ pub fn release_agent_readiness(inputs: &ReleaseAgentReadinessInputs) -> ReleaseA
     }
     let execution_boundary_ready = match &inputs.execution_boundary {
         ReleaseAgentExecutionBoundary::Inherited => true,
-        ReleaseAgentExecutionBoundary::Oci {
-            image,
-            runtime_available,
-        } => {
+        ReleaseAgentExecutionBoundary::Oci { image, substrate } => {
             if image.as_deref().is_none_or(|image| image.trim().is_empty()) {
                 blockers.push("OCI execution boundary requires an image reference".to_string());
                 false
-            } else if !runtime_available {
-                warnings.push(
-                    "OCI execution boundary selected but no container runtime is available"
-                        .to_string(),
-                );
-                false
             } else {
-                true
+                match substrate.as_ref() {
+                    Some(substrate)
+                        if substrate.is_host_native()
+                            && substrate.capabilities.has_host_runtime =>
+                    {
+                        true
+                    }
+                    Some(substrate) if substrate.is_host_native() => {
+                        warnings.push(
+                            "OCI execution boundary selected but no host container runtime is available"
+                                .to_string(),
+                        );
+                        false
+                    }
+                    Some(substrate) if substrate.is_host_shim_oci() => {
+                        blockers.push(
+                            "OCI execution boundary cannot recursively launch from host-shim OCI"
+                                .to_string(),
+                        );
+                        false
+                    }
+                    Some(substrate) if substrate.is_orchestrated_container() => {
+                        blockers.push(
+                            "host-shim OCI launch is unavailable from orchestrated container substrates"
+                                .to_string(),
+                        );
+                        false
+                    }
+                    Some(substrate) => {
+                        warnings.push(format!(
+                            "OCI execution boundary selected but substrate '{}' is not launch-capable",
+                            substrate.kind
+                        ));
+                        false
+                    }
+                    None => {
+                        warnings.push(
+                            "OCI execution boundary selected but attached runtime did not report substrate telemetry"
+                                .to_string(),
+                        );
+                        false
+                    }
+                }
             }
         }
     };
@@ -629,6 +708,32 @@ mod tests {
             "../../tests/fixtures/github-release-vox-v0.1.5.json"
         ))
         .unwrap()
+    }
+    fn host_native_substrate(
+        has_host_runtime: bool,
+    ) -> crate::omegon_control::OmegonExecutionSubstrate {
+        crate::omegon_control::OmegonExecutionSubstrate {
+            kind: "host-native".to_string(),
+            capabilities: crate::omegon_control::OmegonExecutionSubstrateCapabilities {
+                has_host_runtime,
+                can_mount_host_paths: true,
+                can_launch_sibling_containers: has_host_runtime,
+                can_write_workspace: true,
+                has_kubernetes_service_account: false,
+            },
+            ..Default::default()
+        }
+    }
+
+    fn substrate(kind: &str) -> crate::omegon_control::OmegonExecutionSubstrate {
+        crate::omegon_control::OmegonExecutionSubstrate {
+            kind: kind.to_string(),
+            capabilities: crate::omegon_control::OmegonExecutionSubstrateCapabilities {
+                can_write_workspace: true,
+                ..Default::default()
+            },
+            ..Default::default()
+        }
     }
 
     #[test]
@@ -874,7 +979,7 @@ mod tests {
             preview_approval: ReleasePreviewApproval::default(),
             execution_boundary: ReleaseAgentExecutionBoundary::Oci {
                 image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
-                runtime_available: true,
+                substrate: Box::new(Some(host_native_substrate(true))),
             },
         });
 
@@ -894,7 +999,7 @@ mod tests {
             preview_approval: ReleasePreviewApproval::default(),
             execution_boundary: ReleaseAgentExecutionBoundary::Oci {
                 image: None,
-                runtime_available: true,
+                substrate: Box::new(Some(host_native_substrate(true))),
             },
         });
 
@@ -918,7 +1023,7 @@ mod tests {
             preview_approval: ReleasePreviewApproval::default(),
             execution_boundary: ReleaseAgentExecutionBoundary::Oci {
                 image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
-                runtime_available: false,
+                substrate: Box::new(Some(host_native_substrate(false))),
             },
         });
 
@@ -930,6 +1035,89 @@ mod tests {
                 .iter()
                 .any(|warning| warning.contains("container runtime"))
         );
+    }
+
+    #[test]
+    fn release_agent_preview_blocks_recursive_oci_from_host_shim() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                substrate: Box::new(Some(substrate("host-shim-oci"))),
+            },
+        });
+
+        assert!(!readiness.preview_ready);
+        assert!(!readiness.execution_boundary_ready);
+        assert!(
+            readiness
+                .blockers
+                .iter()
+                .any(|blocker| blocker.contains("recursively"))
+        );
+    }
+
+    #[test]
+    fn release_agent_preview_blocks_host_shim_oci_from_kubernetes() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                substrate: Box::new(Some(substrate("kubernetes"))),
+            },
+        });
+
+        assert!(!readiness.preview_ready);
+        assert!(!readiness.execution_boundary_ready);
+        assert!(
+            readiness
+                .blockers
+                .iter()
+                .any(|blocker| blocker.contains("orchestrated container"))
+        );
+    }
+
+    #[test]
+    fn release_agent_preview_warns_when_substrate_telemetry_missing() {
+        let readiness = release_agent_readiness(&ReleaseAgentReadinessInputs {
+            configured_secrets: BTreeSet::from([GITHUB_TOKEN_SECRET.to_string()]),
+            model_available: true,
+            repo_allowlist: vec!["styrene-lab/vox".to_string()],
+            publish_target: None,
+            preview_approval: ReleasePreviewApproval::default(),
+            execution_boundary: ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                substrate: Box::new(None),
+            },
+        });
+
+        assert!(!readiness.preview_ready);
+        assert!(!readiness.execution_boundary_ready);
+        assert!(
+            readiness
+                .warnings
+                .iter()
+                .any(|warning| warning.contains("substrate telemetry"))
+        );
+    }
+
+    #[test]
+    fn release_agent_execution_boundary_summary_explains_substrate_decision() {
+        let summary =
+            release_agent_execution_boundary_summary(&ReleaseAgentExecutionBoundary::Oci {
+                image: Some("ghcr.io/styrene-lab/omegon-full:0.27.0-local".to_string()),
+                substrate: Box::new(Some(substrate("host-shim-oci"))),
+            });
+
+        assert!(summary.contains("recursive OCI launch blocked"));
     }
 
     #[test]

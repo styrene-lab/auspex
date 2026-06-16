@@ -14,6 +14,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Added an Assistants workspace that surfaces attached Omegon launch-readiness cards without re-inferring readiness client-side, including tested readiness totals and labels, tested refresh selection preservation and empty-list reset, tested refresh failure message clearing and card preservation, tested blocker/warning ordering, selectable blocker, warning, secret, and tested trust-posture details with refresh result counts.
 
 ### Changed
+- Release-agent execution readiness now consumes structured Omegon execution-substrate telemetry, blocking recursive host-shim OCI launches and distinguishing host-native, host-shim OCI, and orchestrated/Kubernetes runtimes.
 - Release-agent readiness separates GitHub-backed preview from explicit publish targets so missing Discord tokens stay silent in preview-only mode, while Discord publishing still requires token, channel, and operator approval metadata.
 - Native bootstrap waits for the default Omegon control port to close before relaunching and includes child stderr in startup timeout failures.
 - Native desktop assistant readiness now fetches the attached Omegon capability endpoint instead of returning an empty placeholder roster.

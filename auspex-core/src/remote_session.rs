@@ -1187,6 +1187,7 @@ fn project_ipc_instance_descriptor(snapshot: &IpcStateSnapshot) -> OmegonInstanc
                 .and_then(|v| v.as_str().map(|s| s.to_string())),
             active_persona: snapshot.harness.active_persona.clone(),
             extensions: Vec::new(),
+            execution_substrate: None,
         }),
         session: Some(crate::omegon_control::OmegonSessionDescriptor { session_id }),
         policy: Some(crate::omegon_control::OmegonPolicyDescriptor {

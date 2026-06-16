@@ -119,6 +119,78 @@ pub struct OmegonRuntimeDescriptor {
     /// Extensions loaded by this instance (e.g. ["vox"]).
     #[serde(default)]
     pub extensions: Vec<String>,
+    /// Structured execution substrate projected by Omegon IPC/Web snapshots.
+    #[serde(default)]
+    pub execution_substrate: Option<OmegonExecutionSubstrate>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonExecutionSubstrate {
+    #[serde(default)]
+    pub kind: String,
+    #[serde(default)]
+    pub container: Option<OmegonContainerSubstrate>,
+    #[serde(default)]
+    pub paths: OmegonExecutionSubstratePaths,
+    #[serde(default)]
+    pub capabilities: OmegonExecutionSubstrateCapabilities,
+}
+
+impl OmegonExecutionSubstrate {
+    pub fn is_host_native(&self) -> bool {
+        self.kind == "host-native" || self.kind == "HostNative"
+    }
+
+    pub fn is_host_shim_oci(&self) -> bool {
+        self.kind == "host-shim-oci" || self.kind == "HostShimOci"
+    }
+
+    pub fn is_orchestrated_container(&self) -> bool {
+        matches!(
+            self.kind.as_str(),
+            "orchestrated-container" | "OrchestratedContainer" | "kubernetes" | "Kubernetes"
+        )
+    }
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonContainerSubstrate {
+    #[serde(default)]
+    pub detected: bool,
+    #[serde(default)]
+    pub runtime: Option<String>,
+    #[serde(default)]
+    pub image: Option<String>,
+    #[serde(default)]
+    pub image_digest: Option<String>,
+    #[serde(default)]
+    pub container_id: Option<String>,
+    #[serde(default)]
+    pub orchestrator: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonExecutionSubstratePaths {
+    #[serde(default)]
+    pub workspace: String,
+    #[serde(default)]
+    pub omegon_home: String,
+    #[serde(default)]
+    pub home: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
+pub struct OmegonExecutionSubstrateCapabilities {
+    #[serde(default)]
+    pub can_launch_sibling_containers: bool,
+    #[serde(default)]
+    pub can_mount_host_paths: bool,
+    #[serde(default)]
+    pub can_write_workspace: bool,
+    #[serde(default)]
+    pub has_host_runtime: bool,
+    #[serde(default)]
+    pub has_kubernetes_service_account: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize, PartialEq, Eq)]
@@ -999,6 +1071,79 @@ mod tests {
         assert_eq!(runtime.autonomy_mode.as_deref(), Some("guarded-autonomous"));
         assert_eq!(runtime.active_persona.as_deref(), Some("styrene-community"));
         assert_eq!(runtime.extensions, vec!["vox"]);
+    }
+
+    #[test]
+    fn runtime_descriptor_deserializes_execution_substrate() {
+        let json = r#"{
+            "backend": "local-process",
+            "execution_substrate": {
+                "kind": "host-native",
+                "container": null,
+                "paths": {
+                    "workspace": "/Users/wilson/workspace/styrene-labs/auspex",
+                    "omegon_home": "/Users/wilson/.omegon",
+                    "home": "/Users/wilson"
+                },
+                "capabilities": {
+                    "can_launch_sibling_containers": true,
+                    "can_mount_host_paths": true,
+                    "can_write_workspace": true,
+                    "has_host_runtime": true,
+                    "has_kubernetes_service_account": false
+                }
+            }
+        }"#;
+
+        let runtime: OmegonRuntimeDescriptor = serde_json::from_str(json).unwrap();
+        let substrate = runtime.execution_substrate.unwrap();
+
+        assert!(substrate.is_host_native());
+        assert_eq!(
+            substrate.paths.workspace,
+            "/Users/wilson/workspace/styrene-labs/auspex"
+        );
+        assert!(substrate.capabilities.has_host_runtime);
+        assert!(substrate.capabilities.can_mount_host_paths);
+    }
+
+    #[test]
+    fn runtime_descriptor_deserializes_kubernetes_execution_substrate() {
+        let json = r#"{
+            "execution_substrate": {
+                "kind": "kubernetes",
+                "container": {
+                    "detected": true,
+                    "runtime": "containerd",
+                    "image": "ghcr.io/styrene-lab/omegon-full:0.27.0",
+                    "container_id": "pod-123",
+                    "orchestrator": "kubernetes"
+                },
+                "paths": {
+                    "workspace": "/workspace",
+                    "omegon_home": "/data/omegon",
+                    "home": "/data/home"
+                },
+                "capabilities": {
+                    "can_launch_sibling_containers": false,
+                    "can_mount_host_paths": false,
+                    "can_write_workspace": true,
+                    "has_host_runtime": false,
+                    "has_kubernetes_service_account": true
+                }
+            }
+        }"#;
+
+        let runtime: OmegonRuntimeDescriptor = serde_json::from_str(json).unwrap();
+        let substrate = runtime.execution_substrate.unwrap();
+
+        assert!(substrate.is_orchestrated_container());
+        assert_eq!(
+            substrate.container.unwrap().orchestrator.as_deref(),
+            Some("kubernetes")
+        );
+        assert!(substrate.capabilities.has_kubernetes_service_account);
+        assert!(!substrate.capabilities.can_mount_host_paths);
     }
 
     #[test]
