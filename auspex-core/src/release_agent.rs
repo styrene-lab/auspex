@@ -109,19 +109,14 @@ pub struct ReleaseAgentReadinessInputs {
     pub execution_boundary: ReleaseAgentExecutionBoundary,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
 pub enum ReleaseAgentExecutionBoundary {
+    #[default]
     Inherited,
     Oci {
         image: Option<String>,
         runtime_available: bool,
     },
-}
-
-impl Default for ReleaseAgentExecutionBoundary {
-    fn default() -> Self {
-        Self::Inherited
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
