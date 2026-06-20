@@ -19,8 +19,7 @@ const LAYOUT_DEBUG_ENABLED: bool = false;
 const SHELL_BLOCKOUT_MODE: bool = false;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
-const OMEGON_MODEL_REGISTRY_JSON: &str =
-    include_str!("../../omegon-secundus/data/model-registry.json");
+const OMEGON_MODEL_REGISTRY_JSON: &str = include_str!("../assets/omegon-model-registry.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
@@ -4447,6 +4446,9 @@ fn render_assistant_workspace(
                             select {
                                 value: "{selected_model}",
                                 oninput: move |event| state.write().profile_model = event.value(),
+                                if !model_options.iter().any(|option| option == &selected_model) {
+                                    option { value: "{selected_model}", selected: true, "{selected_model} (current, not in bundled matrix)" }
+                                }
                                 for option in model_options.iter() {
                                     option { value: "{option}", selected: option == &selected_model, "{option}" }
                                 }

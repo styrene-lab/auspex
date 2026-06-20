@@ -6094,3 +6094,57 @@ body {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+
+.agent-config-field select {
+  width: 100%;
+  min-height: 2.45rem;
+  border: 1px solid rgba(42, 180, 200, 0.34);
+  border-radius: 0;
+  background: #020406;
+  color: var(--text-primary);
+  padding: 0.45rem 2rem 0.45rem 0.65rem;
+  font: 800 0.92rem/1.2 var(--font-mono);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.agent-config-field select:focus,
+.agent-config-field input:focus {
+  outline: 2px solid rgba(110, 202, 216, 0.55);
+  outline-offset: 2px;
+  border-color: rgba(110, 202, 216, 0.72);
+}
+
+.agent-config-field-static strong,
+.agent-checkbox-row strong {
+  min-height: 2.45rem;
+  display: flex;
+  align-items: center;
+  border: 1px solid rgba(42, 180, 200, 0.18);
+  background: rgba(2, 6, 14, 0.38);
+  color: var(--text-primary);
+  padding: 0.45rem 0.65rem;
+  font: 800 0.92rem/1.2 var(--font-mono);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.agent-config-field-static small {
+  color: rgba(148, 163, 184, 0.72);
+  font: 700 0.68rem/1.2 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.agent-checkbox-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.65rem;
+  align-items: center;
+}
+
+.agent-checkbox-row input[type="checkbox"] {
+  width: 1.3rem;
+  height: 1.3rem;
+  accent-color: #2ab4c8;
+}
