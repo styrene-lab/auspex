@@ -33,6 +33,10 @@ pub enum OperatorCommand {
         profile: String,
         model: Option<String>,
     },
+    ControlMethod {
+        method: String,
+        payload: serde_json::Value,
+    },
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -85,6 +89,20 @@ impl TargetedCommand {
         }
     }
 
+    pub fn control_method(
+        target: CommandTarget,
+        method: impl Into<String>,
+        payload: serde_json::Value,
+    ) -> Self {
+        Self {
+            target,
+            command: OperatorCommand::ControlMethod {
+                method: method.into(),
+                payload,
+            },
+        }
+    }
+
     pub fn web_command_json(&self) -> String {
         match &self.command {
             OperatorCommand::PromptSubmit { text } => serde_json::json!({
@@ -110,6 +128,16 @@ impl TargetedCommand {
                 "model": model,
             })
             .to_string(),
+            OperatorCommand::ControlMethod { method, payload } => {
+                let mut command = payload.clone();
+                if let serde_json::Value::Object(ref mut map) = command {
+                    map.insert(
+                        "type".to_string(),
+                        serde_json::Value::String(method.clone()),
+                    );
+                }
+                command.to_string()
+            }
         }
     }
 

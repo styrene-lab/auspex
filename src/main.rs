@@ -1,5 +1,6 @@
 mod app;
 mod screens;
+#[allow(dead_code)]
 mod workflow;
 
 #[cfg(not(target_arch = "wasm32"))]

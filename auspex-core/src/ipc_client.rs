@@ -163,6 +163,13 @@ impl IpcCommandClient {
             .map_err(|error| format!("decode run_slash_command response: {error}"))
     }
 
+    pub async fn control_method(&self, method: &str, payload: Value) -> Result<bool, String> {
+        let response = self.request(method, Some(payload)).await?;
+        let accepted = serde_json::from_value::<AcceptedResponse>(response)
+            .map_err(|error| format!("decode {method} response: {error}"))?;
+        Ok(accepted.accepted)
+    }
+
     pub async fn switch_dispatcher(
         &self,
         request_id: &str,
@@ -190,6 +197,10 @@ impl IpcCommandClient {
                 "cancel".into(),
                 "switch_dispatcher".into(),
                 "run_slash_command".into(),
+                "set_model".into(),
+                "set_thinking".into(),
+                "set_context_class".into(),
+                "set_max_turns".into(),
             ],
         )
         .await?;

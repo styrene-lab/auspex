@@ -1,19 +1,17 @@
+#![allow(dead_code)]
+
 use dioxus::prelude::*;
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
-use crate::screens::{GraphScreen, SessionScreen, WorkflowBuilderScreen};
+use crate::screens::SessionScreen;
 use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use auspex_core::bootstrap::BootstrapResult;
-#[cfg(not(target_arch = "wasm32"))]
 use auspex_core::command_transport::CommandTransport;
 use auspex_core::controller::{AppController, SessionMode};
 use auspex_core::event_stream::EventStreamHandle;
 use auspex_core::fixtures::TranscriptData;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::ipc_client::IpcEventStreamHandle;
-use auspex_core::release_agent::{
-    ReleaseAgentExecutionBoundary, release_agent_execution_boundary_summary,
-};
 use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -21,17 +19,13 @@ const LAYOUT_DEBUG_ENABLED: bool = false;
 const SHELL_BLOCKOUT_MODE: bool = false;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
+const OMEGON_MODEL_REGISTRY_JSON: &str =
+    include_str!("../../omegon-secundus/data/model-registry.json");
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 enum Workspace {
-    Cop,
     Chat,
-    Deploy,
-    Session,
     Assistants,
-    Graph,
-    Workflow,
-    Audit,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
@@ -174,49 +168,14 @@ struct AssistantWorkspaceState {
     selected_id: Option<String>,
     auto_loaded_endpoint: Option<String>,
     loading: bool,
+    profile_model: String,
+    profile_thinking: String,
+    profile_runtime_slim: bool,
+    profile_max_turns: String,
+    profile_context: String,
+    applying_profile: bool,
     message: Option<String>,
     error: Option<String>,
-}
-
-#[derive(Clone, Debug, PartialEq, Eq)]
-struct ReleaseAgentBoundaryViewModel {
-    substrate_label: String,
-    inherited_summary: String,
-    oci_summary: String,
-    oci_available: bool,
-}
-
-fn build_release_agent_boundary_view_model(
-    session: &auspex_core::fixtures::SessionData,
-) -> ReleaseAgentBoundaryViewModel {
-    const DEFAULT_OCI_IMAGE: &str = "ghcr.io/styrene-lab/omegon-full:0.27.0-local";
-
-    let substrate = session
-        .instance_descriptor
-        .as_ref()
-        .and_then(|descriptor| descriptor.runtime.as_ref())
-        .and_then(|runtime| runtime.execution_substrate.clone());
-    let substrate_label = substrate
-        .as_ref()
-        .map(|substrate| substrate.kind.clone())
-        .filter(|kind| !kind.trim().is_empty())
-        .unwrap_or_else(|| "unknown".to_string());
-    let oci_boundary = ReleaseAgentExecutionBoundary::Oci {
-        image: Some(DEFAULT_OCI_IMAGE.to_string()),
-        substrate: Box::new(substrate.clone()),
-    };
-    let oci_available = substrate.as_ref().is_some_and(|substrate| {
-        substrate.is_host_native() && substrate.capabilities.has_host_runtime
-    });
-
-    ReleaseAgentBoundaryViewModel {
-        substrate_label,
-        inherited_summary: release_agent_execution_boundary_summary(
-            &ReleaseAgentExecutionBoundary::Inherited,
-        ),
-        oci_summary: release_agent_execution_boundary_summary(&oci_boundary),
-        oci_available,
-    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -333,6 +292,71 @@ fn dispatch_targeted_command(
 #[cfg(target_arch = "wasm32")]
 fn dispatch_targeted_command(stream: &EventStreamHandle, command: &TargetedCommand) {
     stream.send_targeted_command(command);
+}
+
+fn omegon_model_options() -> Vec<String> {
+    serde_json::from_str::<serde_json::Value>(OMEGON_MODEL_REGISTRY_JSON)
+        .ok()
+        .and_then(|value| {
+            value
+                .get("models")
+                .and_then(|models| models.as_array())
+                .cloned()
+        })
+        .map(|models| {
+            let mut options = models
+                .into_iter()
+                .filter_map(|model| {
+                    let provider = model.get("provider")?.as_str()?.trim();
+                    let id = model.get("id")?.as_str()?.trim();
+                    if provider.is_empty() || id.is_empty() {
+                        None
+                    } else {
+                        Some(format!("{provider}:{id}"))
+                    }
+                })
+                .collect::<Vec<_>>();
+            options.sort();
+            options.dedup();
+            options
+        })
+        .unwrap_or_default()
+}
+
+fn is_omegon_registered_model(model: &str) -> bool {
+    let model = model.trim();
+    !model.is_empty() && omegon_model_options().iter().any(|option| option == model)
+}
+
+fn thinking_level_options() -> &'static [&'static str] {
+    &["off", "minimal", "low", "medium", "high"]
+}
+
+fn context_class_options() -> &'static [&'static str] {
+    &["compact", "standard", "extended", "massive"]
+}
+
+fn dispatch_profile_command(
+    _transport: Option<&CommandTransport>,
+    stream: Option<&EventStreamHandle>,
+    command: &TargetedCommand,
+) -> Result<(), String> {
+    #[cfg(not(target_arch = "wasm32"))]
+    {
+        let Some(transport) = _transport else {
+            return Err("No command transport is attached.".to_string());
+        };
+        return dispatch_targeted_command(transport, stream, command);
+    }
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let Some(stream) = stream else {
+            return Err("No event stream is attached.".to_string());
+        };
+        dispatch_targeted_command(stream, command);
+        Ok(())
+    }
 }
 
 fn parse_layout_debug_snapshot(raw: &str) -> Option<LayoutDebugSnapshot> {
@@ -882,9 +906,7 @@ pub fn App() -> Element {
     let settings_status_message = use_signal(|| None::<String>);
     let composer_ready_notice = use_signal(|| None::<String>);
     let mut workspace = use_signal(|| Workspace::Assistants);
-    let deploy_workspace = use_signal(AgentDeployWorkspaceState::default);
     let assistant_workspace = use_signal(AssistantWorkspaceState::default);
-    let mut chat_last_activity: Signal<Option<std::time::Instant>> = use_signal(|| None);
     let mut settings_open = use_signal(|| false);
     let mut controller = use_signal(move || {
         if let Some(bootstrap) = bootstrap {
@@ -912,7 +934,6 @@ pub fn App() -> Element {
         let mut composer_ready_notice = composer_ready_notice;
         #[cfg(not(target_arch = "wasm32"))]
         let mut settings_open = settings_open;
-        let mut workspace = workspace;
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
@@ -1018,36 +1039,13 @@ pub fn App() -> Element {
                                 }
                             }
                             let _ = controller.apply_remote_event_json(&event);
-                            // Primary session event — refresh chat timer if
-                            // focused on primary and in Chat mode.
-                            if *workspace.read() == Workspace::Chat
-                                && controller.is_primary_focused()
-                            {
-                                chat_last_activity.set(Some(std::time::Instant::now()));
-                            }
                         }
                     }
                 }
                 // Drain all per-instance WebSocket event streams.
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    let had_events = controller.write().drain_all_instance_sessions();
-                    // Refresh chat inactivity timer when the focused agent
-                    // produces events while we're in Chat mode.
-                    if had_events && *workspace.read() == Workspace::Chat {
-                        chat_last_activity.set(Some(std::time::Instant::now()));
-                    }
-                }
-
-                // Auto-revert to COP after 60s of chat inactivity.
-                if *workspace.read() == Workspace::Chat {
-                    let should_revert = (*chat_last_activity.read())
-                        .map(|last| last.elapsed() >= std::time::Duration::from_secs(60))
-                        .unwrap_or(false);
-                    if should_revert {
-                        workspace.set(Workspace::Cop);
-                        chat_last_activity.set(None);
-                    }
+                    controller.write().drain_all_instance_sessions();
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1075,14 +1073,6 @@ pub fn App() -> Element {
                 c.set_bootstrap_note(Some(note));
             }
             controller.set(c);
-        }
-    });
-
-    #[cfg(target_arch = "wasm32")]
-    use_future(move || {
-        let mut deploy_workspace = deploy_workspace;
-        async move {
-            refresh_deploy_workspace(&mut deploy_workspace).await;
         }
     });
 
@@ -1171,10 +1161,6 @@ pub fn App() -> Element {
         });
     });
 
-    let mut audit_session_filter = use_signal(String::new);
-    let mut audit_turn_filter = use_signal(String::new);
-    let mut audit_kind_filter = use_signal(|| "all".to_string());
-    let mut audit_text_filter = use_signal(String::new);
     let mut selected_cockpit_entity = use_signal(|| Option::<SelectedCockpitEntity>::None);
     let mut promoted_cockpit_entity = use_signal(|| Option::<PromotedCockpitEntity>::None);
 
@@ -1279,76 +1265,18 @@ pub fn App() -> Element {
     );
 
     let cockpit_center_body = rsx! {
-        if *workspace.read() == Workspace::Cop {
-            {render_gateway_cop_workspace(controller)}
-        } else if *workspace.read() == Workspace::Graph {
-            GraphScreen { data: controller.read().session_data() }
-        } else if *workspace.read() == Workspace::Deploy {
-            {render_agent_deploy_workspace(deploy_workspace, event_stream, workspace, chat_last_activity)}
-        } else if *workspace.read() == Workspace::Workflow {
-            WorkflowBuilderScreen {}
-        } else if *workspace.read() == Workspace::Assistants {
-            {render_assistant_workspace(assistant_workspace, &controller.read().session_data())}
-        } else if *workspace.read() == Workspace::Audit {
-            {render_audit_workspace(
-                controller.read().audit_timeline(),
-                controller.read().current_audit_session_key().as_str(),
-                AuditPanelControls {
-                    filters: AuditFilters {
-                        session_key: audit_session_filter.read().clone(),
-                        turn_query: audit_turn_filter.read().clone(),
-                        kind_key: audit_kind_filter.read().clone(),
-                        text_query: audit_text_filter.read().clone(),
-                    },
-                    on_session_filter: EventHandler::new(move |value: String| audit_session_filter.set(value)),
-                    on_turn_filter: EventHandler::new(move |value: String| audit_turn_filter.set(value)),
-                    on_kind_filter: EventHandler::new(move |value: String| audit_kind_filter.set(value)),
-                    on_text_filter: EventHandler::new(move |value: String| audit_text_filter.set(value)),
-                    on_focus_entry: EventHandler::new(move |target: String| {
-                        focus_transcript_target(controller.read().transcript(), &target);
-                    }),
-                },
+        if *workspace.read() == Workspace::Assistants {
+            {render_assistant_workspace(
+                assistant_workspace,
+                &controller.read().session_data(),
+                controller.read().focused_transcript(),
+                controller.read().focused_messages(),
+                controller,
+                #[cfg(not(target_arch = "wasm32"))]
+                command_transport,
+                event_stream,
+                workspace,
             )}
-        } else if *workspace.read() == Workspace::Session {
-            SessionScreen {
-                data: controller.read().session_data(),
-                selected_entity: selected_cockpit_entity.read().clone(),
-                on_dispatcher_switch: Some(EventHandler::new(move |(profile, model): (String, Option<String>)| {
-                    let command = controller.write().request_dispatcher_switch_command(&profile, model.as_deref());
-                    #[cfg(not(target_arch = "wasm32"))]
-                    if let (Some(command), Some(transport)) = (command, command_transport.read().clone())
-                        && let Err(error) = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command) {
-                        controller.write().record_dispatch_failure(format!("Dispatcher switch could not be sent: {error}"));
-                    }
-                    #[cfg(target_arch = "wasm32")]
-                    if let (Some(command), Some(stream)) = (command, event_stream.read().clone()) {
-                        dispatch_targeted_command(&stream, &command);
-                    }
-                })),
-                on_transcript_focus: Some(EventHandler::new(move |target: String| {
-                    focus_transcript_target(controller.read().transcript(), &target);
-                }))
-            }
-        } else if let Some(promoted) = promoted_cockpit_entity.read().as_ref() {
-            match promoted {
-                PromotedCockpitEntity::DeploymentInstance(instance_id) => {
-                    {render_selected_deployment_cop(
-                        &controller.read().session_data(),
-                        instance_id,
-                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
-                    )}
-                }
-                PromotedCockpitEntity::ActivityActor(task_id) => {
-                    {render_selected_activity_cop(
-                        &controller.read().session_data(),
-                        task_id,
-                        Some(EventHandler::new(move |target: String| {
-                            focus_transcript_target(controller.read().transcript(), &target);
-                        })),
-                        EventHandler::new(move |_| promoted_cockpit_entity.set(None)),
-                    )}
-                }
-            }
         } else {
             {render_chat_cop_host(
                 ChatCopHostModel {
@@ -1368,23 +1296,35 @@ pub fn App() -> Element {
                 },
                 ChatCopHostActions {
                     on_submit: EventHandler::new(move |_| {
-                        chat_last_activity.set(Some(std::time::Instant::now()));
-                        let command = controller.write().submit_prompt_command();
-                        if let Some(command) = command {
+                        spawn(async move {
+                            let command = controller.write().submit_prompt_command();
+                            let Some(command) = command else { return };
+
                             #[cfg(not(target_arch = "wasm32"))]
                             {
-                                let focused = controller.read().focused_instance_id().map(|s| s.to_string());
+                                let focused = controller.read().focused_instance_id().map(str::to_string);
                                 if let Some(instance_id) = focused {
-                                    let _ = controller.read().dispatch_to_instance(&instance_id, &command);
-                                } else if let Some(transport) = command_transport.read().clone() {
-                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                                    let result = controller.read().dispatch_to_instance(&instance_id, &command);
+                                    if result.is_ok() {
+                                        return;
+                                    }
+                                }
+
+                                let transport = command_transport.read().clone();
+                                let stream = event_stream.read().clone();
+                                if let Some(transport) = transport {
+                                    let _ = dispatch_targeted_command(&transport, stream.as_ref(), &command);
                                 }
                             }
+
                             #[cfg(target_arch = "wasm32")]
-                            if let Some(stream) = event_stream.read().clone() {
-                                dispatch_targeted_command(&stream, &command);
+                            {
+                                let stream = event_stream.read().clone();
+                                if let Some(stream) = stream {
+                                    dispatch_targeted_command(&stream, &command);
+                                }
                             }
-                        }
+                        });
                     }),
                     on_update_draft: EventHandler::new(move |value: String| controller.write().update_draft(value)),
                     on_open_settings: EventHandler::new(move |_| {
@@ -1395,18 +1335,39 @@ pub fn App() -> Element {
                         settings_open.set(true)
                     }),
                     on_cancel: EventHandler::new(move |_| {
-                        if let Some(command) = controller.read().cancel_command() {
-                            #[cfg(not(target_arch = "wasm32"))]
-                            {
-                                let focused = controller.read().focused_instance_id().map(|s| s.to_string());
-                                if let Some(instance_id) = focused {
-                                    let _ = controller.read().dispatch_to_instance(&instance_id, &command);
-                                } else if let Some(transport) = command_transport.read().clone() {
-                                    let _ = dispatch_targeted_command(&transport, event_stream.read().as_ref(), &command);
+                        let command = {
+                            let controller = controller.read();
+                            controller.cancel_command()
+                        };
+                        let Some(command) = command else { return };
+
+                        #[cfg(not(target_arch = "wasm32"))]
+                        {
+                            let focused = {
+                                let controller = controller.read();
+                                controller.focused_instance_id().map(str::to_string)
+                            };
+                            if let Some(instance_id) = focused {
+                                let result = {
+                                    let controller = controller.read();
+                                    controller.dispatch_to_instance(&instance_id, &command)
+                                };
+                                if result.is_ok() {
+                                    return;
                                 }
                             }
-                            #[cfg(target_arch = "wasm32")]
-                            if let Some(stream) = event_stream.read().clone() {
+
+                            let transport = command_transport.read().clone();
+                            let stream = event_stream.read().clone();
+                            if let Some(transport) = transport {
+                                let _ = dispatch_targeted_command(&transport, stream.as_ref(), &command);
+                            }
+                        }
+
+                        #[cfg(target_arch = "wasm32")]
+                        {
+                            let stream = event_stream.read().clone();
+                            if let Some(stream) = stream {
                                 dispatch_targeted_command(&stream, &command);
                             }
                         }
@@ -1474,7 +1435,7 @@ pub fn App() -> Element {
                                     let next_workspace = if instance_id.is_some() {
                                         Workspace::Chat
                                     } else {
-                                        Workspace::Cop
+                                        Workspace::Assistants
                                     };
                                     let workspace_changed = {
                                         let current = workspace.read();
@@ -1495,9 +1456,6 @@ pub fn App() -> Element {
 
                                     if workspace_changed {
                                         workspace.set(next_workspace);
-                                    }
-                                    if instance_id.is_some() {
-                                        chat_last_activity.set(Some(std::time::Instant::now()));
                                     }
                                 }
                             }),
@@ -1538,11 +1496,11 @@ pub fn App() -> Element {
                 }
             }
 
-            if !SHELL_BLOCKOUT_MODE && *workspace.read() != Workspace::Assistants {
+            if !SHELL_BLOCKOUT_MODE && !matches!(*workspace.read(), Workspace::Assistants | Workspace::Chat) {
                 {render_cockpit_top_rail(&cockpit, selected_cockpit_entity)}
             }
 
-            if *workspace.read() == Workspace::Assistants {
+            if matches!(*workspace.read(), Workspace::Assistants | Workspace::Chat) {
                 div { class: "assistant-shell assistant-shell-single",
                     {render_assistant_stage(workspace, cockpit_center_body)}
                 }
@@ -1611,7 +1569,7 @@ pub fn App() -> Element {
                                                         selected_cockpit_entity.set(None);
                                                         #[cfg(not(target_arch = "wasm32"))]
                                                         controller.write().focus_instance(None);
-                                                        workspace.set(Workspace::Cop);
+                                                        workspace.set(Workspace::Assistants);
                                                     } else {
                                                         selected_cockpit_entity.set(Some(SelectedCockpitEntity::DeploymentInstance(key.clone())));
                                                         {
@@ -1621,7 +1579,6 @@ pub fn App() -> Element {
                                                             ctrl.focus_instance(Some(&key));
                                                         }
                                                         workspace.set(Workspace::Chat);
-                                                        chat_last_activity.set(Some(std::time::Instant::now()));
                                                     }
                                                 }
                                             },
@@ -2637,6 +2594,14 @@ struct ChatAcpSurfaceModel {
     stream_items: Vec<DispatchContextItem>,
 }
 
+fn primary_chat_display_label(label: &str) -> String {
+    match label.trim() {
+        "primary_driver" | "primary-driver" => "Primary agent".to_string(),
+        "" => "Primary agent".to_string(),
+        other => other.replace('_', " "),
+    }
+}
+
 fn build_chat_acp_surface_model(
     session: &auspex_core::fixtures::SessionData,
 ) -> ChatAcpSurfaceModel {
@@ -2676,7 +2641,7 @@ fn build_chat_acp_surface_model(
                 .and_then(|descriptor| descriptor.policy.as_ref())
                 .and_then(|policy| policy.model.as_deref())
         })
-        .unwrap_or("model pending")
+        .unwrap_or(auspex_core::AUSPEX_PRIMARY_DEFAULT_POSTURE)
         .to_string();
     let target_label = session
         .dispatcher_binding
@@ -2684,8 +2649,8 @@ fn build_chat_acp_surface_model(
         .map(|binding| binding.expected_role.as_str())
         .filter(|role| !role.trim().is_empty())
         .or_else(|| descriptor.map(|descriptor| descriptor.identity.role.as_str()))
-        .unwrap_or("agent")
-        .to_string();
+        .map(primary_chat_display_label)
+        .unwrap_or_else(|| "Primary agent".to_string());
     let target_detail = descriptor
         .map(agent_direct_line_detail)
         .or_else(|| {
@@ -2728,7 +2693,10 @@ fn build_chat_acp_surface_model(
     let config_items = vec![
         DispatchContextItem {
             label: "Tier",
-            value: non_empty_or(&session.capability_tier, "pending"),
+            value: non_empty_or(
+                &session.capability_tier,
+                auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER,
+            ),
             tone: "accent",
         },
         DispatchContextItem {
@@ -2738,7 +2706,10 @@ fn build_chat_acp_surface_model(
         },
         DispatchContextItem {
             label: "Thinking",
-            value: non_empty_or(&session.thinking_level, "pending"),
+            value: non_empty_or(
+                &session.thinking_level,
+                auspex_core::AUSPEX_PRIMARY_DEFAULT_THINKING,
+            ),
             tone: "muted",
         },
         DispatchContextItem {
@@ -2816,13 +2787,16 @@ fn agent_direct_line_detail(descriptor: &auspex_core::fixtures::InstanceDescript
         .runtime
         .as_ref()
         .and_then(|runtime| runtime.backend.as_deref())
-        .unwrap_or("runtime pending");
+        .unwrap_or("embedded Omegon");
     let workspace = descriptor
         .workspace
         .as_ref()
         .and_then(|workspace| workspace.branch.as_deref())
-        .unwrap_or("workspace unknown");
-    format!("{profile} · {runtime} · {workspace}")
+        .unwrap_or("main");
+    format!(
+        "{} · {runtime} · {workspace}",
+        primary_chat_display_label(profile)
+    )
 }
 
 #[allow(dead_code)]
@@ -3009,11 +2983,6 @@ fn build_chat_empty_state_model(
         .as_deref()
         .filter(|value| !value.is_empty())
         .unwrap_or(summary.work.as_str());
-    let dispatcher_target = session
-        .dispatcher_binding
-        .as_ref()
-        .and_then(|binding| binding.expected_model.as_deref())
-        .unwrap_or("current dispatcher model");
     let session_label = session
         .dispatcher_binding
         .as_ref()
@@ -3026,25 +2995,27 @@ fn build_chat_empty_state_model(
             format!("Detached workspace · {branch}"),
             "No transcript yet".into(),
             format!(
-                "{session_label}. Detached from {branch}; start by anchoring intent or branch posture."
+                "Detached from {branch}. Ask {session_label} to inspect the current workspace or explain its runtime state."
             ),
         )
     } else {
         (
             format!("{session_label} · {branch}"),
             "No transcript yet".into(),
-            format!("Start with a small directive for {work_title}."),
+            format!(
+                "Start with a small directive for {work_title}, or ask it to summarize the current workspace state."
+            ),
         )
     };
 
     let mut guidance = vec![
-        format!("Summarize {work_title}."),
-        format!("Validate {dispatcher_target}."),
+        "Summarize the current workspace state.".to_string(),
+        "Validate the current branch and working tree.".to_string(),
     ];
     if session.git_detached {
         guidance.push(format!("Resolve detached branch {branch}."));
     } else {
-        guidance.push("Plan first concrete step.".to_string());
+        guidance.push("What is the next concrete step?".to_string());
     }
 
     Some(ChatEmptyStateModel {
@@ -4137,9 +4108,205 @@ fn build_assistant_workspace_model(snapshot: &AssistantWorkspaceState) -> Assist
     }
 }
 
+fn chat_instance_for_assistant(
+    controller: &AppController,
+    assistant: &auspex_core::omegon_control::OmegonAssistantListItem,
+) -> Option<String> {
+    let assistant_id = assistant.id.trim();
+    let domain = assistant.domain.trim();
+    controller
+        .attached_instances()
+        .iter()
+        .find(|instance| {
+            instance.instance_id == assistant_id
+                || instance.profile == assistant_id
+                || instance.role == assistant_id
+                || (!domain.is_empty() && (instance.profile == domain || instance.role == domain))
+        })
+        .map(|instance| instance.instance_id.clone())
+}
+
+fn primary_agent_instance_id(controller: &AppController) -> Option<String> {
+    controller
+        .attached_instances()
+        .iter()
+        .find(|instance| {
+            instance.role == "primary_driver"
+                || instance.role == "primary-driver"
+                || instance.profile == "primary-interactive"
+                || instance.instance_id == "primary_driver"
+        })
+        .or_else(|| controller.attached_instances().first())
+        .map(|instance| instance.instance_id.clone())
+}
+
+fn session_primary_model(session: &auspex_core::fixtures::SessionData) -> String {
+    session
+        .dispatcher_binding
+        .as_ref()
+        .and_then(|binding| binding.expected_model.as_deref())
+        .or_else(|| {
+            session
+                .instance_descriptor
+                .as_ref()
+                .and_then(|descriptor| descriptor.policy.as_ref())
+                .and_then(|policy| policy.model.as_deref())
+        })
+        .or_else(|| {
+            session
+                .telemetry
+                .latest_provider_telemetry
+                .as_ref()
+                .and_then(|provider| provider.model.as_deref())
+        })
+        .or_else(|| {
+            session
+                .providers
+                .iter()
+                .find(|provider| provider.authenticated)
+                .and_then(|provider| provider.model.as_deref().or(Some(provider.name.as_str())))
+        })
+        .unwrap_or(auspex_core::AUSPEX_PRIMARY_DEFAULT_POSTURE)
+        .to_string()
+}
+
+fn staged_or_session_value(staged: &str, fallback: &str) -> String {
+    if staged.trim().is_empty() {
+        fallback.to_string()
+    } else {
+        staged.to_string()
+    }
+}
+
+fn session_context_label(session: &auspex_core::fixtures::SessionData) -> String {
+    match (session.context_tokens, session.context_window) {
+        (Some(tokens), Some(window)) if window > 0 => format!("{tokens}/{window} tokens"),
+        (Some(tokens), _) => format!("{tokens} tokens used"),
+        (_, Some(window)) => format!("{window} token window"),
+        _ => "context not reported".to_string(),
+    }
+}
+
+fn session_workspace_label(session: &auspex_core::fixtures::SessionData) -> String {
+    session
+        .instance_descriptor
+        .as_ref()
+        .and_then(|descriptor| descriptor.workspace.as_ref())
+        .and_then(|workspace| workspace.branch.as_deref().or(workspace.cwd.as_deref()))
+        .map(str::to_string)
+        .or_else(|| session.git_branch.clone())
+        .unwrap_or_else(|| "workspace not reported".to_string())
+}
+
+fn session_runtime_label(session: &auspex_core::fixtures::SessionData) -> String {
+    let descriptor = session.instance_descriptor.as_ref();
+    let backend = descriptor
+        .and_then(|descriptor| descriptor.runtime.as_ref())
+        .and_then(|runtime| runtime.backend.as_deref())
+        .unwrap_or("embedded Omegon");
+    let substrate = descriptor
+        .and_then(|descriptor| descriptor.runtime.as_ref())
+        .and_then(|runtime| runtime.execution_substrate.as_ref())
+        .map(|substrate| substrate.kind.as_str())
+        .unwrap_or("native");
+    format!("{backend} · {substrate}")
+}
+
+fn recent_chat_history(messages: &[auspex_core::fixtures::ChatMessage]) -> Vec<String> {
+    messages
+        .iter()
+        .rev()
+        .take(4)
+        .map(|message| {
+            let role = match message.role {
+                auspex_core::fixtures::MessageRole::User => "operator",
+                auspex_core::fixtures::MessageRole::Assistant => "agent",
+                auspex_core::fixtures::MessageRole::System => "system",
+            };
+            let text = message.text.lines().next().unwrap_or_default().trim();
+            format!("{role}: {text}")
+        })
+        .collect::<Vec<_>>()
+        .into_iter()
+        .rev()
+        .collect()
+}
+
+fn profile_control_commands(
+    target: auspex_core::runtime_types::CommandTarget,
+    snapshot: &AssistantWorkspaceState,
+) -> Result<Vec<TargetedCommand>, String> {
+    let mut commands = Vec::new();
+    if !snapshot.profile_model.trim().is_empty() {
+        let model = snapshot.profile_model.trim();
+        if !is_omegon_registered_model(model) {
+            return Err(format!(
+                "Model is not registered in Omegon model-registry.json: {model}"
+            ));
+        }
+        commands.push(TargetedCommand::control_method(
+            target.clone(),
+            "set_model",
+            serde_json::json!({ "model": model }),
+        ));
+    }
+    if !snapshot.profile_thinking.trim().is_empty() {
+        let level = snapshot.profile_thinking.trim();
+        if !thinking_level_options().contains(&level) {
+            return Err(format!(
+                "Thinking level must be one of: {}",
+                thinking_level_options().join(", ")
+            ));
+        }
+        commands.push(TargetedCommand::control_method(
+            target.clone(),
+            "set_thinking",
+            serde_json::json!({ "level": level }),
+        ));
+    }
+    if !snapshot.profile_context.trim().is_empty() {
+        let class = snapshot.profile_context.trim();
+        if !context_class_options().contains(&class) {
+            return Err(format!(
+                "Context class must be one of: {}",
+                context_class_options().join(", ")
+            ));
+        }
+        commands.push(TargetedCommand::control_method(
+            target.clone(),
+            "set_context_class",
+            serde_json::json!({ "class": class }),
+        ));
+    }
+    commands.push(TargetedCommand::control_method(
+        target.clone(),
+        "set_runtime_mode",
+        serde_json::json!({ "slim": snapshot.profile_runtime_slim }),
+    ));
+    if !snapshot.profile_max_turns.trim().is_empty() {
+        let max_turns = snapshot
+            .profile_max_turns
+            .trim()
+            .parse::<u32>()
+            .map_err(|_| "Max turns must be an unsigned 32-bit integer.".to_string())?;
+        commands.push(TargetedCommand::control_method(
+            target,
+            "set_max_turns",
+            serde_json::json!({ "max_turns": max_turns }),
+        ));
+    }
+    Ok(commands)
+}
+
 fn render_assistant_workspace(
     mut state: Signal<AssistantWorkspaceState>,
     session: &auspex_core::fixtures::SessionData,
+    _transcript: &TranscriptData,
+    messages: &[auspex_core::fixtures::ChatMessage],
+    mut controller: Signal<AppController>,
+    #[cfg(not(target_arch = "wasm32"))] command_transport: Signal<Option<CommandTransport>>,
+    event_stream: Signal<Option<EventStreamHandle>>,
+    mut workspace: Signal<Workspace>,
 ) -> Element {
     let endpoint = assistant_endpoint_from_session(session);
     let session_snapshot = session.clone();
@@ -4154,25 +4321,34 @@ fn render_assistant_workspace(
             refresh_assistant_workspace(&mut state, &session).await;
         });
     }
-    let model = build_assistant_workspace_model(&snapshot);
-    let release_boundary = build_release_agent_boundary_view_model(session);
-    let assistants = model.assistants.clone();
-    let selected_assistant = model.selected_assistant.clone();
-
+    let history = recent_chat_history(messages);
+    let context_label = session_context_label(session);
+    let agent_workspace_label = session_workspace_label(session);
+    let runtime_label = session_runtime_label(session);
+    let max_turns_default = "50";
+    let context_default = "standard";
+    let model_options = omegon_model_options();
+    let selected_model =
+        staged_or_session_value(&snapshot.profile_model, &session_primary_model(session));
+    let selected_thinking = staged_or_session_value(
+        &snapshot.profile_thinking,
+        &non_empty_or(
+            &session.thinking_level,
+            auspex_core::AUSPEX_PRIMARY_DEFAULT_THINKING,
+        ),
+    );
+    let selected_context = staged_or_session_value(&snapshot.profile_context, context_default);
     rsx! {
         section { class: "assistant-workspace",
             div { class: "assistant-hero",
                 div { class: "assistant-hero-copy",
-                    p { class: "eyebrow", "OMEGON ASSISTANTS" }
-                    h2 { "Assistant readiness" }
+                    p { class: "eyebrow", "CHAT TARGETS" }
+                    h2 { "Choose an agent" }
                     p { class: "panel-muted",
-                        "Launch readiness is calculated by the attached Omegon capability surface; Auspex displays runtime truth without re-inferring it."
+                        "Primary embedded Omegon. Tune a local draft, then chat."
                     }
                 }
                 div { class: "assistant-hero-actions",
-                    span { class: if endpoint.is_some() { "assistant-endpoint-pill attached" } else { "assistant-endpoint-pill missing" },
-                        if endpoint.is_some() { "endpoint attached" } else { "endpoint missing" }
-                    }
                     button {
                         class: "assistant-refresh",
                         r#type: "button",
@@ -4184,141 +4360,204 @@ fn render_assistant_workspace(
                                 refresh_assistant_workspace(&mut state, &session).await;
                             });
                         },
-                        if snapshot.loading { "Loading" } else { "Refresh readiness" }
+                        if snapshot.loading { "Loading" } else { "Refresh" }
                     }
                 }
             }
 
-            section { class: "assistant-summary",
-                div { class: "assistant-summary-metric", "data-state": "ok",
-                    span { class: "assistant-summary-value", "{model.ready_count}" }
-                    span { class: "assistant-summary-label", "ready" }
-                }
-                div { class: "assistant-summary-metric", "data-state": "warn",
-                    span { class: "assistant-summary-value", "{model.degraded_count}" }
-                    span { class: "assistant-summary-label", "degraded" }
-                }
-                div { class: "assistant-summary-metric", "data-state": "failed",
-                    span { class: "assistant-summary-value", "{model.blocked_count}" }
-                    span { class: "assistant-summary-label", "blocked" }
-                }
-                div { class: "assistant-summary-metric", "data-state": if model.blocker_total == 0 { "ok" } else { "failed" },
-                    span { class: "assistant-summary-value", "{model.blocker_total}" }
-                    span { class: "assistant-summary-label", "blockers" }
-                }
-                div { class: "assistant-summary-metric", "data-state": if model.warning_total == 0 { "ok" } else { "warn" },
-                    span { class: "assistant-summary-value", "{model.warning_total}" }
-                    span { class: "assistant-summary-label", "warnings" }
-                }
+
+            if let Some(error) = snapshot.error.as_deref() {
+                p { class: "deploy-error", "{error}" }
+            } else if let Some(message) = snapshot.message.as_deref() {
+                p { class: "deploy-message", "{message}" }
             }
 
-            section { class: "assistant-endpoint-panel",
-                div { class: "assistant-section-title",
-                    h3 { "Capability endpoint" }
-                    span { if endpoint.is_some() { "attached" } else { "missing" } }
-                }
-                code { {endpoint.as_deref().unwrap_or("No attached Omegon /api/capabilities/assistants endpoint.")} }
-                if let Some(error) = snapshot.error.as_deref() {
-                    p { class: "deploy-error", "{error}" }
-                } else if let Some(message) = snapshot.message.as_deref() {
-                    p { class: "deploy-message", "{message}" }
-                }
-            }
-
-            section { class: "assistant-detail-panel release-agent-boundary",
-                div { class: "assistant-section-title",
-                    h3 { "Release-agent execution" }
-                    span { "{release_boundary.substrate_label}" }
-                }
-                div { class: "deploy-status-stack",
-                    span { class: "fleet-card-meta", "{release_boundary.inherited_summary}" }
-                    span { class: if release_boundary.oci_available { "fleet-card-meta" } else { "fleet-card-meta panel-muted" },
-                        "{release_boundary.oci_summary}"
-                    }
-                }
-            }
-
-            div { class: "assistant-main-grid",
+            div { class: "assistant-main-grid agent-config-grid",
                 section { class: "assistant-roster-panel",
                     div { class: "assistant-section-title",
-                        h3 { "Assistant roster" }
-                        span { "{assistants.len()} assistants" }
+                        h3 { "Agent" }
+                        span { "primary" }
                     }
                     div { class: "assistant-roster-list",
-                        if assistants.is_empty() {
-                            div { class: "assistant-empty-card",
-                                strong { "No assistant capabilities loaded" }
-                                span { "Refresh after attaching an Omegon runtime that exposes assistant capability surfaces." }
+                        button {
+                            class: "assistant-card assistant-card-active",
+                            "data-state": "ready",
+                            r#type: "button",
+                            div { class: "assistant-card-heading",
+                                strong { "Primary agent" }
+                                span { "chat-ready" }
                             }
-                        } else {
-                            for assistant in assistants {
-                                {
-                                    let model = assistant.model.as_deref().unwrap_or("model pending");
-                                    let status = assistant_status_label(assistant.launch_readiness.status);
-                                    let is_selected = snapshot.selected_id.as_deref() == Some(assistant.id.as_str());
-                                    let assistant_id = assistant.id.clone();
-                                    rsx! {
-                                        button {
-                                            class: if is_selected { "assistant-card assistant-card-active" } else { "assistant-card" },
-                                            "data-state": status,
-                                            r#type: "button",
-                                            onclick: move |_| state.write().selected_id = Some(assistant_id.clone()),
-                                            div { class: "assistant-card-heading",
-                                                strong { "{assistant.name}" }
-                                                span { "{status}" }
-                                            }
-                                            span { class: "assistant-card-desc", "{assistant.description}" }
-                                            span { class: "assistant-card-meta", "{assistant.id} · {assistant.domain} · {model}" }
-                                            div { class: "assistant-card-counts",
-                                                span { "{assistant.blocker_count} blockers" }
-                                                span { "{assistant.warning_count} warnings" }
-                                                span { "{assistant.required_secret_count} required secrets" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            span { class: "assistant-card-desc", "Embedded Omegon runtime that backs Auspex chat." }
+                            span { class: "assistant-card-meta", "auspex · {session_primary_model(session)}" }
                         }
                     }
                 }
 
                 section { class: "assistant-detail-panel",
                     div { class: "assistant-section-title",
-                        h3 { "Selected readiness" }
-                        span { "{model.selected_status}" }
+                        h3 { "Agent dashboard" }
+                        span { "local draft" }
                     }
-                    if let Some(assistant) = selected_assistant {
-                        {
-                            let trust_badges = assistant_trust_badges(&assistant.trust);
-                            let readiness_items = assistant_readiness_items(
-                                &assistant.launch_readiness.blockers,
-                                &assistant.launch_readiness.warnings,
-                            );
-                            rsx! {
-                                div { class: "assistant-detail-stack",
-                                    div { class: "assistant-detail-heading",
-                                        strong { "{assistant.name}" }
-                                        span { "{assistant.id} · {assistant.domain}" }
+                    div { class: "assistant-detail-stack agent-config-form",
+                        div { class: "assistant-detail-heading",
+                            strong { "Primary agent" }
+                            span { "profile.json · agents/auspex-agent" }
+                        }
+                        if let Some(instance_id) = primary_agent_instance_id(&controller.read()) {
+                            button {
+                                class: "assistant-refresh assistant-chat-action",
+                                r#type: "button",
+                                onclick: move |_| {
+                                    let instance_id = instance_id.clone();
+                                    {
+                                        let mut ctrl = controller.write();
+                                        ctrl.select_command_route_for_instance(&instance_id);
+                                        #[cfg(not(target_arch = "wasm32"))]
+                                        ctrl.focus_instance(Some(&instance_id));
                                     }
-                                    div { class: "assistant-badge-row",
-                                        for badge in trust_badges {
-                                            span { class: "assistant-trust-badge", "{badge}" }
-                                        }
-                                    }
-                                    div { class: "assistant-issue-list",
-                                        if readiness_items.is_empty() {
-                                            span { class: "assistant-issue ok", "No blockers or warnings reported." }
-                                        } else {
-                                            for (tone, kind, id) in readiness_items {
-                                                span { class: "assistant-issue", "data-state": tone, "{tone}: {kind} {id}" }
-                                            }
-                                        }
-                                    }
+                                    workspace.set(Workspace::Chat);
+                                },
+                                "Chat with primary agent"
+                            }
+                        } else {
+                            span { class: "assistant-issue", "data-state": "warn", "No attached primary chat runtime." }
+                        }
+
+                        div { class: "agent-dashboard-grid",
+                            div { class: "agent-dashboard-tile", span { "Turns" } strong { "{session.session_turns}" } }
+                            div { class: "agent-dashboard-tile", span { "Tool calls" } strong { "{session.session_tool_calls}" } }
+                            div { class: "agent-dashboard-tile", span { "Context" } strong { "{context_label}" } }
+                            div { class: "agent-dashboard-tile", span { "Runtime" } strong { "{runtime_label}" } }
+                            div { class: "agent-dashboard-tile agent-dashboard-wide", span { "Workspace" } strong { "{agent_workspace_label}" } }
+                        }
+
+                        div { class: "agent-history-card",
+                            span { class: "agent-history-title", "Recent chat" }
+                            if history.is_empty() {
+                                span { class: "panel-muted", "No chat history yet." }
+                            } else {
+                                for item in history {
+                                    span { class: "agent-history-line", "{item}" }
                                 }
                             }
                         }
-                    } else {
-                        p { class: "panel-muted", "Select an assistant after loading readiness cards." }
+
+                        label { class: "agent-config-field",
+                            span { "Model" }
+                            select {
+                                value: "{selected_model}",
+                                oninput: move |event| state.write().profile_model = event.value(),
+                                for option in model_options.iter() {
+                                    option { value: "{option}", selected: option == &selected_model, "{option}" }
+                                }
+                            }
+                        }
+                        label { class: "agent-config-field",
+                            span { "Thinking" }
+                            select {
+                                value: "{selected_thinking}",
+                                oninput: move |event| state.write().profile_thinking = event.value(),
+                                for option in thinking_level_options() {
+                                    option { value: "{option}", selected: option == &selected_thinking.as_str(), "{option}" }
+                                }
+                            }
+                        }
+                        div { class: "agent-config-field agent-config-field-static",
+                            span { "Capability tier" }
+                            strong { "{non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" }
+                            small { "read-only session metadata" }
+                        }
+                        label { class: "agent-config-field agent-config-checkbox",
+                            span { "Runtime mode" }
+                            div { class: "agent-checkbox-row",
+                                input {
+                                    r#type: "checkbox",
+                                    checked: snapshot.profile_runtime_slim,
+                                    oninput: move |event| state.write().profile_runtime_slim = event.checked(),
+                                }
+                                strong { if snapshot.profile_runtime_slim { "slim" } else { "standard" } }
+                            }
+                        }
+                        label { class: "agent-config-field",
+                            span { "Max turns" }
+                            input {
+                                value: "{staged_or_session_value(&snapshot.profile_max_turns, max_turns_default)}",
+                                oninput: move |event| state.write().profile_max_turns = event.value(),
+                            }
+                        }
+                        label { class: "agent-config-field",
+                            span { "Context class" }
+                            select {
+                                value: "{selected_context}",
+                                oninput: move |event| state.write().profile_context = event.value(),
+                                for option in context_class_options() {
+                                    option { value: "{option}", selected: option == &selected_context.as_str(), "{option}" }
+                                }
+                            }
+                        }
+                        button {
+                            class: "assistant-refresh assistant-chat-action",
+                            r#type: "button",
+                            disabled: snapshot.applying_profile,
+                            onclick: move |_| {
+                                let target = controller.read().current_command_target();
+                                let draft = state.read().clone();
+                                let commands = profile_control_commands(target, &draft);
+                                #[cfg(not(target_arch = "wasm32"))]
+                                let transport = command_transport.read().clone();
+                                let stream = event_stream.read().clone();
+                                spawn(async move {
+                                    match commands {
+                                        Ok(commands) if commands.is_empty() => {
+                                            let mut current = state.write();
+                                            current.message = Some("No runtime settings changed.".to_string());
+                                            current.error = None;
+                                        }
+                                        Ok(commands) => {
+                                            state.write().applying_profile = true;
+                                            let mut dispatched = 0usize;
+                                            let mut failure = None;
+                                            for command in &commands {
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                let result = dispatch_profile_command(
+                                                    transport.as_ref(),
+                                                    stream.as_ref(),
+                                                    command,
+                                                );
+                                                #[cfg(target_arch = "wasm32")]
+                                                let result = dispatch_profile_command(
+                                                    None,
+                                                    stream.as_ref(),
+                                                    command,
+                                                );
+                                                match result {
+                                                    Ok(()) => dispatched += 1,
+                                                    Err(error) => {
+                                                        failure = Some(error);
+                                                        break;
+                                                    }
+                                                }
+                                            }
+                                            let mut current = state.write();
+                                            current.applying_profile = false;
+                                            if let Some(error) = failure {
+                                                current.error = Some(error);
+                                                current.message = None;
+                                            } else {
+                                                current.error = None;
+                                                current.message = Some(format!("Applied {dispatched} runtime setting update(s)."));
+                                            }
+                                        }
+                                        Err(error) => {
+                                            let mut current = state.write();
+                                            current.error = Some(error);
+                                            current.message = None;
+                                        }
+                                    }
+                                });
+                            },
+                            if snapshot.applying_profile { "Applying" } else { "Apply runtime settings" }
+                        }
                     }
                 }
             }
@@ -4490,10 +4729,9 @@ fn apply_assistant_refresh_success(
     if !selected_still_exists {
         state.selected_id = assistants.first().map(|assistant| assistant.id.clone());
     }
-    let loaded_count = assistants.len();
     state.assistants = assistants;
     state.error = None;
-    state.message = Some(format!("Loaded {loaded_count} assistant readiness cards."));
+    state.message = None;
 }
 
 fn apply_assistant_refresh_failure(state: &mut AssistantWorkspaceState, error: String) {
@@ -4764,13 +5002,8 @@ async fn operator_post(path: &str, token: &str, body: serde_json::Value) -> Resu
 fn render_workspace_nav(mut workspace: Signal<Workspace>) -> Element {
     rsx! {
         nav { class: "cockpit-workspace-nav",
-            button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Assistants" }
-            button { class: if *workspace.read() == Workspace::Cop { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Cop), "COP" }
+            button { class: if *workspace.read() == Workspace::Assistants { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Assistants), "Agents" }
             button { class: if *workspace.read() == Workspace::Chat { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Chat), "Chat" }
-            button { class: if *workspace.read() == Workspace::Deploy { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Deploy), "Deploy" }
-            button { class: if *workspace.read() == Workspace::Graph { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Graph), "Graph" }
-            button { class: if *workspace.read() == Workspace::Workflow { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Workflow), "Workflow" }
-            button { class: if *workspace.read() == Workspace::Audit { "tab tab-active" } else { "tab" }, onclick: move |_| workspace.set(Workspace::Audit), "Audit" }
         }
     }
 }
@@ -5084,14 +5317,8 @@ fn cockpit_work_hint(summary: &auspex_core::fixtures::HostSessionSummary) -> Str
 
 fn workspace_label(workspace: Workspace) -> &'static str {
     match workspace {
-        Workspace::Cop => "COP",
         Workspace::Chat => "Chat",
-        Workspace::Deploy => "Deploy",
-        Workspace::Session => "Session",
-        Workspace::Assistants => "Assistants",
-        Workspace::Graph => "Graph",
-        Workspace::Workflow => "Workflow",
-        Workspace::Audit => "Audit",
+        Workspace::Assistants => "Agents",
     }
 }
 
@@ -5327,6 +5554,22 @@ fn render_selected_activity_cop(
     })
 }
 
+fn render_chat_shell(title: &str, kicker: &str, body: Element, footer: Element) -> Element {
+    rsx! {
+        div { class: "assistant-workspace chat-shell",
+            header { class: "chat-target-bar",
+                div {
+                    span { class: "eyebrow", "CHAT" }
+                    h2 { "{title}" }
+                }
+                p { class: "panel-muted", "{kicker}" }
+            }
+            div { class: "chat-shell-body", {body} }
+            div { class: "chat-shell-footer", {footer} }
+        }
+    }
+}
+
 fn render_focus_host_shell(shell: FocusHostShell<'_>) -> Element {
     let FocusHostShell {
         title,
@@ -5372,20 +5615,15 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         on_cancel,
     } = actions;
 
-    let has_activity = session.session_turns > 0 || is_run_active || !can_submit;
     let acp_surface = build_chat_acp_surface_model(session);
     let transcript_class = if transcript.turns.is_empty() {
-        "transcript cockpit-transcript cockpit-cop-focus cockpit-transcript-empty"
+        "chat-transcript chat-transcript-empty"
     } else {
-        "transcript cockpit-transcript cockpit-cop-focus"
+        "chat-transcript"
     };
     let can_send = can_submit && !draft.trim().is_empty();
     let body = rsx! {
-        div { class: "cockpit-cop-body chat-acp-body",
-            if provider_blocked_composer.is_none() && has_activity {
-                {render_chat_status_banner(summary, session, is_run_active, can_submit)}
-            }
-            {render_chat_acp_surface(&acp_surface)}
+        div { class: "chat-body-reduced",
             main { class: transcript_class,
                 {render_transcript(summary, work, session, transcript, messages, auto_expand, scenario)}
                 div { id: "transcript-end" }
@@ -5395,7 +5633,7 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
 
     let footer = rsx! {
         form {
-            class: "composer cockpit-composer cockpit-composer-docked",
+            class: "composer chat-composer",
             onsubmit: move |event| {
                 event.prevent_default();
                 on_submit.call(());
@@ -5446,14 +5684,6 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                     disabled: !can_submit,
                     placeholder: if can_submit { "Message agent..." } else { "Conversation input is unavailable in the current host state." },
                     oninput: move |event| on_update_draft.call(event.value()),
-                    onkeydown: move |event| {
-                        if event.key() == Key::Enter && !event.modifiers().shift() {
-                            event.prevent_default();
-                            if can_send {
-                                on_submit.call(());
-                            }
-                        }
-                    },
                 }
             }
             div { class: "composer-actions",
@@ -5461,17 +5691,16 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                     button { class: "composer-cancel", r#type: "button", onclick: move |_| on_cancel.call(()), "Cancel" }
                 }
                 button { class: "composer-submit", r#type: "submit", disabled: !can_send, title: dispatch_context.send_detail.clone(), "Send" }
-                span { class: "composer-shortcut", "Enter" }
             }
         }
     };
 
-    render_focus_host_shell(FocusHostShell {
-        title: acp_surface.target_label.as_str(),
-        kicker: acp_surface.target_detail.as_str(),
+    render_chat_shell(
+        acp_surface.target_label.as_str(),
+        acp_surface.target_detail.as_str(),
         body,
-        footer: Some(footer),
-    })
+        footer,
+    )
 }
 
 #[allow(dead_code)]
@@ -6616,10 +6845,7 @@ mod tests {
         assert_eq!(state.selected_id.as_deref(), Some("beta"));
         assert_eq!(state.assistants.len(), 2);
         assert_eq!(state.error, None);
-        assert_eq!(
-            state.message.as_deref(),
-            Some("Loaded 2 assistant readiness cards.")
-        );
+        assert_eq!(state.message, None);
     }
 
     #[test]
@@ -6653,10 +6879,7 @@ mod tests {
 
         assert_eq!(state.selected_id, None);
         assert_eq!(state.assistants.len(), 0);
-        assert_eq!(
-            state.message.as_deref(),
-            Some("Loaded 0 assistant readiness cards.")
-        );
+        assert_eq!(state.message, None);
     }
 
     #[test]

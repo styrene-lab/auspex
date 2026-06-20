@@ -222,14 +222,13 @@ pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 #[cfg(not(target_arch = "wasm32"))]
 const DEFAULT_TLS_STATE_URL: &str = "https://127.0.0.1:7842/api/state";
+pub const AUSPEX_PRIMARY_DEFAULT_POSTURE: &str = "architect";
+pub const AUSPEX_PRIMARY_DEFAULT_THINKING: &str = "medium";
+pub const AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER: &str = "victory";
 const CARGO_MANIFEST: &str = include_str!("../../Cargo.toml");
 
 #[cfg(not(target_arch = "wasm32"))]
 const OWNED_OMEGON_PID_FILE: &str = "auspex-owned-omegon.pid";
-#[cfg(not(target_arch = "wasm32"))]
-const AUSPEX_OMEGON_POSTURE: &str = "architect";
-#[cfg(not(target_arch = "wasm32"))]
-const AUSPEX_OMEGON_THINKING: &str = "medium";
 #[cfg(not(target_arch = "wasm32"))]
 const AUSPEX_AGENT_BUNDLE_REL: &str = "agents/auspex-agent";
 
@@ -1058,7 +1057,7 @@ fn build_omegon_serve_args(
 ) -> Vec<String> {
     let mut args = vec![
         "--posture".to_string(),
-        AUSPEX_OMEGON_POSTURE.to_string(),
+        AUSPEX_PRIMARY_DEFAULT_POSTURE.to_string(),
         "serve".to_string(),
     ];
     if let Some(agent_bundle) = agent_bundle {
@@ -1514,11 +1513,11 @@ fn ensure_profile_path_uses_model(
     let needs_posture_fix = profile
         .get("defaultPosture")
         .and_then(|posture| posture.as_str())
-        .is_none_or(|posture| posture != AUSPEX_OMEGON_POSTURE);
+        .is_none_or(|posture| posture != AUSPEX_PRIMARY_DEFAULT_POSTURE);
     let needs_thinking_fix = profile
         .get("thinkingLevel")
         .and_then(|thinking| thinking.as_str())
-        .is_none_or(|thinking| thinking != AUSPEX_OMEGON_THINKING);
+        .is_none_or(|thinking| thinking != AUSPEX_PRIMARY_DEFAULT_THINKING);
 
     if needs_model_fix || needs_posture_fix || needs_thinking_fix {
         if needs_model_fix && let Some((fallback_provider, fallback_model)) = preferred_model {
@@ -1528,15 +1527,15 @@ fn ensure_profile_path_uses_model(
             });
         }
         if needs_posture_fix {
-            profile["defaultPosture"] = serde_json::json!(AUSPEX_OMEGON_POSTURE);
+            profile["defaultPosture"] = serde_json::json!(AUSPEX_PRIMARY_DEFAULT_POSTURE);
         }
         if needs_thinking_fix {
-            profile["thinkingLevel"] = serde_json::json!(AUSPEX_OMEGON_THINKING);
+            profile["thinkingLevel"] = serde_json::json!(AUSPEX_PRIMARY_DEFAULT_THINKING);
         }
         if let Ok(json) = serde_json::to_string_pretty(&profile) {
             let _ = fs::write(profile_path, json);
             eprintln!(
-                "auspex: updated Omegon profile {} for Auspex coordinator posture {AUSPEX_OMEGON_POSTURE}, thinking {AUSPEX_OMEGON_THINKING}",
+                "auspex: updated Omegon profile {} for Auspex coordinator posture {AUSPEX_PRIMARY_DEFAULT_POSTURE}, thinking {AUSPEX_PRIMARY_DEFAULT_THINKING}",
                 profile_path.display()
             );
         }

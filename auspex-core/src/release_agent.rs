@@ -350,6 +350,7 @@ pub async fn fetch_github_release(
     Ok(api.into_fixture(repo.to_string()))
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 #[derive(Clone, Debug, Deserialize, PartialEq, Eq)]
 struct GitHubReleaseApiResponse {
     tag_name: String,
@@ -359,6 +360,7 @@ struct GitHubReleaseApiResponse {
     published_at: Option<String>,
 }
 
+#[cfg(not(target_arch = "wasm32"))]
 impl GitHubReleaseApiResponse {
     fn into_fixture(self, repo: String) -> GitHubReleaseFixture {
         GitHubReleaseFixture {

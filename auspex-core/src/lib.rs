@@ -56,5 +56,9 @@ pub mod telemetry;
 
 // Orchestration
 pub mod bootstrap;
+pub use bootstrap::{
+    AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER, AUSPEX_PRIMARY_DEFAULT_POSTURE,
+    AUSPEX_PRIMARY_DEFAULT_THINKING,
+};
 pub mod controller;
 pub mod release_agent;
