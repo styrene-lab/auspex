@@ -33,6 +33,8 @@ pub mod command_transport;
 pub mod compatibility;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod container_discovery;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod oci_backend;
 pub mod descriptor_ingest;
 pub mod event_stream;
 pub mod fleet_projection;
