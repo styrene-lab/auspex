@@ -1054,6 +1054,7 @@ fn auspex_agent_bundle_path() -> Option<PathBuf> {
 fn build_omegon_serve_args(
     agent_bundle: Option<&std::path::Path>,
     model: &str,
+    control_port: u16,
     tls_args: &[String],
 ) -> Vec<String> {
     let mut args = vec![
@@ -1067,7 +1068,7 @@ fn build_omegon_serve_args(
     }
     args.extend([
         "--control-port".to_string(),
-        "7842".to_string(),
+        control_port.to_string(),
         "--strict-port".to_string(),
         "--model".to_string(),
         model.to_string(),
@@ -1129,17 +1130,12 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
             }
         } else {
             eprintln!(
-                "auspex: default Omegon control port is occupied by a non-Auspex-primary runtime; reaping it so Auspex can launch styrene.auspex-agent"
+                "auspex: default Omegon control port is occupied by a non-Auspex-primary runtime; leaving it intact and launching styrene.auspex-agent on a fallback port"
             );
-            reap_default_omegon_control_port_processes();
-            if !wait_for_default_omegon_control_port_release().await {
-                return BootstrapResult::startup_failure(
-                    "Default Omegon control port 7842 stayed occupied after reaping the non-Auspex runtime; refusing to spawn styrene.auspex-agent over an active listener.".into(),
-                );
-            }
         }
     }
 
+    let control_port = choose_auspex_control_port().await;
     reap_owned_omegon_child();
     ensure_omegon_profile_for_auspex();
     validate_deploy_prerequisites();
@@ -1159,7 +1155,7 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         command.current_dir(root);
     }
     let agent_bundle = auspex_agent_bundle_path();
-    let args = build_omegon_serve_args(agent_bundle.as_deref(), &model, &tls_args);
+    let args = build_omegon_serve_args(agent_bundle.as_deref(), &model, control_port, &tls_args);
     command.args(args);
     let mut child = match command
         .stdout(std::process::Stdio::piped())
@@ -1619,6 +1615,33 @@ fn provider_status_key(name: &str) -> &str {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+async fn choose_auspex_control_port() -> u16 {
+    const DEFAULT_PORT: u16 = 7842;
+    const FALLBACK_START: u16 = 7843;
+    const FALLBACK_END: u16 = 7899;
+
+    if port_is_free(DEFAULT_PORT).await {
+        return DEFAULT_PORT;
+    }
+
+    for port in FALLBACK_START..=FALLBACK_END {
+        if port_is_free(port).await {
+            return port;
+        }
+    }
+
+    DEFAULT_PORT
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn port_is_free(port: u16) -> bool {
+    tokio::net::TcpListener::bind((std::net::Ipv4Addr::LOCALHOST, port))
+        .await
+        .is_ok()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 async fn wait_for_default_omegon_control_port_release() -> bool {
     for _ in 0..20 {
         if !omegon_is_running_async().await {
@@ -1630,6 +1653,7 @@ async fn wait_for_default_omegon_control_port_release() -> bool {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 fn reap_default_omegon_control_port_processes() {
     for pid in default_omegon_control_port_pids() {
         let _ = std::process::Command::new("kill")
@@ -1639,6 +1663,7 @@ fn reap_default_omegon_control_port_processes() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[allow(dead_code)]
 fn default_omegon_control_port_pids() -> Vec<u32> {
     let output = match std::process::Command::new("ps")
         .args(["ax", "-o", "pid=,command="])
@@ -1755,7 +1780,7 @@ mod tests {
     #[test]
     fn build_omegon_serve_args_includes_auspex_agent_bundle() {
         let bundle = PathBuf::from("/tmp/auspex/agents/auspex-agent");
-        let args = build_omegon_serve_args(Some(&bundle), "openai-codex:gpt-5.5", &[]);
+        let args = build_omegon_serve_args(Some(&bundle), "openai-codex:gpt-5.5", 7842, &[]);
 
         assert_eq!(args[0..3], ["--posture", "architect", "serve"]);
         assert!(
@@ -1778,6 +1803,7 @@ mod tests {
         let args = build_omegon_serve_args(
             None,
             "anthropic:claude-sonnet-4-6",
+            7842,
             &["--rpc-tls-cert".into(), "cert.pem".into()],
         );
 
