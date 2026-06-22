@@ -7189,3 +7189,95 @@ body {
 .shell-assistant-focus .composer-submit {
   background: rgba(14, 34, 48, 0.92) !important;
 }
+
+/* Remove redundant primary identity billboard; the dashboard titlebar and identity card own this meaning. */
+.shell-assistant-focus .agent-live-panel-compact {
+  grid-template-columns: minmax(0, 1fr);
+  min-height: 0;
+  padding: 0.85rem 1rem;
+}
+
+.shell-assistant-focus .agent-live-panel-compact .agent-live-board {
+  grid-column: 1;
+  width: 100%;
+  grid-template-columns: minmax(14rem, 0.8fr) minmax(20rem, 1.15fr) minmax(20rem, 1.05fr);
+}
+
+.shell-assistant-focus .agent-live-panel-compact .agent-live-domain {
+  min-height: 8.5rem;
+}
+
+@media (max-width: 1500px) {
+  .shell-assistant-focus .agent-live-panel-compact .agent-live-board {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Console readability repair: never ellipsize primary metadata when the panel has room. */
+.shell-assistant-focus .agent-live-board {
+  grid-template-columns: minmax(20rem, 0.9fr) minmax(30rem, 1.25fr) minmax(26rem, 1.1fr) !important;
+  align-items: stretch;
+}
+
+.shell-assistant-focus .agent-live-domain {
+  min-width: 0;
+}
+
+.shell-assistant-focus .agent-live-kv {
+  grid-template-columns: 7.4rem minmax(0, 1fr);
+  align-items: start;
+}
+
+.shell-assistant-focus .agent-live-kv strong {
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: normal !important;
+  overflow-wrap: anywhere;
+  word-break: normal;
+  line-height: 1.18;
+}
+
+.shell-assistant-focus .agent-live-domain-identity .agent-live-kv,
+.shell-assistant-focus .agent-live-domain-runtime .agent-live-kv {
+  grid-template-columns: 7.2rem minmax(0, 1fr);
+}
+
+.shell-assistant-focus .agent-primary-titlecopy,
+.shell-assistant-focus .agent-dashboard-actions {
+  min-width: 0;
+}
+
+.shell-assistant-focus .agent-dashboard-model {
+  max-width: none !important;
+  overflow: visible !important;
+  text-overflow: clip !important;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-live-identity span,
+.shell-assistant-focus .agent-primary-titlecopy h3,
+.shell-assistant-focus .agent-primary-titlecopy span {
+  overflow: visible !important;
+  text-overflow: clip !important;
+}
+
+.shell-assistant-focus .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-runtime-bar .agent-config-field input {
+  text-overflow: clip;
+}
+
+@media (max-width: 1650px) {
+  .shell-assistant-focus .agent-live-board {
+    grid-template-columns: minmax(20rem, 1fr) minmax(28rem, 1.25fr) !important;
+  }
+
+  .shell-assistant-focus .agent-live-domain-telemetry {
+    grid-column: 1 / -1;
+  }
+}
+
+@media (max-width: 1150px) {
+  .shell-assistant-focus .agent-live-board {
+    grid-template-columns: 1fr !important;
+  }
+}
