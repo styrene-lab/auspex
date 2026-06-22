@@ -159,12 +159,69 @@ struct AgentDeployWorkspaceState {
     error: Option<String>,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum AddAgentMode {
+    AttachExistingRuntime,
+    LaunchFromProfile,
+    CreateProfile,
+}
+
+impl AddAgentMode {
+    fn label(self) -> &'static str {
+        match self {
+            Self::AttachExistingRuntime => "Attach runtime",
+            Self::LaunchFromProfile => "Launch profile",
+            Self::CreateProfile => "Create profile",
+        }
+    }
+
+    fn detail(self) -> &'static str {
+        match self {
+            Self::AttachExistingRuntime => {
+                "Bind Auspex to an already-running Omegon control plane without mutating its profile."
+            }
+            Self::LaunchFromProfile => {
+                "Start a new runtime instance from an existing Omegon profile after provider/secret/substrate preflight."
+            }
+            Self::CreateProfile => {
+                "Author an Omegon-compatible profile in the GUI, then save or continue into launch."
+            }
+        }
+    }
+
+    fn preflight_items(self) -> &'static [&'static str] {
+        match self {
+            Self::AttachExistingRuntime => &[
+                "control-plane URL",
+                "readyz + state descriptor",
+                "auth scope",
+                "schema compatibility",
+            ],
+            Self::LaunchFromProfile => &[
+                "profile validation",
+                "provider auth",
+                "required secrets",
+                "substrate availability",
+            ],
+            Self::CreateProfile => &[
+                "profile id uniqueness",
+                "secundus schema",
+                "tool/capability grants",
+                "optional launch target",
+            ],
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 #[allow(dead_code)]
 struct AssistantWorkspaceState {
     endpoint: Option<String>,
     assistants: Vec<auspex_core::omegon_control::OmegonAssistantListItem>,
     selected_id: Option<String>,
+    selected_agent_id: Option<String>,
+    add_agent_open: bool,
+    add_agent_mode: Option<AddAgentMode>,
     auto_loaded_endpoint: Option<String>,
     loading: bool,
     profile_model: String,
@@ -4333,6 +4390,16 @@ fn current_model_display_label(session: &auspex_core::fixtures::SessionData) -> 
     session_primary_model(session)
 }
 
+fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
+    match (session.context_tokens, session.context_window) {
+        (Some(tokens), Some(window)) if window > 0 => {
+            let pct = tokens.saturating_mul(100) / window;
+            pct.clamp(2, 100) as u8
+        }
+        _ => 0,
+    }
+}
+
 fn session_context_label(session: &auspex_core::fixtures::SessionData) -> String {
     match (session.context_tokens, session.context_window) {
         (Some(tokens), Some(window)) if window > 0 => format!("{tokens}/{window} tokens"),
@@ -4505,38 +4572,6 @@ fn render_assistant_workspace(
     let embedded_transcript_empty = messages.is_empty();
     rsx! {
         section { class: "assistant-workspace",
-            div { class: "assistant-hero",
-                div { class: "assistant-hero-copy",
-                    p { class: "eyebrow", "AUSPEX AGENT" }
-                    h2 { "Primary agent" }
-                    p { class: "panel-muted",
-                        "Tune the attached Omegon runtime and converse in the same operational surface."
-                    }
-                }
-                div { class: "assistant-hero-actions",
-                    button {
-                        class: "assistant-refresh",
-                        r#type: "button",
-                        disabled: snapshot.loading,
-                        onclick: move |_| {
-                            let mut state = state;
-                            let session = refresh_session_snapshot.clone();
-                            spawn(async move {
-                                refresh_assistant_workspace(&mut state, &session).await;
-                            });
-                        },
-                        if snapshot.loading { "Loading" } else { "Refresh" }
-                    }
-                    button {
-                        class: "assistant-refresh assistant-system-button",
-                        r#type: "button",
-                        onclick: move |_| settings_open.set(true),
-                        "System"
-                    }
-                }
-            }
-
-
             if let Some(error) = snapshot.error.as_deref() {
                 p { class: "deploy-error", "{error}" }
             } else if let Some(message) = snapshot.message.as_deref() {
@@ -4545,66 +4580,136 @@ fn render_assistant_workspace(
 
             div { class: "assistant-main-grid agent-console-grid",
                 section { class: "assistant-detail-panel agent-console-panel",
-                    div { class: "assistant-section-title",
-                        h3 { "Agent dashboard" }
-                        span { "{session_primary_model(session)}" }
+                    div { class: "assistant-section-title agent-dashboard-titlebar agent-primary-titlebar",
+                        div { class: "agent-primary-titlecopy",
+                            span { "AUSPEX AGENT" }
+                            h3 { "Primary agent dashboard" }
+                        }
+                        div { class: "agent-dashboard-actions",
+                            span { class: "agent-dashboard-model", "{session_primary_model(session)}" }
+                            button {
+                                class: "agent-mini-action",
+                                r#type: "button",
+                                disabled: snapshot.loading,
+                                onclick: move |_| {
+                                    let mut state = state;
+                                    let session = refresh_session_snapshot.clone();
+                                    spawn(async move {
+                                        refresh_assistant_workspace(&mut state, &session).await;
+                                    });
+                                },
+                                if snapshot.loading { "Loading" } else { "Refresh" }
+                            }
+                            button {
+                                class: "agent-mini-action",
+                                r#type: "button",
+                                onclick: move |_| settings_open.set(true),
+                                "System"
+                            }
+                            button {
+                                class: "agent-mini-action agent-mini-action-primary",
+                                r#type: "button",
+                                onclick: move |_| {
+                                    let mut current = state.write();
+                                    current.add_agent_open = true;
+                                    current.add_agent_mode.get_or_insert(AddAgentMode::AttachExistingRuntime);
+                                },
+                                "Add agent"
+                            }
+                        }
                     }
                     div { class: "assistant-detail-stack agent-config-form",
-                        div { class: "assistant-detail-heading agent-dashboard-heading",
-                            div {
+                        div { class: "assistant-detail-heading agent-live-panel",
+                            div { class: "agent-live-identity",
                                 strong { "Primary embedded Omegon" }
                                 span { "agents/auspex-agent · profile.json · {runtime_label}" }
                             }
-                            div { class: "agent-dashboard-badges",
-                                span { "model: {session_primary_model(session)}" }
-                                span { "tier: {non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" }
+                            div { class: "agent-live-grid agent-live-board",
+                                div { class: "agent-live-domain agent-live-domain-identity",
+                                    span { class: "agent-live-domain-label", "identity" }
+                                    div { class: "agent-live-kv", span { "profile" } strong { "agents/auspex-agent" } }
+                                    div { class: "agent-live-kv", span { "settings" } strong { "profile.json" } }
+                                    div { class: "agent-live-kv", span { "tier" } strong { "{non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" } }
+                                }
+                                div { class: "agent-live-domain agent-live-domain-runtime",
+                                    span { class: "agent-live-domain-label", "runtime" }
+                                    div { class: "agent-live-kv", span { "model" } strong { "{session_primary_model(session)}" } }
+                                    div { class: "agent-live-kv", span { "backend" } strong { "{runtime_label}" } }
+                                    div { class: "agent-live-kv", span { "workspace" } strong { "{agent_workspace_label}" } }
+                                }
+                                div { class: "agent-live-domain agent-live-domain-telemetry",
+                                    div { class: "agent-telemetry-header",
+                                        span { class: "agent-live-domain-label", "telemetry" }
+                                        em { "session" }
+                                    }
+                                    div { class: "agent-telemetry-board agent-telemetry-instrument",
+                                        div { class: "agent-telemetry-counter agent-telemetry-counter-primary",
+                                            span { "turns" }
+                                            strong { "{session.session_turns}" }
+                                        }
+                                        div { class: "agent-telemetry-counter",
+                                            span { "tools" }
+                                            strong { "{session.session_tool_calls}" }
+                                        }
+                                        div { class: "agent-telemetry-context",
+                                            div { class: "agent-telemetry-context-head",
+                                                span { "context" }
+                                                strong { "{context_label}" }
+                                            }
+                                            div { class: "agent-telemetry-track",
+                                                div { class: "agent-telemetry-track-fill", style: "width: {session_context_fill_percent(session)}%;" }
+                                            }
+                                        }
+                                    }
+                                }
                             }
                             if primary_agent_instance_id(&controller.read()).is_none() {
                                 span { class: "assistant-issue", "data-state": "warn", "No attached primary chat runtime." }
                             }
                         }
 
-                        div { class: "agent-page-sections",
-                            div { class: "agent-page-secondary-grid",
-                            section { class: "agent-page-section",
-                                div { class: "agent-page-section-heading",
-                                    h4 { "Persistent identity" }
-                                    span { "profile + policy labels" }
+                        if snapshot.add_agent_open {
+                            section { class: "agent-add-drawer",
+                                div { class: "agent-add-header",
+                                    div {
+                                        h4 { "Add agent" }
+                                        span { "Choose the path from defined agent state to the next console state." }
+                                    }
+                                    button {
+                                        class: "agent-add-close",
+                                        r#type: "button",
+                                        onclick: move |_| state.write().add_agent_open = false,
+                                        "Close"
+                                    }
                                 }
-                                div { class: "agent-identity-grid",
-                                    div { class: "agent-config-field agent-config-field-static",
-                                        span { "Agent profile" }
-                                        strong { "agents/auspex-agent" }
-                                        small { "persistent profile path" }
+                                div { class: "agent-add-options",
+                                    for mode in [AddAgentMode::AttachExistingRuntime, AddAgentMode::LaunchFromProfile, AddAgentMode::CreateProfile] {
+                                        button {
+                                            class: if snapshot.add_agent_mode == Some(mode) { "agent-add-option agent-add-option-active" } else { "agent-add-option" },
+                                            r#type: "button",
+                                            onclick: move |_| state.write().add_agent_mode = Some(mode),
+                                            strong { "{mode.label()}" }
+                                            span { "{mode.detail()}" }
+                                        }
                                     }
-                                    div { class: "agent-config-field agent-config-field-static",
-                                        span { "Settings file" }
-                                        strong { "profile.json" }
-                                        small { "owned by Omegon runtime" }
-                                    }
-                                    div { class: "agent-config-field agent-config-field-static",
-                                        span { "Capability tier" }
-                                        strong { "{non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" }
-                                        small { "read-only classification label" }
+                                }
+                                if let Some(mode) = snapshot.add_agent_mode {
+                                    div { class: "agent-add-preflight",
+                                        div { class: "agent-add-preflight-copy",
+                                            strong { "{mode.label()} preflight" }
+                                            span { "Dry-run affordance only until concrete attach/launch/profile endpoints are verified." }
+                                        }
+                                        div { class: "agent-add-checks",
+                                            for item in mode.preflight_items() {
+                                                span { class: "agent-add-check", "{item}" }
+                                            }
+                                        }
                                     }
                                 }
                             }
+                        }
 
-                            section { class: "agent-page-section",
-                                div { class: "agent-page-section-heading",
-                                    h4 { "Session telemetry" }
-                                    span { "ephemeral" }
-                                }
-                                div { class: "agent-dashboard-grid",
-                                    div { class: "agent-dashboard-tile", span { "Turns" } strong { "{session.session_turns}" } }
-                                    div { class: "agent-dashboard-tile", span { "Tool calls" } strong { "{session.session_tool_calls}" } }
-                                    div { class: "agent-dashboard-tile", span { "Context" } strong { "{context_label}" } }
-                                    div { class: "agent-dashboard-tile", span { "Runtime" } strong { "{runtime_label}" } }
-                                    div { class: "agent-dashboard-tile agent-dashboard-wide", span { "Workspace" } strong { "{agent_workspace_label}" } }
-                                }
-                            }
-
-                            }
+                        div { class: "agent-page-sections agent-page-sections-live",
 
                             section { class: "agent-page-section agent-runtime-bar",
                                 div { class: "agent-page-section-heading",
