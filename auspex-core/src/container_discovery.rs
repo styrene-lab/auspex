@@ -36,6 +36,10 @@ pub fn discover_containers() -> Vec<DiscoveredContainer> {
 /// Native Docker/Podman discovery through bollard.
 #[cfg(not(target_arch = "wasm32"))]
 fn discover_containers_via_bollard() -> Option<Vec<DiscoveredContainer>> {
+    if tokio::runtime::Handle::try_current().is_ok() {
+        return None;
+    }
+
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()

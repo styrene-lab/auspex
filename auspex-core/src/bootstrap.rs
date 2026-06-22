@@ -223,6 +223,7 @@ pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
 #[cfg(not(target_arch = "wasm32"))]
 const DEFAULT_TLS_STATE_URL: &str = "https://127.0.0.1:7842/api/state";
 pub const AUSPEX_PRIMARY_DEFAULT_POSTURE: &str = "architect";
+pub const AUSPEX_PRIMARY_DEFAULT_MODEL: &str = "openai-codex:gpt-5.5";
 pub const AUSPEX_PRIMARY_DEFAULT_THINKING: &str = "medium";
 pub const AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER: &str = "victory";
 const CARGO_MANIFEST: &str = include_str!("../../Cargo.toml");
@@ -1476,8 +1477,8 @@ fn ensure_omegon_profile_for_auspex() {
 fn preferred_authenticated_omegon_model() -> Option<(&'static str, &'static str)> {
     let snapshot = load_desktop_auth_snapshot().ok()?;
     for (provider, model) in [
+        ("openai-codex", AUSPEX_PRIMARY_DEFAULT_MODEL),
         ("anthropic", "claude-sonnet-4-6"),
-        ("openai-codex", "gpt-5.4"),
         ("ollama-cloud", "gpt-oss:120b-cloud"),
     ] {
         if snapshot
@@ -1754,7 +1755,7 @@ mod tests {
     #[test]
     fn build_omegon_serve_args_includes_auspex_agent_bundle() {
         let bundle = PathBuf::from("/tmp/auspex/agents/auspex-agent");
-        let args = build_omegon_serve_args(Some(&bundle), "openai-codex:gpt-5.4", &[]);
+        let args = build_omegon_serve_args(Some(&bundle), "openai-codex:gpt-5.5", &[]);
 
         assert_eq!(args[0..3], ["--posture", "architect", "serve"]);
         assert!(
@@ -1768,7 +1769,7 @@ mod tests {
         assert!(args.iter().any(|arg| arg == "--strict-port"));
         assert!(
             args.windows(2)
-                .any(|window| window == ["--model", "openai-codex:gpt-5.4"])
+                .any(|window| window == ["--model", "openai-codex:gpt-5.5"])
         );
     }
 

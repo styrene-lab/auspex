@@ -11,7 +11,7 @@ use serde_json::{Value, json};
 use std::collections::HashMap;
 
 #[cfg(not(target_arch = "wasm32"))]
-use crate::oci_backend::{OciLaunchSpec, PullPolicy, LABEL_PACKAGE_ID};
+use crate::oci_backend::{LABEL_PACKAGE_ID, OciLaunchSpec, PullPolicy};
 #[cfg(not(target_arch = "wasm32"))]
 use crate::runtime_types::ResourceRequirements;
 
@@ -540,24 +540,27 @@ mod tests {
             spec.extra_labels[crate::oci_backend::LABEL_PACKAGE_ID],
             "home-infra-sentinel"
         );
-        assert_eq!(
-            spec.extra_labels["styrene.sh/home-stack"],
-            "infra"
+        assert_eq!(spec.extra_labels["styrene.sh/home-stack"], "infra");
+        assert!(
+            spec.env
+                .contains(&("OMEGON_AGENT".into(), "styrene.home-infra-sentinel".into()))
         );
-        assert!(spec.env.contains(&(
-            "OMEGON_AGENT".into(),
-            "styrene.home-infra-sentinel".into()
-        )));
-        assert!(spec.env.contains(&(
-            "OMEGON_MODEL".into(),
-            "anthropic:claude-haiku".into()
-        )));
-        assert!(spec.env.contains(&(
-            "OMEGON_VOX_CONNECTORS".into(),
-            "aether,slack".into()
-        )));
-        assert_eq!(spec.resources.as_ref().unwrap().memory.as_deref(), Some("768Mi"));
-        assert_eq!(spec.pull_policy, crate::oci_backend::PullPolicy::IfNotPresent);
+        assert!(
+            spec.env
+                .contains(&("OMEGON_MODEL".into(), "anthropic:claude-haiku".into()))
+        );
+        assert!(
+            spec.env
+                .contains(&("OMEGON_VOX_CONNECTORS".into(), "aether,slack".into()))
+        );
+        assert_eq!(
+            spec.resources.as_ref().unwrap().memory.as_deref(),
+            Some("768Mi")
+        );
+        assert_eq!(
+            spec.pull_policy,
+            crate::oci_backend::PullPolicy::IfNotPresent
+        );
     }
 
     #[test]

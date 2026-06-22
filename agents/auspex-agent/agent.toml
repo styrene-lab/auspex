@@ -11,7 +11,7 @@ badge = "auspex"
 mind_facts = "mind/facts.jsonl"
 
 [settings]
-model = "openai-codex:gpt-5.4"
+model = "openai-codex:gpt-5.5"
 thinking_level = "medium"
 context_class = "squad"
 max_turns = 50
@@ -20,17 +20,17 @@ max_turns = 50
 name = "auspex-primary"
 
 [workflow.phases.exploring]
-model = "openai-codex:gpt-5.4"
+model = "openai-codex:gpt-5.5"
 max_turns = 20
 thinking_level = "high"
 
 [workflow.phases.implementing]
-model = "openai-codex:gpt-5.4"
+model = "openai-codex:gpt-5.5"
 max_turns = 50
 thinking_level = "medium"
 
 [workflow.phases.verifying]
-model = "openai-codex:gpt-5.4"
+model = "openai-codex:gpt-5.5"
 max_turns = 30
 thinking_level = "medium"
 

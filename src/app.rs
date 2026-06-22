@@ -4,6 +4,10 @@ use dioxus::prelude::*;
 use pulldown_cmark::{CowStr, Event, Options, Parser, Tag, TagEnd, html};
 
 use crate::screens::SessionScreen;
+#[cfg(not(target_arch = "wasm32"))]
+use auspex_core::agent_packages::{
+    AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
+};
 use auspex_core::audit_timeline::{AuditEntry, AuditEntryKind, AuditTimelineStore};
 use auspex_core::bootstrap::BootstrapResult;
 use auspex_core::command_transport::CommandTransport;
@@ -12,13 +16,9 @@ use auspex_core::event_stream::EventStreamHandle;
 use auspex_core::fixtures::TranscriptData;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::ipc_client::IpcEventStreamHandle;
-use auspex_core::runtime_types::TargetedCommand;
-#[cfg(not(target_arch = "wasm32"))]
-use auspex_core::agent_packages::{
-    AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
-};
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::oci_backend::BollardBackend;
+use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = false;
@@ -4393,7 +4393,24 @@ fn staged_or_session_value(staged: &str, fallback: &str) -> String {
 }
 
 fn current_model_display_label(session: &auspex_core::fixtures::SessionData) -> String {
-    session_primary_model(session)
+    let reported = session_primary_model(session);
+    if reported.contains(':') {
+        reported
+    } else {
+        auspex_core::AUSPEX_PRIMARY_DEFAULT_MODEL.to_string()
+    }
+}
+
+fn observed_model_display_label(session: &auspex_core::fixtures::SessionData) -> String {
+    let reported = session_primary_model(session);
+    if reported.contains(':') {
+        reported
+    } else if reported.trim().is_empty() || reported == auspex_core::AUSPEX_PRIMARY_DEFAULT_POSTURE
+    {
+        "model not reported".to_string()
+    } else {
+        format!("provider: {reported} · model not reported")
+    }
 }
 
 fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
@@ -4543,7 +4560,8 @@ fn render_assistant_workspace(
     let endpoint = assistant_endpoint_from_session(session);
     let auto_load_session_snapshot = session.clone();
     let refresh_session_snapshot = session.clone();
-    let apply_session_snapshot = session.clone();
+    let sync_session_snapshot = session.clone();
+    let send_session_snapshot = session.clone();
     let snapshot = state.read().clone();
     if endpoint.is_some()
         && !snapshot.loading
@@ -4563,6 +4581,7 @@ fn render_assistant_workspace(
     let context_default = "standard";
     let model_options = omegon_model_options_for_authenticated_providers(session);
     let current_model_label = current_model_display_label(session);
+    let observed_model_label = observed_model_display_label(session);
     let selected_model = staged_or_session_value(&snapshot.profile_model, &current_model_label);
     let selected_thinking = staged_or_session_value(
         &snapshot.profile_thinking,
@@ -4572,6 +4591,7 @@ fn render_assistant_workspace(
         ),
     );
     let selected_context = staged_or_session_value(&snapshot.profile_context, context_default);
+    let effective_model_label = selected_model.clone();
     let embedded_can_submit = controller.read().focused_can_submit();
     let embedded_is_run_active = controller.read().focused_is_run_active();
     let embedded_draft = controller.read().composer().draft().to_string();
@@ -4593,7 +4613,7 @@ fn render_assistant_workspace(
                             h3 { "Primary agent dashboard" }
                         }
                         div { class: "agent-dashboard-actions",
-                            span { class: "agent-dashboard-model", "{session_primary_model(session)}" }
+                            span { class: "agent-dashboard-model", "requested: {effective_model_label}" }
                             button {
                                 class: "agent-mini-action",
                                 r#type: "button",
@@ -4640,7 +4660,8 @@ fn render_assistant_workspace(
                                 }
                                 div { class: "agent-live-domain agent-live-domain-runtime",
                                     span { class: "agent-live-domain-label", "runtime" }
-                                    div { class: "agent-live-kv", span { "model" } strong { "{session_primary_model(session)}" } }
+                                    div { class: "agent-live-kv", span { "requested" } strong { "{effective_model_label}" } }
+                                    div { class: "agent-live-kv", span { "observed" } strong { "{observed_model_label}" } }
                                     div { class: "agent-live-kv", span { "backend" } strong { "{runtime_label}" } }
                                     div { class: "agent-live-kv", span { "workspace" } strong { "{agent_workspace_label}" } }
                                 }
@@ -4718,11 +4739,16 @@ fn render_assistant_workspace(
 
                         div { class: "agent-page-sections agent-page-sections-live",
 
-                            section { class: "agent-page-section agent-runtime-bar",
+                            section { class: "agent-page-section agent-page-section-chat",
                                 div { class: "agent-page-section-heading",
-                                    h4 { "Runtime controls" }
-                                    span { "compact live controls" }
+                                    h4 { "Chat" }
+                                    span { "primary agent session" }
                                 }
+                            div { class: "agent-runtime-bar agent-turn-envelope",
+                                    div { class: "agent-page-section-heading",
+                                        h4 { "Next turn" }
+                                        span { "live envelope · used automatically on send" }
+                                    }
                                 div { class: "agent-control-grid",
                                     label { class: "agent-config-field agent-config-field-wide",
                                         span { "Model" }
@@ -4787,7 +4813,7 @@ fn render_assistant_workspace(
                                     onclick: move |_| {
                                         let target = controller.read().current_command_target();
                                         let draft = state.read().clone();
-                                        let session_snapshot = apply_session_snapshot.clone();
+                                        let session_snapshot = sync_session_snapshot.clone();
                                         let commands = profile_control_commands(target, &draft, &session_snapshot);
                                         #[cfg(not(target_arch = "wasm32"))]
                                         let transport = command_transport.read().clone();
@@ -4824,6 +4850,13 @@ fn render_assistant_workspace(
                                                             }
                                                         }
                                                     }
+                                                    #[cfg(not(target_arch = "wasm32"))]
+                                                    if failure.is_none()
+                                                        && let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
+                                                        && let Ok(snapshot) = client.get_state().await
+                                                    {
+                                                        let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                                    }
                                                     let mut current = state.write();
                                                     current.applying_profile = false;
                                                     if let Some(error) = failure {
@@ -4831,7 +4864,7 @@ fn render_assistant_workspace(
                                                         current.message = None;
                                                     } else {
                                                         current.error = None;
-                                                        current.message = Some(format!("Applied {dispatched} runtime setting update(s)."));
+                                                        current.message = Some(format!("Live runtime sync requested {dispatched} update(s); latest observed state refreshed from Omegon."));
                                                     }
                                                 }
                                                 Err(error) => {
@@ -4842,15 +4875,9 @@ fn render_assistant_workspace(
                                             }
                                         });
                                     },
-                                    if snapshot.applying_profile { "Applying" } else { "Apply" }
+                                    if snapshot.applying_profile { "Syncing" } else { "Sync" }
                                 }
                             }
-
-                            section { class: "agent-page-section agent-page-section-chat",
-                                div { class: "agent-page-section-heading",
-                                    h4 { "Chat" }
-                                    span { "primary agent session" }
-                                }
                                 div { class: if embedded_transcript_empty { "agent-embedded-chat agent-embedded-chat-empty" } else { "agent-embedded-chat" },
                                     if history.is_empty() {
                                         div { class: "agent-embedded-empty",
@@ -4867,7 +4894,52 @@ fn render_assistant_workspace(
                                     class: "composer chat-composer agent-embedded-composer",
                                     onsubmit: move |event| {
                                         event.prevent_default();
+                                        let session_snapshot = send_session_snapshot.clone();
                                         spawn(async move {
+                                            let target = controller.read().current_command_target();
+                                            let draft = state.read().clone();
+                                            let envelope_commands = profile_control_commands(target, &draft, &session_snapshot);
+                                            let stream = event_stream.read().clone();
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            let transport = command_transport.read().clone();
+
+                                            match envelope_commands {
+                                                Ok(commands) => {
+                                                    for envelope_command in &commands {
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        let result = dispatch_profile_command(
+                                                            transport.as_ref(),
+                                                            stream.as_ref(),
+                                                            envelope_command,
+                                                        );
+                                                        #[cfg(target_arch = "wasm32")]
+                                                        let result = dispatch_profile_command(
+                                                            None,
+                                                            stream.as_ref(),
+                                                            envelope_command,
+                                                        );
+                                                        if let Err(error) = result {
+                                                            let mut current = state.write();
+                                                            current.error = Some(error);
+                                                            current.message = None;
+                                                            return;
+                                                        }
+                                                    }
+                                                    #[cfg(not(target_arch = "wasm32"))]
+                                                    if let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
+                                                        && let Ok(snapshot) = client.get_state().await
+                                                    {
+                                                        let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                                    }
+                                                }
+                                                Err(error) => {
+                                                    let mut current = state.write();
+                                                    current.error = Some(error);
+                                                    current.message = None;
+                                                    return;
+                                                }
+                                            }
+
                                             let command = controller.write().submit_prompt_command();
                                             let Some(command) = command else { return };
 
@@ -4877,22 +4949,44 @@ fn render_assistant_workspace(
                                                 if let Some(instance_id) = focused {
                                                     let result = controller.read().dispatch_to_instance(&instance_id, &command);
                                                     if result.is_ok() {
+                                                        let mut current = state.write();
+                                                        current.error = None;
+                                                        current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
                                                         return;
                                                     }
                                                 }
 
-                                                let transport = command_transport.read().clone();
-                                                let stream = event_stream.read().clone();
                                                 if let Some(transport) = transport {
-                                                    let _ = dispatch_targeted_command(&transport, stream.as_ref(), &command);
+                                                    match dispatch_targeted_command(&transport, stream.as_ref(), &command) {
+                                                        Ok(()) => {
+                                                            let mut current = state.write();
+                                                            current.error = None;
+                                                            current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
+                                                        }
+                                                        Err(error) => {
+                                                            let mut current = state.write();
+                                                            current.error = Some(error);
+                                                            current.message = None;
+                                                        }
+                                                    }
+                                                } else {
+                                                    let mut current = state.write();
+                                                    current.error = Some("No command transport is attached.".to_string());
+                                                    current.message = None;
                                                 }
                                             }
 
                                             #[cfg(target_arch = "wasm32")]
                                             {
-                                                let stream = event_stream.read().clone();
                                                 if let Some(stream) = stream {
                                                     dispatch_targeted_command(&stream, &command);
+                                                    let mut current = state.write();
+                                                    current.error = None;
+                                                    current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
+                                                } else {
+                                                    let mut current = state.write();
+                                                    current.error = Some("No event stream is attached.".to_string());
+                                                    current.message = None;
                                                 }
                                             }
                                         });
@@ -5368,7 +5462,8 @@ async fn deploy_package_request(
         .collect::<Vec<_>>();
     let request = AgentPackageDeployRequest {
         name: Some(form.name.trim().to_string()).filter(|name| !name.is_empty()),
-        namespace: Some(form.namespace.trim().to_string()).filter(|namespace| !namespace.is_empty()),
+        namespace: Some(form.namespace.trim().to_string())
+            .filter(|namespace| !namespace.is_empty()),
         image: Some(form.image.trim().to_string()).filter(|image| !image.is_empty()),
         model: Some(form.model.trim().to_string()).filter(|model| !model.is_empty()),
         secret_name: Some(form.secret_name.trim().to_string()).filter(|secret| !secret.is_empty()),
@@ -8571,7 +8666,10 @@ mod tests {
 
     #[test]
     fn native_container_id_shortener_limits_to_twelve_chars() {
-        assert_eq!(super::shorten_container_id("1234567890abcdef"), "1234567890ab");
+        assert_eq!(
+            super::shorten_container_id("1234567890abcdef"),
+            "1234567890ab"
+        );
         assert_eq!(super::shorten_container_id("short"), "short");
     }
 
