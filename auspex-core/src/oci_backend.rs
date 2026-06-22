@@ -333,37 +333,37 @@ fn candidate_connections() -> Vec<(String, Docker)> {
     let mut candidates = Vec::new();
 
     // 1. Explicit DOCKER_HOST — handles tcp://, unix://, ssh:// schemes.
-    if let Ok(host) = std::env::var("DOCKER_HOST") {
-        if let Ok(docker) = Docker::connect_with_defaults() {
-            candidates.push((host, docker));
-        }
+    if let Ok(host) = std::env::var("DOCKER_HOST")
+        && let Ok(docker) = Docker::connect_with_defaults()
+    {
+        candidates.push((host, docker));
     }
 
     // 2. Docker default socket.
     let docker_sock = "/var/run/docker.sock";
-    if std::path::Path::new(docker_sock).exists() {
-        if let Ok(docker) = Docker::connect_with_unix(docker_sock, TIMEOUT, &API_DEFAULT_VERSION) {
-            candidates.push((docker_sock.to_string(), docker));
-        }
+    if std::path::Path::new(docker_sock).exists()
+        && let Ok(docker) = Docker::connect_with_unix(docker_sock, TIMEOUT, API_DEFAULT_VERSION)
+    {
+        candidates.push((docker_sock.to_string(), docker));
     }
 
     // 3. Podman rootless — only if XDG_RUNTIME_DIR is set (always true on
     //    systemd systems running Podman rootless).
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         let path = format!("{xdg}/podman/podman.sock");
-        if std::path::Path::new(&path).exists() {
-            if let Ok(docker) = Docker::connect_with_unix(&path, TIMEOUT, &API_DEFAULT_VERSION) {
-                candidates.push((path, docker));
-            }
+        if std::path::Path::new(&path).exists()
+            && let Ok(docker) = Docker::connect_with_unix(&path, TIMEOUT, API_DEFAULT_VERSION)
+        {
+            candidates.push((path, docker));
         }
     }
 
     // 4. Podman rootful.
     let podman_sock = "/run/podman/podman.sock";
-    if std::path::Path::new(podman_sock).exists() {
-        if let Ok(docker) = Docker::connect_with_unix(podman_sock, TIMEOUT, &API_DEFAULT_VERSION) {
-            candidates.push((podman_sock.to_string(), docker));
-        }
+    if std::path::Path::new(podman_sock).exists()
+        && let Ok(docker) = Docker::connect_with_unix(podman_sock, TIMEOUT, API_DEFAULT_VERSION)
+    {
+        candidates.push((podman_sock.to_string(), docker));
     }
 
     candidates

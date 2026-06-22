@@ -444,7 +444,7 @@ fn dispatch_profile_command(
         let Some(transport) = _transport else {
             return Err("No command transport is attached.".to_string());
         };
-        return dispatch_targeted_command(transport, stream, command);
+        dispatch_targeted_command(transport, stream, command)
     }
 
     #[cfg(target_arch = "wasm32")]
@@ -4522,6 +4522,7 @@ fn profile_control_commands(
     Ok(commands)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn render_assistant_workspace(
     mut state: Signal<AssistantWorkspaceState>,
     session: &auspex_core::fixtures::SessionData,
