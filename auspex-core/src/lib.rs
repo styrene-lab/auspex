@@ -33,8 +33,6 @@ pub mod command_transport;
 pub mod compatibility;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod container_discovery;
-#[cfg(not(target_arch = "wasm32"))]
-pub mod oci_backend;
 pub mod descriptor_ingest;
 pub mod event_stream;
 pub mod fleet_projection;
@@ -46,6 +44,8 @@ pub mod ipc_client;
 pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local_omegon_probe;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod oci_backend;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod tls_config;
 

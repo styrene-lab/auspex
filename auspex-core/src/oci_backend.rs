@@ -39,7 +39,7 @@ use bollard::query_parameters::{
     CreateContainerOptionsBuilder, CreateImageOptionsBuilder, ListContainersOptionsBuilder,
     RemoveContainerOptionsBuilder, StopContainerOptionsBuilder,
 };
-use bollard::{Docker, API_DEFAULT_VERSION};
+use bollard::{API_DEFAULT_VERSION, Docker};
 use futures_util::TryStreamExt;
 use serde::{Deserialize, Serialize};
 
@@ -225,9 +225,7 @@ impl BollardBackend {
             )
             .await?;
 
-        self.docker
-            .start_container(&response.id, None)
-            .await?;
+        self.docker.start_container(&response.id, None).await?;
 
         Ok(response.id)
     }
@@ -344,9 +342,7 @@ fn candidate_connections() -> Vec<(String, Docker)> {
     // 2. Docker default socket.
     let docker_sock = "/var/run/docker.sock";
     if std::path::Path::new(docker_sock).exists() {
-        if let Ok(docker) =
-            Docker::connect_with_unix(docker_sock, TIMEOUT, &API_DEFAULT_VERSION)
-        {
+        if let Ok(docker) = Docker::connect_with_unix(docker_sock, TIMEOUT, &API_DEFAULT_VERSION) {
             candidates.push((docker_sock.to_string(), docker));
         }
     }
@@ -356,9 +352,7 @@ fn candidate_connections() -> Vec<(String, Docker)> {
     if let Ok(xdg) = std::env::var("XDG_RUNTIME_DIR") {
         let path = format!("{xdg}/podman/podman.sock");
         if std::path::Path::new(&path).exists() {
-            if let Ok(docker) =
-                Docker::connect_with_unix(&path, TIMEOUT, &API_DEFAULT_VERSION)
-            {
+            if let Ok(docker) = Docker::connect_with_unix(&path, TIMEOUT, &API_DEFAULT_VERSION) {
                 candidates.push((path, docker));
             }
         }
@@ -367,9 +361,7 @@ fn candidate_connections() -> Vec<(String, Docker)> {
     // 4. Podman rootful.
     let podman_sock = "/run/podman/podman.sock";
     if std::path::Path::new(podman_sock).exists() {
-        if let Ok(docker) =
-            Docker::connect_with_unix(podman_sock, TIMEOUT, &API_DEFAULT_VERSION)
-        {
+        if let Ok(docker) = Docker::connect_with_unix(podman_sock, TIMEOUT, &API_DEFAULT_VERSION) {
             candidates.push((podman_sock.to_string(), docker));
         }
     }
@@ -568,7 +560,10 @@ mod tests {
 
     #[test]
     fn infer_docker_tcp() {
-        assert_eq!(infer_runtime_name("tcp://192.168.1.10:2375"), "Docker (TCP)");
+        assert_eq!(
+            infer_runtime_name("tcp://192.168.1.10:2375"),
+            "Docker (TCP)"
+        );
     }
 
     #[test]
