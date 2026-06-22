@@ -7,6 +7,13 @@
 
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
+#[cfg(not(target_arch = "wasm32"))]
+use std::collections::HashMap;
+
+#[cfg(not(target_arch = "wasm32"))]
+use crate::oci_backend::{OciLaunchSpec, PullPolicy, LABEL_PACKAGE_ID};
+#[cfg(not(target_arch = "wasm32"))]
+use crate::runtime_types::ResourceRequirements;
 
 /// A deployable Omegon agent package as Auspex needs to understand it.
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -64,6 +71,10 @@ pub struct AgentPackageDeployRequest {
     pub auth_json_secret: Option<String>,
     #[serde(default)]
     pub connectors: Vec<String>,
+    /// Host port used by the OCI backend when launching directly through
+    /// Docker/Podman. Kubernetes deployments ignore this field.
+    #[serde(default, rename = "hostPort", alias = "host_port")]
+    pub host_port: Option<u16>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -260,6 +271,74 @@ impl AgentPackage {
             }
         })
     }
+
+    /// Build an OCI launch spec for the Docker/Podman backend.
+    ///
+    /// This is the OCI analogue of [`AgentPackage::omegon_agent_manifest`]: it
+    /// preserves the package/profile/model identity, maps the selected host
+    /// port to the agent control-plane port, and marks the container with
+    /// Auspex discovery labels.  Secrets are intentionally not materialised
+    /// here; callers should inject resolved secret values through the launch
+    /// environment after policy checks.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn oci_launch_spec(
+        &self,
+        request: &AgentPackageDeployRequest,
+        host_port: u16,
+    ) -> OciLaunchSpec {
+        let name = request.name.as_deref().unwrap_or(self.id.as_str());
+        let image = request.image.as_deref().unwrap_or(self.image.as_str());
+        let model = request
+            .model
+            .as_deref()
+            .unwrap_or(self.default_model.as_str());
+
+        let mut extra_labels = HashMap::new();
+        extra_labels.insert(LABEL_PACKAGE_ID.to_string(), self.id.clone());
+        extra_labels.insert("styrene.sh/agent-role".to_string(), self.role.clone());
+        extra_labels.insert("styrene.sh/agent-domain".to_string(), self.domain.clone());
+        for label in &self.labels {
+            if let Some((key, value)) = label.split_once(':') {
+                extra_labels.insert(format!("styrene.sh/{key}"), value.to_string());
+            }
+        }
+
+        let mut env = vec![
+            ("OMEGON_AGENT".to_string(), self.agent.clone()),
+            ("OMEGON_PROFILE".to_string(), self.profile.clone()),
+            ("OMEGON_MODEL".to_string(), model.to_string()),
+            ("OMEGON_POSTURE".to_string(), self.posture.clone()),
+            ("OMEGON_ROLE".to_string(), self.role.clone()),
+            ("OMEGON_MODE".to_string(), self.mode.clone()),
+            (
+                "OMEGON_TERMINAL_TOOL".to_string(),
+                self.terminal_tool.to_string(),
+            ),
+        ];
+        let connectors = request
+            .connectors
+            .iter()
+            .map(|connector| connector.trim())
+            .filter(|connector| !connector.is_empty())
+            .collect::<Vec<_>>();
+        if !connectors.is_empty() {
+            env.push(("OMEGON_VOX_CONNECTORS".to_string(), connectors.join(",")));
+        }
+
+        OciLaunchSpec {
+            image: image.to_string(),
+            name: name.to_string(),
+            host_port,
+            env,
+            extra_labels,
+            resources: Some(ResourceRequirements {
+                cpu: self.resources.cpu.clone(),
+                memory: self.resources.memory.clone(),
+            }),
+            pull_policy: PullPolicy::IfNotPresent,
+            registry_auth: None,
+        }
+    }
 }
 
 /// Built-in packages used before Armory/Signum package discovery is live.
@@ -438,6 +517,47 @@ mod tests {
         assert_eq!(manifest["spec"]["vox"]["connectors"][0], "aether");
         assert_eq!(manifest["spec"]["vox"]["connectors"][1], "slack");
         assert_eq!(manifest["spec"]["controlPlane"]["tls"]["enabled"], true);
+    }
+
+    #[test]
+    fn package_oci_launch_spec_preserves_runtime_identity() {
+        let package = find_builtin_agent_package("home-infra-sentinel").expect("package");
+        let spec = package.oci_launch_spec(
+            &AgentPackageDeployRequest {
+                name: Some("infra-watch".into()),
+                image: Some("ghcr.io/styrene-lab/custom-agent:dev".into()),
+                model: Some("anthropic:claude-haiku".into()),
+                connectors: vec![" aether ".into(), "".into(), "slack".into()],
+                ..Default::default()
+            },
+            7901,
+        );
+
+        assert_eq!(spec.name, "infra-watch");
+        assert_eq!(spec.image, "ghcr.io/styrene-lab/custom-agent:dev");
+        assert_eq!(spec.host_port, 7901);
+        assert_eq!(
+            spec.extra_labels[crate::oci_backend::LABEL_PACKAGE_ID],
+            "home-infra-sentinel"
+        );
+        assert_eq!(
+            spec.extra_labels["styrene.sh/home-stack"],
+            "infra"
+        );
+        assert!(spec.env.contains(&(
+            "OMEGON_AGENT".into(),
+            "styrene.home-infra-sentinel".into()
+        )));
+        assert!(spec.env.contains(&(
+            "OMEGON_MODEL".into(),
+            "anthropic:claude-haiku".into()
+        )));
+        assert!(spec.env.contains(&(
+            "OMEGON_VOX_CONNECTORS".into(),
+            "aether,slack".into()
+        )));
+        assert_eq!(spec.resources.as_ref().unwrap().memory.as_deref(), Some("768Mi"));
+        assert_eq!(spec.pull_policy, crate::oci_backend::PullPolicy::IfNotPresent);
     }
 
     #[test]

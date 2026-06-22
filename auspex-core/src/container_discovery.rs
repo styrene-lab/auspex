@@ -22,12 +22,34 @@ pub struct DiscoveredContainer {
     pub status: String,
 }
 
-/// Discover running containers from the `auspex-agents` image.
+/// Discover running Docker/Podman containers managed by Auspex.
 ///
-/// Shells out to `podman ps` with JSON format and parses the output.
-/// Returns containers whose image name contains "auspex-agents".
+/// The primary path uses the native bollard client against Docker or Podman
+/// sockets and filters by `styrene.sh/managed-by=auspex`.  If no compatible
+/// socket is available, this falls back to the legacy `podman ps` shell-out
+/// for older hand-launched `auspex-agents` containers.
 #[cfg(not(target_arch = "wasm32"))]
 pub fn discover_containers() -> Vec<DiscoveredContainer> {
+    discover_containers_via_bollard().unwrap_or_else(discover_containers_via_podman_cli)
+}
+
+/// Native Docker/Podman discovery through bollard.
+#[cfg(not(target_arch = "wasm32"))]
+fn discover_containers_via_bollard() -> Option<Vec<DiscoveredContainer>> {
+    let runtime = tokio::runtime::Builder::new_current_thread()
+        .enable_all()
+        .build()
+        .ok()?;
+
+    runtime.block_on(async {
+        let backend = crate::oci_backend::BollardBackend::detect().await?;
+        backend.list_agents().await.ok()
+    })
+}
+
+/// Legacy fallback for pre-bollard local Podman agents.
+#[cfg(not(target_arch = "wasm32"))]
+fn discover_containers_via_podman_cli() -> Vec<DiscoveredContainer> {
     let output = match std::process::Command::new("podman")
         .args(["ps", "--format", "json"])
         .stdout(std::process::Stdio::piped())
@@ -46,45 +68,48 @@ pub fn discover_containers() -> Vec<DiscoveredContainer> {
 
     containers
         .into_iter()
-        .filter_map(|container| {
-            let image = container.get("Image")?.as_str()?.to_string();
-            if !image.contains("auspex-agents") {
-                return None;
-            }
-
-            let container_id = container
-                .get("Id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string();
-            let name = container
-                .get("Names")
-                .and_then(|v| {
-                    v.as_array()
-                        .and_then(|a| a.first())
-                        .and_then(|n| n.as_str())
-                        .or_else(|| v.as_str())
-                })
-                .unwrap_or("")
-                .to_string();
-
-            let host_port = extract_host_port(&container)?;
-
-            let status = container
-                .get("State")
-                .and_then(|v| v.as_str())
-                .unwrap_or("unknown")
-                .to_string();
-
-            Some(DiscoveredContainer {
-                container_id,
-                name,
-                image,
-                host_port,
-                status,
-            })
-        })
+        .filter_map(container_from_podman_json)
         .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn container_from_podman_json(container: serde_json::Value) -> Option<DiscoveredContainer> {
+    let image = container.get("Image")?.as_str()?.to_string();
+    if !image.contains("auspex-agents") {
+        return None;
+    }
+
+    let container_id = container
+        .get("Id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let name = container
+        .get("Names")
+        .and_then(|v| {
+            v.as_array()
+                .and_then(|a| a.first())
+                .and_then(|n| n.as_str())
+                .or_else(|| v.as_str())
+        })
+        .unwrap_or("")
+        .to_string();
+
+    let host_port = extract_host_port(&container)?;
+
+    let status = container
+        .get("State")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+
+    Some(DiscoveredContainer {
+        container_id,
+        name,
+        image,
+        host_port,
+        status,
+    })
 }
 
 /// Extract the host port mapped to container port 7842.

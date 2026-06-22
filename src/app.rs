@@ -13,6 +13,12 @@ use auspex_core::fixtures::TranscriptData;
 #[cfg(not(target_arch = "wasm32"))]
 use auspex_core::ipc_client::IpcEventStreamHandle;
 use auspex_core::runtime_types::TargetedCommand;
+#[cfg(not(target_arch = "wasm32"))]
+use auspex_core::agent_packages::{
+    AgentPackageDeployRequest, builtin_agent_packages, find_builtin_agent_package,
+};
+#[cfg(not(target_arch = "wasm32"))]
+use auspex_core::oci_backend::BollardBackend;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = false;
@@ -5272,7 +5278,28 @@ async fn load_deploy_workspace(
     ),
     String,
 > {
-    Ok((Vec::new(), Vec::new(), Vec::new()))
+    let packages = builtin_agent_packages()
+        .into_iter()
+        .map(|package| DeployPackageModel {
+            id: package.id,
+            name: package.name,
+            description: package.description,
+            domain: package.domain,
+            agent: package.agent,
+            profile: package.profile,
+            default_model: package.default_model,
+            posture: package.posture,
+            role: package.role,
+            mode: package.mode,
+            image: package.image,
+            labels: package.labels,
+            required_secrets: package.required_secrets,
+            optional_secrets: package.optional_secrets,
+            control_tls_profile: package.control_tls_profile,
+            mesh_role: package.mesh_role,
+        })
+        .collect();
+    Ok((packages, Vec::new(), Vec::new()))
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -5323,10 +5350,71 @@ async fn deploy_package_request(
 
 #[cfg(not(target_arch = "wasm32"))]
 async fn deploy_package_request(
-    _package_id: &str,
-    _form: &AgentDeployFormState,
+    package_id: &str,
+    form: &AgentDeployFormState,
 ) -> Result<String, String> {
-    Err("Cluster deploys are available from the deployed WebUI build.".into())
+    let package = find_builtin_agent_package(package_id)
+        .ok_or_else(|| format!("unknown agent package: {package_id}"))?;
+    let backend = BollardBackend::detect()
+        .await
+        .ok_or_else(|| "No Docker or Podman API socket responded. Set DOCKER_HOST or expose /var/run/docker.sock / Podman socket.".to_string())?;
+    let host_port = allocate_agent_host_port().map_err(|error| error.to_string())?;
+    let connectors = form
+        .connectors
+        .split(',')
+        .map(str::trim)
+        .filter(|connector| !connector.is_empty())
+        .map(str::to_string)
+        .collect::<Vec<_>>();
+    let request = AgentPackageDeployRequest {
+        name: Some(form.name.trim().to_string()).filter(|name| !name.is_empty()),
+        namespace: Some(form.namespace.trim().to_string()).filter(|namespace| !namespace.is_empty()),
+        image: Some(form.image.trim().to_string()).filter(|image| !image.is_empty()),
+        model: Some(form.model.trim().to_string()).filter(|model| !model.is_empty()),
+        secret_name: Some(form.secret_name.trim().to_string()).filter(|secret| !secret.is_empty()),
+        auth_json_secret: Some(form.auth_json_secret.trim().to_string())
+            .filter(|secret| !secret.is_empty()),
+        connectors,
+        host_port: Some(host_port),
+    };
+
+    let spec = package.oci_launch_spec(&request, host_port);
+    let container_id = backend
+        .launch(&spec)
+        .await
+        .map_err(|error| format!("container launch failed: {error}"))?;
+
+    Ok(format!(
+        "Launched {} as {} on {} via {} ({})",
+        package.name,
+        spec.name,
+        spec.host_port,
+        backend.runtime_info.runtime,
+        shorten_container_id(&container_id)
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn allocate_agent_host_port() -> std::io::Result<u16> {
+    for port in 7842..=7942 {
+        match std::net::TcpListener::bind(("127.0.0.1", port)) {
+            Ok(listener) => {
+                drop(listener);
+                return Ok(port);
+            }
+            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
+            Err(error) => return Err(error),
+        }
+    }
+    Err(std::io::Error::new(
+        std::io::ErrorKind::AddrNotAvailable,
+        "no free agent control-plane port in 7842..=7942",
+    ))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn shorten_container_id(container_id: &str) -> &str {
+    container_id.get(..12).unwrap_or(container_id)
 }
 
 #[cfg(target_arch = "wasm32")]
@@ -8472,6 +8560,19 @@ mod tests {
             app_surface_tone(AppSurfaceKind::CompatibilityFailure),
             "danger"
         );
+    }
+
+    #[test]
+    fn native_host_port_allocator_returns_bindable_port() {
+        let port = super::allocate_agent_host_port().expect("host port");
+        let listener = std::net::TcpListener::bind(("127.0.0.1", port));
+        assert!(listener.is_ok(), "allocated port {port} should be bindable");
+    }
+
+    #[test]
+    fn native_container_id_shortener_limits_to_twelve_chars() {
+        assert_eq!(super::shorten_container_id("1234567890abcdef"), "1234567890ab");
+        assert_eq!(super::shorten_container_id("short"), "short");
     }
 
     #[test]
