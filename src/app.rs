@@ -5491,7 +5491,7 @@ async fn deploy_package_request(
 
 #[cfg(not(target_arch = "wasm32"))]
 fn allocate_agent_host_port() -> std::io::Result<u16> {
-    for port in 7842..=7942 {
+    for port in 7900..=7999 {
         match std::net::TcpListener::bind(("127.0.0.1", port)) {
             Ok(listener) => {
                 drop(listener);
@@ -5503,7 +5503,7 @@ fn allocate_agent_host_port() -> std::io::Result<u16> {
     }
     Err(std::io::Error::new(
         std::io::ErrorKind::AddrNotAvailable,
-        "no free agent control-plane port in 7842..=7942",
+        "no free agent control-plane port in 7900..=7999",
     ))
 }
 
