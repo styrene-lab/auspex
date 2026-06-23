@@ -78,6 +78,55 @@ impl LocalOmegonCandidate {
     }
 }
 
+/// Ports scanned for Detected/Attached runtime candidates.
+pub fn default_detect_scan_ports() -> Vec<u16> {
+    let mut ports = Vec::with_capacity(1 + (7899 - 7843 + 1) + (7999 - 7900 + 1));
+    ports.push(7842);
+    ports.extend(7843..=7899);
+    ports.extend(7900..=7999);
+    ports
+}
+
+/// Non-mutating candidate discovery for the Add Agent → Attach runtime flow.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn discover_attach_candidates() -> Vec<LocalOmegonCandidate> {
+    let mut candidates = discover_local_omegon_candidates();
+    candidates.extend(discover_known_control_port_candidates(
+        &default_detect_scan_ports(),
+    ));
+    merge_local_omegon_candidates(candidates)
+}
+
+/// Web builds cannot scan localhost processes/ports directly; native Auspex owns
+/// local runtime discovery and can surface detected candidates through control
+/// plane state in a later slice.
+#[cfg(target_arch = "wasm32")]
+pub fn discover_attach_candidates() -> Vec<LocalOmegonCandidate> {
+    Vec::new()
+}
+
+pub fn candidate_ready_url(candidate: &LocalOmegonCandidate) -> Option<String> {
+    candidate
+        .startup_url
+        .as_deref()
+        .map(|url| url.replace("/api/startup", "/api/readyz"))
+        .or_else(|| {
+            candidate
+                .state_url
+                .as_deref()
+                .map(|url| url.replace("/api/state", "/api/readyz"))
+        })
+}
+
+pub fn candidate_state_url(candidate: &LocalOmegonCandidate) -> Option<String> {
+    candidate.state_url.clone().or_else(|| {
+        candidate
+            .startup_url
+            .as_deref()
+            .map(|url| url.replace("/api/startup", "/api/state"))
+    })
+}
+
 pub fn parse_omegon_process_table(output: &str) -> Vec<LocalOmegonCandidate> {
     output
         .lines()

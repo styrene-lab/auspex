@@ -228,6 +228,8 @@ struct AssistantWorkspaceState {
     selected_agent_id: Option<String>,
     add_agent_open: bool,
     add_agent_mode: Option<AddAgentMode>,
+    add_agent_candidates: Vec<LocalRuntimeCandidateModel>,
+    scanning_agents: bool,
     chat_expanded: bool,
     auto_loaded_endpoint: Option<String>,
     loading: bool,
@@ -239,6 +241,118 @@ struct AssistantWorkspaceState {
     applying_profile: bool,
     message: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LocalRuntimeCandidateModel {
+    label: String,
+    relationship: &'static str,
+    authority: &'static str,
+    source: String,
+    ownership: String,
+    endpoint: String,
+    ready_url: String,
+    state_url: String,
+    pid: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentTemplateModel {
+    id: String,
+    name: String,
+    description: String,
+    domain: String,
+    default_model: String,
+    image: String,
+    required_secrets: String,
+    optional_secrets: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn agent_template_models() -> Vec<AgentTemplateModel> {
+    builtin_agent_packages()
+        .into_iter()
+        .map(|package| AgentTemplateModel {
+            id: package.id,
+            name: package.name,
+            description: package.description,
+            domain: package.domain,
+            default_model: package.default_model,
+            image: package.image,
+            required_secrets: if package.required_secrets.is_empty() {
+                "none".to_string()
+            } else {
+                package.required_secrets.join(", ")
+            },
+            optional_secrets: if package.optional_secrets.is_empty() {
+                "none".to_string()
+            } else {
+                package.optional_secrets.join(", ")
+            },
+        })
+        .collect()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn agent_template_models() -> Vec<AgentTemplateModel> {
+    Vec::new()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
+    use auspex_core::local_omegon_discovery::{
+        candidate_ready_url, candidate_state_url, discover_attach_candidates,
+    };
+
+    discover_attach_candidates()
+        .into_iter()
+        .map(|candidate| {
+            let state_url =
+                candidate_state_url(&candidate).unwrap_or_else(|| "state unavailable".to_string());
+            let ready_url =
+                candidate_ready_url(&candidate).unwrap_or_else(|| "ready unavailable".to_string());
+            let endpoint = candidate
+                .startup_url
+                .clone()
+                .or_else(|| candidate.state_url.clone())
+                .or_else(|| {
+                    candidate
+                        .ipc_socket
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                })
+                .unwrap_or_else(|| "endpoint unknown".to_string());
+            let source = format!("{:?}", candidate.source);
+            let ownership = format!("{:?}", candidate.ownership);
+            let label = candidate
+                .cwd
+                .as_ref()
+                .and_then(|path| path.file_name())
+                .and_then(|name| name.to_str())
+                .map(str::to_string)
+                .or_else(|| candidate.pid.map(|pid| format!("omegon pid {pid}")))
+                .unwrap_or_else(|| endpoint.clone());
+            LocalRuntimeCandidateModel {
+                label,
+                relationship: "Detected",
+                authority: "read-only probe",
+                source,
+                ownership,
+                endpoint,
+                ready_url,
+                state_url,
+                pid: candidate
+                    .pid
+                    .map(|pid| pid.to_string())
+                    .unwrap_or_else(|| "—".to_string()),
+            }
+        })
+        .collect()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
+    Vec::new()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -4745,6 +4859,7 @@ fn render_assistant_workspace(
         });
     }
     let history = transcript_chat_history(_transcript, messages);
+    let agent_templates = agent_template_models();
     let context_label = session_context_label(session);
     let agent_workspace_label = session_workspace_label(session);
     let runtime_label = session_runtime_label(session);
@@ -4814,7 +4929,10 @@ fn render_assistant_workspace(
                                 class: "agent-mini-action agent-mini-action-primary",
                                 r#type: "button",
                                 onclick: move |_| {
+                                    let candidates = local_runtime_candidate_models();
                                     let mut current = state.write();
+                                    current.add_agent_candidates = candidates;
+                                    current.scanning_agents = false;
                                     current.add_agent_open = true;
                                     current.add_agent_mode.get_or_insert(AddAgentMode::AttachExistingRuntime);
                                 },
@@ -4892,6 +5010,81 @@ fn render_assistant_workspace(
                                             onclick: move |_| state.write().add_agent_mode = Some(mode),
                                             strong { "{mode.label()}" }
                                             span { "{mode.detail()}" }
+                                        }
+                                    }
+                                }
+                                if snapshot.add_agent_mode == Some(AddAgentMode::AttachExistingRuntime) {
+                                    div { class: "agent-catalog-section",
+                                        div { class: "agent-catalog-copy agent-catalog-copy-action",
+                                            div {
+                                                strong { "Detected local runtimes" }
+                                                span { "Non-mutating scan across 7842, embedded fallback ports, and local auxiliary agent ports. Detected does not imply command or lifecycle authority." }
+                                            }
+                                            button {
+                                                class: "agent-add-close",
+                                                r#type: "button",
+                                                onclick: move |_| {
+                                                    let candidates = local_runtime_candidate_models();
+                                                    let mut current = state.write();
+                                                    current.add_agent_candidates = candidates;
+                                                    current.scanning_agents = false;
+                                                },
+                                                "Refresh scan"
+                                            }
+                                        }
+                                        div { class: "agent-template-list",
+                                            if snapshot.add_agent_candidates.is_empty() {
+                                                div { class: "agent-template-card",
+                                                    strong { "No local runtimes detected" }
+                                                    span { "Use Refresh after starting an Omegon runtime, or launch a profile instead." }
+                                                }
+                                            } else {
+                                                for candidate in snapshot.add_agent_candidates.clone() {
+                                                    div { class: "agent-template-card",
+                                                        strong { "{candidate.label}" }
+                                                        span { "{candidate.endpoint}" }
+                                                        div { class: "agent-template-meta",
+                                                            span { class: "agent-template-chip", "{candidate.relationship}" }
+                                                            span { class: "agent-template-chip", "{candidate.authority}" }
+                                                            span { class: "agent-template-chip", "{candidate.ownership}" }
+                                                            span { class: "agent-template-chip", "pid {candidate.pid}" }
+                                                        }
+                                                        span { "ready: {candidate.ready_url}" }
+                                                        span { "state: {candidate.state_url}" }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if snapshot.add_agent_mode == Some(AddAgentMode::LaunchFromProfile) {
+                                    div { class: "agent-catalog-section",
+                                        div { class: "agent-catalog-copy",
+                                            strong { "Local template catalog" }
+                                            span { "Built-in deployable packages available to launch as managed runtimes. This is the local catalog view; later slices will merge Armory upstream and locally-authored templates." }
+                                        }
+                                        div { class: "agent-template-list",
+                                            if agent_templates.is_empty() {
+                                                div { class: "agent-template-card",
+                                                    strong { "No templates available" }
+                                                    span { "No native package catalog is available in this build target." }
+                                                }
+                                            } else {
+                                                for template in agent_templates.clone() {
+                                                    div { class: "agent-template-card",
+                                                        strong { "{template.name}" }
+                                                        span { "{template.description}" }
+                                                        div { class: "agent-template-meta",
+                                                            span { class: "agent-template-chip", "{template.id}" }
+                                                            span { class: "agent-template-chip", "{template.domain}" }
+                                                            span { class: "agent-template-chip", "{template.default_model}" }
+                                                        }
+                                                        span { "image: {template.image}" }
+                                                        span { "required secrets: {template.required_secrets}" }
+                                                        span { "optional secrets: {template.optional_secrets}" }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }

@@ -8718,3 +8718,58 @@ body,
     width: auto;
   }
 }
+
+.shell-assistant-focus .agent-catalog-copy-action {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shell-assistant-focus .agent-add-catalog {
+  display: grid;
+  gap: 0.45rem;
+  margin-top: 0.6rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid rgba(32, 70, 98, 0.74);
+}
+
+.shell-assistant-focus .agent-add-catalog-title,
+.shell-assistant-focus .agent-add-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.shell-assistant-focus .agent-add-catalog-title strong,
+.shell-assistant-focus .agent-add-row strong {
+  color: var(--agent-text);
+  font-size: 0.78rem;
+  font-weight: 850;
+}
+
+.shell-assistant-focus .agent-add-catalog-title span,
+.shell-assistant-focus .agent-add-row span,
+.shell-assistant-focus .agent-add-row em,
+.shell-assistant-focus .agent-add-empty {
+  color: var(--agent-muted);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-style: normal;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-add-row,
+.shell-assistant-focus .agent-add-empty {
+  border: 1px solid rgba(32, 70, 98, 0.86);
+  background: rgba(4, 8, 14, 0.66);
+  padding: 0.55rem 0.65rem;
+}
+
+.shell-assistant-focus .agent-add-row em {
+  color: var(--agent-accent);
+  text-align: right;
+}
