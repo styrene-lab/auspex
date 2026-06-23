@@ -7281,3 +7281,1440 @@ body {
     grid-template-columns: 1fr !important;
   }
 }
+
+/* Primary chat transcript: structured turns, no plaintext transport noise. */
+.shell-assistant-focus .agent-embedded-chat {
+  min-height: 13rem;
+  max-height: 21rem;
+  padding: 0.85rem;
+  overflow: auto;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  display: grid;
+  gap: 0.35rem;
+  max-width: min(76rem, 92%);
+  padding: 0.72rem 0.82rem;
+  border: 1px solid rgba(32, 70, 98, 0.86);
+  background: rgba(5, 10, 18, 0.74);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] {
+  justify-self: end;
+  border-color: rgba(42, 180, 200, 0.72);
+  background: rgba(14, 33, 48, 0.78);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"] {
+  justify-self: start;
+  border-color: rgba(110, 202, 216, 0.45);
+  background: rgba(12, 20, 32, 0.84);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  justify-self: stretch;
+  max-width: none;
+  border-color: rgba(96, 120, 136, 0.35);
+  background: rgba(4, 7, 12, 0.52);
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.shell-assistant-focus .agent-turn-role,
+.shell-assistant-focus .agent-turn-channel {
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-turn-role {
+  color: var(--agent-accent);
+}
+
+.shell-assistant-focus .agent-turn-channel {
+  color: rgba(149, 164, 180, 0.58);
+}
+
+.shell-assistant-focus .agent-turn-text {
+  margin: 0;
+  color: rgba(230, 238, 247, 0.82);
+  font-size: 0.9rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] .agent-turn-text {
+  color: rgba(149, 164, 180, 0.86);
+  font-size: 0.82rem;
+}
+
+/* Single-page iteration layout: fit primary dashboard to viewport, scroll only transcript internals. */
+html,
+body,
+#main,
+#root {
+  height: 100%;
+  overflow: hidden;
+}
+
+.shell-assistant-focus {
+  height: 100vh;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .assistant-shell,
+.shell-assistant-focus .assistant-shell-single,
+.shell-assistant-focus .assistant-stage,
+.shell-assistant-focus .assistant-workspace,
+.shell-assistant-focus .assistant-main-grid,
+.shell-assistant-focus .agent-console-panel,
+.shell-assistant-focus .assistant-detail-stack,
+.shell-assistant-focus .agent-config-form,
+.shell-assistant-focus .agent-page-sections,
+.shell-assistant-focus .agent-page-sections-live {
+  min-height: 0 !important;
+  max-height: none;
+}
+
+.shell-assistant-focus .assistant-shell,
+.shell-assistant-focus .assistant-shell-single,
+.shell-assistant-focus .assistant-stage {
+  height: 100%;
+}
+
+.shell-assistant-focus .assistant-workspace {
+  height: 100%;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .assistant-main-grid,
+.shell-assistant-focus .agent-console-grid,
+.shell-assistant-focus .agent-console-panel {
+  height: 100%;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .assistant-detail-stack,
+.shell-assistant-focus .agent-config-form {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  height: 100%;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-dashboard-titlebar {
+  min-height: 3.4rem;
+  padding-block: 0.55rem;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy h3 {
+  font-size: clamp(1rem, 1.3vw, 1.32rem);
+}
+
+.shell-assistant-focus .agent-page-sections,
+.shell-assistant-focus .agent-page-sections-live {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  gap: 0.55rem;
+  overflow: hidden !important;
+  padding: 0.55rem 0.7rem 0.7rem;
+}
+
+.shell-assistant-focus .agent-live-panel-compact {
+  padding: 0.55rem 0.7rem;
+}
+
+.shell-assistant-focus .agent-live-panel-compact .agent-live-domain {
+  min-height: 6.6rem;
+  padding: 0.55rem 0.65rem;
+}
+
+.shell-assistant-focus .agent-live-kv {
+  gap: 0.35rem;
+}
+
+.shell-assistant-focus .agent-live-kv strong {
+  font-size: 0.74rem;
+  line-height: 1.12;
+}
+
+.shell-assistant-focus .agent-telemetry-counter,
+.shell-assistant-focus .agent-telemetry-context {
+  padding: 0.42rem 0.48rem;
+}
+
+.shell-assistant-focus .agent-telemetry-counter strong {
+  font-size: 1.05rem;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  min-height: 0 !important;
+  overflow: hidden !important;
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
+  gap: 0.45rem;
+  padding: 0.55rem 0.65rem !important;
+}
+
+.shell-assistant-focus .agent-turn-envelope {
+  padding: 0.5rem 0.55rem !important;
+}
+
+.shell-assistant-focus .agent-runtime-bar .agent-control-grid {
+  gap: 0.4rem;
+}
+
+.shell-assistant-focus .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-runtime-bar .agent-config-field input,
+.shell-assistant-focus .agent-runtime-bar .agent-apply-action {
+  height: 2rem !important;
+  min-height: 2rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  padding: 0.62rem;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  gap: 0.45rem;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  padding: 0.55rem 0.65rem;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  font-size: 0.82rem;
+  line-height: 1.32;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  min-height: 0;
+  padding: 0.45rem;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input {
+  min-height: 4.2rem;
+  max-height: 7rem;
+}
+
+@media (max-height: 820px) {
+  .shell-assistant-focus .agent-live-panel-compact .agent-live-domain {
+    min-height: 5.4rem;
+  }
+
+  .shell-assistant-focus .agent-live-domain-label,
+  .shell-assistant-focus .agent-live-kv span,
+  .shell-assistant-focus .agent-telemetry-counter span,
+  .shell-assistant-focus .agent-telemetry-context-head span {
+    font-size: 0.49rem;
+  }
+
+  .shell-assistant-focus .agent-live-kv strong {
+    font-size: 0.68rem;
+  }
+
+  .shell-assistant-focus .agent-embedded-composer .composer-input {
+    min-height: 3.2rem;
+    max-height: 4.8rem;
+  }
+}
+
+/* Visual noise reduction: use fewer hard boxes inside the chat surface. */
+.shell-assistant-focus .agent-page-section-chat {
+  border-color: rgba(42, 180, 200, 0.32) !important;
+  background: rgba(8, 14, 24, 0.72) !important;
+}
+
+.shell-assistant-focus .agent-turn-envelope,
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-embedded-composer {
+  border-color: transparent !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-turn-envelope {
+  border-bottom: 1px solid rgba(26, 52, 72, 0.72) !important;
+  padding: 0.35rem 0 0.65rem !important;
+}
+
+.shell-assistant-focus .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-runtime-bar .agent-config-field input {
+  border-color: rgba(32, 70, 98, 0.72) !important;
+  background: rgba(4, 8, 14, 0.72) !important;
+  box-shadow: none !important;
+}
+
+.shell-assistant-focus .agent-runtime-bar .agent-apply-action,
+.shell-assistant-focus .agent-embedded-composer .composer-send {
+  border-color: rgba(42, 180, 200, 0.55) !important;
+  background: rgba(15, 28, 44, 0.72) !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  padding: 0.35rem 0 0.15rem;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  border-width: 0 0 0 3px;
+  background: rgba(5, 10, 18, 0.46);
+  padding: 0.45rem 0.65rem;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] {
+  border-color: rgba(42, 180, 200, 0.72);
+  background: rgba(14, 33, 48, 0.42);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"] {
+  border-color: rgba(110, 202, 216, 0.55);
+  background: rgba(12, 20, 32, 0.5);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  border-color: rgba(96, 120, 136, 0.45);
+  background: rgba(4, 7, 12, 0.34);
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  padding: 0.35rem 0 0;
+  border-top: 1px solid rgba(26, 52, 72, 0.72) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input {
+  border-color: rgba(32, 70, 98, 0.78) !important;
+  background: rgba(2, 5, 10, 0.72) !important;
+  box-shadow: none !important;
+}
+
+/* Chat is the lower operating region, not a nested card. */
+.shell-assistant-focus .agent-page-section-chat {
+  border-width: 1px 0 0 !important;
+  border-color: rgba(42, 180, 200, 0.28) !important;
+  background: linear-gradient(180deg, rgba(8, 14, 24, 0.58), rgba(6, 10, 18, 0.38)) !important;
+  padding: 0.7rem 0.85rem 0.75rem !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
+  padding: 0 0.15rem 0.25rem;
+  margin-bottom: 0.15rem;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading h4 {
+  letter-spacing: 0.22em;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading span {
+  opacity: 0.78;
+}
+
+.shell-assistant-focus .agent-turn-envelope {
+  border-bottom-color: rgba(26, 52, 72, 0.52) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  border-top-color: rgba(26, 52, 72, 0.52) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input {
+  border-color: rgba(42, 180, 200, 0.38) !important;
+  background: rgba(2, 5, 10, 0.58) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input:focus,
+.shell-assistant-focus .agent-embedded-composer .composer-input:focus-visible {
+  border-color: rgba(110, 202, 216, 0.72) !important;
+  box-shadow: 0 0 0 1px rgba(42, 180, 200, 0.18) !important;
+}
+
+/* IM-style composer: short single-line message box, send at the edge. */
+.shell-assistant-focus .agent-embedded-composer {
+  padding: 0.45rem 0 0;
+}
+
+.shell-assistant-focus .agent-embedded-composer .chat-composer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  height: 3rem !important;
+  min-height: 3rem !important;
+  max-height: 3rem !important;
+  resize: none;
+  padding: 0 1rem !important;
+  border-radius: 999px !important;
+  font-size: 0.98rem !important;
+  line-height: 3rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  height: 3rem !important;
+  min-height: 3rem !important;
+  border-radius: 999px !important;
+  padding-inline: 1.15rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  min-height: 0 !important;
+}
+
+/* Chat polish correction: remove cartoon pill radii and separate lower chat field from page. */
+.shell-assistant-focus .agent-page-section-chat {
+  background:
+    radial-gradient(circle at 18% 18%, rgba(42, 180, 200, 0.07), transparent 28rem),
+    radial-gradient(circle at 82% 44%, rgba(110, 202, 216, 0.045), transparent 24rem),
+    linear-gradient(180deg, rgba(10, 18, 30, 0.82), rgba(5, 9, 16, 0.62)) !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  background:
+    linear-gradient(135deg, rgba(6, 12, 21, 0.72), rgba(10, 17, 28, 0.38)),
+    repeating-linear-gradient(90deg, rgba(42, 180, 200, 0.025) 0 1px, transparent 1px 72px) !important;
+  border-top: 1px solid rgba(26, 52, 72, 0.34) !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.34) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im,
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  border-radius: 0.85rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  background:
+    linear-gradient(180deg, rgba(3, 7, 13, 0.92), rgba(8, 14, 23, 0.86)) !important;
+  border-color: rgba(42, 180, 200, 0.42) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  background: linear-gradient(180deg, rgba(18, 36, 52, 0.92), rgba(10, 23, 35, 0.92)) !important;
+}
+
+/* Chat-area affordance pass: make the lower surface read as an IM transcript. */
+.shell-assistant-focus .agent-page-section-chat {
+  position: relative;
+  border-top: 1px solid rgba(110, 202, 216, 0.32) !important;
+  background:
+    linear-gradient(180deg, rgba(7, 13, 23, 0.88), rgba(4, 8, 15, 0.76)) !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat::before {
+  content: "";
+  position: absolute;
+  inset: 3.25rem 0.85rem 4.25rem;
+  pointer-events: none;
+  border-radius: 1.15rem;
+  background:
+    radial-gradient(circle at 14% 18%, rgba(42, 180, 200, 0.10), transparent 18rem),
+    radial-gradient(circle at 84% 68%, rgba(96, 96, 192, 0.075), transparent 22rem),
+    rgba(3, 7, 13, 0.34);
+  border: 1px solid rgba(26, 52, 72, 0.34);
+}
+
+.shell-assistant-focus .agent-page-section-chat > * {
+  position: relative;
+  z-index: 1;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.7rem;
+  padding: 1rem 1.1rem !important;
+  background: transparent !important;
+  border: 0 !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  align-content: end;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  position: relative;
+  max-width: min(46rem, 78%);
+  border: 1px solid rgba(32, 70, 98, 0.62) !important;
+  border-radius: 1rem !important;
+  padding: 0.72rem 0.88rem !important;
+  box-shadow: 0 0.7rem 1.8rem rgba(0, 0, 0, 0.18);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] {
+  border-color: rgba(42, 180, 200, 0.58) !important;
+  background: linear-gradient(180deg, rgba(18, 48, 66, 0.82), rgba(10, 30, 44, 0.76)) !important;
+  border-bottom-right-radius: 0.25rem !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"] {
+  border-color: rgba(110, 202, 216, 0.42) !important;
+  background: linear-gradient(180deg, rgba(13, 24, 38, 0.88), rgba(8, 17, 29, 0.82)) !important;
+  border-bottom-left-radius: 0.25rem !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  max-width: min(58rem, 88%);
+  justify-self: center;
+  border-radius: 0.75rem !important;
+  border-style: dashed !important;
+  background: rgba(5, 9, 16, 0.52) !important;
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  margin-bottom: 0.15rem;
+}
+
+.shell-assistant-focus .agent-turn-channel {
+  display: none;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  font-size: 0.96rem;
+  line-height: 1.42;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  margin-top: 0.25rem;
+  padding: 0.65rem 0.8rem !important;
+  border: 1px solid rgba(42, 180, 200, 0.25) !important;
+  border-radius: 1.1rem !important;
+  background: rgba(5, 10, 18, 0.64) !important;
+  backdrop-filter: blur(8px);
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  border-radius: 0.95rem !important;
+  background: rgba(1, 4, 9, 0.86) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  border-radius: 0.95rem !important;
+}
+
+/* Expanded chat mode for long transcripts and larger interaction affordances. */
+.shell-assistant-focus .agent-chat-heading-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.75rem;
+}
+
+.shell-assistant-focus .agent-chat-expand-button {
+  min-height: 2rem;
+  padding: 0 0.85rem;
+  border: 1px solid rgba(42, 180, 200, 0.48);
+  background: rgba(10, 23, 35, 0.72);
+  color: var(--agent-text);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-chat-expand-button:hover {
+  border-color: rgba(110, 202, 216, 0.82);
+  background: rgba(18, 36, 52, 0.88);
+}
+
+.shell-assistant-focus .agent-chat-expanded {
+  position: fixed !important;
+  inset: 0 !important;
+  z-index: 2000;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  width: auto !important;
+  height: 100vh !important;
+  margin: 0 !important;
+  padding: 1rem 1.15rem !important;
+  border: 1px solid rgba(42, 180, 200, 0.58) !important;
+  background:
+    radial-gradient(circle at 18% 16%, rgba(42, 180, 200, 0.10), transparent 34rem),
+    radial-gradient(circle at 84% 72%, rgba(96, 96, 192, 0.09), transparent 32rem),
+    linear-gradient(180deg, rgba(5, 10, 18, 0.98), rgba(2, 5, 10, 0.98)) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded::before {
+  inset: 4.25rem 1.15rem 6rem;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  min-height: 0 !important;
+  max-height: none !important;
+  padding: 1.1rem 1.25rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card {
+  max-width: min(62rem, 82%);
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
+  max-width: min(74rem, 92%);
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
+  padding: 0.85rem 1rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im {
+  height: 3.35rem !important;
+  min-height: 3.35rem !important;
+  max-height: 3.35rem !important;
+  line-height: 3.35rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
+  height: 3.35rem !important;
+  min-height: 3.35rem !important;
+}
+
+/* Sci-fi terminal slice: command strip, sync signal, prompt affordance. */
+.shell-assistant-focus .agent-command-strip {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-height: 2rem;
+  padding: 0 0.2rem 0.45rem;
+  color: rgba(149, 164, 180, 0.78);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.42);
+}
+
+.shell-assistant-focus .agent-command-strip strong {
+  color: rgba(230, 238, 247, 0.82);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: none;
+}
+
+.shell-assistant-focus .agent-command-strip span:not(:first-child)::before {
+  content: "::";
+  margin-right: 0.6rem;
+  color: rgba(42, 180, 200, 0.48);
+}
+
+.shell-assistant-focus .agent-sync-state {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem !important;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-sync-state::before {
+  content: "";
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #607888;
+  box-shadow: 0 0 0.75rem rgba(96, 120, 136, 0.45);
+}
+
+.shell-assistant-focus .agent-sync-state[data-state="ok"]::before {
+  background: #1ab878;
+  box-shadow: 0 0 0.9rem rgba(26, 184, 120, 0.62);
+}
+
+.shell-assistant-focus .agent-sync-state[data-state="warn"]::before {
+  background: #c86418;
+  box-shadow: 0 0 0.9rem rgba(200, 100, 24, 0.62);
+}
+
+.shell-assistant-focus .agent-sync-state[data-state="unknown"]::before {
+  background: #607888;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  background-image:
+    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
+    radial-gradient(circle at 18% 16%, rgba(42, 180, 200, 0.055), transparent 22rem) !important;
+  background-size: 100% 1.65rem, auto !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im::placeholder {
+  color: rgba(149, 164, 180, 0.72);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+}
+
+/* Hard-corner override: terminal geometry wins over inherited pill/card radii. */
+.shell-assistant-focus,
+.shell-assistant-focus *:not(.macos-window-control):not(.traffic-light) {
+  border-radius: 0 !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im,
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel,
+.shell-assistant-focus .agent-chat-expand-button,
+.shell-assistant-focus .agent-mini-action,
+.shell-assistant-focus .agent-apply-action,
+.shell-assistant-focus select,
+.shell-assistant-focus input,
+.shell-assistant-focus button,
+.shell-assistant-focus textarea,
+.shell-assistant-focus .agent-turn-envelope,
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-embedded-composer,
+.shell-assistant-focus .agent-turn-card,
+.shell-assistant-focus .agent-page-section-chat,
+.shell-assistant-focus .agent-page-section,
+.shell-assistant-focus .agent-live-domain,
+.shell-assistant-focus .agent-console-panel,
+.shell-assistant-focus .assistant-main-grid {
+  border-radius: 0 !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .chat-composer {
+  border-radius: 0 !important;
+}
+
+/* Kill remaining inherited top radius on the chat panel/surface itself. */
+.agent-page-section-chat,
+.agent-page-section-chat::before,
+.agent-page-section-chat::after,
+.agent-page-section-chat > *,
+.agent-chat-expanded,
+.agent-chat-expanded::before,
+.agent-chat-expanded::after,
+.agent-turn-envelope,
+.agent-turn-envelope::before,
+.agent-turn-envelope::after,
+.agent-embedded-chat,
+.agent-embedded-chat::before,
+.agent-embedded-chat::after,
+.agent-embedded-composer,
+.agent-embedded-composer::before,
+.agent-embedded-composer::after {
+  border-radius: 0 !important;
+  border-top-left-radius: 0 !important;
+  border-top-right-radius: 0 !important;
+  clip-path: none !important;
+}
+
+/* Expanded chat: purpose-built full-screen console, not stretched page layout. */
+.shell-assistant-focus .agent-chat-expanded {
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  background:
+    linear-gradient(180deg, rgba(4, 9, 16, 1), rgba(2, 5, 10, 1)) !important;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
+  min-height: 3.25rem;
+  margin: 0 !important;
+  padding: 0.65rem 1rem !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.9);
+  background: rgba(8, 15, 25, 0.98);
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
+  min-height: 2.2rem;
+  padding: 0.45rem 1rem !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.72);
+  background: rgba(4, 8, 14, 0.98);
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
+  display: grid !important;
+  grid-template-columns: 12rem minmax(0, 1fr) auto;
+  align-items: end;
+  gap: 0.75rem;
+  min-height: 4.25rem !important;
+  padding: 0.55rem 1rem !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.72) !important;
+  background: rgba(7, 13, 22, 0.98) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading {
+  min-height: 0;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
+  display: grid !important;
+  grid-template-columns: minmax(14rem, 1.4fr) minmax(8rem, 0.8fr) minmax(8rem, 0.8fr) minmax(6rem, 0.55fr) minmax(8rem, 0.75fr);
+  gap: 0.55rem;
+  align-items: end;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
+  height: 2.25rem !important;
+  min-height: 2.25rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-apply-action {
+  justify-self: stretch;
+  margin: 0 !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  position: relative;
+  min-height: 0 !important;
+  max-height: none !important;
+  overflow: auto !important;
+  padding: 1rem 1.4rem !important;
+  background:
+    linear-gradient(rgba(42, 180, 200, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 180, 200, 0.018) 1px, transparent 1px),
+    rgba(2, 5, 10, 0.98) !important;
+  background-size: 100% 3rem, 4rem 100%, auto;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-list {
+  min-height: 100%;
+  align-content: end;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
+  padding: 0.8rem 1rem !important;
+  border-top: 1px solid rgba(42, 180, 200, 0.38) !important;
+  background: rgba(6, 11, 18, 0.99) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
+  height: 3rem !important;
+  min-height: 3rem !important;
+  max-height: 3rem !important;
+  line-height: 3rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded::before,
+.shell-assistant-focus .agent-chat-expanded::after {
+  display: none !important;
+}
+
+@media (max-width: 1300px) {
+  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
+    grid-template-columns: 1fr;
+  }
+
+  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Expanded chat repair: make it read as chat first, controls as a compact toolbar. */
+.shell-assistant-focus .agent-chat-expanded {
+  grid-template-rows: 3.25rem 2rem 3.85rem minmax(0, 1fr) 4.5rem !important;
+  height: 100vh !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
+  grid-row: 1;
+  min-height: 0 !important;
+  height: 3.25rem;
+  padding: 0 1.15rem !important;
+  align-items: center;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
+  grid-row: 2;
+  min-height: 0 !important;
+  height: 2rem;
+  padding: 0 1.15rem !important;
+  align-items: center;
+  overflow: hidden;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
+  grid-row: 3;
+  grid-template-columns: 8rem minmax(0, 1fr) 4.8rem !important;
+  min-height: 0 !important;
+  height: 3.85rem !important;
+  padding: 0.35rem 1.15rem !important;
+  gap: 0.65rem !important;
+  align-items: center !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading h4 {
+  font-size: 0.72rem;
+  letter-spacing: 0.17em;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading span {
+  display: none;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
+  grid-template-columns: minmax(12rem, 1.35fr) minmax(7rem, 0.7fr) minmax(7rem, 0.7fr) minmax(5.5rem, 0.45fr) minmax(7rem, 0.6fr) !important;
+  gap: 0.45rem !important;
+  align-items: center !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field {
+  gap: 0.12rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field span {
+  font-size: 0.48rem !important;
+  line-height: 1;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
+  height: 1.9rem !important;
+  min-height: 1.9rem !important;
+  max-height: 1.9rem !important;
+  font-size: 0.68rem !important;
+  padding-top: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-apply-action {
+  width: 4.8rem;
+  padding-inline: 0.4rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  grid-row: 4;
+  padding: 1.15rem 1.3rem !important;
+  border-top: 1px solid rgba(26, 52, 72, 0.62) !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.62) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-list {
+  display: flex;
+  min-height: 100%;
+  flex-direction: column;
+  justify-content: flex-end;
+  gap: 0.65rem;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card {
+  max-width: min(52rem, 78%) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
+  align-self: center;
+  width: min(64rem, 82%);
+  max-width: min(64rem, 82%) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
+  grid-row: 5;
+  height: 4.5rem;
+  padding: 0.65rem 1.15rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .chat-composer {
+  height: 100%;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
+  height: 2.8rem !important;
+  min-height: 2.8rem !important;
+  max-height: 2.8rem !important;
+  line-height: 2.8rem !important;
+}
+
+@media (max-width: 1300px) {
+  .shell-assistant-focus .agent-chat-expanded {
+    grid-template-rows: 3.25rem 2rem auto minmax(0, 1fr) 4.5rem !important;
+  }
+
+  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
+    height: auto !important;
+    grid-template-columns: 1fr !important;
+  }
+}
+
+/* Expanded chat overflow trim: include borders/padding in viewport math and tighten bottom rail. */
+.shell-assistant-focus .agent-chat-expanded,
+.shell-assistant-focus .agent-chat-expanded * {
+  box-sizing: border-box;
+}
+
+.shell-assistant-focus .agent-chat-expanded {
+  height: 100dvh !important;
+  max-height: 100dvh !important;
+  grid-template-rows: 3rem 1.8rem 3.4rem minmax(0, 1fr) 4rem !important;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
+  height: 3rem !important;
+  min-height: 3rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
+  height: 1.8rem !important;
+  min-height: 1.8rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
+  height: 3.4rem !important;
+  min-height: 3.4rem !important;
+  padding-block: 0.25rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
+.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
+  height: 1.75rem !important;
+  min-height: 1.75rem !important;
+  max-height: 1.75rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  padding-block: 0.85rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
+  height: 4rem !important;
+  min-height: 4rem !important;
+  max-height: 4rem !important;
+  padding: 0.55rem 1rem !important;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
+  height: 2.55rem !important;
+  min-height: 2.55rem !important;
+  max-height: 2.55rem !important;
+  line-height: 2.55rem !important;
+}
+
+/* Normalize chat expand control to a compact glyph action. */
+.shell-assistant-focus .agent-chat-expand-button {
+  width: 2.35rem !important;
+  min-width: 2.35rem !important;
+  height: 2.1rem !important;
+  min-height: 2.1rem !important;
+  padding: 0 !important;
+  display: inline-grid !important;
+  place-items: center !important;
+  font-size: 1.05rem !important;
+  line-height: 1 !important;
+  letter-spacing: 0 !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-chat-expand-button {
+  width: 2.6rem !important;
+  min-width: 2.6rem !important;
+  height: 2.35rem !important;
+  min-height: 2.35rem !important;
+  font-size: 1.15rem !important;
+}
+
+/* Sci-fi transcript polish: replace chat bubbles with terminal turn frames. */
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat,
+.shell-assistant-focus .agent-embedded-chat {
+  background:
+    linear-gradient(180deg, rgba(3, 7, 12, 0.98), rgba(4, 8, 14, 0.96)),
+    radial-gradient(circle at 12% 18%, rgba(42, 180, 200, 0.045), transparent 28rem) !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  align-content: end;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  position: relative;
+  max-width: min(72rem, 86%) !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.shell-assistant-focus .agent-turn-card::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 0.18rem;
+  background: rgba(96, 120, 136, 0.55);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] {
+  justify-self: end;
+  border-right: 0.18rem solid rgba(42, 180, 200, 0.92) !important;
+  padding-right: 0.85rem !important;
+  text-align: right;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"]::before {
+  display: none;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"] {
+  justify-self: start;
+  padding-left: 0.85rem !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"]::before {
+  background: rgba(110, 202, 216, 0.72);
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  justify-self: stretch;
+  align-self: center;
+  width: auto !important;
+  max-width: none !important;
+  padding: 0.55rem 0.85rem 0.55rem 1rem !important;
+  border-top: 1px solid rgba(26, 52, 72, 0.5) !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.5) !important;
+  background: rgba(7, 12, 20, 0.38) !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"]::before {
+  background: rgba(96, 120, 136, 0.75);
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  justify-content: flex-start;
+  gap: 0.55rem;
+  margin-bottom: 0.22rem;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] .agent-turn-meta {
+  justify-content: flex-end;
+}
+
+.shell-assistant-focus .agent-turn-channel {
+  color: rgba(96, 120, 136, 0.72) !important;
+}
+
+.shell-assistant-focus .agent-turn-channel::before {
+  content: "// ";
+  color: rgba(42, 180, 200, 0.42);
+}
+
+.shell-assistant-focus .agent-turn-text {
+  display: inline-block;
+  max-width: 100%;
+  color: rgba(196, 216, 228, 0.92) !important;
+  font-size: 0.95rem !important;
+  line-height: 1.42 !important;
+  letter-spacing: -0.01em;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] .agent-turn-text {
+  color: rgba(230, 238, 247, 0.95) !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] .agent-turn-text {
+  color: rgba(149, 164, 180, 0.88) !important;
+  font-size: 0.82rem !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="operator"],
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="agent"] {
+  max-width: min(80rem, 84%) !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
+  width: auto !important;
+  max-width: none !important;
+}
+
+/* Transcript turn refinement: compact terminal rows, no oversized color slabs. */
+.shell-assistant-focus .agent-turn-list {
+  gap: 0.42rem !important;
+}
+
+.shell-assistant-focus .agent-turn-card,
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card,
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="operator"],
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="agent"] {
+  width: fit-content !important;
+  max-width: min(72rem, 76vw) !important;
+  min-width: 0 !important;
+  padding: 0.28rem 0.55rem !important;
+  border: 0 !important;
+  background: rgba(8, 14, 22, 0.42) !important;
+  text-align: left !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] {
+  justify-self: end !important;
+  border-right: 2px solid rgba(42, 180, 200, 0.9) !important;
+  background: linear-gradient(90deg, rgba(13, 30, 43, 0.18), rgba(13, 30, 43, 0.64)) !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="agent"] {
+  justify-self: start !important;
+  border-left: 2px solid rgba(110, 202, 216, 0.68) !important;
+  background: linear-gradient(90deg, rgba(12, 22, 34, 0.62), rgba(12, 22, 34, 0.14)) !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"],
+.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
+  justify-self: center !important;
+  width: fit-content !important;
+  max-width: min(68rem, 74vw) !important;
+  padding: 0.28rem 0.6rem !important;
+  border: 1px dashed rgba(32, 70, 98, 0.55) !important;
+  background: rgba(7, 12, 20, 0.24) !important;
+}
+
+.shell-assistant-focus .agent-turn-card::before {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  display: inline-flex !important;
+  justify-content: flex-start !important;
+  gap: 0.45rem !important;
+  margin: 0 0.55rem 0 0 !important;
+  vertical-align: baseline;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="operator"] .agent-turn-meta {
+  justify-content: flex-start !important;
+}
+
+.shell-assistant-focus .agent-turn-role,
+.shell-assistant-focus .agent-turn-channel {
+  font-size: 0.52rem !important;
+  letter-spacing: 0.1em !important;
+}
+
+.shell-assistant-focus .agent-turn-channel {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  display: inline !important;
+  font-size: 0.9rem !important;
+  line-height: 1.32 !important;
+}
+
+/* Transcript-only scrolling: page and expanded shell stay fixed; message well scrolls. */
+.shell-assistant-focus .agent-chat-expanded {
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat,
+.shell-assistant-focus .agent-page-section-chat .agent-embedded-chat {
+  min-height: 0 !important;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-turn-list,
+.shell-assistant-focus .agent-page-section-chat .agent-turn-list {
+  min-height: min-content !important;
+}
+
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer,
+.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope,
+.shell-assistant-focus .agent-chat-expanded .agent-command-strip,
+.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
+  flex-shrink: 0 !important;
+}
+
+/* Add-agent drawer: explicit modal layer above console, no bleed-through. */
+.shell-assistant-focus .agent-add-drawer {
+  position: fixed;
+  inset: 5rem 4rem 4rem auto;
+  z-index: 2000;
+  width: min(42rem, calc(100vw - 8rem));
+  max-height: calc(100vh - 9rem);
+  overflow: auto;
+  padding: 1rem;
+  border: 1px solid rgba(42, 180, 200, 0.72);
+  border-radius: 0 !important;
+  background: rgba(4, 8, 14, 0.98);
+  box-shadow: -1.25rem 0 4rem rgba(0, 0, 0, 0.58), inset 3px 0 0 rgba(42, 180, 200, 0.75);
+  color: var(--agent-text, #e6eef7);
+}
+
+.shell-assistant-focus .agent-add-drawer * {
+  border-radius: 0 !important;
+}
+
+.shell-assistant-focus .agent-add-header {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.85rem;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.9);
+}
+
+.shell-assistant-focus .agent-add-header h4 {
+  margin: 0;
+  color: var(--agent-text, #e6eef7);
+  font-size: 1.15rem;
+  font-weight: 850;
+  letter-spacing: -0.03em;
+}
+
+.shell-assistant-focus .agent-add-header span,
+.shell-assistant-focus .agent-add-preflight-copy span,
+.shell-assistant-focus .agent-catalog-copy span,
+.shell-assistant-focus .agent-launch-plan-copy span {
+  display: block;
+  margin-top: 0.3rem;
+  color: rgba(149, 164, 180, 0.88);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.shell-assistant-focus .agent-add-close,
+.shell-assistant-focus .agent-add-option,
+.shell-assistant-focus .agent-template-card {
+  border: 1px solid rgba(32, 70, 98, 0.9);
+  background: rgba(8, 15, 25, 0.92);
+  color: var(--agent-text, #e6eef7);
+}
+
+.shell-assistant-focus .agent-add-close {
+  min-height: 2.15rem;
+  padding: 0 0.75rem;
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.62rem;
+  font-weight: 850;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-add-options {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.55rem;
+  margin-top: 0.85rem;
+}
+
+.shell-assistant-focus .agent-add-option {
+  display: grid;
+  gap: 0.25rem;
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+}
+
+.shell-assistant-focus .agent-add-option strong,
+.shell-assistant-focus .agent-add-preflight-copy strong,
+.shell-assistant-focus .agent-catalog-copy strong,
+.shell-assistant-focus .agent-launch-plan-copy strong,
+.shell-assistant-focus .agent-template-card strong {
+  color: var(--agent-accent, #6ecad8);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.72rem;
+  font-weight: 850;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-add-option span,
+.shell-assistant-focus .agent-template-card span,
+.shell-assistant-focus .agent-launch-plan-grid span {
+  color: rgba(149, 164, 180, 0.9);
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.shell-assistant-focus .agent-add-option-active {
+  border-color: rgba(42, 180, 200, 0.95);
+  background: rgba(14, 33, 48, 0.88);
+}
+
+.shell-assistant-focus .agent-add-preflight,
+.shell-assistant-focus .agent-catalog-section,
+.shell-assistant-focus .agent-launch-plan-preview {
+  margin-top: 0.85rem;
+  padding: 0.75rem 0.85rem;
+  border: 1px solid rgba(26, 52, 72, 0.9);
+  background: rgba(2, 5, 10, 0.58);
+}
+
+.shell-assistant-focus .agent-add-checks,
+.shell-assistant-focus .agent-template-meta,
+.shell-assistant-focus .agent-launch-plan-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.65rem;
+}
+
+.shell-assistant-focus .agent-add-check,
+.shell-assistant-focus .agent-template-chip,
+.shell-assistant-focus .agent-launch-plan-pill {
+  padding: 0.28rem 0.45rem;
+  border: 1px solid rgba(32, 70, 98, 0.9);
+  background: rgba(8, 15, 25, 0.9);
+  color: rgba(230, 238, 247, 0.85);
+  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  font-size: 0.58rem;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-template-list {
+  display: grid;
+  gap: 0.55rem;
+  margin-top: 0.7rem;
+}
+
+.shell-assistant-focus .agent-template-card {
+  display: grid;
+  gap: 0.35rem;
+  padding: 0.75rem 0.85rem;
+  text-align: left;
+}
+
+.shell-assistant-focus .agent-template-card:hover,
+.shell-assistant-focus .agent-add-close:hover,
+.shell-assistant-focus .agent-add-option:hover {
+  border-color: rgba(110, 202, 216, 0.95);
+  background: rgba(13, 28, 43, 0.96);
+}
+
+@media (max-width: 900px) {
+  .shell-assistant-focus .agent-add-drawer {
+    inset: 4rem 1rem 1rem 1rem;
+    width: auto;
+  }
+}

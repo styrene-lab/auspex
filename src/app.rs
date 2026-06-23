@@ -228,6 +228,7 @@ struct AssistantWorkspaceState {
     selected_agent_id: Option<String>,
     add_agent_open: bool,
     add_agent_mode: Option<AddAgentMode>,
+    chat_expanded: bool,
     auto_loaded_endpoint: Option<String>,
     loading: bool,
     profile_model: String,
@@ -4413,6 +4414,26 @@ fn observed_model_display_label(session: &auspex_core::fixtures::SessionData) ->
     }
 }
 
+fn model_sync_label(requested: &str, observed: &str) -> &'static str {
+    if observed == "model not reported" || observed.contains("model not reported") {
+        "not reported"
+    } else if observed.eq_ignore_ascii_case(requested) {
+        "in sync"
+    } else {
+        "mismatch"
+    }
+}
+
+fn model_sync_tone(requested: &str, observed: &str) -> &'static str {
+    if observed == "model not reported" || observed.contains("model not reported") {
+        "unknown"
+    } else if observed.eq_ignore_ascii_case(requested) {
+        "ok"
+    } else {
+        "warn"
+    }
+}
+
 fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
     match (session.context_tokens, session.context_window) {
         (Some(tokens), Some(window)) if window > 0 => {
@@ -4457,20 +4478,170 @@ fn session_runtime_label(session: &auspex_core::fixtures::SessionData) -> String
     format!("{backend} · {substrate}")
 }
 
-fn recent_chat_history(messages: &[auspex_core::fixtures::ChatMessage]) -> Vec<String> {
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentChatTurn {
+    role: &'static str,
+    tone: &'static str,
+    text: String,
+    meta: String,
+}
+
+fn redact_chat_line(text: &str) -> String {
+    text.replace("ws://", "websocket://")
+        .replace("token=", "token=•••")
+}
+
+fn clean_chat_text(text: &str) -> String {
+    text.lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .map(redact_chat_line)
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+fn tool_event_text(tool: &auspex_core::fixtures::ToolCard) -> String {
+    let status = tool_status_label(tool);
+    let mut parts = vec![format!("{} · {status}", tool.name)];
+    if !tool.args.trim().is_empty() {
+        parts.push(format!("args: {}", compact_payload(&tool.args, 180)));
+    }
+    if let Some(result) = tool
+        .result
+        .as_deref()
+        .filter(|result| !result.trim().is_empty())
+    {
+        parts.push(format!("result: {}", compact_payload(result, 220)));
+    } else if !tool.partial_output.trim().is_empty() {
+        parts.push(format!(
+            "stream: {}",
+            compact_payload(&tool.partial_output, 220)
+        ));
+    }
+    parts.join("\n")
+}
+
+fn compact_payload(value: &str, max_chars: usize) -> String {
+    let compact = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    if compact.chars().count() <= max_chars {
+        compact
+    } else {
+        format!("{}…", compact.chars().take(max_chars).collect::<String>())
+    }
+}
+
+fn transcript_chat_history(
+    transcript: &TranscriptData,
+    messages: &[auspex_core::fixtures::ChatMessage],
+) -> Vec<AgentChatTurn> {
+    let mut rows = Vec::new();
+    for turn in transcript.turns.iter().rev().take(6).rev() {
+        rows.push(AgentChatTurn {
+            role: "Turn",
+            tone: "turn",
+            text: format!("turn {}", turn.number),
+            meta: if transcript.active_turn == Some(turn.number) {
+                "active".to_string()
+            } else {
+                "closed".to_string()
+            },
+        });
+        if let Some(prompt) = turn
+            .user_prompt
+            .as_deref()
+            .map(clean_chat_text)
+            .filter(|text| !text.is_empty())
+        {
+            rows.push(AgentChatTurn {
+                role: "Operator",
+                tone: "operator",
+                text: prompt,
+                meta: "prompt".to_string(),
+            });
+        }
+        for block in &turn.blocks {
+            match block {
+                auspex_core::fixtures::TurnBlock::Thinking(thinking) => {
+                    let text = clean_chat_text(&thinking.text);
+                    if !text.is_empty() {
+                        rows.push(AgentChatTurn {
+                            role: "Thinking",
+                            tone: "thinking",
+                            text,
+                            meta: "reasoning".to_string(),
+                        });
+                    }
+                }
+                auspex_core::fixtures::TurnBlock::Text(text) => {
+                    let body = clean_chat_text(&text.text);
+                    if !body.is_empty() {
+                        rows.push(AgentChatTurn {
+                            role: "Primary agent",
+                            tone: "agent",
+                            text: body,
+                            meta: "response".to_string(),
+                        });
+                    }
+                }
+                auspex_core::fixtures::TurnBlock::Tool(tool) => {
+                    rows.push(AgentChatTurn {
+                        role: "Tool",
+                        tone: if tool.is_error { "tool-error" } else { "tool" },
+                        text: tool_event_text(tool),
+                        meta: tool.id.clone(),
+                    });
+                }
+                auspex_core::fixtures::TurnBlock::System(text) => {
+                    let body = clean_chat_text(&text.text);
+                    if !body.is_empty() {
+                        rows.push(AgentChatTurn {
+                            role: "System",
+                            tone: "system",
+                            text: body,
+                            meta: "notice".to_string(),
+                        });
+                    }
+                }
+                auspex_core::fixtures::TurnBlock::Aborted(text) => {
+                    let body = clean_chat_text(text);
+                    if !body.is_empty() {
+                        rows.push(AgentChatTurn {
+                            role: "Aborted",
+                            tone: "error",
+                            text: body,
+                            meta: "stopped".to_string(),
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    if rows.is_empty() {
+        return message_chat_history(messages);
+    }
+    rows
+}
+
+fn message_chat_history(messages: &[auspex_core::fixtures::ChatMessage]) -> Vec<AgentChatTurn> {
     messages
         .iter()
         .rev()
-        .take(4)
+        .take(8)
         .map(|message| {
-            let role = match message.role {
-                auspex_core::fixtures::MessageRole::User => "operator",
-                auspex_core::fixtures::MessageRole::Assistant => "agent",
-                auspex_core::fixtures::MessageRole::System => "system",
+            let (role, tone) = match message.role {
+                auspex_core::fixtures::MessageRole::User => ("Operator", "operator"),
+                auspex_core::fixtures::MessageRole::Assistant => ("Primary agent", "agent"),
+                auspex_core::fixtures::MessageRole::System => ("System", "system"),
             };
-            let text = message.text.lines().next().unwrap_or_default().trim();
-            format!("{role}: {text}")
+            AgentChatTurn {
+                role,
+                tone,
+                text: clean_chat_text(&message.text),
+                meta: "message".to_string(),
+            }
         })
+        .filter(|turn| !turn.text.is_empty())
         .collect::<Vec<_>>()
         .into_iter()
         .rev()
@@ -4573,7 +4744,7 @@ fn render_assistant_workspace(
             refresh_assistant_workspace(&mut state, &session).await;
         });
     }
-    let history = recent_chat_history(messages);
+    let history = transcript_chat_history(_transcript, messages);
     let context_label = session_context_label(session);
     let agent_workspace_label = session_workspace_label(session);
     let runtime_label = session_runtime_label(session);
@@ -4592,10 +4763,16 @@ fn render_assistant_workspace(
     );
     let selected_context = staged_or_session_value(&snapshot.profile_context, context_default);
     let effective_model_label = selected_model.clone();
-    let embedded_can_submit = controller.read().focused_can_submit();
+    let sync_label = model_sync_label(&effective_model_label, &observed_model_label);
+    let sync_tone = model_sync_tone(&effective_model_label, &observed_model_label);
+    let control_endpoint_label = endpoint
+        .as_deref()
+        .and_then(|url| url.split("/api/").next())
+        .unwrap_or("control endpoint pending");
     let embedded_is_run_active = controller.read().focused_is_run_active();
     let embedded_draft = controller.read().composer().draft().to_string();
-    let embedded_can_send = embedded_can_submit && !embedded_draft.trim().is_empty();
+    let embedded_transport_ready = endpoint.is_some();
+    let embedded_can_send = embedded_transport_ready && !embedded_draft.trim().is_empty();
     let embedded_transcript_empty = messages.is_empty();
     rsx! {
         section { class: "assistant-workspace",
@@ -4613,7 +4790,7 @@ fn render_assistant_workspace(
                             h3 { "Primary agent dashboard" }
                         }
                         div { class: "agent-dashboard-actions",
-                            span { class: "agent-dashboard-model", "requested: {effective_model_label}" }
+
                             button {
                                 class: "agent-mini-action",
                                 r#type: "button",
@@ -4646,11 +4823,7 @@ fn render_assistant_workspace(
                         }
                     }
                     div { class: "assistant-detail-stack agent-config-form",
-                        div { class: "assistant-detail-heading agent-live-panel",
-                            div { class: "agent-live-identity",
-                                strong { "Primary embedded Omegon" }
-                                span { "agents/auspex-agent · profile.json · {runtime_label}" }
-                            }
+                        div { class: "assistant-detail-heading agent-live-panel agent-live-panel-compact",
                             div { class: "agent-live-grid agent-live-board",
                                 div { class: "agent-live-domain agent-live-domain-identity",
                                     span { class: "agent-live-domain-label", "identity" }
@@ -4662,6 +4835,7 @@ fn render_assistant_workspace(
                                     span { class: "agent-live-domain-label", "runtime" }
                                     div { class: "agent-live-kv", span { "requested" } strong { "{effective_model_label}" } }
                                     div { class: "agent-live-kv", span { "observed" } strong { "{observed_model_label}" } }
+                                    div { class: "agent-live-kv", span { "sync" } strong { class: "agent-sync-state", "data-state": "{sync_tone}", "{sync_label}" } }
                                     div { class: "agent-live-kv", span { "backend" } strong { "{runtime_label}" } }
                                     div { class: "agent-live-kv", span { "workspace" } strong { "{agent_workspace_label}" } }
                                 }
@@ -4739,10 +4913,29 @@ fn render_assistant_workspace(
 
                         div { class: "agent-page-sections agent-page-sections-live",
 
-                            section { class: "agent-page-section agent-page-section-chat",
+                            section { class: if snapshot.chat_expanded { "agent-page-section agent-page-section-chat agent-chat-expanded" } else { "agent-page-section agent-page-section-chat" },
                                 div { class: "agent-page-section-heading",
                                     h4 { "Chat" }
-                                    span { "primary agent session" }
+                                    div { class: "agent-chat-heading-actions",
+                                        span { "primary agent session" }
+                                        button {
+                                            class: "agent-chat-expand-button",
+                                            r#type: "button",
+                                            onclick: move |_| {
+                                                let expanded = state.read().chat_expanded;
+                                                state.write().chat_expanded = !expanded;
+                                            },
+                                            if snapshot.chat_expanded { "↙" } else { "↗" }
+                                        }
+                                    }
+                                }
+                                div { class: "agent-command-strip",
+                                    span { "link" }
+                                    strong { "{control_endpoint_label}" }
+                                    span { "transport" }
+                                    strong { "ipc+ws" }
+                                    span { "envelope" }
+                                    strong { "{sync_label}" }
                                 }
                             div { class: "agent-runtime-bar agent-turn-envelope",
                                     div { class: "agent-page-section-heading",
@@ -4885,8 +5078,16 @@ fn render_assistant_workspace(
                                             span { "Send a directive to the selected primary agent." }
                                         }
                                     } else {
-                                        for item in history {
-                                            span { class: "agent-history-line", "{item}" }
+                                        div { class: "agent-turn-list",
+                                            for turn in history {
+                                                article { class: "agent-turn-card", "data-role": "{turn.tone}",
+                                                    div { class: "agent-turn-meta",
+                                                        span { class: "agent-turn-role", "{turn.role}" }
+                                                        span { class: "agent-turn-channel", "{turn.meta}" }
+                                                    }
+                                                    p { class: "agent-turn-text", "{turn.text}" }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -4940,7 +5141,23 @@ fn render_assistant_workspace(
                                                 }
                                             }
 
-                                            let command = controller.write().submit_prompt_command();
+                                            let command = {
+                                                let submitted = controller.write().submit_prompt_command();
+                                                if submitted.is_some() {
+                                                    submitted
+                                                } else {
+                                                    let controller_read = controller.read();
+                                                    let text = controller_read.composer().draft().trim().to_string();
+                                                    if text.is_empty() {
+                                                        None
+                                                    } else {
+                                                        Some(TargetedCommand::prompt_submit(
+                                                            controller_read.current_command_target(),
+                                                            text,
+                                                        ))
+                                                    }
+                                                }
+                                            };
                                             let Some(command) = command else { return };
 
                                             #[cfg(not(target_arch = "wasm32"))]
@@ -4991,12 +5208,13 @@ fn render_assistant_workspace(
                                             }
                                         });
                                     },
-                                    textarea {
-                                        class: "composer-input",
-                                        rows: "4",
+                                    input {
+                                        class: "composer-input composer-input-im",
+                                        r#type: "text",
                                         value: embedded_draft,
-                                        disabled: !embedded_can_submit,
-                                        placeholder: if embedded_can_submit { "Message primary agent..." } else { "Conversation input is unavailable in the current host state." },
+                                        disabled: false,
+                                        autofocus: snapshot.chat_expanded,
+                                        placeholder: if embedded_is_run_active { "> Queue message for primary agent…" } else { "> Message primary agent…" },
                                         oninput: move |event| controller.write().update_draft(event.value()),
                                     }
                                     div { class: "composer-actions",
