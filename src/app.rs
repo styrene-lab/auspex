@@ -6174,9 +6174,9 @@ fn build_cockpit_summary_model(
     } else if primary_missing {
         "booting/attaching · no verified endpoint".into()
     } else if session.telemetry.lifecycle.counts.stale > 0 {
-        format!("degraded · {attached_endpoint}")
+        format!("attached · stale observation · {attached_endpoint}")
     } else {
-        format!("verified · {attached_endpoint}")
+        format!("attached · verified observation · {attached_endpoint}")
     };
     let attached_tag = if primary_missing {
         match summary.activity_kind {
@@ -8576,6 +8576,8 @@ mod tests {
         assert_eq!(model.attached.tag, "LIVE");
         assert!(model.attached.primary.contains("primary-driver"));
         assert!(model.attached.secondary[0].contains("primary-interactive"));
+        assert!(model.attached.secondary[1].contains("attached · verified observation"));
+        assert!(!model.attached.secondary[1].contains("managed"));
         assert!(model.deployment.primary.contains("total"));
         assert!(
             model.deployment.secondary[1].contains("seen:")
