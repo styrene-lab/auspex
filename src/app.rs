@@ -5916,7 +5916,8 @@ async fn deploy_package_request(
     let backend = BollardBackend::detect()
         .await
         .ok_or_else(|| "No Docker or Podman API socket responded. Set DOCKER_HOST or expose /var/run/docker.sock / Podman socket.".to_string())?;
-    let host_port = allocate_agent_host_port().map_err(|error| error.to_string())?;
+    let host_port =
+        allocate_agent_host_port(Some(form.name.trim())).map_err(|error| error.to_string())?;
     let connectors = form
         .connectors
         .split(',')
@@ -5938,6 +5939,11 @@ async fn deploy_package_request(
     };
 
     let spec = package.oci_launch_spec(&request, host_port);
+    auspex_core::local_agent_ports::record_local_agent_port_instance(
+        spec.host_port,
+        spec.name.as_str(),
+    )
+    .map_err(|error| format!("record local port reservation failed: {error}"))?;
     let container_id = backend
         .launch(&spec)
         .await
@@ -5954,21 +5960,8 @@ async fn deploy_package_request(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn allocate_agent_host_port() -> std::io::Result<u16> {
-    for port in 7900..=7999 {
-        match std::net::TcpListener::bind(("127.0.0.1", port)) {
-            Ok(listener) => {
-                drop(listener);
-                return Ok(port);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AddrNotAvailable,
-        "no free agent control-plane port in 7900..=7999",
-    ))
+fn allocate_agent_host_port(label: Option<&str>) -> std::io::Result<u16> {
+    auspex_core::local_agent_ports::allocate_local_agent_port(label)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -9123,7 +9116,7 @@ mod tests {
 
     #[test]
     fn native_host_port_allocator_returns_bindable_port() {
-        let port = super::allocate_agent_host_port().expect("host port");
+        let port = super::allocate_agent_host_port(Some("test-agent")).expect("host port");
         let listener = std::net::TcpListener::bind(("127.0.0.1", port));
         assert!(listener.is_ok(), "allocated port {port} should be bindable");
     }

@@ -41,6 +41,7 @@ pub mod host_action_policy;
 pub mod instance_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ipc_client;
+pub mod local_agent_ports;
 pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local_omegon_probe;
