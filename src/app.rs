@@ -4557,6 +4557,14 @@ fn model_sync_tone(requested: &str, observed: &str) -> &'static str {
     }
 }
 
+fn next_turn_envelope_detail(sync_label: &str) -> &'static str {
+    match sync_label {
+        "in sync" => "live envelope · observed runtime matches requested settings",
+        "mismatch" => "live envelope · sends requested settings before the prompt; observed runtime differs",
+        _ => "live envelope · sends requested settings before the prompt; observed runtime has not reported them",
+    }
+}
+
 fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
     match (session.context_tokens, session.context_window) {
         (Some(tokens), Some(window)) if window > 0 => {
@@ -4889,6 +4897,7 @@ fn render_assistant_workspace(
     let effective_model_label = selected_model.clone();
     let sync_label = model_sync_label(&effective_model_label, &observed_model_label);
     let sync_tone = model_sync_tone(&effective_model_label, &observed_model_label);
+    let envelope_detail = next_turn_envelope_detail(sync_label);
     let control_endpoint_label = endpoint
         .as_deref()
         .and_then(|url| url.split("/api/").next())
@@ -5186,7 +5195,7 @@ fn render_assistant_workspace(
                             div { class: "agent-runtime-bar agent-turn-envelope",
                                     div { class: "agent-page-section-heading",
                                         h4 { "Next turn" }
-                                        span { "live envelope · used automatically on send" }
+                                        span { "{envelope_detail}" }
                                     }
                                 div { class: "agent-control-grid",
                                     label { class: "agent-config-field agent-config-field-wide",
@@ -9072,6 +9081,16 @@ mod tests {
         assert_eq!(controller.messages()[1].role, MessageRole::User);
         assert_eq!(controller.messages()[1].text, "hello world");
         assert_eq!(controller.messages()[2].role, MessageRole::Assistant);
+    }
+
+    #[test]
+    fn next_turn_envelope_detail_explains_observed_runtime_state() {
+        assert_eq!(
+            super::next_turn_envelope_detail("in sync"),
+            "live envelope · observed runtime matches requested settings"
+        );
+        assert!(super::next_turn_envelope_detail("mismatch").contains("sends requested settings"));
+        assert!(super::next_turn_envelope_detail("not reported").contains("has not reported"));
     }
 
     #[test]
