@@ -5080,7 +5080,7 @@ fn render_assistant_workspace(
                                                                         let mut current = state.write();
                                                                         match result.instance_id.as_deref() {
                                                                             Some(instance_id) => {
-                                                                                current.message = Some(format!("Attached runtime {instance_id}."));
+                                                                                current.message = Some(format!("Attached runtime {instance_id}. Auspex can route commands to this instance; it does not own its lifecycle."));
                                                                                 current.error = None;
                                                                                 current.add_agent_open = false;
                                                                             }
