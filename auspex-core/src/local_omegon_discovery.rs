@@ -28,6 +28,7 @@ pub enum LocalOmegonOwnership {
 pub struct LocalOmegonCandidate {
     pub source: LocalOmegonCandidateSource,
     pub ownership: LocalOmegonOwnership,
+    pub instance_id: Option<String>,
     pub pid: Option<u32>,
     pub command: Option<String>,
     pub cwd: Option<PathBuf>,
@@ -41,6 +42,7 @@ impl LocalOmegonCandidate {
         Self {
             source: LocalOmegonCandidateSource::AuspexOwnedPidFile,
             ownership: LocalOmegonOwnership::AuspexOwned,
+            instance_id: None,
             pid: Some(pid),
             command: None,
             cwd: None,
@@ -55,6 +57,7 @@ impl LocalOmegonCandidate {
         Self {
             source: LocalOmegonCandidateSource::ProcessTable,
             ownership: LocalOmegonOwnership::UserOwned,
+            instance_id: None,
             pid: Some(pid),
             startup_url: infer_startup_url_from_command(&command),
             state_url: infer_state_url_from_command(&command),
@@ -68,6 +71,7 @@ impl LocalOmegonCandidate {
         Self {
             source: LocalOmegonCandidateSource::KnownControlPort,
             ownership: LocalOmegonOwnership::Unknown,
+            instance_id: None,
             pid: None,
             command: None,
             cwd: None,
@@ -75,6 +79,14 @@ impl LocalOmegonCandidate {
             state_url: Some(format!("http://127.0.0.1:{port}/api/state")),
             ipc_socket: None,
         }
+    }
+
+    pub fn with_instance_id(mut self, instance_id: impl Into<String>) -> Self {
+        let instance_id = instance_id.into();
+        if !instance_id.is_empty() {
+            self.instance_id = Some(instance_id);
+        }
+        self
     }
 }
 
@@ -103,6 +115,63 @@ pub fn discover_attach_candidates() -> Vec<LocalOmegonCandidate> {
 #[cfg(target_arch = "wasm32")]
 pub fn discover_attach_candidates() -> Vec<LocalOmegonCandidate> {
     Vec::new()
+}
+
+/// Native Attach Runtime discovery enriched with semantic Omegon instance IDs
+/// from startup/state descriptors when candidates report them.
+#[cfg(not(target_arch = "wasm32"))]
+pub fn discover_enriched_attach_candidates() -> Vec<LocalOmegonCandidate> {
+    let enriched = discover_attach_candidates()
+        .into_iter()
+        .filter_map(enrich_candidate_with_instance_id)
+        .collect::<Vec<_>>();
+    merge_local_omegon_candidates(enriched)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn discover_enriched_attach_candidates() -> Vec<LocalOmegonCandidate> {
+    Vec::new()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn enrich_candidate_with_instance_id(
+    mut candidate: LocalOmegonCandidate,
+) -> Option<LocalOmegonCandidate> {
+    let state_url = candidate_state_url(&candidate)?;
+    if candidate.instance_id.is_none() {
+        candidate.instance_id =
+            probe_candidate_instance_id(candidate.startup_url.as_deref(), Some(state_url.as_str()));
+    }
+    Some(candidate)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn probe_candidate_instance_id(
+    startup_url: Option<&str>,
+    state_url: Option<&str>,
+) -> Option<String> {
+    startup_url
+        .and_then(probe_instance_id_from_url)
+        .or_else(|| state_url.and_then(probe_instance_id_from_url))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn probe_instance_id_from_url(url: &str) -> Option<String> {
+    let client = reqwest::blocking::Client::builder()
+        .timeout(std::time::Duration::from_millis(180))
+        .build()
+        .ok()?;
+    let response = client.get(url).send().ok()?;
+    if !response.status().is_success() {
+        return None;
+    }
+    let value = response.json::<serde_json::Value>().ok()?;
+    value
+        .pointer("/instance_descriptor/identity/instance_id")
+        .or_else(|| value.pointer("/session/instance_descriptor/identity/instance_id"))
+        .and_then(|id| id.as_str())
+        .filter(|id| !id.is_empty())
+        .map(str::to_string)
 }
 
 pub fn candidate_ready_url(candidate: &LocalOmegonCandidate) -> Option<String> {
@@ -180,34 +249,54 @@ pub fn discover_known_control_port_candidates(ports: &[u16]) -> Vec<LocalOmegonC
 pub fn merge_local_omegon_candidates(
     candidates: impl IntoIterator<Item = LocalOmegonCandidate>,
 ) -> Vec<LocalOmegonCandidate> {
-    let mut merged: BTreeMap<String, LocalOmegonCandidate> = BTreeMap::new();
+    let mut by_evidence: BTreeMap<String, LocalOmegonCandidate> = BTreeMap::new();
     for candidate in candidates {
-        let key = candidate_identity_key(&candidate);
-        merged
+        let key = candidate_evidence_key(&candidate);
+        by_evidence
             .entry(key)
             .and_modify(|existing| merge_candidate(existing, &candidate))
             .or_insert(candidate);
     }
-    let mut by_pid = BTreeMap::new();
-    for candidate in merged.into_values() {
+
+    let mut by_identity: BTreeMap<String, LocalOmegonCandidate> = BTreeMap::new();
+    for candidate in by_evidence.into_values() {
         let key = candidate_identity_key(&candidate);
-        by_pid
+        by_identity
             .entry(key)
             .and_modify(|existing| merge_candidate(existing, &candidate))
             .or_insert(candidate);
     }
-    by_pid.into_values().collect()
+    by_identity.into_values().collect()
 }
 
-fn candidate_identity_key(candidate: &LocalOmegonCandidate) -> String {
+fn candidate_evidence_key(candidate: &LocalOmegonCandidate) -> String {
     if let Some(state_url) = candidate.state_url.as_ref().filter(|url| !url.is_empty()) {
         return format!("state:{state_url}");
+    }
+    if let Some(startup_url) = candidate.startup_url.as_ref().filter(|url| !url.is_empty()) {
+        return format!("startup:{startup_url}");
     }
     if let Some(pid) = candidate.pid {
         return format!("pid:{pid}");
     }
+    if let Some(ipc_socket) = candidate.ipc_socket.as_ref() {
+        return format!("ipc:{}", ipc_socket.display());
+    }
+    format!("source:{:?}", candidate.source)
+}
+
+fn candidate_identity_key(candidate: &LocalOmegonCandidate) -> String {
+    if let Some(instance_id) = candidate.instance_id.as_ref().filter(|id| !id.is_empty()) {
+        return format!("instance:{instance_id}");
+    }
+    if let Some(state_url) = candidate.state_url.as_ref().filter(|url| !url.is_empty()) {
+        return format!("state:{state_url}");
+    }
     if let Some(startup_url) = candidate.startup_url.as_ref().filter(|url| !url.is_empty()) {
         return format!("startup:{startup_url}");
+    }
+    if let Some(pid) = candidate.pid {
+        return format!("pid:{pid}");
     }
     if let Some(ipc_socket) = candidate.ipc_socket.as_ref() {
         return format!("ipc:{}", ipc_socket.display());
@@ -219,6 +308,9 @@ fn merge_candidate(existing: &mut LocalOmegonCandidate, incoming: &LocalOmegonCa
     existing.ownership = strongest_ownership(&existing.ownership, &incoming.ownership);
     if incoming.source == LocalOmegonCandidateSource::AuspexOwnedPidFile {
         existing.source = LocalOmegonCandidateSource::AuspexOwnedPidFile;
+    }
+    if existing.instance_id.is_none() {
+        existing.instance_id = incoming.instance_id.clone();
     }
     if existing.pid.is_none() {
         existing.pid = incoming.pid;
@@ -396,5 +488,35 @@ mod tests {
         );
         assert_eq!(candidate.ownership, LocalOmegonOwnership::AuspexOwned);
         assert_eq!(candidate.pid, Some(4242));
+    }
+
+    #[test]
+    fn instance_id_dedupes_candidates_across_ports() {
+        let candidates = merge_local_omegon_candidates([
+            LocalOmegonCandidate::known_control_port(7843).with_instance_id("omg_same"),
+            LocalOmegonCandidate::known_control_port(7901).with_instance_id("omg_same"),
+        ]);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].instance_id.as_deref(), Some("omg_same"));
+        assert_eq!(
+            candidates[0].state_url.as_deref(),
+            Some("http://127.0.0.1:7843/api/state")
+        );
+    }
+
+    #[test]
+    fn merge_preserves_instance_id_when_added_by_probe() {
+        let candidates = merge_local_omegon_candidates([
+            LocalOmegonCandidate::known_control_port(7843),
+            LocalOmegonCandidate::known_control_port(7843).with_instance_id("omg_probe"),
+        ]);
+
+        assert_eq!(candidates.len(), 1);
+        assert_eq!(candidates[0].instance_id.as_deref(), Some("omg_probe"));
+        assert_eq!(
+            candidates[0].state_url.as_deref(),
+            Some("http://127.0.0.1:7843/api/state")
+        );
     }
 }

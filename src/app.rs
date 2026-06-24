@@ -248,6 +248,7 @@ struct LocalRuntimeCandidateModel {
     label: String,
     relationship: &'static str,
     authority: &'static str,
+    instance_id: String,
     source: String,
     ownership: String,
     endpoint: String,
@@ -301,16 +302,16 @@ fn agent_template_models() -> Vec<AgentTemplateModel> {
 #[cfg(not(target_arch = "wasm32"))]
 fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
     use auspex_core::local_omegon_discovery::{
-        candidate_ready_url, candidate_state_url, discover_attach_candidates,
+        candidate_ready_url, candidate_state_url, discover_enriched_attach_candidates,
     };
 
-    discover_attach_candidates()
+    discover_enriched_attach_candidates()
         .into_iter()
-        .map(|candidate| {
-            let state_url =
-                candidate_state_url(&candidate).unwrap_or_else(|| "state unavailable".to_string());
+        .filter_map(|candidate| {
+            let state_url = candidate_state_url(&candidate)?;
             let ready_url =
                 candidate_ready_url(&candidate).unwrap_or_else(|| "ready unavailable".to_string());
+            let instance_id_value = candidate.instance_id.clone();
             let endpoint = candidate
                 .startup_url
                 .clone()
@@ -324,18 +325,26 @@ fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
                 .unwrap_or_else(|| "endpoint unknown".to_string());
             let source = format!("{:?}", candidate.source);
             let ownership = format!("{:?}", candidate.ownership);
-            let label = candidate
-                .cwd
-                .as_ref()
-                .and_then(|path| path.file_name())
-                .and_then(|name| name.to_str())
-                .map(str::to_string)
+            let instance_id = instance_id_value
+                .clone()
+                .unwrap_or_else(|| "instance not reported".to_string());
+            let label = instance_id_value
+                .clone()
+                .or_else(|| {
+                    candidate
+                        .cwd
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(|name| name.to_str())
+                        .map(str::to_string)
+                })
                 .or_else(|| candidate.pid.map(|pid| format!("omegon pid {pid}")))
                 .unwrap_or_else(|| endpoint.clone());
-            LocalRuntimeCandidateModel {
+            Some(LocalRuntimeCandidateModel {
                 label,
                 relationship: "Detected",
                 authority: "read-only probe",
+                instance_id,
                 source,
                 ownership,
                 endpoint,
@@ -345,7 +354,7 @@ fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
                     .pid
                     .map(|pid| pid.to_string())
                     .unwrap_or_else(|| "—".to_string()),
-            }
+            })
         })
         .collect()
 }
@@ -5047,10 +5056,54 @@ fn render_assistant_workspace(
                                                             span { class: "agent-template-chip", "{candidate.relationship}" }
                                                             span { class: "agent-template-chip", "{candidate.authority}" }
                                                             span { class: "agent-template-chip", "{candidate.ownership}" }
+                                                            span { class: "agent-template-chip", "{candidate.instance_id}" }
                                                             span { class: "agent-template-chip", "pid {candidate.pid}" }
                                                         }
                                                         span { "ready: {candidate.ready_url}" }
                                                         span { "state: {candidate.state_url}" }
+                                                        button {
+                                                            class: "agent-add-close agent-attach-action",
+                                                            r#type: "button",
+                                                            onclick: move |_| {
+                                                                #[cfg(not(target_arch = "wasm32"))]
+                                                                {
+                                                                    let target_instance_id = candidate.instance_id.clone();
+                                                                    let target_state_url = candidate.state_url.clone();
+                                                                    let found = auspex_core::local_omegon_discovery::discover_enriched_attach_candidates()
+                                                                        .into_iter()
+                                                                        .find(|candidate| {
+                                                                            candidate.instance_id.as_deref() == Some(target_instance_id.as_str())
+                                                                                || auspex_core::local_omegon_discovery::candidate_state_url(candidate).as_deref() == Some(target_state_url.as_str())
+                                                                        });
+                                                                    if let Some(candidate) = found {
+                                                                        let result = controller.write().attach_local_omegon_candidate(&candidate);
+                                                                        let mut current = state.write();
+                                                                        match result.instance_id.as_deref() {
+                                                                            Some(instance_id) => {
+                                                                                current.message = Some(format!("Attached runtime {instance_id}."));
+                                                                                current.error = None;
+                                                                                current.add_agent_open = false;
+                                                                            }
+                                                                            None => {
+                                                                                current.error = Some(format!("Attach probe did not yield an instance id: {}", result.evidence));
+                                                                                current.message = None;
+                                                                            }
+                                                                        }
+                                                                    } else {
+                                                                        let mut current = state.write();
+                                                                        current.error = Some("Detected runtime disappeared before attach.".to_string());
+                                                                        current.message = None;
+                                                                    }
+                                                                }
+                                                                #[cfg(target_arch = "wasm32")]
+                                                                {
+                                                                    let mut current = state.write();
+                                                                    current.error = Some("Attach is available in native Auspex; web builds cannot scan local runtimes directly.".to_string());
+                                                                    current.message = None;
+                                                                }
+                                                            },
+                                                            "Attach"
+                                                        }
                                                     }
                                                 }
                                             }
