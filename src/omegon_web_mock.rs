@@ -131,7 +131,7 @@ pub fn OmegonWebMockApp() -> Element {
             header { class: "omegon-web-topbar",
                 div { class: "brand-block",
                     div { class: "eyebrow", "OMEGON WEB" }
-                    h1 { "{surface.launch.title}" }
+                    omegon-arwes-text { h1 { "{surface.launch.title}" } }
                     p { "{surface.launch.subtitle}" }
                 }
                 div { class: "status-strip",
@@ -169,15 +169,19 @@ pub fn OmegonWebMockApp() -> Element {
                                     p { "{event.body}" }
                                     if event.role == "approval" {
                                         div { class: "approval-actions",
-                                            button {
-                                                class: "danger-button",
-                                                onclick: move |_| approval_state.set("denied"),
-                                                "Deny"
+                                            omegon-arwes-button {
+                                                button {
+                                                    class: "danger-button",
+                                                    onclick: move |_| approval_state.set("denied"),
+                                                    "Deny"
+                                                }
                                             }
-                                            button {
-                                                class: "primary-button",
-                                                onclick: move |_| approval_state.set("approved"),
-                                                "Approve"
+                                            omegon-arwes-button {
+                                                button {
+                                                    class: "primary-button",
+                                                    onclick: move |_| approval_state.set("approved"),
+                                                    "Approve"
+                                                }
                                             }
                                         }
                                     }
@@ -202,13 +206,15 @@ pub fn OmegonWebMockApp() -> Element {
                                 "Settings"
                             }
                             button { class: "ghost-button", "Attach" }
-                            button {
-                                class: "primary-button",
-                                onclick: move |_| {
-                                    let next_count = *sent_count.read() + 1;
-                                    sent_count.set(next_count);
-                                },
-                                "Send"
+                            omegon-arwes-button {
+                                button {
+                                    class: "primary-button",
+                                    onclick: move |_| {
+                                        let next_count = *sent_count.read() + 1;
+                                        sent_count.set(next_count);
+                                    },
+                                    "Send"
+                                }
                             }
                         }
                     }
@@ -246,7 +252,9 @@ pub fn OmegonWebMockApp() -> Element {
                         div { class: "eyebrow", "COMMANDS" }
                         h2 { "Command palette" }
                         for command in surface.commands {
-                            button { "{command}" }
+                            omegon-arwes-button {
+                                button { "{command}" }
+                            }
                         }
                     }
                 }

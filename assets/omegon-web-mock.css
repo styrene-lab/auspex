@@ -63,6 +63,10 @@
   letter-spacing: -0.03em;
 }
 
+.brand-block omegon-arwes-text {
+  display: block;
+}
+
 .brand-block p,
 .panel p,
 .rail-card p,
@@ -193,6 +197,10 @@ button:hover {
   border-color: rgba(130, 248, 255, 0.82);
 }
 
+omegon-arwes-button {
+  display: inline-block;
+}
+
 .primary-button {
   color: #001218;
   border-color: #64f4ff;
@@ -256,6 +264,7 @@ button:hover {
   padding: 20px;
 }
 
+.modal-card omegon-arwes-button,
 .modal-card button {
   display: block;
   width: 100%;
