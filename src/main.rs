@@ -1,4 +1,6 @@
 mod app;
+#[cfg(all(target_arch = "wasm32", feature = "omegon-web-mock"))]
+mod omegon_web_mock;
 mod screens;
 #[allow(dead_code)]
 mod workflow;
@@ -82,12 +84,20 @@ fn main() {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
     inject_web_styles();
 
-    dioxus::LaunchBuilder::web()
-        .with_context(bootstrap)
-        .launch(app::App);
+    #[cfg(feature = "omegon-web-mock")]
+    {
+        dioxus::LaunchBuilder::web().launch(omegon_web_mock::OmegonWebMockApp);
+    }
+
+    #[cfg(not(feature = "omegon-web-mock"))]
+    {
+        let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
+        dioxus::LaunchBuilder::web()
+            .with_context(bootstrap)
+            .launch(app::App);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -33,6 +33,7 @@ web = [
     "dep:gloo-timers",
     "getrandom/wasm_js",
 ]
+omegon-web-mock = ["web"]
 
 [dependencies]
 auspex-core = { path = "auspex-core", default-features = false }
