@@ -4565,6 +4565,14 @@ fn next_turn_envelope_detail(sync_label: &str) -> &'static str {
     }
 }
 
+fn command_transport_label(endpoint: Option<&str>) -> &'static str {
+    if endpoint.is_some() {
+        "ipc+ws ready"
+    } else {
+        "pending"
+    }
+}
+
 fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
     match (session.context_tokens, session.context_window) {
         (Some(tokens), Some(window)) if window > 0 => {
@@ -4898,6 +4906,7 @@ fn render_assistant_workspace(
     let sync_label = model_sync_label(&effective_model_label, &observed_model_label);
     let sync_tone = model_sync_tone(&effective_model_label, &observed_model_label);
     let envelope_detail = next_turn_envelope_detail(sync_label);
+    let transport_label = command_transport_label(endpoint.as_deref());
     let control_endpoint_label = endpoint
         .as_deref()
         .and_then(|url| url.split("/api/").next())
@@ -5188,7 +5197,7 @@ fn render_assistant_workspace(
                                     span { "link" }
                                     strong { "{control_endpoint_label}" }
                                     span { "transport" }
-                                    strong { "ipc+ws" }
+                                    strong { "{transport_label}" }
                                     span { "envelope" }
                                     strong { "{sync_label}" }
                                 }
@@ -9093,6 +9102,12 @@ mod tests {
         );
         assert!(super::next_turn_envelope_detail("mismatch").contains("sends requested settings"));
         assert!(super::next_turn_envelope_detail("not reported").contains("has not reported"));
+    }
+
+    #[test]
+    fn command_transport_label_reports_pending_without_endpoint() {
+        assert_eq!(super::command_transport_label(Some("http://127.0.0.1:7842/api/startup")), "ipc+ws ready");
+        assert_eq!(super::command_transport_label(None), "pending");
     }
 
     #[test]
