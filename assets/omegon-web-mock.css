@@ -153,6 +153,7 @@
 .transcript-card.operator { border-left-color: #8ef6ff; }
 .transcript-card.assistant { border-left-color: #a98cff; }
 .transcript-card.tool { border-left-color: #6ee7a8; }
+.transcript-card.lifecycle { border-left-color: #64f4ff; }
 .transcript-card.approval { border-left-color: #ffbf66; }
 
 .event-head span {

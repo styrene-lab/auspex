@@ -1,6 +1,41 @@
 use dioxus::prelude::*;
 
 #[derive(Clone, Copy)]
+struct WebSurfaceSnapshot {
+    runtime: RuntimeSurface,
+    launch: LaunchSurface,
+    transcript: &'static [TranscriptEvent],
+    workbench: &'static [&'static str],
+    memory_note: &'static str,
+    commands: &'static [&'static str],
+    composer: ComposerSurface,
+}
+
+#[derive(Clone, Copy)]
+struct RuntimeSurface {
+    agent_id: &'static str,
+    state: &'static str,
+    workspace: &'static str,
+    model: &'static str,
+    context_window: &'static str,
+    tool_count: u16,
+    transport: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct LaunchSurface {
+    title: &'static str,
+    subtitle: &'static str,
+    policy_owner: &'static str,
+}
+
+#[derive(Clone, Copy)]
+struct ComposerSurface {
+    queue_mode: &'static str,
+    initial_prompt: &'static str,
+}
+
+#[derive(Clone, Copy)]
 struct TranscriptEvent {
     role: &'static str,
     label: &'static str,
@@ -8,7 +43,7 @@ struct TranscriptEvent {
     meta: &'static str,
 }
 
-const EVENTS: &[TranscriptEvent] = &[
+const TRANSCRIPT: &[TranscriptEvent] = &[
     TranscriptEvent {
         role: "operator",
         label: "Operator",
@@ -28,6 +63,12 @@ const EVENTS: &[TranscriptEvent] = &[
         meta: "surface snapshot · 42 ms",
     },
     TranscriptEvent {
+        role: "lifecycle",
+        label: "Workbench",
+        body: "Active plan has a bounded mockup slice: contract-shaped fake data first, live daemon transport later.",
+        meta: "plan · in progress",
+    },
+    TranscriptEvent {
         role: "approval",
         label: "Approval needed",
         body: "Allow shell command: cargo check --target wasm32-unknown-unknown --no-default-features --features omegon-web-mock",
@@ -35,9 +76,44 @@ const EVENTS: &[TranscriptEvent] = &[
     },
 ];
 
+const WORKBENCH_ITEMS: &[&str] = &[
+    "surface snapshot contract",
+    "UI action transport",
+    "approval and tool cards",
+    "Auspex launch context",
+];
+
+const COMMANDS: &[&str] = &["/continue", "/clear", "/plan status", "/tools", "/memory status"];
+
+const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
+    runtime: RuntimeSurface {
+        agent_id: "daemon-01",
+        state: "attached",
+        workspace: "/Users/wilson/workspace/styrene-labs/auspex",
+        model: "openai-codex:gpt-5.5",
+        context_window: "82k / 128k",
+        tool_count: 17,
+        transport: "ws://daemon/api/web/surfaces/stream",
+    },
+    launch: LaunchSurface {
+        title: "Persistent agent chat",
+        subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex",
+        policy_owner: "local daemon",
+    },
+    transcript: TRANSCRIPT,
+    workbench: WORKBENCH_ITEMS,
+    memory_note: "The web app renders semantic Omegon surfaces instead of porting terminal widgets.",
+    commands: COMMANDS,
+    composer: ComposerSurface {
+        queue_mode: "interruptible",
+        initial_prompt: "Continue from the release candidate plan.",
+    },
+};
+
 #[component]
 pub fn OmegonWebMockApp() -> Element {
-    let mut composer = use_signal(|| String::from("Continue from the release candidate plan."));
+    let surface = MOCK_SURFACE;
+    let mut composer = use_signal(|| String::from(surface.composer.initial_prompt));
     let mut palette_open = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
     let mut approval_state = use_signal(|| "pending");
@@ -55,14 +131,14 @@ pub fn OmegonWebMockApp() -> Element {
             header { class: "omegon-web-topbar",
                 div { class: "brand-block",
                     div { class: "eyebrow", "OMEGON WEB" }
-                    h1 { "Persistent agent chat" }
-                    p { "Daemon-owned single-agent surface · opened standalone or through Auspex" }
+                    h1 { "{surface.launch.title}" }
+                    p { "{surface.launch.subtitle}" }
                 }
                 div { class: "status-strip",
                     omegon-arwes-status-pill { class: "status-pill", status: status, "{status}" }
-                    span { "workspace /Users/wilson/workspace/styrene-labs/auspex" }
-                    span { "model openai-codex:gpt-5.5" }
-                    span { "transport ws://daemon/api/web/surfaces/stream" }
+                    span { "workspace {surface.runtime.workspace}" }
+                    span { "model {surface.runtime.model}" }
+                    span { "transport {surface.runtime.transport}" }
                 }
             }
 
@@ -84,7 +160,7 @@ pub fn OmegonWebMockApp() -> Element {
                             }
                         }
                         div { class: "transcript-list",
-                            for event in EVENTS {
+                            for event in surface.transcript {
                                 article { class: "transcript-card {event.role}",
                                     div { class: "event-head",
                                         strong { "{event.label}" }
@@ -112,7 +188,7 @@ pub fn OmegonWebMockApp() -> Element {
 
                     omegon-arwes-panel { class: "panel composer-panel", variant: "composer",
                         div { class: "composer-meta",
-                            span { "queue mode: interruptible" }
+                            span { "queue mode: {surface.composer.queue_mode}" }
                             span { "sent: {sent_count}" }
                         }
                         textarea {
@@ -141,26 +217,25 @@ pub fn OmegonWebMockApp() -> Element {
                 aside { class: "context-rail",
                     omegon-arwes-panel { class: "panel rail-card", variant: "runtime",
                         div { class: "eyebrow", "RUNTIME" }
-                        h3 { "daemon-01" }
+                        h3 { "{surface.runtime.agent_id}" }
                         dl {
-                            div { dt { "State" } dd { "attached" } }
-                            div { dt { "Context" } dd { "82k / 128k" } }
-                            div { dt { "Tools" } dd { "17 available" } }
+                            div { dt { "State" } dd { "{surface.runtime.state}" } }
+                            div { dt { "Context" } dd { "{surface.runtime.context_window}" } }
+                            div { dt { "Tools" } dd { "{surface.runtime.tool_count} available" } }
                         }
                     }
                     omegon-arwes-panel { class: "panel rail-card", variant: "workbench",
                         div { class: "eyebrow", "WORKBENCH" }
                         h3 { "Omegon Web mock" }
                         ul {
-                            li { "surface snapshot contract" }
-                            li { "UI action transport" }
-                            li { "approval and tool cards" }
-                            li { "Auspex launch context" }
+                            for item in surface.workbench {
+                                li { "{item}" }
+                            }
                         }
                     }
                     omegon-arwes-panel { class: "panel rail-card", variant: "memory",
                         div { class: "eyebrow", "MEMORY / CONTEXT" }
-                        p { "The web app renders semantic Omegon surfaces instead of porting terminal widgets." }
+                        p { "{surface.memory_note}" }
                     }
                 }
             }
@@ -170,9 +245,9 @@ pub fn OmegonWebMockApp() -> Element {
                     omegon-arwes-panel { class: "modal-card", variant: "modal", onclick: move |event| event.stop_propagation(),
                         div { class: "eyebrow", "COMMANDS" }
                         h2 { "Command palette" }
-                        button { "/continue" }
-                        button { "/clear" }
-                        button { "/plan status" }
+                        for command in surface.commands {
+                            button { "{command}" }
+                        }
                     }
                 }
             }
@@ -181,7 +256,7 @@ pub fn OmegonWebMockApp() -> Element {
                 div { class: "settings-drawer",
                     button { class: "ghost-button", onclick: move |_| settings_open.set(false), "Close" }
                     h2 { "Settings" }
-                    p { "Policy owner: local daemon. Auspex may proxy this surface but does not own the session state." }
+                    p { "Policy owner: {surface.launch.policy_owner}. Auspex may proxy this surface but does not own the session state." }
                 }
             }
         }
