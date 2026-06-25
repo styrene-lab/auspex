@@ -249,11 +249,22 @@ pub fn OmegonWebMockApp() -> Element {
             if *palette_open.read() {
                 div { class: "modal-scrim", onclick: move |_| palette_open.set(false),
                     omegon-arwes-panel { class: "modal-card", variant: "modal", onclick: move |event| event.stop_propagation(),
-                        div { class: "eyebrow", "COMMANDS" }
-                        h2 { "Command palette" }
+                        div { class: "modal-head",
+                            div {
+                                div { class: "eyebrow", "COMMANDS" }
+                                h2 { "Command palette" }
+                            }
+                            button {
+                                class: "ghost-button close-button",
+                                onclick: move |_| palette_open.set(false),
+                                "Close"
+                            }
+                        }
                         for command in surface.commands {
-                            omegon-arwes-button {
-                                button { "{command}" }
+                            button {
+                                class: "command-button",
+                                onclick: move |_| palette_open.set(false),
+                                "{command}"
                             }
                         }
                     }

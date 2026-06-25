@@ -256,20 +256,48 @@ omegon-arwes-button {
   inset: 0;
   display: grid;
   place-items: center;
-  background: rgba(0, 3, 8, 0.72);
+  background: rgba(0, 3, 8, 0.88);
+  backdrop-filter: blur(4px);
 }
 
 .modal-card {
-  width: min(420px, calc(100vw - 40px));
-  padding: 20px;
+  width: min(460px, calc(100vw - 40px));
+  padding: 22px;
+  color: #eaffff;
+  background: linear-gradient(180deg, rgba(6, 18, 28, 0.98), rgba(2, 7, 12, 0.99));
+  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.72), 0 0 36px rgba(100, 244, 255, 0.12);
 }
 
-.modal-card omegon-arwes-button,
-.modal-card button {
+.modal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.modal-head h2 {
+  margin: 6px 0 0;
+  font-size: 1.8rem;
+}
+
+.close-button {
+  flex: 0 0 auto;
+}
+
+.command-button {
   display: block;
   width: 100%;
   margin-top: 10px;
+  padding: 12px 16px;
   text-align: left;
+  color: #f2feff;
+  background: rgba(0, 18, 28, 0.96);
+}
+
+body:has(.modal-scrim) .omegon-web-topbar,
+body:has(.modal-scrim) .omegon-web-layout {
+  filter: brightness(0.72);
 }
 
 .settings-drawer {
