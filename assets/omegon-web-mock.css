@@ -183,10 +183,31 @@
 }
 
 .owm-eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 9px;
   color: var(--accent);
   font: 700 0.68rem/1 var(--font-mono, ui-monospace, monospace);
-  letter-spacing: 0.22em;
+  letter-spacing: 0.18em;
   text-transform: uppercase;
+}
+
+/* tick + extending rule (Lady-of-Shalott header language) */
+.owm-eyebrow::before {
+  content: "";
+  flex: 0 0 auto;
+  width: 3px;
+  height: 12px;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(100, 244, 255, 0.6);
+}
+
+.owm-eyebrow::after {
+  content: "";
+  flex: 1 1 auto;
+  height: 1px;
+  min-width: 12px;
+  background: linear-gradient(90deg, var(--line), transparent);
 }
 
 .owm-status-strip {
@@ -301,11 +322,12 @@
   letter-spacing: 0.04em;
 }
 
+/* live data values use the amber signal channel */
 .owm-rail-card dd {
   margin: 0;
   min-width: 0;
   text-align: right;
-  color: #f2feff;
+  color: var(--signal);
   font-family: var(--font-mono, ui-monospace, monospace);
   overflow-wrap: anywhere;
 }
