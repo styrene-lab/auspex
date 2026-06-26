@@ -382,6 +382,52 @@
   background: linear-gradient(90deg, var(--line), transparent);
 }
 
+/* ---- Edge-biased mirror: right rail (workbench) reflects the
+   left rail (engine block). Ticks anchor to the outer screen edge and
+   rules/fills extend inward toward the centre, so the two rails frame the
+   conversation rather than reading as two top-down vertical planes. -------- */
+
+.owm-right-rail .owm-eyebrow {
+  flex-direction: row-reverse;
+  text-align: right;
+}
+.owm-right-rail .owm-eyebrow::after {
+  background: linear-gradient(270deg, var(--line), transparent);
+}
+
+/* Codex instrument: sigil to the outer (right) edge, prose right-aligned. */
+.owm-right-rail .owm-codex-core {
+  grid-template-columns: minmax(0, 1fr) 52px;
+}
+.owm-right-rail .owm-codex-core > .owm-codex-glyph { grid-column: 2; }
+.owm-right-rail .owm-codex-core > div:not(.owm-codex-glyph) {
+  grid-column: 1;
+  text-align: right;
+}
+
+/* Objective rows: status glyph hugs the outer edge, label right-aligned,
+   count to the inner side; progress fills inward from the outer edge.
+   Explicit placement (not order) so the progress bar can't jump tracks. */
+.owm-right-rail .owm-objective-row {
+  grid-template-columns: auto minmax(0, 1fr) 18px;
+}
+.owm-right-rail .owm-objective-row em { grid-column: 1; grid-row: 1; justify-self: start; }
+.owm-right-rail .owm-objective-row strong { grid-column: 2; grid-row: 1; text-align: right; }
+.owm-right-rail .owm-objective-row span { grid-column: 3; grid-row: 1; justify-self: end; }
+.owm-right-rail .owm-objective-row i {
+  grid-column: 1 / 3;
+  grid-row: 2;
+  background: linear-gradient(270deg, rgba(100, 244, 255, 0.65) var(--p), rgba(100, 244, 255, 0.1) var(--p));
+}
+
+/* Meter heads + archive fill mirror to the right. */
+.owm-right-rail .owm-meter-head { flex-direction: row-reverse; }
+.owm-right-rail .owm-archive-meter {
+  background:
+    linear-gradient(270deg, rgba(100, 244, 255, 0.38) 0 58%, rgba(244, 184, 96, 0.2) 58% 72%, transparent 72%),
+    repeating-linear-gradient(270deg, transparent 0 14px, rgba(100, 244, 255, 0.12) 14px 15px);
+}
+
 .owm-status-strip {
   display: grid;
   gap: 7px;
