@@ -6,6 +6,43 @@ use dioxus::prelude::*;
 // ============================================================
 
 #[derive(Clone, Copy, PartialEq)]
+enum ModalTarget {
+    Settings,
+    Config,
+    Armory,
+    Commands,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct MenuSurface {
+    items: &'static [MenuItem],
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct MenuItem {
+    target: ModalTarget,
+    eyebrow: &'static str,
+    label: &'static str,
+    summary: &'static str,
+    signal: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct ModalSection {
+    label: &'static str,
+    value: &'static str,
+    detail: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct ModalSurface {
+    target: ModalTarget,
+    eyebrow: &'static str,
+    title: &'static str,
+    summary: &'static str,
+    sections: &'static [ModalSection],
+}
+
 struct WebSurfaceSnapshot {
     runtime: RuntimeSurface,
     launch: LaunchSurface,
@@ -14,7 +51,8 @@ struct WebSurfaceSnapshot {
     operations: OperationSurface,
     daemon_events: DaemonEventsSurface,
     context_spark: SparklineSpec,
-    commands: &'static [&'static str],
+    menu: MenuSurface,
+    modal_surfaces: &'static [ModalSurface],
     composer: ComposerSurface,
 }
 
@@ -304,15 +342,69 @@ const TRANSCRIPT: &[TranscriptEvent] = &[
     },
 ];
 
-const COMMANDS: &[&str] = &[
-    "/continue",
-    "/clear",
-    "/plan status",
-    "/tools",
-    "/memory status",
-    "/model",
-    "/approve",
-    "/diff",
+
+const MENU_ITEMS: &[MenuItem] = &[
+    MenuItem {
+        target: ModalTarget::Settings,
+        eyebrow: "SESSION",
+        label: "Settings",
+        summary: "Policy owner, transport, and local authority profile.",
+        signal: "nominal",
+    },
+    MenuItem {
+        target: ModalTarget::Config,
+        eyebrow: "SURFACE",
+        label: "Config",
+        summary: "Renderer bindings, data source selection, and stream behavior.",
+        signal: "draft",
+    },
+    MenuItem {
+        target: ModalTarget::Armory,
+        eyebrow: "TOOLS",
+        label: "Armory",
+        summary: "Enabled capabilities, safety posture, and tool inventory.",
+        signal: "17 tools",
+    },
+    MenuItem {
+        target: ModalTarget::Commands,
+        eyebrow: "INPUT",
+        label: "Commands",
+        summary: "Slash commands and quick operator intents.",
+        signal: "8 ready",
+    },
+];
+
+const MENU_SURFACE: MenuSurface = MenuSurface { items: MENU_ITEMS };
+
+const SETTINGS_SECTIONS: &[ModalSection] = &[
+    ModalSection { label: "Policy owner", value: "local daemon", detail: "Auspex may proxy this surface but does not own the session state." },
+    ModalSection { label: "Transport", value: "ws://daemon/api/web/surfaces/stream", detail: "Live semantic surface stream; snapshot bootstrap remains HTTP." },
+    ModalSection { label: "Autonomy", value: "conservative", detail: "Operator confirmations required for elevated or ambiguous actions." },
+];
+
+const CONFIG_SECTIONS: &[ModalSection] = &[
+    ModalSection { label: "Data source", value: "mock · contract-shaped", detail: "The view is ready to bind to WebSurfacesSnapshot when the daemon endpoint is selected." },
+    ModalSection { label: "Transcript mode", value: "chat + collapsed tools", detail: "Operator/agent prose stays in the feed; tool payloads expand in modal overlays." },
+    ModalSection { label: "Rail mapping", value: "engine · workbench", detail: "Left rail presents daemon vitals; right rail presents plan, operations, and events." },
+];
+
+const ARMORY_SECTIONS: &[ModalSection] = &[
+    ModalSection { label: "Shell", value: "enabled · gated", detail: "Command execution is available through policy prompts and audit entries." },
+    ModalSection { label: "Files", value: "read/write scoped", detail: "Workspace edits remain constrained to approved project roots." },
+    ModalSection { label: "Subagents", value: "delegate · cleave", detail: "Background workers surface as Operations rows instead of transcript noise." },
+];
+
+const COMMAND_SECTIONS: &[ModalSection] = &[
+    ModalSection { label: "/continue", value: "resume plan", detail: "Continue from the active plan item." },
+    ModalSection { label: "/plan status", value: "inspect", detail: "Open the current plan lane and workstream summary." },
+    ModalSection { label: "/tools", value: "armory", detail: "Inspect available tool surfaces and safety gates." },
+];
+
+const MODAL_SURFACES: &[ModalSurface] = &[
+    ModalSurface { target: ModalTarget::Settings, eyebrow: "SETTINGS", title: "Session settings", summary: "Session authority and transport controls. These are global levers, not chat content.", sections: SETTINGS_SECTIONS },
+    ModalSurface { target: ModalTarget::Config, eyebrow: "CONFIG", title: "Surface configuration", summary: "Renderer and data-source settings for the web cockpit.", sections: CONFIG_SECTIONS },
+    ModalSurface { target: ModalTarget::Armory, eyebrow: "ARMORY", title: "Capability armory", summary: "Curated tool/capability inventory with safety posture attached.", sections: ARMORY_SECTIONS },
+    ModalSurface { target: ModalTarget::Commands, eyebrow: "COMMANDS", title: "Command palette", summary: "Operator shortcuts and command-shaped intents.", sections: COMMAND_SECTIONS },
 ];
 
 const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
@@ -341,7 +433,8 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     operations: OPERATIONS,
     daemon_events: DAEMON_EVENTS,
     context_spark: CONTEXT_SPARK,
-    commands: COMMANDS,
+    menu: MENU_SURFACE,
+    modal_surfaces: MODAL_SURFACES,
     composer: ComposerSurface {
         queue_mode: "interruptible",
         initial_prompt: "Once the build clears, run the approval round-trip end to end and report latency.",
@@ -489,8 +582,7 @@ fn TopBar(
     launch: LaunchSurface,
     runtime: RuntimeSurface,
     status: &'static str,
-    on_palette: EventHandler<()>,
-    on_settings: EventHandler<()>,
+    on_open: EventHandler<ModalTarget>,
 ) -> Element {
     rsx! {
         header { class: "omegon-web-topbar",
@@ -512,13 +604,13 @@ fn TopBar(
                 button {
                     class: "owm-hud-knob",
                     title: "Command palette",
-                    onclick: move |_| on_palette.call(()),
+                    onclick: move |_| on_open.call(ModalTarget::Commands),
                     "⌘"
                 }
                 button {
                     class: "owm-hud-knob",
                     title: "Settings",
-                    onclick: move |_| on_settings.call(()),
+                    onclick: move |_| on_open.call(ModalTarget::Settings),
                     "⚙"
                 }
             }
@@ -687,7 +779,7 @@ fn Composer(
     queue_mode: &'static str,
     composer: Signal<String>,
     sent_count: Signal<u32>,
-    on_settings: EventHandler<()>,
+    on_open: EventHandler<ModalTarget>,
 ) -> Element {
     let mut composer = composer;
     let mut sent_count = sent_count;
@@ -704,7 +796,7 @@ fn Composer(
             div { class: "owm-composer-actions",
                 button {
                     class: "owm-ghost-button",
-                    onclick: move |_| on_settings.call(()),
+                    onclick: move |_| on_open.call(ModalTarget::Settings),
                     "Settings"
                 }
                 button { class: "owm-ghost-button", "Attach" }
@@ -742,14 +834,40 @@ fn ToolModal(event: TranscriptEvent, on_close: EventHandler<()>) -> Element {
 }
 
 #[component]
-fn CommandPalette(commands: &'static [&'static str], on_close: EventHandler<()>) -> Element {
+fn MenuDock(menu: MenuSurface, on_open: EventHandler<ModalTarget>) -> Element {
+    rsx! {
+        div { class: "owm-menu-dock",
+            for item in menu.items.iter() {
+                button {
+                    class: "owm-menu-card",
+                    onclick: move |_| on_open.call(item.target),
+                    span { class: "owm-menu-eyebrow", "{item.eyebrow}" }
+                    strong { "{item.label}" }
+                    p { "{item.summary}" }
+                    em { "{item.signal}" }
+                }
+            }
+        }
+    }
+}
+
+fn modal_for(target: ModalTarget, surfaces: &'static [ModalSurface]) -> ModalSurface {
+    surfaces
+        .iter()
+        .copied()
+        .find(|surface| surface.target == target)
+        .unwrap_or(surfaces[0])
+}
+
+#[component]
+fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
     rsx! {
         div { class: "owm-modal-scrim", onclick: move |_| on_close.call(()),
-            section { class: "owm-modal-card", onclick: move |event| event.stop_propagation(),
+            section { class: "owm-modal-card owm-semantic-modal", onclick: move |event| event.stop_propagation(),
                 div { class: "owm-modal-head",
                     div {
-                        Eyebrow { label: "COMMANDS" }
-                        h2 { "Command palette" }
+                        Eyebrow { label: surface.eyebrow }
+                        h2 { "{surface.title}" }
                     }
                     button {
                         class: "owm-ghost-button owm-close-button",
@@ -757,32 +875,16 @@ fn CommandPalette(commands: &'static [&'static str], on_close: EventHandler<()>)
                         "Close"
                     }
                 }
-                for command in commands.iter() {
-                    button {
-                        class: "owm-command-button",
-                        onclick: move |_| on_close.call(()),
-                        "{command}"
+                p { class: "owm-modal-summary", "{surface.summary}" }
+                div { class: "owm-modal-section-grid",
+                    for section in surface.sections.iter() {
+                        article { class: "owm-modal-section",
+                            span { "{section.label}" }
+                            strong { "{section.value}" }
+                            p { "{section.detail}" }
+                        }
                     }
                 }
-            }
-        }
-    }
-}
-
-#[component]
-fn SettingsDrawer(
-    policy_owner: &'static str,
-    transport: &'static str,
-    on_close: EventHandler<()>,
-) -> Element {
-    rsx! {
-        div { class: "owm-settings-drawer",
-            button { class: "owm-ghost-button", onclick: move |_| on_close.call(()), "Close" }
-            h2 { "Settings" }
-            p { "Policy owner: {policy_owner}. Auspex may proxy this surface but does not own the session state." }
-            div { class: "owm-settings-field",
-                span { class: "owm-settings-label", "TRANSPORT" }
-                code { class: "owm-settings-value", "{transport}" }
             }
         }
     }
@@ -796,8 +898,7 @@ fn SettingsDrawer(
 pub fn OmegonWebMockApp() -> Element {
     let surface = MOCK_SURFACE;
     let composer = use_signal(|| String::from(surface.composer.initial_prompt));
-    let mut palette_open = use_signal(|| false);
-    let mut settings_open = use_signal(|| false);
+    let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
@@ -817,11 +918,7 @@ pub fn OmegonWebMockApp() -> Element {
                 launch: surface.launch,
                 runtime: surface.runtime,
                 status,
-                on_palette: move |_| {
-                    let is_open = *palette_open.read();
-                    palette_open.set(!is_open);
-                },
-                on_settings: move |_| settings_open.set(true),
+                on_open: move |target| modal_target.set(Some(target)),
             }
 
             main { class: "owm-cockpit-layout",
@@ -849,11 +946,16 @@ pub fn OmegonWebMockApp() -> Element {
                         }
                     }
 
+                    MenuDock {
+                        menu: surface.menu,
+                        on_open: move |target| modal_target.set(Some(target)),
+                    }
+
                     Composer {
                         queue_mode: surface.composer.queue_mode,
                         composer,
                         sent_count,
-                        on_settings: move |_| settings_open.set(true),
+                        on_open: move |target| modal_target.set(Some(target)),
                     }
                 }
 
@@ -868,18 +970,10 @@ pub fn OmegonWebMockApp() -> Element {
                 ToolModal { event: ev, on_close: move |_| tool_modal.set(None) }
             }
 
-            if *palette_open.read() {
-                CommandPalette {
-                    commands: surface.commands,
-                    on_close: move |_| palette_open.set(false),
-                }
-            }
-
-            if *settings_open.read() {
-                SettingsDrawer {
-                    policy_owner: surface.launch.policy_owner,
-                    transport: surface.runtime.transport,
-                    on_close: move |_| settings_open.set(false),
+            if let Some(target) = *modal_target.read() {
+                SemanticModal {
+                    surface: modal_for(target, surface.modal_surfaces),
+                    on_close: move |_| modal_target.set(None),
                 }
             }
         }

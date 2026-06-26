@@ -1278,3 +1278,100 @@ body:has(.owm-modal-scrim) .owm-cockpit-layout {
 .owm-daemon-event.recovery em {
   color: var(--signal);
 }
+
+/* ---- Shared semantic menu substrate ------------------------ */
+
+.owm-menu-dock {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.owm-menu-card {
+  display: grid;
+  gap: 6px;
+  min-width: 0;
+  padding: 12px 14px;
+  text-align: left;
+  border-color: var(--line);
+  background: linear-gradient(180deg, rgba(0, 14, 19, 0.42), rgba(0, 5, 8, 0.18));
+}
+
+.owm-menu-card:hover { background: rgba(0, 22, 30, 0.5); }
+
+.owm-menu-eyebrow {
+  color: var(--accent);
+  font: 700 0.56rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.owm-menu-card strong {
+  color: var(--text-bright);
+  font: 800 0.92rem/1 var(--font-ui, sans-serif);
+}
+
+.owm-menu-card p {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 0.72rem;
+  line-height: 1.35;
+}
+
+.owm-menu-card em {
+  color: var(--text-faint);
+  font: 700 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  font-style: normal;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owm-semantic-modal { width: min(760px, calc(100vw - 40px)); }
+
+.owm-modal-summary {
+  margin: -4px 0 18px;
+  color: var(--text-dim);
+  font-size: 0.95rem;
+  line-height: 1.55;
+}
+
+.owm-modal-section-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.owm-modal-section {
+  min-width: 0;
+  padding: 14px;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 10, 15, 0.52);
+}
+
+.owm-modal-section span {
+  display: block;
+  color: var(--accent);
+  font: 700 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+.owm-modal-section strong {
+  display: block;
+  margin-top: 8px;
+  color: var(--text-bright);
+  font: 800 0.95rem/1.2 var(--font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
+}
+
+.owm-modal-section p {
+  margin: 10px 0 0;
+  color: var(--text-dim);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+@media (max-width: 900px) {
+  .owm-menu-dock,
+  .owm-modal-section-grid { grid-template-columns: 1fr; }
+}
