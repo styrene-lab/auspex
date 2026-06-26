@@ -86,6 +86,6 @@ lightweight tick-rule headers — raises data density without raising visual noi
 
 - [x] Tick-rule header pattern (`.owm-eyebrow` → tick + extending rule)
 - [x] Semantic amber on live values (`.owm-rail-card dd` → `--signal`)
-- [ ] Demote rail/transcript panels from full frames to header+rule
-- [ ] Add sparklines for context/token/rate
+- [x] Demote rail/transcript panels from full frames to header+rule
+- [x] Add sparklines for context/token/rate
 - [ ] Push remaining telemetry (timestamps, counts) to mono + amber

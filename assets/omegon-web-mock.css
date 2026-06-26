@@ -99,20 +99,32 @@
   z-index: 1;
 }
 
-/* ---- HUD panel base (corner-bracket instrument) ------------ */
+/* ---- HUD module base --------------------------------------- */
 
 .owm-panel {
   position: relative;
   min-width: 0;
+}
+
+/* Strong frames are reserved for the interactive chat viewport and composer. */
+.owm-hero-panel,
+.owm-composer-panel,
+.owm-modal-card,
+.owm-settings-drawer {
   border: 1px solid var(--line);
   background:
     linear-gradient(180deg, rgba(0, 22, 26, 0.6), var(--panel-bg)),
     radial-gradient(circle at 60% 120%, rgba(0, 229, 255, 0.08), transparent 55%);
 }
 
-/* corner brackets drawn as two opposite L marks */
-.owm-panel::before,
-.owm-panel::after {
+.owm-hero-panel::before,
+.owm-hero-panel::after,
+.owm-composer-panel::before,
+.owm-composer-panel::after,
+.owm-modal-card::before,
+.owm-modal-card::after,
+.owm-settings-drawer::before,
+.owm-settings-drawer::after {
   content: "";
   position: absolute;
   width: var(--bracket);
@@ -121,14 +133,20 @@
   pointer-events: none;
 }
 
-.owm-panel::before {
+.owm-hero-panel::before,
+.owm-composer-panel::before,
+.owm-modal-card::before,
+.owm-settings-drawer::before {
   top: -1px;
   left: -1px;
   border-right: none;
   border-bottom: none;
 }
 
-.owm-panel::after {
+.owm-hero-panel::after,
+.owm-composer-panel::after,
+.owm-modal-card::after,
+.owm-settings-drawer::after {
   bottom: -1px;
   right: -1px;
   border-left: none;
@@ -258,15 +276,6 @@
 .owm-cockpit-layout > .owm-conversation-column { grid-column: 2; grid-row: 1; background: none; }
 .owm-cockpit-layout > .owm-right-rail { grid-column: 3; grid-row: 1; background: none; }
 
-/* Base app injects navy/purple-grey backgrounds on the shared
-   .owm-rail-card class name; re-assert the teal HUD panel surface with
-   higher specificity so the side instruments match the center. */
-.owm-cockpit-rail .owm-rail-card {
-  background:
-    linear-gradient(180deg, rgba(0, 22, 26, 0.6), var(--panel-bg)),
-    radial-gradient(circle at 60% 120%, rgba(0, 229, 255, 0.08), transparent 55%);
-}
-
 .owm-cockpit-rail {
   display: flex;
   flex-direction: column;
@@ -283,12 +292,13 @@
 
 .owm-rail-card {
   flex: 0 0 auto;
-  padding: 16px 16px 18px;
+  padding: 8px 2px 18px;
   overflow: hidden;
+  background: transparent;
 }
 
 .owm-rail-card h3 {
-  margin: 8px 0 0;
+  margin: 12px 0 0;
   color: #f2feff;
   letter-spacing: -0.02em;
   font-size: 1.15rem;
@@ -359,6 +369,40 @@
   line-height: 1.55;
 }
 
+.owm-spark-grid {
+  display: grid;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.owm-sparkline {
+  display: grid;
+  gap: 7px;
+}
+
+.owm-sparkline span {
+  color: var(--text-dim);
+  font: 600 0.68rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owm-spark-bars {
+  display: grid;
+  grid-template-columns: repeat(7, 1fr);
+  align-items: end;
+  gap: 4px;
+  height: 34px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.owm-spark-bars i {
+  display: block;
+  height: var(--h);
+  min-height: 3px;
+  background: linear-gradient(180deg, rgba(100, 244, 255, 0.72), rgba(100, 244, 255, 0.08));
+}
+
 /* ---- Center viewport (chat) -------------------------------- */
 
 .owm-conversation-column {
@@ -411,10 +455,11 @@
 
 .owm-transcript-card {
   min-width: 0;
-  padding: 14px 16px;
-  border: 1px solid var(--line-soft);
+  padding: 14px 0 14px 16px;
+  border: 0;
   border-left: 3px solid var(--accent);
-  background: linear-gradient(90deg, rgba(0, 36, 40, 0.4), rgba(1, 12, 16, 0.62));
+  border-bottom: 1px solid var(--line-soft);
+  background: transparent;
 }
 
 .owm-transcript-card.operator { border-left-color: var(--accent); }

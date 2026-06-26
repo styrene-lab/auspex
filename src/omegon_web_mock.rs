@@ -153,6 +153,32 @@ pub fn OmegonWebMockApp() -> Element {
                             div { dt { "Context" } dd { "{surface.runtime.context_window}" } }
                             div { dt { "Tools" } dd { "{surface.runtime.tool_count} available" } }
                         }
+                        div { class: "owm-spark-grid",
+                            div { class: "owm-sparkline",
+                                span { "Context load" }
+                                div { class: "owm-spark-bars",
+                                    i { style: "--h: 35%" }
+                                    i { style: "--h: 42%" }
+                                    i { style: "--h: 52%" }
+                                    i { style: "--h: 64%" }
+                                    i { style: "--h: 58%" }
+                                    i { style: "--h: 72%" }
+                                    i { style: "--h: 68%" }
+                                }
+                            }
+                            div { class: "owm-sparkline",
+                                span { "Surface rate" }
+                                div { class: "owm-spark-bars",
+                                    i { style: "--h: 28%" }
+                                    i { style: "--h: 44%" }
+                                    i { style: "--h: 39%" }
+                                    i { style: "--h: 61%" }
+                                    i { style: "--h: 48%" }
+                                    i { style: "--h: 66%" }
+                                    i { style: "--h: 55%" }
+                                }
+                            }
+                        }
                     }
                     section { class: "owm-panel owm-rail-card owm-compact-card",
                         div { class: "owm-eyebrow", "TRANSPORT" }
