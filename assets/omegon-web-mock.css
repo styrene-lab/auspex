@@ -18,8 +18,12 @@
   --accent: #64f4ff;
   --accent-warm: #64f4ff;
   --signal: #f4b860;
-  --text: #e7fbff;
-  --text-dim: rgba(214, 248, 255, 0.62);
+  /* Emphasis ramp — four deliberate tiers so the eye has an anchor.
+     bright = focal, text = primary readable, dim = secondary, faint = ambient. */
+  --text-bright: #f6feff;
+  --text: rgba(224, 250, 255, 0.9);
+  --text-dim: rgba(208, 242, 252, 0.5);
+  --text-faint: rgba(196, 236, 248, 0.3);
   --panel-bg: rgba(2, 12, 16, 0.7);
   --bracket: 14px;
 }
@@ -313,6 +317,7 @@
   display: flex;
   flex-direction: column;
   gap: 14px;
+  opacity: 0.86;
   min-height: 0;
   min-width: 0;
   overflow-y: auto;
@@ -332,9 +337,9 @@
 
 .owm-rail-card h3 {
   margin: 12px 0 0;
-  color: #f2feff;
+  color: var(--text-bright);
   letter-spacing: -0.02em;
-  font-size: 1.15rem;
+  font-size: 1.12rem;
 }
 
 .owm-rail-card p {
@@ -365,12 +370,12 @@
   letter-spacing: 0.04em;
 }
 
-/* live data values use the amber signal channel */
+/* routine telemetry reads bright; amber is reserved for attention states */
 .owm-rail-card dd {
   margin: 0;
   min-width: 0;
   text-align: right;
-  color: var(--signal);
+  color: var(--text-bright);
   font-family: var(--font-mono, ui-monospace, monospace);
   overflow-wrap: anywhere;
 }
@@ -478,20 +483,27 @@
 .owm-core-readout h3,
 .owm-codex-core h3 {
   margin: 0;
-  color: #f2feff;
+  color: var(--text-bright);
   letter-spacing: -0.02em;
 }
 
+/* state chip is nominal by default (cool); amber only signals attention */
 .owm-state-chip {
   display: inline-block;
   margin-top: 8px;
   padding: 4px 8px;
-  border: 1px solid rgba(244, 184, 96, 0.45);
-  color: var(--signal);
-  background: rgba(244, 184, 96, 0.08);
+  border: 1px solid var(--line);
+  color: rgba(214, 248, 255, 0.78);
+  background: rgba(0, 40, 46, 0.32);
   font: 700 0.68rem/1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.08em;
   text-transform: uppercase;
+}
+
+.owm-state-chip[data-tone="signal"] {
+  border-color: rgba(244, 184, 96, 0.45);
+  color: var(--signal);
+  background: rgba(244, 184, 96, 0.08);
 }
 
 .owm-meter-block,
@@ -510,7 +522,7 @@
 }
 
 .owm-meter-head strong {
-  color: var(--signal);
+  color: var(--text-bright);
   font-weight: 700;
   white-space: nowrap;
 }
@@ -580,15 +592,17 @@
 
 .owm-objective-row strong {
   min-width: 0;
-  color: rgba(231, 251, 255, 0.82);
+  color: var(--text-dim);
   font-size: 0.86rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.owm-objective-row.active strong { color: var(--text-bright); }
+.owm-objective-row.complete strong { color: var(--text); }
 
 .owm-objective-row em {
-  color: var(--signal);
+  color: var(--text-dim);
   font: 700 0.68rem/1 var(--font-mono, ui-monospace, monospace);
   font-style: normal;
   text-transform: uppercase;
@@ -653,8 +667,11 @@
 
 .owm-panel-heading h2 {
   margin: 6px 0 0;
-  color: #f3feff;
-  letter-spacing: -0.02em;
+  color: var(--text-bright);
+  font-size: 1.45rem;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  text-shadow: 0 0 18px rgba(0, 232, 255, 0.22);
   overflow-wrap: anywhere;
 }
 
@@ -696,23 +713,26 @@
 }
 
 .owm-event-head strong {
-  color: #f3feff;
-  font-size: 1rem;
+  color: var(--text-bright);
+  font-size: 1.02rem;
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
 .owm-event-head span {
   flex: 0 0 auto;
-  color: rgba(214, 248, 255, 0.48);
-  font: 600 0.66rem/1 var(--font-mono, ui-monospace, monospace);
-  letter-spacing: 0.05em;
+  color: var(--text-faint);
+  font: 600 0.64rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.08em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
 .owm-transcript-card p {
   margin: 0;
-  color: rgba(223, 250, 255, 0.86);
-  line-height: 1.55;
+  color: var(--text);
+  font-size: 1rem;
+  line-height: 1.62;
   overflow-wrap: anywhere;
 }
 
@@ -746,9 +766,9 @@
   resize: vertical;
   border: 1px solid rgba(120, 246, 255, 0.46);
   background: rgba(0, 4, 8, 0.58);
-  color: #eaffff;
+  color: var(--text-bright);
   outline: none;
-  font: 500 0.95rem/1.5 var(--font-ui, sans-serif);
+  font: 500 0.98rem/1.55 var(--font-ui, sans-serif);
 }
 
 .owm-composer-panel textarea:focus { border-color: var(--accent); }
