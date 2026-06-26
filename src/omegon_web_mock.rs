@@ -109,36 +109,81 @@ const TRANSCRIPT: &[TranscriptEvent] = &[
     TranscriptEvent {
         role: "operator",
         label: "Operator",
-        body: "Sketch the next Auspex release path and keep the web chat surface moving.",
-        meta: "prompt · queued",
+        body: "Pick up the 0.1.0 release candidate work — I want the Omegon Web surface demoable by Friday, running off the daemon snapshot instead of mock data.",
+        meta: "prompt · 7m ago",
     },
     TranscriptEvent {
         role: "assistant",
         label: "Omegon",
-        body: "Release framework is verified. Next concrete slice is the daemon-owned Omegon Web SPA, opened directly or through Auspex.",
+        body: "Understood. The release framework already verifies, so the critical path is the daemon-owned web surface. I'll land it in three slices: contract-shaped snapshot first, live transport second, action round-trip last.",
+        meta: "assistant · 7m ago",
+    },
+    TranscriptEvent {
+        role: "tool",
+        label: "Tool call",
+        body: "GET /api/web/surfaces → 200. Returned runtime, transcript, objectives, codex, and approval surfaces (5 sections, 11 events).",
+        meta: "surface snapshot · 41 ms",
+    },
+    TranscriptEvent {
+        role: "lifecycle",
+        label: "Plan advanced",
+        body: "Objective 'surface snapshot contract' marked complete. The semantic snapshot now matches the Rust struct one-to-one — no shadow shapes.",
+        meta: "plan · objective 1 of 4",
+    },
+    TranscriptEvent {
+        role: "operator",
+        label: "Operator",
+        body: "Good. Start on the UI action transport so Send and the approval buttons actually reach the daemon.",
+        meta: "prompt · 4m ago",
+    },
+    TranscriptEvent {
+        role: "assistant",
+        label: "Omegon",
+        body: "I'll open a WebSocket to the surfaces stream and post operator actions as intents. The daemon stays authoritative; the surface only proposes. Approval gates resolve server-side and echo back as lifecycle events.",
+        meta: "assistant · 4m ago",
+    },
+    TranscriptEvent {
+        role: "tool",
+        label: "Tool call",
+        body: "cargo test --features omegon-web-mock surfaces:: → 12 passed, 0 failed. Snapshot round-trips through serde without drift.",
+        meta: "test run · 1.8 s",
+    },
+    TranscriptEvent {
+        role: "lifecycle",
+        label: "Memory written",
+        body: "Stored constraint: the web surface must never mutate state locally — every action is a proposal the daemon accepts or rejects.",
+        meta: "memory · constraints",
+    },
+    TranscriptEvent {
+        role: "assistant",
+        label: "Omegon",
+        body: "Transport scaffolding is in place. I'm wiring the context meter and objective rows to live snapshot fields now, then I'll exercise a real approval round-trip.",
         meta: "assistant · streaming",
     },
     TranscriptEvent {
         role: "tool",
         label: "Tool call",
-        body: "GET /api/web/surfaces returned transcript, workbench, runtime, memory, tools, and approval surfaces.",
-        meta: "surface snapshot · 42 ms",
-    },
-    TranscriptEvent {
-        role: "lifecycle",
-        label: "Workbench",
-        body: "Active plan has a bounded mockup slice: contract-shaped fake data first, live daemon transport later.",
-        meta: "plan · in progress",
+        body: "cargo check --target wasm32-unknown-unknown --no-default-features --features omegon-web-mock",
+        meta: "build · running",
     },
     TranscriptEvent {
         role: "approval",
         label: "Approval needed",
-        body: "Allow shell command: cargo check --target wasm32-unknown-unknown --no-default-features --features omegon-web-mock",
+        body: "Allow shell command: trunk build web/omegon-web-mock.html and publish the bundle to the daemon's static surface route.",
         meta: "policy gate · pending",
     },
 ];
 
-const COMMANDS: &[&str] = &["/continue", "/clear", "/plan status", "/tools", "/memory status"];
+const COMMANDS: &[&str] = &[
+    "/continue",
+    "/clear",
+    "/plan status",
+    "/tools",
+    "/memory status",
+    "/model",
+    "/approve",
+    "/diff",
+];
 
 const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     runtime: RuntimeSurface {
@@ -148,7 +193,7 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         model: "openai-codex:gpt-5.5",
         context_window: "82k / 128k",
         tool_count: 17,
-        tool_online: 8,
+        tool_online: 9,
         tool_sockets: 12,
         transport: "ws://daemon/api/web/surfaces/stream",
         link_status: "stream nominal",
@@ -161,11 +206,11 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     transcript: TRANSCRIPT,
     objectives: OBJECTIVES,
     context_spark: CONTEXT_SPARK,
-    memory_note: "The web app renders semantic Omegon surfaces instead of porting terminal widgets.",
+    memory_note: "Constraints in scope: the surface renders semantic Omegon surfaces, never ports terminal widgets, and treats every operator action as a daemon-arbitrated proposal.",
     commands: COMMANDS,
     composer: ComposerSurface {
         queue_mode: "interruptible",
-        initial_prompt: "Continue from the release candidate plan.",
+        initial_prompt: "Once the build clears, run the approval round-trip end to end and report latency.",
     },
 };
 
@@ -298,7 +343,7 @@ fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Elem
                 SegmentMeter {}
             }
             div { class: "owm-toolbelt",
-                MeterHead { label: "Tool sockets", value: format!("{} online", runtime.tool_count) }
+                MeterHead { label: "Tool sockets", value: format!("{} active · {} tools", runtime.tool_online, runtime.tool_count) }
                 SocketGrid { online: runtime.tool_online, total: runtime.tool_sockets }
             }
             div { class: "owm-spark-grid",
