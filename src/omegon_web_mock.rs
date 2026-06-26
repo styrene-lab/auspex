@@ -43,7 +43,25 @@ struct ModalSurface {
     sections: &'static [ModalSection],
 }
 
+#[derive(Clone, Copy, PartialEq)]
+struct SessionLinks {
+    surfaces: Option<&'static str>,
+    actions: Option<&'static str>,
+    stream: Option<&'static str>,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct SessionDescriptor {
+    schema_version: u8,
+    session_id: &'static str,
+    current: bool,
+    assistant_profile_id: Option<&'static str>,
+    assistant_readiness: Option<&'static str>,
+    links: SessionLinks,
+}
+
 struct WebSurfaceSnapshot {
+    session: SessionDescriptor,
     runtime: RuntimeSurface,
     launch: LaunchSurface,
     transcript: &'static [TranscriptEvent],
@@ -377,15 +395,17 @@ const MENU_ITEMS: &[MenuItem] = &[
 const MENU_SURFACE: MenuSurface = MenuSurface { items: MENU_ITEMS };
 
 const SETTINGS_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "Policy owner", value: "local daemon", detail: "Auspex may proxy this surface but does not own the session state." },
-    ModalSection { label: "Transport", value: "ws://daemon/api/web/surfaces/stream", detail: "Live semantic surface stream; snapshot bootstrap remains HTTP." },
+    ModalSection { label: "Session", value: "default · current", detail: "Native session envelope from POST /api/sessions; singleton for phase 1." },
+    ModalSection { label: "Assistant", value: "omegon-default · ready", detail: "Assistant readiness is validated by the daemon before the browser binds controls." },
+    ModalSection { label: "Transport", value: "/api/sessions/default/surfaces/stream", detail: "Native session stream; legacy /api/web/surfaces remains a compatibility path." },
     ModalSection { label: "Autonomy", value: "conservative", detail: "Operator confirmations required for elevated or ambiguous actions." },
 ];
 
 const CONFIG_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "Data source", value: "mock · contract-shaped", detail: "The view is ready to bind to WebSurfacesSnapshot when the daemon endpoint is selected." },
+    ModalSection { label: "Bootstrap", value: "POST /api/sessions", detail: "Create or attach first, then follow daemon-provided links instead of hardcoded web paths." },
+    ModalSection { label: "Snapshot", value: "/api/sessions/default/surfaces", detail: "HTTP bootstrap for the current semantic surface bundle." },
+    ModalSection { label: "Actions", value: "/api/sessions/default/actions", detail: "Prompt sends, approvals, and UI actions post here; daemon remains authoritative." },
     ModalSection { label: "Transcript mode", value: "chat + collapsed tools", detail: "Operator/agent prose stays in the feed; tool payloads expand in modal overlays." },
-    ModalSection { label: "Rail mapping", value: "engine · workbench", detail: "Left rail presents daemon vitals; right rail presents plan, operations, and events." },
 ];
 
 const ARMORY_SECTIONS: &[ModalSection] = &[
@@ -408,6 +428,18 @@ const MODAL_SURFACES: &[ModalSurface] = &[
 ];
 
 const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
+    session: SessionDescriptor {
+        schema_version: 1,
+        session_id: "default",
+        current: true,
+        assistant_profile_id: Some("omegon-default"),
+        assistant_readiness: Some("ready"),
+        links: SessionLinks {
+            surfaces: Some("/api/sessions/default/surfaces"),
+            actions: Some("/api/sessions/default/actions"),
+            stream: Some("/api/sessions/default/surfaces/stream"),
+        },
+    },
     runtime: RuntimeSurface {
         agent_id: "daemon-01",
         state: "attached",
@@ -417,7 +449,7 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         tool_count: 17,
         tool_online: 9,
         tool_sockets: 12,
-        transport: "ws://daemon/api/web/surfaces/stream",
+        transport: "/api/sessions/default/surfaces/stream",
         link_status: "stream nominal",
         latency: "38 ms",
         autonomy: "conservative",
@@ -581,17 +613,19 @@ fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
 fn TopBar(
     launch: LaunchSurface,
     runtime: RuntimeSurface,
+    session: SessionDescriptor,
     status: &'static str,
     on_open: EventHandler<ModalTarget>,
 ) -> Element {
     rsx! {
         header { class: "omegon-web-topbar",
-            div { class: "owm-hud-mark", title: "{launch.title} · {launch.subtitle}",
+            div { class: "owm-hud-mark", title: "{launch.title} · session {session.session_id}",
                 div { class: "owm-core-glyph owm-mark-glyph" }
                 span { class: "owm-mark-id", "{runtime.agent_id}" }
             }
 
             div { class: "owm-hud-readouts",
+                HudReadout { label: "SESSION", value: session.session_id.to_string(), modifier: "owm-readout-mono" }
                 HudReadout { label: "WORKSPACE", value: runtime.workspace.to_string(), modifier: "owm-readout-path" }
                 HudReadout { label: "MODEL", value: runtime.model.to_string(), modifier: "owm-readout-live" }
                 LinkGauge { status: runtime.link_status, latency: runtime.latency }
@@ -917,6 +951,7 @@ pub fn OmegonWebMockApp() -> Element {
             TopBar {
                 launch: surface.launch,
                 runtime: surface.runtime,
+                session: surface.session,
                 status,
                 on_open: move |target| modal_target.set(Some(target)),
             }
