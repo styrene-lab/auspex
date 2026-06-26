@@ -12,7 +12,6 @@ struct WebSurfaceSnapshot {
     transcript: &'static [TranscriptEvent],
     objectives: &'static [ObjectiveItem],
     context_spark: SparklineSpec,
-    memory_note: &'static str,
     commands: &'static [&'static str],
     composer: ComposerSurface,
 }
@@ -124,7 +123,7 @@ const TRANSCRIPT: &[TranscriptEvent] = &[
     TranscriptEvent {
         role: "tool",
         label: "Tool call",
-        body: "GET /api/web/surfaces → 200. Returned runtime, transcript, objectives, codex, and approval surfaces (5 sections, 11 events).",
+        body: "GET /api/web/surfaces → 200. Returned runtime, transcript, objectives, and approval surfaces (4 sections, 11 events).",
         meta: "surface snapshot · 41 ms",
     },
     TranscriptEvent {
@@ -212,7 +211,6 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     transcript: TRANSCRIPT,
     objectives: OBJECTIVES,
     context_spark: CONTEXT_SPARK,
-    memory_note: "Constraints in scope: the surface renders semantic Omegon surfaces, never ports terminal widgets, and treats every operator action as a daemon-arbitrated proposal.",
     commands: COMMANDS,
     composer: ComposerSurface {
         queue_mode: "interruptible",
@@ -236,7 +234,7 @@ fn StateChip(label: &'static str) -> Element {
     rsx! { div { class: "owm-state-chip", "{label}" } }
 }
 
-/// Faceted instrument sigil (daemon core / codex).
+/// Faceted instrument sigil (daemon core).
 #[component]
 fn Sigil(class: &'static str) -> Element {
     rsx! { div { class: "{class}" } }
@@ -428,22 +426,6 @@ fn ObjectivesCard(objectives: &'static [ObjectiveItem]) -> Element {
 }
 
 #[component]
-fn CodexCard(note: &'static str) -> Element {
-    rsx! {
-        InstrumentCard { modifier: "owm-codex-card", eyebrow: "CODEX",
-            div { class: "owm-codex-core",
-                Sigil { class: "owm-codex-glyph" }
-                div {
-                    h3 { "semantic surfaces" }
-                    p { "{note}" }
-                }
-            }
-            div { class: "owm-archive-meter" }
-        }
-    }
-}
-
-#[component]
 fn TranscriptEntry(
     event: TranscriptEvent,
     on_deny: EventHandler<()>,
@@ -629,7 +611,6 @@ pub fn OmegonWebMockApp() -> Element {
 
                 aside { class: "owm-cockpit-rail owm-right-rail",
                     ObjectivesCard { objectives: surface.objectives }
-                    CodexCard { note: surface.memory_note }
                 }
             }
 
