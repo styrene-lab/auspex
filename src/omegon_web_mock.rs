@@ -29,6 +29,9 @@ struct RuntimeSurface {
     tool_sockets: u16,
     transport: &'static str,
     link_status: &'static str,
+    latency: &'static str,
+    autonomy: &'static str,
+    uptime: &'static str,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -197,6 +200,9 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         tool_sockets: 12,
         transport: "ws://daemon/api/web/surfaces/stream",
         link_status: "stream nominal",
+        latency: "38 ms",
+        autonomy: "conservative",
+        uptime: "01:24:36",
     },
     launch: LaunchSurface {
         title: "Persistent agent chat",
@@ -309,19 +315,74 @@ fn InstrumentCard(modifier: &'static str, eyebrow: &'static str, children: Eleme
 // ============================================================
 
 #[component]
-fn TopBar(launch: LaunchSurface, runtime: RuntimeSurface, status: &'static str) -> Element {
+fn HudReadout(label: &'static str, value: String, modifier: &'static str) -> Element {
+    rsx! {
+        div { class: "owm-hud-readout {modifier}",
+            span { class: "owm-hud-readout-label", "{label}" }
+            strong { class: "owm-hud-readout-value", "{value}" }
+        }
+    }
+}
+
+/// Link gauge — signal bars + latency, the cockpit's connection instrument.
+#[component]
+fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
+    rsx! {
+        div { class: "owm-hud-readout owm-link-gauge",
+            span { class: "owm-hud-readout-label", "LINK" }
+            div { class: "owm-link-gauge-row",
+                div { class: "owm-link-bars",
+                    i {}
+                    i {}
+                    i {}
+                    i {}
+                }
+                strong { class: "owm-hud-readout-value", "{latency}" }
+            }
+            span { class: "owm-link-gauge-state", "{status}" }
+        }
+    }
+}
+
+/// HUD top strip: mark · instrument readouts · global controls.
+/// Replaces the former SaaS title/nav header.
+#[component]
+fn TopBar(
+    launch: LaunchSurface,
+    runtime: RuntimeSurface,
+    status: &'static str,
+    on_palette: EventHandler<()>,
+    on_settings: EventHandler<()>,
+) -> Element {
     rsx! {
         header { class: "omegon-web-topbar",
-            div { class: "owm-brand-block",
-                Eyebrow { label: "OMEGON WEB" }
-                h1 { "{launch.title}" }
-                p { "{launch.subtitle}" }
+            div { class: "owm-hud-mark", title: "{launch.title} · {launch.subtitle}",
+                div { class: "owm-core-glyph owm-mark-glyph" }
+                span { class: "owm-mark-id", "{runtime.agent_id}" }
             }
-            div { class: "owm-status-strip",
+
+            div { class: "owm-hud-readouts",
+                HudReadout { label: "WORKSPACE", value: runtime.workspace.to_string(), modifier: "owm-readout-path" }
+                HudReadout { label: "MODEL", value: runtime.model.to_string(), modifier: "owm-readout-live" }
+                LinkGauge { status: runtime.link_status, latency: runtime.latency }
+                HudReadout { label: "AUTONOMY", value: runtime.autonomy.to_string(), modifier: "" }
+                HudReadout { label: "UPTIME", value: runtime.uptime.to_string(), modifier: "owm-readout-mono" }
+            }
+
+            div { class: "owm-hud-controls",
                 omegon-arwes-status-pill { class: "owm-status-pill", status, "{status}" }
-                span { "workspace {runtime.workspace}" }
-                span { "model {runtime.model}" }
-                span { "transport {runtime.transport}" }
+                button {
+                    class: "owm-hud-knob",
+                    title: "Command palette",
+                    onclick: move |_| on_palette.call(()),
+                    "⌘"
+                }
+                button {
+                    class: "owm-hud-knob",
+                    title: "Settings",
+                    onclick: move |_| on_settings.call(()),
+                    "⚙"
+                }
             }
         }
     }
@@ -349,21 +410,6 @@ fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Elem
             div { class: "owm-spark-grid",
                 Sparkline { spec: context_spark }
             }
-        }
-    }
-}
-
-#[component]
-fn LinkCard(runtime: RuntimeSurface) -> Element {
-    rsx! {
-        InstrumentCard { modifier: "owm-link-card", eyebrow: "LINK",
-            div { class: "owm-link-conduit",
-                span {}
-                span {}
-                span {}
-            }
-            p { "{runtime.transport}" }
-            StateChip { label: runtime.link_status }
         }
     }
 }
@@ -496,12 +542,20 @@ fn CommandPalette(commands: &'static [&'static str], on_close: EventHandler<()>)
 }
 
 #[component]
-fn SettingsDrawer(policy_owner: &'static str, on_close: EventHandler<()>) -> Element {
+fn SettingsDrawer(
+    policy_owner: &'static str,
+    transport: &'static str,
+    on_close: EventHandler<()>,
+) -> Element {
     rsx! {
         div { class: "owm-settings-drawer",
             button { class: "owm-ghost-button", onclick: move |_| on_close.call(()), "Close" }
             h2 { "Settings" }
             p { "Policy owner: {policy_owner}. Auspex may proxy this surface but does not own the session state." }
+            div { class: "owm-settings-field",
+                span { class: "owm-settings-label", "TRANSPORT" }
+                code { class: "owm-settings-value", "{transport}" }
+            }
         }
     }
 }
@@ -530,12 +584,20 @@ pub fn OmegonWebMockApp() -> Element {
             div { class: "omegon-web-bg" }
             div { class: "hud-frame" }
 
-            TopBar { launch: surface.launch, runtime: surface.runtime, status }
+            TopBar {
+                launch: surface.launch,
+                runtime: surface.runtime,
+                status,
+                on_palette: move |_| {
+                    let is_open = *palette_open.read();
+                    palette_open.set(!is_open);
+                },
+                on_settings: move |_| settings_open.set(true),
+            }
 
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
                     DaemonCoreCard { runtime: surface.runtime, context_spark: surface.context_spark }
-                    LinkCard { runtime: surface.runtime }
                 }
 
                 section { class: "owm-conversation-column",
@@ -544,14 +606,6 @@ pub fn OmegonWebMockApp() -> Element {
                             div {
                                 Eyebrow { label: "CURRENT TURN" }
                                 h2 { "Single-agent transcript" }
-                            }
-                            button {
-                                class: "owm-ghost-button",
-                                onclick: move |_| {
-                                    let is_open = *palette_open.read();
-                                    palette_open.set(!is_open);
-                                },
-                                "Command palette"
                             }
                         }
                         div { class: "owm-transcript-list",
@@ -589,6 +643,7 @@ pub fn OmegonWebMockApp() -> Element {
             if *settings_open.read() {
                 SettingsDrawer {
                     policy_owner: surface.launch.policy_owner,
+                    transport: surface.runtime.transport,
                     on_close: move |_| settings_open.set(false),
                 }
             }
