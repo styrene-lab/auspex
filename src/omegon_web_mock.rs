@@ -12,6 +12,7 @@ struct WebSurfaceSnapshot {
     transcript: &'static [TranscriptEvent],
     plan: PlanLane,
     operations: OperationSurface,
+    daemon_events: DaemonEventsSurface,
     context_spark: SparklineSpec,
     commands: &'static [&'static str],
     composer: ComposerSurface,
@@ -96,6 +97,25 @@ struct OperationSurface {
     children: &'static [OperationChild],
 }
 
+/// Mirrors `/api/events/stream` daemon/app SSE payloads.
+#[derive(Clone, Copy, PartialEq)]
+struct DaemonEventItem {
+    event_type: &'static str,
+    lane: &'static str,
+    summary: &'static str,
+    age: &'static str,
+}
+
+/// Mirrors the daemon event snapshot/stream pair: `/api/events` + `/api/events/stream`.
+#[derive(Clone, Copy, PartialEq)]
+struct DaemonEventsSurface {
+    queued: usize,
+    processed: usize,
+    stream_href: &'static str,
+    snapshot_href: &'static str,
+    events: &'static [DaemonEventItem],
+}
+
 #[derive(Clone, Copy, PartialEq)]
 struct SparklineSpec {
     label: &'static str,
@@ -167,6 +187,39 @@ const OPERATIONS: OperationSurface = OperationSurface {
             activity: "returned 4 sections",
             progress: "2/2",
             progress_pct: "100%",
+        },
+    ],
+};
+
+const DAEMON_EVENTS: DaemonEventsSurface = DaemonEventsSurface {
+    queued: 2,
+    processed: 47,
+    stream_href: "/api/events/stream",
+    snapshot_href: "/api/events",
+    events: &[
+        DaemonEventItem {
+            event_type: "runtime.context_changed",
+            lane: "runtime",
+            summary: "context window recalculated: 82k / 128k tokens",
+            age: "12s",
+        },
+        DaemonEventItem {
+            event_type: "lifecycle.snapshot_changed",
+            lane: "plan",
+            summary: "plan projection updated; active lane still executing",
+            age: "33s",
+        },
+        DaemonEventItem {
+            event_type: "provider.status_changed",
+            lane: "provider",
+            summary: "openai-codex:gpt-5.5 remains selected and serving",
+            age: "1m",
+        },
+        DaemonEventItem {
+            event_type: "stream.lagged",
+            lane: "recovery",
+            summary: "client skipped events; refetch snapshot from /api/events",
+            age: "3m",
         },
     ],
 };
@@ -286,6 +339,7 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     transcript: TRANSCRIPT,
     plan: PLAN,
     operations: OPERATIONS,
+    daemon_events: DAEMON_EVENTS,
     context_spark: CONTEXT_SPARK,
     commands: COMMANDS,
     composer: ComposerSurface {
@@ -553,6 +607,33 @@ fn OperationsCard(operations: OperationSurface) -> Element {
     }
 }
 
+/// Daemon/app event stream instrument. Mirrors `/api/events` snapshot plus the
+/// `/api/events/stream` SSE feed; this is operational activity, not chat.
+#[component]
+fn DaemonEventsCard(events: DaemonEventsSurface) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-events-card", eyebrow: "EVENT STREAM",
+            div { class: "owm-events-head",
+                span { "{events.queued} queued" }
+                span { "{events.processed} processed" }
+            }
+            div { class: "owm-event-endpoints",
+                code { "{events.stream_href}" }
+                code { "snapshot {events.snapshot_href}" }
+            }
+            div { class: "owm-daemon-event-stack",
+                for event in events.events.iter() {
+                    div { class: "owm-daemon-event {event.lane}",
+                        span { class: "owm-daemon-event-type", "{event.event_type}" }
+                        strong { "{event.summary}" }
+                        em { "{event.age}" }
+                    }
+                }
+            }
+        }
+    }
+}
+
 #[component]
 fn TranscriptEntry(
     event: TranscriptEvent,
@@ -779,6 +860,7 @@ pub fn OmegonWebMockApp() -> Element {
                 aside { class: "owm-cockpit-rail owm-right-rail",
                     PlanCard { plan: surface.plan }
                     OperationsCard { operations: surface.operations }
+                    DaemonEventsCard { events: surface.daemon_events }
                 }
             }
 
