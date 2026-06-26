@@ -42,10 +42,7 @@ const bridgeStyles = `
   }
 
   :host([data-arwes-panel])::after {
-    inset: 7px;
-    border-top: 1px solid var(--arwes-line-soft);
-    border-bottom: 1px solid var(--arwes-line-soft);
-    opacity: 0.42;
+    display: none;
   }
 
   :host([data-arwes-panel='primary'])::before,
@@ -202,9 +199,44 @@ define('omegon-arwes-button', OmegonArwesElement);
 define('omegon-arwes-status-pill', OmegonArwesStatusPill);
 define('omegon-arwes-text', OmegonArwesText);
 
+const installInteractionEffects = () => {
+  if (window.omegonArwesBridge?.effectsInstalled) return;
+
+  let audioContext = null;
+  const blip = (frequency = 880, duration = 0.045) => {
+    try {
+      audioContext ??= new AudioContext();
+      const oscillator = audioContext.createOscillator();
+      const gain = audioContext.createGain();
+      oscillator.type = 'triangle';
+      oscillator.frequency.value = frequency;
+      gain.gain.setValueAtTime(0.0001, audioContext.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.035, audioContext.currentTime + 0.008);
+      gain.gain.exponentialRampToValueAtTime(0.0001, audioContext.currentTime + duration);
+      oscillator.connect(gain);
+      gain.connect(audioContext.destination);
+      oscillator.start();
+      oscillator.stop(audioContext.currentTime + duration);
+    } catch (_) {
+      // Audio is progressive enhancement; browsers may block it before gesture.
+    }
+  };
+
+  document.addEventListener('pointerover', (event) => {
+    if (event.target instanceof Element && event.target.closest('button')) blip(1320, 0.025);
+  }, { passive: true });
+
+  document.addEventListener('click', (event) => {
+    if (event.target instanceof Element && event.target.closest('button')) blip(620, 0.06);
+  }, { passive: true });
+
+  window.omegonArwesBridge.effectsInstalled = true;
+};
+
 window.omegonArwesBridge = {
-  version: 'mock-bridge-1',
+  version: 'mock-bridge-2',
   mounted: true,
+  effectsInstalled: false,
   elements: [
     'omegon-arwes-app-shell',
     'omegon-arwes-bg',
@@ -214,3 +246,5 @@ window.omegonArwesBridge = {
     'omegon-arwes-text',
   ],
 };
+
+installInteractionEffects();

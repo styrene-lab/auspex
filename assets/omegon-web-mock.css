@@ -1,330 +1,599 @@
+/* ============================================================
+   Omegon Web mock — HUD cockpit
+   A framed central chat viewport with instrument clusters
+   docked to the cockpit rails. Sharp HUD language: corner
+   brackets, tick borders, mono labels, scan texture.
+   ============================================================ */
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+:root {
+  --line: rgba(92, 240, 255, 0.28);
+  --line-soft: rgba(92, 240, 255, 0.14);
+  --line-strong: rgba(120, 246, 255, 0.62);
+  --accent: #64f4ff;
+  --accent-warm: #64f4ff;
+  --signal: #f4b860;
+  --text: #e7fbff;
+  --text-dim: rgba(214, 248, 255, 0.62);
+  --panel-bg: rgba(2, 12, 16, 0.7);
+  --bracket: 14px;
+}
+
+/* ---- Shell ------------------------------------------------- */
+
 .omegon-web-shell {
   position: relative;
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
-  gap: 18px;
-  min-height: 100vh;
-  padding: 22px;
-  box-sizing: border-box;
+  gap: 16px;
+  height: 100vh;
+  min-width: 0;
+  padding: 20px;
   overflow: hidden;
-  color: #d9fbff;
+  color: var(--text);
   background:
-    radial-gradient(circle at 18% 12%, rgba(0, 229, 255, 0.18), transparent 28%),
-    radial-gradient(circle at 82% 8%, rgba(150, 80, 255, 0.14), transparent 28%),
-    linear-gradient(135deg, #03070d 0%, #07131d 48%, #020409 100%);
+    linear-gradient(rgba(0, 7, 9, 0.55), rgba(0, 6, 9, 0.9)),
+    url("/arwes-background-small.jpg"),
+    linear-gradient(135deg, #010609 0%, #03121a 48%, #010406 100%);
+  background-size: cover, cover, auto;
+  background-position: center;
   font-family: var(--font-ui, "Inter", ui-sans-serif, system-ui, sans-serif);
 }
 
+/* faint scan + grid texture behind everything */
 .omegon-web-bg {
   position: absolute;
   inset: 0;
+  z-index: 0;
   pointer-events: none;
-  opacity: 0.45;
+  opacity: 0.5;
   background-image:
-    linear-gradient(rgba(82, 221, 255, 0.08) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(82, 221, 255, 0.08) 1px, transparent 1px);
-  background-size: 38px 38px;
-  mask-image: radial-gradient(circle at 50% 30%, black, transparent 72%);
+    linear-gradient(rgba(82, 221, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(82, 221, 255, 0.045) 1px, transparent 1px),
+    repeating-linear-gradient(0deg, rgba(255, 255, 255, 0.02) 0 1px, transparent 1px 9px);
+  background-size: 46px 46px, 46px 46px, 100% 9px;
+  mask-image: radial-gradient(circle at 50% 40%, black, transparent 82%);
+}
+
+/* outer HUD frame with targeting corner brackets */
+.hud-frame {
+  position: absolute;
+  inset: 10px;
+  z-index: 2;
+  pointer-events: none;
+  border: 1px solid var(--line-soft);
+}
+
+.hud-frame::before,
+.hud-frame::after {
+  content: "";
+  position: absolute;
+  width: 34px;
+  height: 34px;
+  border: 2px solid var(--accent);
+  opacity: 0.7;
+}
+
+.hud-frame::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.hud-frame::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
 }
 
 .omegon-web-topbar,
-.omegon-web-layout,
-.modal-scrim,
-.settings-drawer {
+.owm-cockpit-layout {
   position: relative;
   z-index: 1;
 }
 
+/* ---- HUD panel base (corner-bracket instrument) ------------ */
+
+.owm-panel {
+  position: relative;
+  min-width: 0;
+  border: 1px solid var(--line);
+  background:
+    linear-gradient(180deg, rgba(0, 22, 26, 0.6), var(--panel-bg)),
+    radial-gradient(circle at 60% 120%, rgba(0, 229, 255, 0.08), transparent 55%);
+}
+
+/* corner brackets drawn as two opposite L marks */
+.owm-panel::before,
+.owm-panel::after {
+  content: "";
+  position: absolute;
+  width: var(--bracket);
+  height: var(--bracket);
+  border: 1px solid var(--line-strong);
+  pointer-events: none;
+}
+
+.owm-panel::before {
+  top: -1px;
+  left: -1px;
+  border-right: none;
+  border-bottom: none;
+}
+
+.owm-panel::after {
+  bottom: -1px;
+  right: -1px;
+  border-left: none;
+  border-top: none;
+}
+
+/* ---- Top bar ----------------------------------------------- */
+
 .omegon-web-topbar {
-  display: flex;
-  align-items: end;
-  justify-content: space-between;
-  gap: 20px;
-  padding: 18px 20px;
-  border: 1px solid rgba(92, 240, 255, 0.34);
-  background: rgba(5, 14, 22, 0.78);
-  box-shadow: 0 0 34px rgba(0, 229, 255, 0.08), inset 0 0 28px rgba(0, 229, 255, 0.04);
-  backdrop-filter: blur(14px);
-}
-
-.eyebrow {
-  color: #64f4ff;
-  font: 700 0.72rem/1 var(--font-mono, ui-monospace, monospace);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.brand-block h1,
-.panel h2,
-.rail-card h3,
-.settings-drawer h2 {
-  margin: 6px 0;
-  color: #f2feff;
-  letter-spacing: -0.03em;
-}
-
-.brand-block omegon-arwes-text {
-  display: block;
-}
-
-.brand-block p,
-.panel p,
-.rail-card p,
-.settings-drawer p {
-  margin: 0;
-  color: rgba(217, 251, 255, 0.72);
-}
-
-.status-strip {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: end;
-  gap: 8px;
-  max-width: 760px;
-}
-
-.status-strip span,
-.status-pill,
-.composer-meta span {
-  border: 1px solid rgba(92, 240, 255, 0.24);
-  border-radius: 999px;
-  padding: 7px 10px;
-  color: rgba(217, 251, 255, 0.84);
-  background: rgba(3, 10, 17, 0.7);
-  font: 600 0.72rem/1 var(--font-mono, ui-monospace, monospace);
-  text-transform: uppercase;
-}
-
-.status-pill[status="waiting"] {
-  border-color: rgba(255, 184, 77, 0.7);
-  color: #ffd08a;
-  box-shadow: 0 0 18px rgba(255, 184, 77, 0.16);
-}
-
-.omegon-web-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 360px;
-  gap: 18px;
-  min-height: 0;
+  grid-template-columns: minmax(280px, 1fr) auto;
+  align-items: center;
+  gap: 24px;
+  min-width: 0;
+  padding: 16px 22px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(0, 9, 13, 0.92), rgba(0, 20, 24, 0.55), rgba(0, 7, 10, 0.88));
 }
 
-.conversation-column,
-.context-rail {
+.omegon-web-topbar::before,
+.omegon-web-topbar::after {
+  content: "";
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border: 1px solid var(--accent);
+  opacity: 0.65;
+  pointer-events: none;
+}
+
+.omegon-web-topbar::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
+.omegon-web-topbar::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
+
+.owm-brand-block { min-width: 0; }
+
+.owm-brand-block h1 {
+  margin: 4px 0 6px;
+  font-size: clamp(1.7rem, 3.2vw, 3rem);
+  line-height: 0.96;
+  letter-spacing: -0.04em;
+  text-transform: uppercase;
+  color: #f3feff;
+  text-shadow: 0 0 16px rgba(0, 232, 255, 0.28);
+  overflow-wrap: anywhere;
+}
+
+.owm-brand-block p {
+  margin: 0;
+  max-width: 64ch;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.owm-eyebrow {
+  color: var(--accent);
+  font: 700 0.68rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.owm-status-strip {
+  display: grid;
+  gap: 7px;
+  justify-items: end;
+  min-width: 0;
+  max-width: 440px;
+}
+
+.owm-status-strip span,
+.owm-status-pill,
+.owm-composer-meta span {
+  max-width: 100%;
+  padding: 6px 11px;
+  border: 1px solid var(--line);
+  background: linear-gradient(90deg, rgba(2, 10, 16, 0.82), rgba(0, 66, 72, 0.28));
+  color: rgba(214, 248, 255, 0.86);
+  font: 700 0.68rem/1.1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owm-status-pill { justify-self: start; }
+.owm-status-pill[status="waiting"] {
+  border-color: rgba(244, 184, 96, 0.6);
+  color: var(--signal);
+}
+
+/* ---- Cockpit grid: instruments | viewport | instruments ---- */
+
+.owm-cockpit-layout {
+  display: grid;
+  grid-template-columns: 262px minmax(0, 1fr) 300px;
+  gap: 16px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* The base Auspex app injects a runtime stylesheet that places
+   .owm-left-rail/.owm-right-rail on named grid lines (grid-column: left/right).
+   Our mock reuses those class names, so pin our own children to explicit
+   numeric tracks with higher specificity to defeat that hijack. */
+.owm-cockpit-layout > .owm-left-rail { grid-column: 1; grid-row: 1; background: none; }
+.owm-cockpit-layout > .owm-conversation-column { grid-column: 2; grid-row: 1; background: none; }
+.owm-cockpit-layout > .owm-right-rail { grid-column: 3; grid-row: 1; background: none; }
+
+/* Base app injects navy/purple-grey backgrounds on the shared
+   .owm-rail-card class name; re-assert the teal HUD panel surface with
+   higher specificity so the side instruments match the center. */
+.owm-cockpit-rail .owm-rail-card {
+  background:
+    linear-gradient(180deg, rgba(0, 22, 26, 0.6), var(--panel-bg)),
+    radial-gradient(circle at 60% 120%, rgba(0, 229, 255, 0.08), transparent 55%);
+}
+
+.owm-cockpit-rail {
   display: flex;
   flex-direction: column;
+  gap: 14px;
   min-height: 0;
-  gap: 18px;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-right: 2px;
+  scrollbar-gutter: stable;
 }
 
-.panel {
-  border: 1px solid rgba(92, 240, 255, 0.28);
-  background: linear-gradient(180deg, rgba(8, 22, 34, 0.88), rgba(5, 11, 18, 0.92));
-  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.38), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+/* ---- Instrument cards -------------------------------------- */
+
+.owm-rail-card {
+  flex: 0 0 auto;
+  padding: 16px 16px 18px;
+  overflow: hidden;
 }
 
-.hero-panel {
-  min-height: 0;
-  flex: 1;
-  padding: 18px;
+.owm-rail-card h3 {
+  margin: 8px 0 0;
+  color: #f2feff;
+  letter-spacing: -0.02em;
+  font-size: 1.15rem;
 }
 
-.panel-heading,
-.composer-actions,
-.composer-meta,
-.event-head,
-.approval-actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
+.owm-rail-card p {
+  margin: 8px 0 0;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
-.transcript-list {
-  display: grid;
-  gap: 12px;
-  margin-top: 18px;
-  overflow: auto;
-  max-height: calc(100vh - 360px);
-  padding-right: 4px;
-}
-
-.transcript-card {
-  padding: 14px;
-  border-left: 3px solid rgba(92, 240, 255, 0.6);
-  background: rgba(2, 8, 14, 0.68);
-}
-
-.transcript-card.operator { border-left-color: #8ef6ff; }
-.transcript-card.assistant { border-left-color: #a98cff; }
-.transcript-card.tool { border-left-color: #6ee7a8; }
-.transcript-card.lifecycle { border-left-color: #64f4ff; }
-.transcript-card.approval { border-left-color: #ffbf66; }
-
-.event-head span {
-  color: rgba(217, 251, 255, 0.54);
-  font: 600 0.72rem/1 var(--font-mono, ui-monospace, monospace);
-  text-transform: uppercase;
-}
-
-.composer-panel {
-  padding: 14px;
-}
-
-.composer-panel textarea {
-  width: 100%;
-  min-height: 92px;
-  margin: 12px 0;
-  resize: vertical;
-  box-sizing: border-box;
-  border: 1px solid rgba(92, 240, 255, 0.3);
-  border-radius: 10px;
-  padding: 12px;
-  color: #eaffff;
-  background: rgba(0, 5, 10, 0.82);
-  outline: none;
-}
-
-button {
-  border: 1px solid rgba(92, 240, 255, 0.34);
-  border-radius: 999px;
-  padding: 8px 13px;
-  color: #dffcff;
-  background: rgba(5, 18, 28, 0.82);
-  cursor: pointer;
-}
-
-button:hover {
-  border-color: rgba(130, 248, 255, 0.82);
-}
-
-omegon-arwes-button {
-  display: inline-block;
-}
-
-.primary-button {
-  color: #001218;
-  border-color: #64f4ff;
-  background: linear-gradient(135deg, #64f4ff, #8ea7ff);
-  font-weight: 800;
-}
-
-.danger-button {
-  border-color: rgba(255, 116, 116, 0.72);
-  color: #ffd3d3;
-}
-
-.ghost-button {
-  background: rgba(3, 10, 17, 0.58);
-}
-
-.rail-card {
-  padding: 16px;
-}
-
-.rail-card dl {
-  display: grid;
-  gap: 10px;
+.owm-rail-card dl {
   margin: 14px 0 0;
 }
 
-.rail-card dl div {
-  display: flex;
-  justify-content: space-between;
+.owm-rail-card dl div {
+  display: grid;
+  grid-template-columns: minmax(60px, max-content) minmax(0, 1fr);
+  align-items: baseline;
   gap: 12px;
-  border-bottom: 1px solid rgba(92, 240, 255, 0.12);
-  padding-bottom: 8px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line-soft);
 }
 
-.rail-card dt {
-  color: rgba(217, 251, 255, 0.56);
+.owm-rail-card dl div:last-child { border-bottom: none; }
+
+.owm-rail-card dt {
+  color: var(--text-dim);
+  font: 600 0.82rem/1 var(--font-mono, ui-monospace, monospace);
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
-.rail-card dd {
+.owm-rail-card dd {
   margin: 0;
+  min-width: 0;
+  text-align: right;
   color: #f2feff;
   font-family: var(--font-mono, ui-monospace, monospace);
+  overflow-wrap: anywhere;
 }
 
-.rail-card ul {
+.owm-rail-card ul {
   margin: 12px 0 0;
-  padding-left: 18px;
-  color: rgba(217, 251, 255, 0.76);
+  padding: 0;
+  list-style: none;
 }
 
-.modal-scrim {
-  position: fixed;
-  inset: 0;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 3, 8, 0.88);
-  backdrop-filter: blur(4px);
+.owm-rail-card li {
+  position: relative;
+  margin: 7px 0;
+  padding-left: 16px;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
 }
 
-.modal-card {
-  width: min(460px, calc(100vw - 40px));
-  padding: 22px;
-  color: #eaffff;
-  background: linear-gradient(180deg, rgba(6, 18, 28, 0.98), rgba(2, 7, 12, 0.99));
-  box-shadow: 0 24px 90px rgba(0, 0, 0, 0.72), 0 0 36px rgba(100, 244, 255, 0.12);
+.owm-rail-card li::before {
+  content: "›";
+  position: absolute;
+  left: 0;
+  color: var(--accent);
 }
 
-.modal-head {
+.owm-compact-card p {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  line-height: 1.55;
+}
+
+/* ---- Center viewport (chat) -------------------------------- */
+
+.owm-conversation-column {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.owm-hero-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 22px 26px 18px;
+  overflow: hidden;
+}
+
+.owm-panel-heading {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 16px;
-  margin-bottom: 16px;
-}
-
-.modal-head h2 {
-  margin: 6px 0 0;
-  font-size: 1.8rem;
-}
-
-.close-button {
   flex: 0 0 auto;
+  padding-bottom: 14px;
+  border-bottom: 1px solid var(--line);
 }
 
-.command-button {
+.owm-panel-heading h2 {
+  margin: 6px 0 0;
+  color: #f3feff;
+  letter-spacing: -0.02em;
+  overflow-wrap: anywhere;
+}
+
+.owm-transcript-list {
+  display: flex;
+  flex-direction: column;
+  gap: 13px;
+  flex: 1 1 auto;
+  min-height: 0;
+  margin-top: 14px;
+  padding-right: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  scrollbar-gutter: stable;
+}
+
+.owm-transcript-card {
+  min-width: 0;
+  padding: 14px 16px;
+  border: 1px solid var(--line-soft);
+  border-left: 3px solid var(--accent);
+  background: linear-gradient(90deg, rgba(0, 36, 40, 0.4), rgba(1, 12, 16, 0.62));
+}
+
+.owm-transcript-card.operator { border-left-color: var(--accent); }
+.owm-transcript-card.assistant { border-left-color: rgba(231, 251, 255, 0.55); }
+.owm-transcript-card.tool { border-left-color: rgba(92, 240, 255, 0.5); }
+.owm-transcript-card.lifecycle { border-left-color: rgba(92, 240, 255, 0.5); }
+.owm-transcript-card.approval { border-left-color: var(--signal); }
+
+.owm-event-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 7px;
+}
+
+.owm-event-head strong {
+  color: #f3feff;
+  font-size: 1rem;
+}
+
+.owm-event-head span {
+  flex: 0 0 auto;
+  color: rgba(214, 248, 255, 0.48);
+  font: 600 0.66rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.owm-transcript-card p {
+  margin: 0;
+  color: rgba(223, 250, 255, 0.86);
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.owm-approval-actions {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+/* ---- Composer (docked) ------------------------------------- */
+
+.owm-composer-panel {
+  flex: 0 0 auto;
+  padding: 14px 16px 16px;
+  overflow: hidden;
+}
+
+.owm-composer-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.owm-composer-panel textarea {
+  width: 100%;
+  min-height: 84px;
+  margin: 12px 0;
+  padding: 12px;
+  resize: vertical;
+  border: 1px solid var(--line-strong);
+  background: rgba(0, 4, 8, 0.86);
+  color: #eaffff;
+  outline: none;
+  font: 500 0.95rem/1.5 var(--font-ui, sans-serif);
+}
+
+.owm-composer-panel textarea:focus { border-color: var(--accent); }
+
+.owm-composer-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: end;
+  gap: 10px;
+}
+
+/* ---- Buttons ----------------------------------------------- */
+
+.omegon-web-shell button {
+  border: 1px solid var(--line-strong);
+  padding: 9px 16px;
+  color: #dffcff;
+  background: linear-gradient(90deg, rgba(4, 16, 24, 0.86), rgba(0, 60, 66, 0.28));
+  cursor: pointer;
+  font: 600 0.84rem/1 var(--font-ui, sans-serif);
+  transition: border-color 0.15s ease, filter 0.15s ease;
+}
+
+.omegon-web-shell button:hover {
+  border-color: rgba(150, 250, 255, 0.9);
+  filter: brightness(1.12);
+}
+
+.owm-ghost-button { background: rgba(2, 9, 15, 0.55); }
+
+.owm-primary-button {
+  color: #041014;
+  border-color: var(--accent);
+  background: linear-gradient(180deg, #7df6ff, #2bc4d6);
+  font-weight: 700;
+}
+
+.owm-danger-button {
+  border-color: rgba(255, 116, 116, 0.7);
+  color: #ffd3d3;
+  background: rgba(34, 7, 9, 0.6);
+}
+
+/* ---- Command palette --------------------------------------- */
+
+.owm-modal-scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 30;
+  display: grid;
+  place-items: center;
+  background: rgba(0, 3, 7, 0.82);
+  backdrop-filter: blur(5px);
+}
+
+.owm-modal-card {
+  width: min(460px, calc(100vw - 40px));
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(5, 17, 26, 0.98), rgba(1, 6, 11, 0.99));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+}
+
+.owm-modal-head {
+  display: flex;
+  align-items: start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 14px;
+}
+
+.owm-modal-head h2 {
+  margin: 6px 0 0;
+  font-size: 1.55rem;
+  color: #f3feff;
+}
+
+.owm-close-button { flex: 0 0 auto; }
+
+.owm-command-button {
   display: block;
   width: 100%;
-  margin-top: 10px;
+  margin-top: 9px;
   padding: 12px 16px;
   text-align: left;
   color: #f2feff;
-  background: rgba(0, 18, 28, 0.96);
+  background: rgba(0, 16, 26, 0.94);
+  font-family: var(--font-mono, ui-monospace, monospace);
 }
 
-body:has(.modal-scrim) .omegon-web-topbar,
-body:has(.modal-scrim) .omegon-web-layout {
-  filter: brightness(0.72);
+body:has(.owm-modal-scrim) .omegon-web-topbar,
+body:has(.owm-modal-scrim) .owm-cockpit-layout {
+  filter: brightness(0.7);
 }
 
-.settings-drawer {
+/* ---- Settings drawer --------------------------------------- */
+
+.owm-settings-drawer {
   position: fixed;
   top: 0;
   right: 0;
-  width: min(380px, 92vw);
+  z-index: 30;
+  width: min(400px, 92vw);
   height: 100vh;
   padding: 24px;
-  box-sizing: border-box;
-  border-left: 1px solid rgba(92, 240, 255, 0.34);
-  background: rgba(4, 12, 20, 0.96);
-  box-shadow: -22px 0 60px rgba(0, 0, 0, 0.42);
+  border-left: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(2, 16, 22, 0.98), rgba(0, 6, 11, 0.99));
+  box-shadow: -22px 0 60px rgba(0, 0, 0, 0.5);
 }
 
-@media (max-width: 980px) {
-  .omegon-web-topbar,
-  .omegon-web-layout {
-    grid-template-columns: 1fr;
-  }
+.owm-settings-drawer h2 { margin: 16px 0 8px; color: #f3feff; }
+.owm-settings-drawer p { margin: 0; color: var(--text-dim); overflow-wrap: anywhere; }
 
-  .omegon-web-topbar {
-    align-items: start;
-    flex-direction: column;
-  }
+/* ---- Responsive -------------------------------------------- */
 
-  .status-strip {
-    justify-content: start;
-  }
+@media (max-width: 1180px) {
+  .owm-cockpit-layout { grid-template-columns: 240px minmax(0, 1fr); }
+  .owm-cockpit-layout > .owm-conversation-column { grid-column: 2; }
+  .owm-right-rail { display: none; }
+}
+
+@media (max-width: 900px) {
+  .omegon-web-shell { height: auto; min-height: 100vh; overflow: auto; padding: 14px; }
+  .hud-frame { display: none; }
+  .omegon-web-topbar { grid-template-columns: 1fr; }
+  .owm-status-strip { justify-items: start; max-width: 100%; }
+  .owm-cockpit-layout { grid-template-columns: 1fr; overflow: visible; }
+  .owm-cockpit-layout > .owm-left-rail { grid-column: 1; grid-row: auto; order: 2; }
+  .owm-cockpit-layout > .owm-conversation-column { grid-column: 1; grid-row: auto; order: 1; overflow: visible; }
+  .owm-cockpit-rail,
+  .owm-transcript-list,
+  .owm-hero-panel { overflow: visible; }
 }

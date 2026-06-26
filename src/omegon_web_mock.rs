@@ -126,103 +126,27 @@ pub fn OmegonWebMockApp() -> Element {
     };
 
     rsx! {
-        omegon-arwes-app-shell { class: "omegon-web-shell",
-            omegon-arwes-bg { class: "omegon-web-bg" }
+        div { class: "omegon-web-shell",
+            div { class: "omegon-web-bg" }
+            div { class: "hud-frame" }
             header { class: "omegon-web-topbar",
-                div { class: "brand-block",
-                    div { class: "eyebrow", "OMEGON WEB" }
-                    omegon-arwes-text { h1 { "{surface.launch.title}" } }
+                div { class: "owm-brand-block",
+                    div { class: "owm-eyebrow", "OMEGON WEB" }
+                    h1 { "{surface.launch.title}" }
                     p { "{surface.launch.subtitle}" }
                 }
-                div { class: "status-strip",
-                    omegon-arwes-status-pill { class: "status-pill", status: status, "{status}" }
+                div { class: "owm-status-strip",
+                    omegon-arwes-status-pill { class: "owm-status-pill", status: status, "{status}" }
                     span { "workspace {surface.runtime.workspace}" }
                     span { "model {surface.runtime.model}" }
                     span { "transport {surface.runtime.transport}" }
                 }
             }
 
-            main { class: "omegon-web-layout",
-                section { class: "conversation-column",
-                    omegon-arwes-panel { class: "panel hero-panel", variant: "primary",
-                        div { class: "panel-heading",
-                            div {
-                                div { class: "eyebrow", "CURRENT TURN" }
-                                h2 { "Single-agent transcript" }
-                            }
-                            button {
-                                class: "ghost-button",
-                                onclick: move |_| {
-                                    let is_open = *palette_open.read();
-                                    palette_open.set(!is_open);
-                                },
-                                "Command palette"
-                            }
-                        }
-                        div { class: "transcript-list",
-                            for event in surface.transcript {
-                                article { class: "transcript-card {event.role}",
-                                    div { class: "event-head",
-                                        strong { "{event.label}" }
-                                        span { "{event.meta}" }
-                                    }
-                                    p { "{event.body}" }
-                                    if event.role == "approval" {
-                                        div { class: "approval-actions",
-                                            omegon-arwes-button {
-                                                button {
-                                                    class: "danger-button",
-                                                    onclick: move |_| approval_state.set("denied"),
-                                                    "Deny"
-                                                }
-                                            }
-                                            omegon-arwes-button {
-                                                button {
-                                                    class: "primary-button",
-                                                    onclick: move |_| approval_state.set("approved"),
-                                                    "Approve"
-                                                }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                        }
-                    }
-
-                    omegon-arwes-panel { class: "panel composer-panel", variant: "composer",
-                        div { class: "composer-meta",
-                            span { "queue mode: {surface.composer.queue_mode}" }
-                            span { "sent: {sent_count}" }
-                        }
-                        textarea {
-                            value: "{composer}",
-                            oninput: move |event| composer.set(event.value()),
-                        }
-                        div { class: "composer-actions",
-                            button {
-                                class: "ghost-button",
-                                onclick: move |_| settings_open.set(true),
-                                "Settings"
-                            }
-                            button { class: "ghost-button", "Attach" }
-                            omegon-arwes-button {
-                                button {
-                                    class: "primary-button",
-                                    onclick: move |_| {
-                                        let next_count = *sent_count.read() + 1;
-                                        sent_count.set(next_count);
-                                    },
-                                    "Send"
-                                }
-                            }
-                        }
-                    }
-                }
-
-                aside { class: "context-rail",
-                    omegon-arwes-panel { class: "panel rail-card", variant: "runtime",
-                        div { class: "eyebrow", "RUNTIME" }
+            main { class: "owm-cockpit-layout",
+                aside { class: "owm-cockpit-rail owm-left-rail",
+                    section { class: "owm-panel owm-rail-card",
+                        div { class: "owm-eyebrow", "RUNTIME" }
                         h3 { "{surface.runtime.agent_id}" }
                         dl {
                             div { dt { "State" } dd { "{surface.runtime.state}" } }
@@ -230,8 +154,86 @@ pub fn OmegonWebMockApp() -> Element {
                             div { dt { "Tools" } dd { "{surface.runtime.tool_count} available" } }
                         }
                     }
-                    omegon-arwes-panel { class: "panel rail-card", variant: "workbench",
-                        div { class: "eyebrow", "WORKBENCH" }
+                    section { class: "owm-panel owm-rail-card owm-compact-card",
+                        div { class: "owm-eyebrow", "TRANSPORT" }
+                        p { "{surface.runtime.transport}" }
+                    }
+                }
+
+                section { class: "owm-conversation-column",
+                    section { class: "owm-panel owm-hero-panel",
+                        div { class: "owm-panel-heading",
+                            div {
+                                div { class: "owm-eyebrow", "CURRENT TURN" }
+                                h2 { "Single-agent transcript" }
+                            }
+                            button {
+                                class: "owm-ghost-button",
+                                onclick: move |_| {
+                                    let is_open = *palette_open.read();
+                                    palette_open.set(!is_open);
+                                },
+                                "Command palette"
+                            }
+                        }
+                        div { class: "owm-transcript-list",
+                            for event in surface.transcript {
+                                article { class: "owm-transcript-card {event.role}",
+                                    div { class: "owm-event-head",
+                                        strong { "{event.label}" }
+                                        span { "{event.meta}" }
+                                    }
+                                    p { "{event.body}" }
+                                    if event.role == "approval" {
+                                        div { class: "owm-approval-actions",
+                                            button {
+                                                    class: "owm-danger-button",
+                                                    onclick: move |_| approval_state.set("denied"),
+                                                    "Deny"
+                                                }
+                                            button {
+                                                    class: "owm-primary-button",
+                                                    onclick: move |_| approval_state.set("approved"),
+                                                    "Approve"
+                                                }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    section { class: "owm-panel owm-composer-panel",
+                        div { class: "owm-composer-meta",
+                            span { "queue mode: {surface.composer.queue_mode}" }
+                            span { "sent: {sent_count}" }
+                        }
+                        textarea {
+                            value: "{composer}",
+                            oninput: move |event| composer.set(event.value()),
+                        }
+                        div { class: "owm-composer-actions",
+                            button {
+                                class: "owm-ghost-button",
+                                onclick: move |_| settings_open.set(true),
+                                "Settings"
+                            }
+                            button { class: "owm-ghost-button", "Attach" }
+                            button {
+                                    class: "owm-primary-button",
+                                    onclick: move |_| {
+                                        let next_count = *sent_count.read() + 1;
+                                        sent_count.set(next_count);
+                                    },
+                                    "Send"
+                                }
+                        }
+                    }
+                }
+
+                aside { class: "owm-cockpit-rail owm-right-rail",
+                    section { class: "owm-panel owm-rail-card",
+                        div { class: "owm-eyebrow", "WORKBENCH" }
                         h3 { "Omegon Web mock" }
                         ul {
                             for item in surface.workbench {
@@ -239,30 +241,30 @@ pub fn OmegonWebMockApp() -> Element {
                             }
                         }
                     }
-                    omegon-arwes-panel { class: "panel rail-card", variant: "memory",
-                        div { class: "eyebrow", "MEMORY / CONTEXT" }
+                    section { class: "owm-panel owm-rail-card owm-compact-card",
+                        div { class: "owm-eyebrow", "MEMORY / CONTEXT" }
                         p { "{surface.memory_note}" }
                     }
                 }
             }
 
             if *palette_open.read() {
-                div { class: "modal-scrim", onclick: move |_| palette_open.set(false),
-                    omegon-arwes-panel { class: "modal-card", variant: "modal", onclick: move |event| event.stop_propagation(),
-                        div { class: "modal-head",
+                div { class: "owm-modal-scrim", onclick: move |_| palette_open.set(false),
+                    section { class: "owm-modal-card", onclick: move |event| event.stop_propagation(),
+                        div { class: "owm-modal-head",
                             div {
-                                div { class: "eyebrow", "COMMANDS" }
+                                div { class: "owm-eyebrow", "COMMANDS" }
                                 h2 { "Command palette" }
                             }
                             button {
-                                class: "ghost-button close-button",
+                                class: "owm-ghost-button owm-close-button",
                                 onclick: move |_| palette_open.set(false),
                                 "Close"
                             }
                         }
                         for command in surface.commands {
                             button {
-                                class: "command-button",
+                                class: "owm-command-button",
                                 onclick: move |_| palette_open.set(false),
                                 "{command}"
                             }
@@ -272,8 +274,8 @@ pub fn OmegonWebMockApp() -> Element {
             }
 
             if *settings_open.read() {
-                div { class: "settings-drawer",
-                    button { class: "ghost-button", onclick: move |_| settings_open.set(false), "Close" }
+                div { class: "owm-settings-drawer",
+                    button { class: "owm-ghost-button", onclick: move |_| settings_open.set(false), "Close" }
                     h2 { "Settings" }
                     p { "Policy owner: {surface.launch.policy_owner}. Auspex may proxy this surface but does not own the session state." }
                 }
