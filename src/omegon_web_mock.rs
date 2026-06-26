@@ -1,16 +1,23 @@
 use dioxus::prelude::*;
 
-#[derive(Clone, Copy)]
+// ============================================================
+// Surface data model — contract-shaped mock of the daemon's
+// /api/web/surfaces snapshot. Components below render these.
+// ============================================================
+
+#[derive(Clone, Copy, PartialEq)]
 struct WebSurfaceSnapshot {
     runtime: RuntimeSurface,
     launch: LaunchSurface,
     transcript: &'static [TranscriptEvent],
+    objectives: &'static [ObjectiveItem],
+    context_spark: SparklineSpec,
     memory_note: &'static str,
     commands: &'static [&'static str],
     composer: ComposerSurface,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct RuntimeSurface {
     agent_id: &'static str,
     state: &'static str,
@@ -18,29 +25,85 @@ struct RuntimeSurface {
     model: &'static str,
     context_window: &'static str,
     tool_count: u16,
+    tool_online: u16,
+    tool_sockets: u16,
     transport: &'static str,
+    link_status: &'static str,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct LaunchSurface {
     title: &'static str,
     subtitle: &'static str,
     policy_owner: &'static str,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct ComposerSurface {
     queue_mode: &'static str,
     initial_prompt: &'static str,
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, PartialEq)]
 struct TranscriptEvent {
     role: &'static str,
     label: &'static str,
     body: &'static str,
     meta: &'static str,
 }
+
+#[derive(Clone, Copy, PartialEq)]
+struct ObjectiveItem {
+    state_class: &'static str,
+    glyph: &'static str,
+    label: &'static str,
+    status: &'static str,
+    progress: &'static str,
+}
+
+#[derive(Clone, Copy, PartialEq)]
+struct SparklineSpec {
+    label: &'static str,
+    bars: &'static [&'static str],
+}
+
+// ---- Mock data ---------------------------------------------
+
+const CONTEXT_SPARK: SparklineSpec = SparklineSpec {
+    label: "Context load",
+    bars: &["35%", "42%", "52%", "64%", "58%", "72%", "68%"],
+};
+
+const OBJECTIVES: &[ObjectiveItem] = &[
+    ObjectiveItem {
+        state_class: "complete",
+        glyph: "✓",
+        label: "surface snapshot contract",
+        status: "4/4",
+        progress: "100%",
+    },
+    ObjectiveItem {
+        state_class: "active",
+        glyph: "›",
+        label: "UI action transport",
+        status: "2/5",
+        progress: "42%",
+    },
+    ObjectiveItem {
+        state_class: "gated",
+        glyph: "!",
+        label: "approval and tool cards",
+        status: "gated",
+        progress: "18%",
+    },
+    ObjectiveItem {
+        state_class: "queued",
+        glyph: "·",
+        label: "Auspex launch context",
+        status: "queued",
+        progress: "8%",
+    },
+];
 
 const TRANSCRIPT: &[TranscriptEvent] = &[
     TranscriptEvent {
@@ -85,7 +148,10 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         model: "openai-codex:gpt-5.5",
         context_window: "82k / 128k",
         tool_count: 17,
+        tool_online: 8,
+        tool_sockets: 12,
         transport: "ws://daemon/api/web/surfaces/stream",
+        link_status: "stream nominal",
     },
     launch: LaunchSurface {
         title: "Persistent agent chat",
@@ -93,6 +159,8 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         policy_owner: "local daemon",
     },
     transcript: TRANSCRIPT,
+    objectives: OBJECTIVES,
+    context_spark: CONTEXT_SPARK,
     memory_note: "The web app renders semantic Omegon surfaces instead of porting terminal widgets.",
     commands: COMMANDS,
     composer: ComposerSurface {
@@ -101,14 +169,310 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     },
 };
 
+// ============================================================
+// Reusable primitives — the shared HUD vocabulary.
+// ============================================================
+
+/// Tick + label + extending-rule section header.
+#[component]
+fn Eyebrow(label: &'static str) -> Element {
+    rsx! { div { class: "owm-eyebrow", "{label}" } }
+}
+
+/// Amber signal chip for live status words.
+#[component]
+fn StateChip(label: &'static str) -> Element {
+    rsx! { div { class: "owm-state-chip", "{label}" } }
+}
+
+/// Faceted instrument sigil (daemon core / codex).
+#[component]
+fn Sigil(class: &'static str) -> Element {
+    rsx! { div { class: "{class}" } }
+}
+
+/// Label + amber value row used above meters.
+#[component]
+fn MeterHead(label: &'static str, value: String) -> Element {
+    rsx! {
+        div { class: "owm-meter-head",
+            span { "{label}" }
+            strong { "{value}" }
+        }
+    }
+}
+
+/// Segmented capacity gauge.
+#[component]
+fn SegmentMeter() -> Element {
+    rsx! { div { class: "owm-segment-meter", aria_label: "capacity" } }
+}
+
+/// Slotted socket grid; `online` slots are lit.
+#[component]
+fn SocketGrid(online: u16, total: u16) -> Element {
+    rsx! {
+        div { class: "owm-socket-grid",
+            for index in 0..total {
+                i { class: if index < online { "online" } else { "idle" } }
+            }
+        }
+    }
+}
+
+/// Unboxed micro bar-chart.
+#[component]
+fn Sparkline(spec: SparklineSpec) -> Element {
+    rsx! {
+        div { class: "owm-sparkline",
+            span { "{spec.label}" }
+            div { class: "owm-spark-bars",
+                for bar in spec.bars.iter() {
+                    i { style: "--h: {bar}" }
+                }
+            }
+        }
+    }
+}
+
+/// One objective row: glyph, label, status, progress strip.
+#[component]
+fn ObjectiveRow(item: ObjectiveItem) -> Element {
+    rsx! {
+        div { class: "owm-objective-row {item.state_class}",
+            span { "{item.glyph}" }
+            strong { "{item.label}" }
+            em { "{item.status}" }
+            i { style: "--p: {item.progress}" }
+        }
+    }
+}
+
+/// Container for a sidebar instrument: panel + eyebrow + body.
+#[component]
+fn InstrumentCard(modifier: &'static str, eyebrow: &'static str, children: Element) -> Element {
+    rsx! {
+        section { class: "owm-panel owm-rail-card {modifier}",
+            Eyebrow { label: eyebrow }
+            {children}
+        }
+    }
+}
+
+// ============================================================
+// Composed surfaces.
+// ============================================================
+
+#[component]
+fn TopBar(launch: LaunchSurface, runtime: RuntimeSurface, status: &'static str) -> Element {
+    rsx! {
+        header { class: "omegon-web-topbar",
+            div { class: "owm-brand-block",
+                Eyebrow { label: "OMEGON WEB" }
+                h1 { "{launch.title}" }
+                p { "{launch.subtitle}" }
+            }
+            div { class: "owm-status-strip",
+                omegon-arwes-status-pill { class: "owm-status-pill", status, "{status}" }
+                span { "workspace {runtime.workspace}" }
+                span { "model {runtime.model}" }
+                span { "transport {runtime.transport}" }
+            }
+        }
+    }
+}
+
+#[component]
+fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-daemon-core", eyebrow: "DAEMON CORE",
+            div { class: "owm-core-readout",
+                Sigil { class: "owm-core-glyph" }
+                div {
+                    h3 { "{runtime.agent_id}" }
+                    StateChip { label: runtime.state }
+                }
+            }
+            div { class: "owm-meter-block",
+                MeterHead { label: "Context window", value: runtime.context_window.to_string() }
+                SegmentMeter {}
+            }
+            div { class: "owm-toolbelt",
+                MeterHead { label: "Tool sockets", value: format!("{} online", runtime.tool_count) }
+                SocketGrid { online: runtime.tool_online, total: runtime.tool_sockets }
+            }
+            div { class: "owm-spark-grid",
+                Sparkline { spec: context_spark }
+            }
+        }
+    }
+}
+
+#[component]
+fn LinkCard(runtime: RuntimeSurface) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-link-card", eyebrow: "LINK",
+            div { class: "owm-link-conduit",
+                span {}
+                span {}
+                span {}
+            }
+            p { "{runtime.transport}" }
+            StateChip { label: runtime.link_status }
+        }
+    }
+}
+
+#[component]
+fn ObjectivesCard(objectives: &'static [ObjectiveItem]) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-objectives-card", eyebrow: "OBJECTIVES",
+            div { class: "owm-objective-stack",
+                for item in objectives.iter() {
+                    ObjectiveRow { item: *item }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CodexCard(note: &'static str) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-codex-card", eyebrow: "CODEX",
+            div { class: "owm-codex-core",
+                Sigil { class: "owm-codex-glyph" }
+                div {
+                    h3 { "semantic surfaces" }
+                    p { "{note}" }
+                }
+            }
+            div { class: "owm-archive-meter" }
+        }
+    }
+}
+
+#[component]
+fn TranscriptEntry(
+    event: TranscriptEvent,
+    on_deny: EventHandler<()>,
+    on_approve: EventHandler<()>,
+) -> Element {
+    rsx! {
+        article { class: "owm-transcript-card {event.role}",
+            div { class: "owm-event-head",
+                strong { "{event.label}" }
+                span { "{event.meta}" }
+            }
+            p { "{event.body}" }
+            if event.role == "approval" {
+                div { class: "owm-approval-actions",
+                    button {
+                        class: "owm-danger-button",
+                        onclick: move |_| on_deny.call(()),
+                        "Deny"
+                    }
+                    button {
+                        class: "owm-primary-button",
+                        onclick: move |_| on_approve.call(()),
+                        "Approve"
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn Composer(
+    queue_mode: &'static str,
+    composer: Signal<String>,
+    sent_count: Signal<u32>,
+    on_settings: EventHandler<()>,
+) -> Element {
+    let mut composer = composer;
+    let mut sent_count = sent_count;
+    rsx! {
+        section { class: "owm-panel owm-composer-panel",
+            div { class: "owm-composer-meta",
+                span { "queue mode: {queue_mode}" }
+                span { "sent: {sent_count}" }
+            }
+            textarea {
+                value: "{composer}",
+                oninput: move |event| composer.set(event.value()),
+            }
+            div { class: "owm-composer-actions",
+                button {
+                    class: "owm-ghost-button",
+                    onclick: move |_| on_settings.call(()),
+                    "Settings"
+                }
+                button { class: "owm-ghost-button", "Attach" }
+                button {
+                    class: "owm-primary-button",
+                    onclick: move |_| {
+                        let next = *sent_count.read() + 1;
+                        sent_count.set(next);
+                    },
+                    "Send"
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn CommandPalette(commands: &'static [&'static str], on_close: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "owm-modal-scrim", onclick: move |_| on_close.call(()),
+            section { class: "owm-modal-card", onclick: move |event| event.stop_propagation(),
+                div { class: "owm-modal-head",
+                    div {
+                        Eyebrow { label: "COMMANDS" }
+                        h2 { "Command palette" }
+                    }
+                    button {
+                        class: "owm-ghost-button owm-close-button",
+                        onclick: move |_| on_close.call(()),
+                        "Close"
+                    }
+                }
+                for command in commands.iter() {
+                    button {
+                        class: "owm-command-button",
+                        onclick: move |_| on_close.call(()),
+                        "{command}"
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[component]
+fn SettingsDrawer(policy_owner: &'static str, on_close: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "owm-settings-drawer",
+            button { class: "owm-ghost-button", onclick: move |_| on_close.call(()), "Close" }
+            h2 { "Settings" }
+            p { "Policy owner: {policy_owner}. Auspex may proxy this surface but does not own the session state." }
+        }
+    }
+}
+
+// ============================================================
+// App root — wires state and composes the surfaces.
+// ============================================================
+
 #[component]
 pub fn OmegonWebMockApp() -> Element {
     let surface = MOCK_SURFACE;
-    let mut composer = use_signal(|| String::from(surface.composer.initial_prompt));
+    let composer = use_signal(|| String::from(surface.composer.initial_prompt));
     let mut palette_open = use_signal(|| false);
     let mut settings_open = use_signal(|| false);
     let mut approval_state = use_signal(|| "pending");
-    let mut sent_count = use_signal(|| 0_u32);
+    let sent_count = use_signal(|| 0_u32);
 
     let status = if *approval_state.read() == "pending" {
         "waiting"
@@ -120,81 +484,20 @@ pub fn OmegonWebMockApp() -> Element {
         div { class: "omegon-web-shell",
             div { class: "omegon-web-bg" }
             div { class: "hud-frame" }
-            header { class: "omegon-web-topbar",
-                div { class: "owm-brand-block",
-                    div { class: "owm-eyebrow", "OMEGON WEB" }
-                    h1 { "{surface.launch.title}" }
-                    p { "{surface.launch.subtitle}" }
-                }
-                div { class: "owm-status-strip",
-                    omegon-arwes-status-pill { class: "owm-status-pill", status: status, "{status}" }
-                    span { "workspace {surface.runtime.workspace}" }
-                    span { "model {surface.runtime.model}" }
-                    span { "transport {surface.runtime.transport}" }
-                }
-            }
+
+            TopBar { launch: surface.launch, runtime: surface.runtime, status }
 
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
-                    section { class: "owm-panel owm-rail-card owm-daemon-core",
-                        div { class: "owm-eyebrow", "DAEMON CORE" }
-                        div { class: "owm-core-readout",
-                            div { class: "owm-core-glyph", aria_label: "daemon core" }
-                            div {
-                                h3 { "{surface.runtime.agent_id}" }
-                                div { class: "owm-state-chip", "{surface.runtime.state}" }
-                            }
-                        }
-                        div { class: "owm-meter-block",
-                            div { class: "owm-meter-head",
-                                span { "Context window" }
-                                strong { "{surface.runtime.context_window}" }
-                            }
-                            div { class: "owm-segment-meter", aria_label: "context capacity" }
-                        }
-                        div { class: "owm-toolbelt",
-                            div { class: "owm-meter-head",
-                                span { "Tool sockets" }
-                                strong { "{surface.runtime.tool_count} online" }
-                            }
-                            div { class: "owm-socket-grid",
-                                for index in 0..12 {
-                                    i { class: if index < 8 { "online" } else { "idle" } }
-                                }
-                            }
-                        }
-                        div { class: "owm-spark-grid",
-                            div { class: "owm-sparkline",
-                                span { "Context load" }
-                                div { class: "owm-spark-bars",
-                                    i { style: "--h: 35%" }
-                                    i { style: "--h: 42%" }
-                                    i { style: "--h: 52%" }
-                                    i { style: "--h: 64%" }
-                                    i { style: "--h: 58%" }
-                                    i { style: "--h: 72%" }
-                                    i { style: "--h: 68%" }
-                                }
-                            }
-                        }
-                    }
-                    section { class: "owm-panel owm-rail-card owm-link-card",
-                        div { class: "owm-eyebrow", "LINK" }
-                        div { class: "owm-link-conduit",
-                            span {}
-                            span {}
-                            span {}
-                        }
-                        p { "{surface.runtime.transport}" }
-                        div { class: "owm-state-chip", "stream nominal" }
-                    }
+                    DaemonCoreCard { runtime: surface.runtime, context_spark: surface.context_spark }
+                    LinkCard { runtime: surface.runtime }
                 }
 
                 section { class: "owm-conversation-column",
                     section { class: "owm-panel owm-hero-panel",
                         div { class: "owm-panel-heading",
                             div {
-                                div { class: "owm-eyebrow", "CURRENT TURN" }
+                                Eyebrow { label: "CURRENT TURN" }
                                 h2 { "Single-agent transcript" }
                             }
                             button {
@@ -207,134 +510,41 @@ pub fn OmegonWebMockApp() -> Element {
                             }
                         }
                         div { class: "owm-transcript-list",
-                            for event in surface.transcript {
-                                article { class: "owm-transcript-card {event.role}",
-                                    div { class: "owm-event-head",
-                                        strong { "{event.label}" }
-                                        span { "{event.meta}" }
-                                    }
-                                    p { "{event.body}" }
-                                    if event.role == "approval" {
-                                        div { class: "owm-approval-actions",
-                                            button {
-                                                    class: "owm-danger-button",
-                                                    onclick: move |_| approval_state.set("denied"),
-                                                    "Deny"
-                                                }
-                                            button {
-                                                    class: "owm-primary-button",
-                                                    onclick: move |_| approval_state.set("approved"),
-                                                    "Approve"
-                                                }
-                                        }
-                                    }
+                            for event in surface.transcript.iter() {
+                                TranscriptEntry {
+                                    event: *event,
+                                    on_deny: move |_| approval_state.set("denied"),
+                                    on_approve: move |_| approval_state.set("approved"),
                                 }
                             }
                         }
                     }
 
-                    section { class: "owm-panel owm-composer-panel",
-                        div { class: "owm-composer-meta",
-                            span { "queue mode: {surface.composer.queue_mode}" }
-                            span { "sent: {sent_count}" }
-                        }
-                        textarea {
-                            value: "{composer}",
-                            oninput: move |event| composer.set(event.value()),
-                        }
-                        div { class: "owm-composer-actions",
-                            button {
-                                class: "owm-ghost-button",
-                                onclick: move |_| settings_open.set(true),
-                                "Settings"
-                            }
-                            button { class: "owm-ghost-button", "Attach" }
-                            button {
-                                    class: "owm-primary-button",
-                                    onclick: move |_| {
-                                        let next_count = *sent_count.read() + 1;
-                                        sent_count.set(next_count);
-                                    },
-                                    "Send"
-                                }
-                        }
+                    Composer {
+                        queue_mode: surface.composer.queue_mode,
+                        composer,
+                        sent_count,
+                        on_settings: move |_| settings_open.set(true),
                     }
                 }
 
                 aside { class: "owm-cockpit-rail owm-right-rail",
-                    section { class: "owm-panel owm-rail-card owm-objectives-card",
-                        div { class: "owm-eyebrow", "OBJECTIVES" }
-                        div { class: "owm-objective-stack",
-                            div { class: "owm-objective-row complete",
-                                span { "✓" }
-                                strong { "surface snapshot contract" }
-                                em { "4/4" }
-                                i { style: "--p: 100%" }
-                            }
-                            div { class: "owm-objective-row active",
-                                span { "›" }
-                                strong { "UI action transport" }
-                                em { "2/5" }
-                                i { style: "--p: 42%" }
-                            }
-                            div { class: "owm-objective-row gated",
-                                span { "!" }
-                                strong { "approval and tool cards" }
-                                em { "gated" }
-                                i { style: "--p: 18%" }
-                            }
-                            div { class: "owm-objective-row queued",
-                                span { "·" }
-                                strong { "Auspex launch context" }
-                                em { "queued" }
-                                i { style: "--p: 8%" }
-                            }
-                        }
-                    }
-                    section { class: "owm-panel owm-rail-card owm-codex-card",
-                        div { class: "owm-eyebrow", "CODEX" }
-                        div { class: "owm-codex-core",
-                            div { class: "owm-codex-glyph" }
-                            div {
-                                h3 { "semantic surfaces" }
-                                p { "{surface.memory_note}" }
-                            }
-                        }
-                        div { class: "owm-archive-meter" }
-                    }
+                    ObjectivesCard { objectives: surface.objectives }
+                    CodexCard { note: surface.memory_note }
                 }
             }
 
             if *palette_open.read() {
-                div { class: "owm-modal-scrim", onclick: move |_| palette_open.set(false),
-                    section { class: "owm-modal-card", onclick: move |event| event.stop_propagation(),
-                        div { class: "owm-modal-head",
-                            div {
-                                div { class: "owm-eyebrow", "COMMANDS" }
-                                h2 { "Command palette" }
-                            }
-                            button {
-                                class: "owm-ghost-button owm-close-button",
-                                onclick: move |_| palette_open.set(false),
-                                "Close"
-                            }
-                        }
-                        for command in surface.commands {
-                            button {
-                                class: "owm-command-button",
-                                onclick: move |_| palette_open.set(false),
-                                "{command}"
-                            }
-                        }
-                    }
+                CommandPalette {
+                    commands: surface.commands,
+                    on_close: move |_| palette_open.set(false),
                 }
             }
 
             if *settings_open.read() {
-                div { class: "owm-settings-drawer",
-                    button { class: "owm-ghost-button", onclick: move |_| settings_open.set(false), "Close" }
-                    h2 { "Settings" }
-                    p { "Policy owner: {surface.launch.policy_owner}. Auspex may proxy this surface but does not own the session state." }
+                SettingsDrawer {
+                    policy_owner: surface.launch.policy_owner,
+                    on_close: move |_| settings_open.set(false),
                 }
             }
         }
