@@ -747,6 +747,178 @@
   color: var(--signal);
 }
 
+/* ---- Plan instrument head + intent tag --------------------- */
+
+.owm-plan-head,
+.owm-op-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.owm-plan-mode,
+.owm-op-kind {
+  color: var(--accent);
+  font: 700 0.62rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.owm-plan-count {
+  color: var(--text-bright);
+  font: 700 0.78rem/1 var(--font-mono, ui-monospace, monospace);
+}
+
+/* intent tag sits where the count was; muted, machine-styled */
+.owm-objective-row em.owm-plan-intent {
+  color: var(--text-faint);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+}
+.owm-objective-row.active em.owm-plan-intent { color: var(--accent); }
+
+/* ---- Operations instrument (delegate / cleave / background) - */
+
+.owm-op-counts {
+  display: flex;
+  gap: 10px;
+  font: 700 0.62rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.04em;
+}
+.owm-op-running { color: var(--accent); }
+.owm-op-done { color: var(--text-dim); }
+.owm-op-failed { color: var(--text-faint); }
+
+.owm-op-stack {
+  display: grid;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.owm-op-row {
+  position: relative;
+  display: grid;
+  gap: 5px;
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
+.owm-op-row-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.owm-op-row-head strong {
+  min-width: 0;
+  color: var(--text);
+  font: 700 0.8rem/1 var(--font-mono, ui-monospace, monospace);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.owm-op-row.running .owm-op-row-head strong { color: var(--text-bright); }
+
+.owm-op-row-head em {
+  flex: 0 0 auto;
+  color: var(--text-dim);
+  font: 700 0.68rem/1 var(--font-mono, ui-monospace, monospace);
+  font-style: normal;
+}
+
+.owm-op-activity {
+  color: var(--text-dim);
+  font-size: 0.76rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owm-op-bar {
+  height: 3px;
+  background: linear-gradient(90deg, rgba(100, 244, 255, 0.6) var(--p), rgba(100, 244, 255, 0.08) var(--p));
+}
+.owm-op-row.done .owm-op-bar {
+  background: linear-gradient(90deg, rgba(120, 180, 200, 0.4) var(--p), rgba(100, 244, 255, 0.06) var(--p));
+}
+
+/* mirror operations rows to the right edge like the rest of the rail */
+.owm-right-rail .owm-op-row-head { flex-direction: row-reverse; }
+.owm-right-rail .owm-op-activity { text-align: right; }
+.owm-right-rail .owm-op-bar {
+  background: linear-gradient(270deg, rgba(100, 244, 255, 0.6) var(--p), rgba(100, 244, 255, 0.08) var(--p));
+}
+.owm-right-rail .owm-op-head { flex-direction: row-reverse; }
+.owm-right-rail .owm-plan-head { flex-direction: row-reverse; }
+
+/* ---- Collapsed tool-call row ------------------------------- */
+
+.owm-tool-row {
+  display: grid;
+  gap: 6px;
+  width: 100%;
+  text-align: left;
+  cursor: pointer;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 14, 20, 0.5);
+  transition: border-color 0.12s ease, background 0.12s ease;
+}
+.owm-tool-row:hover {
+  border-color: var(--line-strong);
+  background: rgba(0, 22, 30, 0.66);
+}
+
+.owm-tool-summary {
+  color: var(--text-dim);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owm-tool-expand {
+  justify-self: end;
+  color: var(--accent);
+  font: 700 0.62rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* ---- Tool-call expansion modal ----------------------------- */
+
+.owm-modal {
+  width: min(640px, calc(100vw - 40px));
+  padding: 22px;
+  border: 1px solid var(--line-strong);
+  background: linear-gradient(180deg, rgba(5, 17, 26, 0.98), rgba(1, 6, 11, 0.99));
+  box-shadow: 0 24px 70px rgba(0, 0, 0, 0.7);
+}
+
+.owm-modal-meta {
+  margin-bottom: 12px;
+  color: var(--text-dim);
+  font: 700 0.66rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.owm-tool-detail {
+  margin: 0;
+  max-height: 50vh;
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--line-soft);
+  background: rgba(0, 8, 13, 0.92);
+  color: var(--text-bright);
+  font: 500 0.84rem/1.6 var(--font-mono, ui-monospace, monospace);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* ---- Center viewport (chat) -------------------------------- */
 
 .owm-conversation-column {

@@ -10,7 +10,8 @@ struct WebSurfaceSnapshot {
     runtime: RuntimeSurface,
     launch: LaunchSurface,
     transcript: &'static [TranscriptEvent],
-    objectives: &'static [ObjectiveItem],
+    plan: PlanLane,
+    operations: OperationSurface,
     context_spark: SparklineSpec,
     commands: &'static [&'static str],
     composer: ComposerSurface,
@@ -52,15 +53,47 @@ struct TranscriptEvent {
     label: &'static str,
     body: &'static str,
     meta: &'static str,
+    /// Present on tool calls: full payload shown in the expansion modal.
+    detail: &'static str,
 }
 
+/// Mirrors `omegon_traits::PlanItemProjection`: status is one of
+/// pending|active|done|skipped; intent tags the kind of work.
 #[derive(Clone, Copy, PartialEq)]
-struct ObjectiveItem {
-    state_class: &'static str,
-    glyph: &'static str,
+struct PlanItem {
+    status: &'static str,
+    intent: &'static str,
+    label: &'static str,
+    progress: &'static str,
+}
+
+/// Mirrors `omegon_traits::PlanLaneProjection`: a mode + progress + items.
+#[derive(Clone, Copy, PartialEq)]
+struct PlanLane {
+    mode: &'static str,
+    completed: usize,
+    total: usize,
+    items: &'static [PlanItem],
+}
+
+/// Mirrors `omegon_traits::OperationChildProjection`.
+#[derive(Clone, Copy, PartialEq)]
+struct OperationChild {
     label: &'static str,
     status: &'static str,
+    activity: &'static str,
     progress: &'static str,
+    progress_pct: &'static str,
+}
+
+/// Mirrors `omegon_traits::OperationProjection`: delegate / cleave / background.
+#[derive(Clone, Copy, PartialEq)]
+struct OperationSurface {
+    kind: &'static str,
+    running: usize,
+    completed: usize,
+    failed: usize,
+    children: &'static [OperationChild],
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -76,36 +109,67 @@ const CONTEXT_SPARK: SparklineSpec = SparklineSpec {
     bars: &["35%", "42%", "52%", "64%", "58%", "72%", "68%"],
 };
 
-const OBJECTIVES: &[ObjectiveItem] = &[
-    ObjectiveItem {
-        state_class: "complete",
-        glyph: "✓",
-        label: "surface snapshot contract",
-        status: "4/4",
-        progress: "100%",
-    },
-    ObjectiveItem {
-        state_class: "active",
-        glyph: "›",
-        label: "UI action transport",
-        status: "2/5",
-        progress: "42%",
-    },
-    ObjectiveItem {
-        state_class: "gated",
-        glyph: "!",
-        label: "approval and tool cards",
-        status: "gated",
-        progress: "18%",
-    },
-    ObjectiveItem {
-        state_class: "queued",
-        glyph: "·",
-        label: "Auspex launch context",
-        status: "queued",
-        progress: "8%",
-    },
-];
+const PLAN: PlanLane = PlanLane {
+    mode: "executing",
+    completed: 1,
+    total: 4,
+    items: &[
+        PlanItem {
+            status: "done",
+            intent: "spec",
+            label: "surface snapshot contract",
+            progress: "100%",
+        },
+        PlanItem {
+            status: "active",
+            intent: "implementation",
+            label: "UI action transport",
+            progress: "42%",
+        },
+        PlanItem {
+            status: "pending",
+            intent: "review",
+            label: "approval and tool cards",
+            progress: "0%",
+        },
+        PlanItem {
+            status: "pending",
+            intent: "operations",
+            label: "Auspex launch context",
+            progress: "0%",
+        },
+    ],
+};
+
+const OPERATIONS: OperationSurface = OperationSurface {
+    kind: "cleave",
+    running: 2,
+    completed: 1,
+    failed: 0,
+    children: &[
+        OperationChild {
+            label: "transport-wiring",
+            status: "running",
+            activity: "editing action_bridge.rs",
+            progress: "3/5",
+            progress_pct: "60%",
+        },
+        OperationChild {
+            label: "approval-cards",
+            status: "running",
+            activity: "rendering policy gate",
+            progress: "1/3",
+            progress_pct: "33%",
+        },
+        OperationChild {
+            label: "snapshot-scout",
+            status: "done",
+            activity: "returned 4 sections",
+            progress: "2/2",
+            progress_pct: "100%",
+        },
+    ],
+};
 
 const TRANSCRIPT: &[TranscriptEvent] = &[
     TranscriptEvent {
@@ -113,66 +177,77 @@ const TRANSCRIPT: &[TranscriptEvent] = &[
         label: "Operator",
         body: "Pick up the 0.1.0 release candidate work — I want the Omegon Web surface demoable by Friday, running off the daemon snapshot instead of mock data.",
         meta: "prompt · 7m ago",
+        detail: "",
     },
     TranscriptEvent {
         role: "assistant",
         label: "Omegon",
         body: "Understood. The release framework already verifies, so the critical path is the daemon-owned web surface. I'll land it in three slices: contract-shaped snapshot first, live transport second, action round-trip last.",
         meta: "assistant · 7m ago",
+        detail: "",
     },
     TranscriptEvent {
         role: "tool",
         label: "Tool call",
         body: "GET /api/web/surfaces → 200. Returned runtime, transcript, objectives, and approval surfaces (4 sections, 11 events).",
         meta: "surface snapshot · 41 ms",
+        detail: "GET /api/web/surfaces\nstatus 200 · 41 ms\n\nsections: runtime, transcript, objectives, approval\nevents: 11\nbytes: 4.2 KB",
     },
     TranscriptEvent {
         role: "lifecycle",
         label: "Plan advanced",
         body: "Objective 'surface snapshot contract' marked complete. The semantic snapshot now matches the Rust struct one-to-one — no shadow shapes.",
         meta: "plan · objective 1 of 4",
+        detail: "",
     },
     TranscriptEvent {
         role: "operator",
         label: "Operator",
         body: "Good. Start on the UI action transport so Send and the approval buttons actually reach the daemon.",
         meta: "prompt · 4m ago",
+        detail: "",
     },
     TranscriptEvent {
         role: "assistant",
         label: "Omegon",
         body: "I'll open a WebSocket to the surfaces stream and post operator actions as intents. The daemon stays authoritative; the surface only proposes. Approval gates resolve server-side and echo back as lifecycle events.",
         meta: "assistant · 4m ago",
+        detail: "",
     },
     TranscriptEvent {
         role: "tool",
         label: "Tool call",
         body: "cargo test --features omegon-web-mock surfaces:: → 12 passed, 0 failed. Snapshot round-trips through serde without drift.",
         meta: "test run · 1.8 s",
+        detail: "cargo test --features omegon-web-mock\n\nrunning 12 tests\n............ ok\n\ntest result: ok. 12 passed; 0 failed; 0 ignored\nfinished in 1.81s",
     },
     TranscriptEvent {
         role: "lifecycle",
         label: "Memory written",
         body: "Stored constraint: the web surface must never mutate state locally — every action is a proposal the daemon accepts or rejects.",
         meta: "memory · constraints",
+        detail: "",
     },
     TranscriptEvent {
         role: "assistant",
         label: "Omegon",
         body: "Transport scaffolding is in place. I'm wiring the context meter and objective rows to live snapshot fields now, then I'll exercise a real approval round-trip.",
         meta: "assistant · streaming",
+        detail: "",
     },
     TranscriptEvent {
         role: "tool",
         label: "Tool call",
         body: "cargo check --target wasm32-unknown-unknown --no-default-features --features omegon-web-mock",
         meta: "build · running",
+        detail: "cargo build --target wasm32-unknown-unknown\n  --no-default-features --features omegon-web-mock\n\nCompiling auspex v0.2.0-rc.1\n  Building [=========>        ] 218/256\nstatus: running",
     },
     TranscriptEvent {
         role: "approval",
         label: "Approval needed",
         body: "Allow shell command: trunk build web/omegon-web-mock.html and publish the bundle to the daemon's static surface route.",
         meta: "policy gate · pending",
+        detail: "",
     },
 ];
 
@@ -209,7 +284,8 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         policy_owner: "local daemon",
     },
     transcript: TRANSCRIPT,
-    objectives: OBJECTIVES,
+    plan: PLAN,
+    operations: OPERATIONS,
     context_spark: CONTEXT_SPARK,
     commands: COMMANDS,
     composer: ComposerSurface {
@@ -286,12 +362,22 @@ fn Sparkline(spec: SparklineSpec) -> Element {
 
 /// One objective row: glyph, label, status, progress strip.
 #[component]
-fn ObjectiveRow(item: ObjectiveItem) -> Element {
+/// One plan item: status drives the glyph + accent, intent tags the work kind,
+/// progress fills inward. Mirrors PlanItemProjection.
+#[component]
+fn PlanRow(item: PlanItem) -> Element {
+    let glyph = match item.status {
+        "done" => "✓",
+        "active" => "▸",
+        "skipped" => "–",
+        "blocked" => "!",
+        _ => "·", // pending
+    };
     rsx! {
-        div { class: "owm-objective-row {item.state_class}",
-            span { "{item.glyph}" }
+        div { class: "owm-objective-row {item.status}",
+            span { "{glyph}" }
             strong { "{item.label}" }
-            em { "{item.status}" }
+            em { class: "owm-plan-intent", "{item.intent}" }
             i { style: "--p: {item.progress}" }
         }
     }
@@ -413,12 +499,54 @@ fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Elem
 }
 
 #[component]
-fn ObjectivesCard(objectives: &'static [ObjectiveItem]) -> Element {
+fn PlanCard(plan: PlanLane) -> Element {
     rsx! {
-        InstrumentCard { modifier: "owm-objectives-card", eyebrow: "OBJECTIVES",
+        InstrumentCard { modifier: "owm-objectives-card", eyebrow: "PLAN",
+            div { class: "owm-plan-head",
+                span { class: "owm-plan-mode", "{plan.mode}" }
+                span { class: "owm-plan-count", "{plan.completed}/{plan.total}" }
+            }
             div { class: "owm-objective-stack",
-                for item in objectives.iter() {
-                    ObjectiveRow { item: *item }
+                for item in plan.items.iter() {
+                    PlanRow { item: *item }
+                }
+            }
+        }
+    }
+}
+
+/// One running/finished operation child. Mirrors OperationChildProjection.
+#[component]
+fn OperationRow(child: OperationChild) -> Element {
+    rsx! {
+        div { class: "owm-op-row {child.status}",
+            div { class: "owm-op-row-head",
+                strong { "{child.label}" }
+                em { "{child.progress}" }
+            }
+            span { class: "owm-op-activity", "{child.activity}" }
+            i { class: "owm-op-bar", style: "--p: {child.progress_pct}" }
+        }
+    }
+}
+
+/// Operations instrument: live delegate / cleave / background work.
+/// Mirrors OperationProjection (running · completed · failed + children).
+#[component]
+fn OperationsCard(operations: OperationSurface) -> Element {
+    rsx! {
+        InstrumentCard { modifier: "owm-operations-card", eyebrow: "OPERATIONS",
+            div { class: "owm-op-head",
+                span { class: "owm-op-kind", "{operations.kind}" }
+                div { class: "owm-op-counts",
+                    span { class: "owm-op-running", "{operations.running} running" }
+                    span { class: "owm-op-done", "{operations.completed} done" }
+                    span { class: "owm-op-failed", "{operations.failed} failed" }
+                }
+            }
+            div { class: "owm-op-stack",
+                for child in operations.children.iter() {
+                    OperationRow { child: *child }
                 }
             }
         }
@@ -430,7 +558,24 @@ fn TranscriptEntry(
     event: TranscriptEvent,
     on_deny: EventHandler<()>,
     on_approve: EventHandler<()>,
+    on_expand: EventHandler<TranscriptEvent>,
 ) -> Element {
+    // Tool calls collapse to a single compact, clickable row; the full payload
+    // opens in the expansion modal rather than inflating the transcript.
+    if event.role == "tool" {
+        return rsx! {
+            button {
+                class: "owm-transcript-card owm-tool-row tool",
+                onclick: move |_| on_expand.call(event),
+                div { class: "owm-event-head",
+                    strong { "{event.label}" }
+                    span { "{event.meta}" }
+                }
+                p { class: "owm-tool-summary", "{event.body}" }
+                span { class: "owm-tool-expand", "expand ⤢" }
+            }
+        };
+    }
     rsx! {
         article { class: "owm-transcript-card {event.role}",
             div { class: "owm-event-head",
@@ -495,6 +640,26 @@ fn Composer(
     }
 }
 
+/// Tool-call expansion modal: full payload for a single tool entry.
+#[component]
+fn ToolModal(event: TranscriptEvent, on_close: EventHandler<()>) -> Element {
+    rsx! {
+        div { class: "owm-modal-scrim", onclick: move |_| on_close.call(()),
+            div { class: "owm-modal owm-tool-modal", onclick: move |e| e.stop_propagation(),
+                div { class: "owm-modal-head",
+                    div {
+                        Eyebrow { label: "TOOL CALL" }
+                        h2 { "{event.label}" }
+                    }
+                    button { class: "owm-ghost-button", onclick: move |_| on_close.call(()), "Close" }
+                }
+                div { class: "owm-modal-meta", "{event.meta}" }
+                pre { class: "owm-tool-detail", "{event.detail}" }
+            }
+        }
+    }
+}
+
 #[component]
 fn CommandPalette(commands: &'static [&'static str], on_close: EventHandler<()>) -> Element {
     rsx! {
@@ -554,6 +719,7 @@ pub fn OmegonWebMockApp() -> Element {
     let mut settings_open = use_signal(|| false);
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
+    let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
 
     let status = if *approval_state.read() == "pending" {
         "waiting"
@@ -596,6 +762,7 @@ pub fn OmegonWebMockApp() -> Element {
                                     event: *event,
                                     on_deny: move |_| approval_state.set("denied"),
                                     on_approve: move |_| approval_state.set("approved"),
+                                    on_expand: move |ev| tool_modal.set(Some(ev)),
                                 }
                             }
                         }
@@ -610,8 +777,13 @@ pub fn OmegonWebMockApp() -> Element {
                 }
 
                 aside { class: "owm-cockpit-rail owm-right-rail",
-                    ObjectivesCard { objectives: surface.objectives }
+                    PlanCard { plan: surface.plan }
+                    OperationsCard { operations: surface.operations }
                 }
+            }
+
+            if let Some(ev) = tool_modal.read().clone() {
+                ToolModal { event: ev, on_close: move |_| tool_modal.set(None) }
             }
 
             if *palette_open.read() {
