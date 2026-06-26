@@ -194,13 +194,13 @@
 
 .omegon-web-topbar {
   display: grid;
-  grid-template-columns: minmax(280px, 1fr) auto;
-  align-items: center;
-  gap: 24px;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: stretch;
+  gap: 18px;
   min-width: 0;
-  padding: 16px 22px;
+  padding: 10px 14px;
   border: 1px solid var(--line);
-  background: linear-gradient(90deg, rgba(0, 9, 13, 0.92), rgba(0, 20, 24, 0.55), rgba(0, 7, 10, 0.88));
+  background: linear-gradient(90deg, rgba(0, 9, 13, 0.92), rgba(0, 20, 24, 0.5), rgba(0, 7, 10, 0.88));
 }
 
 .omegon-web-topbar::before,
@@ -217,24 +217,141 @@
 .omegon-web-topbar::before { top: -1px; left: -1px; border-right: none; border-bottom: none; }
 .omegon-web-topbar::after { bottom: -1px; right: -1px; border-left: none; border-top: none; }
 
-.owm-brand-block { min-width: 0; }
+/* ---- HUD top strip: mark · readouts · controls ------------- */
 
-.owm-brand-block h1 {
-  margin: 4px 0 6px;
-  font-size: clamp(1.7rem, 3.2vw, 3rem);
-  line-height: 0.96;
-  letter-spacing: -0.04em;
-  text-transform: uppercase;
-  color: #f3feff;
-  text-shadow: 0 0 16px rgba(0, 232, 255, 0.28);
-  overflow-wrap: anywhere;
+.owm-hud-mark {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-right: 16px;
+  border-right: 1px solid var(--line-soft);
 }
 
-.owm-brand-block p {
-  margin: 0;
-  max-width: 64ch;
+.owm-mark-glyph {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 auto;
+}
+
+.owm-mark-id {
+  color: var(--text-bright);
+  font: 700 0.82rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.owm-hud-readouts {
+  display: flex;
+  align-items: stretch;
+  gap: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.owm-hud-readout {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 4px 16px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.owm-hud-readout:first-child { border-left: none; }
+
+.owm-hud-readout-label {
+  color: var(--accent);
+  font: 700 0.6rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.owm-hud-readout-value {
+  min-width: 0;
+  color: var(--text-bright);
+  font: 700 0.82rem/1.1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+/* Only the workspace path may flex-shrink and ellipsize; it is capped so it
+   can't eat the strip. Every short readout stays at intrinsic width so
+   MODEL / AUTONOMY / UPTIME never truncate. */
+.owm-readout-path { flex: 0 1 clamp(150px, 18vw, 300px); min-width: 0; }
+.owm-readout-path .owm-hud-readout-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.owm-readout-mono .owm-hud-readout-value { letter-spacing: 0.06em; }
+
+/* live model readout gets a pulsing presence dot */
+.owm-readout-live .owm-hud-readout-value {
+  position: relative;
+  padding-left: 14px;
+}
+.owm-readout-live .owm-hud-readout-value::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 7px;
+  height: 7px;
+  margin-top: -3.5px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 8px var(--accent);
+}
+
+/* Link gauge */
+.owm-link-gauge-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.owm-link-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 2px;
+  height: 12px;
+}
+
+.owm-link-bars i {
+  width: 3px;
+  background: var(--accent);
+  opacity: 0.9;
+}
+.owm-link-bars i:nth-child(1) { height: 30%; }
+.owm-link-bars i:nth-child(2) { height: 55%; }
+.owm-link-bars i:nth-child(3) { height: 78%; }
+.owm-link-bars i:nth-child(4) { height: 100%; }
+.owm-link-bars i:nth-child(4) { opacity: 0.32; }
+
+.owm-link-gauge-state {
   color: var(--text-dim);
-  overflow-wrap: anywhere;
+  font: 600 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+/* Global controls cluster (top-right knobs) */
+.owm-hud-controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 16px;
+  border-left: 1px solid var(--line-soft);
+}
+
+.owm-hud-knob {
+  width: 36px;
+  height: 36px;
+  display: grid;
+  place-items: center;
+  font-size: 1rem;
+  line-height: 1;
 }
 
 .owm-eyebrow {
@@ -622,8 +739,10 @@
 .owm-codex-core p {
   margin: 7px 0 0;
   color: var(--text-dim);
-  font-family: var(--font-mono, ui-monospace, monospace);
-  line-height: 1.45;
+  font-family: var(--font-ui, "Inter", ui-sans-serif, system-ui, sans-serif);
+  font-size: 0.92rem;
+  font-weight: 350;
+  line-height: 1.6;
 }
 
 .owm-archive-meter {
@@ -668,9 +787,9 @@
 .owm-panel-heading h2 {
   margin: 6px 0 0;
   color: var(--text-bright);
-  font-size: 1.45rem;
-  font-weight: 700;
-  letter-spacing: -0.025em;
+  font-size: 1.65rem;
+  font-weight: 800;
+  letter-spacing: -0.03em;
   text-shadow: 0 0 18px rgba(0, 232, 255, 0.22);
   overflow-wrap: anywhere;
 }
@@ -714,9 +833,9 @@
 
 .owm-event-head strong {
   color: var(--text-bright);
-  font-size: 1.02rem;
-  font-weight: 700;
-  letter-spacing: -0.01em;
+  font: 700 0.74rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
 }
 
 .owm-event-head span {
@@ -731,8 +850,9 @@
 .owm-transcript-card p {
   margin: 0;
   color: var(--text);
-  font-size: 1rem;
-  line-height: 1.62;
+  font-size: 1.05rem;
+  font-weight: 350;
+  line-height: 1.68;
   overflow-wrap: anywhere;
 }
 
@@ -894,8 +1014,10 @@ body:has(.owm-modal-scrim) .owm-cockpit-layout {
 @media (max-width: 900px) {
   .omegon-web-shell { height: auto; min-height: 100vh; overflow: auto; padding: 14px; }
   .hud-frame { display: none; }
-  .omegon-web-topbar { grid-template-columns: 1fr; }
-  .owm-status-strip { justify-items: start; max-width: 100%; }
+  .omegon-web-topbar { grid-template-columns: auto 1fr; row-gap: 12px; }
+  .owm-hud-controls { grid-column: 2; justify-self: end; }
+  .owm-hud-readouts { grid-column: 1 / -1; flex-wrap: wrap; }
+  .owm-hud-readout { border-left: none; padding: 4px 16px 4px 0; }
   .owm-cockpit-layout { grid-template-columns: 1fr; overflow: visible; }
   .owm-cockpit-layout > .owm-left-rail { grid-column: 1; grid-row: auto; order: 2; }
   .owm-cockpit-layout > .owm-conversation-column { grid-column: 1; grid-row: auto; order: 1; overflow: visible; }
