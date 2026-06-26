@@ -5,7 +5,6 @@ struct WebSurfaceSnapshot {
     runtime: RuntimeSurface,
     launch: LaunchSurface,
     transcript: &'static [TranscriptEvent],
-    workbench: &'static [&'static str],
     memory_note: &'static str,
     commands: &'static [&'static str],
     composer: ComposerSurface,
@@ -76,13 +75,6 @@ const TRANSCRIPT: &[TranscriptEvent] = &[
     },
 ];
 
-const WORKBENCH_ITEMS: &[&str] = &[
-    "surface snapshot contract",
-    "UI action transport",
-    "approval and tool cards",
-    "Auspex launch context",
-];
-
 const COMMANDS: &[&str] = &["/continue", "/clear", "/plan status", "/tools", "/memory status"];
 
 const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
@@ -101,7 +93,6 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
         policy_owner: "local daemon",
     },
     transcript: TRANSCRIPT,
-    workbench: WORKBENCH_ITEMS,
     memory_note: "The web app renders semantic Omegon surfaces instead of porting terminal widgets.",
     commands: COMMANDS,
     composer: ComposerSurface {
@@ -145,13 +136,32 @@ pub fn OmegonWebMockApp() -> Element {
 
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
-                    section { class: "owm-panel owm-rail-card",
-                        div { class: "owm-eyebrow", "RUNTIME" }
-                        h3 { "{surface.runtime.agent_id}" }
-                        dl {
-                            div { dt { "State" } dd { "{surface.runtime.state}" } }
-                            div { dt { "Context" } dd { "{surface.runtime.context_window}" } }
-                            div { dt { "Tools" } dd { "{surface.runtime.tool_count} available" } }
+                    section { class: "owm-panel owm-rail-card owm-daemon-core",
+                        div { class: "owm-eyebrow", "DAEMON CORE" }
+                        div { class: "owm-core-readout",
+                            div { class: "owm-core-glyph", aria_label: "daemon core" }
+                            div {
+                                h3 { "{surface.runtime.agent_id}" }
+                                div { class: "owm-state-chip", "{surface.runtime.state}" }
+                            }
+                        }
+                        div { class: "owm-meter-block",
+                            div { class: "owm-meter-head",
+                                span { "Context window" }
+                                strong { "{surface.runtime.context_window}" }
+                            }
+                            div { class: "owm-segment-meter", aria_label: "context capacity" }
+                        }
+                        div { class: "owm-toolbelt",
+                            div { class: "owm-meter-head",
+                                span { "Tool sockets" }
+                                strong { "{surface.runtime.tool_count} online" }
+                            }
+                            div { class: "owm-socket-grid",
+                                for index in 0..12 {
+                                    i { class: if index < 8 { "online" } else { "idle" } }
+                                }
+                            }
                         }
                         div { class: "owm-spark-grid",
                             div { class: "owm-sparkline",
@@ -166,23 +176,17 @@ pub fn OmegonWebMockApp() -> Element {
                                     i { style: "--h: 68%" }
                                 }
                             }
-                            div { class: "owm-sparkline",
-                                span { "Surface rate" }
-                                div { class: "owm-spark-bars",
-                                    i { style: "--h: 28%" }
-                                    i { style: "--h: 44%" }
-                                    i { style: "--h: 39%" }
-                                    i { style: "--h: 61%" }
-                                    i { style: "--h: 48%" }
-                                    i { style: "--h: 66%" }
-                                    i { style: "--h: 55%" }
-                                }
-                            }
                         }
                     }
-                    section { class: "owm-panel owm-rail-card owm-compact-card",
-                        div { class: "owm-eyebrow", "TRANSPORT" }
+                    section { class: "owm-panel owm-rail-card owm-link-card",
+                        div { class: "owm-eyebrow", "LINK" }
+                        div { class: "owm-link-conduit",
+                            span {}
+                            span {}
+                            span {}
+                        }
                         p { "{surface.runtime.transport}" }
+                        div { class: "owm-state-chip", "stream nominal" }
                     }
                 }
 
@@ -258,18 +262,45 @@ pub fn OmegonWebMockApp() -> Element {
                 }
 
                 aside { class: "owm-cockpit-rail owm-right-rail",
-                    section { class: "owm-panel owm-rail-card",
-                        div { class: "owm-eyebrow", "WORKBENCH" }
-                        h3 { "Omegon Web mock" }
-                        ul {
-                            for item in surface.workbench {
-                                li { "{item}" }
+                    section { class: "owm-panel owm-rail-card owm-objectives-card",
+                        div { class: "owm-eyebrow", "OBJECTIVES" }
+                        div { class: "owm-objective-stack",
+                            div { class: "owm-objective-row complete",
+                                span { "✓" }
+                                strong { "surface snapshot contract" }
+                                em { "4/4" }
+                                i { style: "--p: 100%" }
+                            }
+                            div { class: "owm-objective-row active",
+                                span { "›" }
+                                strong { "UI action transport" }
+                                em { "2/5" }
+                                i { style: "--p: 42%" }
+                            }
+                            div { class: "owm-objective-row gated",
+                                span { "!" }
+                                strong { "approval and tool cards" }
+                                em { "gated" }
+                                i { style: "--p: 18%" }
+                            }
+                            div { class: "owm-objective-row queued",
+                                span { "·" }
+                                strong { "Auspex launch context" }
+                                em { "queued" }
+                                i { style: "--p: 8%" }
                             }
                         }
                     }
-                    section { class: "owm-panel owm-rail-card owm-compact-card",
-                        div { class: "owm-eyebrow", "MEMORY / CONTEXT" }
-                        p { "{surface.memory_note}" }
+                    section { class: "owm-panel owm-rail-card owm-codex-card",
+                        div { class: "owm-eyebrow", "CODEX" }
+                        div { class: "owm-codex-core",
+                            div { class: "owm-codex-glyph" }
+                            div {
+                                h3 { "semantic surfaces" }
+                                p { "{surface.memory_note}" }
+                            }
+                        }
+                        div { class: "owm-archive-meter" }
                     }
                 }
             }
