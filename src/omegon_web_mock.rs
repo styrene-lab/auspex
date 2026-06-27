@@ -591,8 +591,8 @@ fn HudReadout(label: &'static str, value: String, modifier: &'static str) -> Ele
 #[component]
 fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
     rsx! {
-        div { class: "owm-hud-readout owm-link-gauge",
-            span { class: "owm-hud-readout-label", "LINK" }
+        div { class: "owm-runtime-display owm-link-instrument",
+            span { class: "owm-display-label", "LINK" }
             div { class: "owm-link-gauge-row",
                 div { class: "owm-link-bars",
                     i {}
@@ -600,9 +600,42 @@ fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
                     i {}
                     i {}
                 }
-                strong { class: "owm-hud-readout-value", "{latency}" }
+                strong { class: "owm-display-value", "{latency}" }
             }
             span { class: "owm-link-gauge-state", "{status}" }
+        }
+    }
+}
+
+/// Uptime rendered as a clock instrument, not another text readout.
+#[component]
+fn UptimeGauge(uptime: &'static str) -> Element {
+    rsx! {
+        div { class: "owm-runtime-display owm-clock-instrument",
+            span { class: "owm-display-label", "UPTIME" }
+            strong { class: "owm-clock-value", "{uptime}" }
+            div { class: "owm-clock-ticks",
+                i {}
+                i {}
+                i {}
+                i {}
+                i {}
+                i {}
+            }
+        }
+    }
+}
+
+/// Session state rendered as a beacon/display, not a plain status pill.
+#[component]
+fn StateIndicator(status: &'static str) -> Element {
+    rsx! {
+        div { class: "owm-runtime-display owm-state-instrument owm-state-{status}",
+            span { class: "owm-state-lamp" }
+            div {
+                span { class: "owm-display-label", "STATE" }
+                strong { class: "owm-state-value", "{status}" }
+            }
         }
     }
 }
@@ -640,10 +673,10 @@ fn TopBar(
             // Right HUD bank: live telemetry + global controls
             div { class: "owm-hud-bank owm-bank-right",
                 LinkGauge { status: runtime.link_status, latency: runtime.latency }
-                HudReadout { label: "AUTONOMY", value: runtime.autonomy.to_string(), modifier: "" }
-                HudReadout { label: "UPTIME", value: runtime.uptime.to_string(), modifier: "owm-readout-mono" }
+                UptimeGauge { uptime: runtime.uptime }
+                StateIndicator { status }
+                HudReadout { label: "AUTONOMY", value: runtime.autonomy.to_string(), modifier: "owm-readout-autonomy" }
                 div { class: "owm-hud-controls",
-                    omegon-arwes-status-pill { class: "owm-status-pill", status, "{status}" }
                     button {
                         class: "owm-hud-knob",
                         title: "Command palette",
