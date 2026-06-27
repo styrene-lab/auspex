@@ -3,6 +3,81 @@
 use serde::Deserialize;
 use serde_json::Value;
 
+pub const HEADER_PRINCIPAL_ISSUER: &str = "Omegon-Principal-Issuer";
+pub const HEADER_PRINCIPAL_SUBJECT: &str = "Omegon-Principal-Subject";
+pub const HEADER_PRINCIPAL_ROLE: &str = "Omegon-Principal-Role";
+pub const HEADER_PRINCIPAL_DISPLAY_NAME: &str = "Omegon-Principal-Display-Name";
+pub const HEADER_PRINCIPAL_SESSION_ID: &str = "Omegon-Principal-Session-Id";
+pub const HEADER_PRINCIPAL_CLIENT_ID: &str = "Omegon-Principal-Client-Id";
+/// Auspex return URL honored by `/api/web/launch-context` when proxied.
+pub const HEADER_BACK_URL: &str = "Omegon-Back-Url";
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TrustedPrincipalHeaders {
+    pub issuer: String,
+    pub subject: String,
+    pub role: String,
+    pub display_name: Option<String>,
+    pub session_id: Option<String>,
+    pub client_id: Option<String>,
+    pub back_url: Option<String>,
+}
+
+impl TrustedPrincipalHeaders {
+    pub fn auspex_operator(subject: impl Into<String>) -> Self {
+        Self {
+            issuer: "auspex".to_string(),
+            subject: subject.into(),
+            role: "operator".to_string(),
+            display_name: None,
+            session_id: None,
+            client_id: None,
+            back_url: None,
+        }
+    }
+
+    pub fn display_name(mut self, display_name: impl Into<String>) -> Self {
+        self.display_name = Some(display_name.into());
+        self
+    }
+
+    pub fn session_id(mut self, session_id: impl Into<String>) -> Self {
+        self.session_id = Some(session_id.into());
+        self
+    }
+
+    pub fn client_id(mut self, client_id: impl Into<String>) -> Self {
+        self.client_id = Some(client_id.into());
+        self
+    }
+
+    pub fn back_url(mut self, back_url: impl Into<String>) -> Self {
+        self.back_url = Some(back_url.into());
+        self
+    }
+
+    pub fn pairs(&self) -> Vec<(&'static str, String)> {
+        let mut pairs = vec![
+            (HEADER_PRINCIPAL_ISSUER, self.issuer.clone()),
+            (HEADER_PRINCIPAL_SUBJECT, self.subject.clone()),
+            (HEADER_PRINCIPAL_ROLE, self.role.clone()),
+        ];
+        if let Some(display_name) = &self.display_name {
+            pairs.push((HEADER_PRINCIPAL_DISPLAY_NAME, display_name.clone()));
+        }
+        if let Some(session_id) = &self.session_id {
+            pairs.push((HEADER_PRINCIPAL_SESSION_ID, session_id.clone()));
+        }
+        if let Some(client_id) = &self.client_id {
+            pairs.push((HEADER_PRINCIPAL_CLIENT_ID, client_id.clone()));
+        }
+        if let Some(back_url) = &self.back_url {
+            pairs.push((HEADER_BACK_URL, back_url.clone()));
+        }
+        pairs
+    }
+}
+
 /// Browser-native session envelope returned by
 /// `GET /api/web/sessions/{session_id}` in omegon-secundus.
 ///
@@ -16,6 +91,16 @@ pub struct BackendSessionShowResponse {
     pub allocation_mode: String,
     pub links: BackendSessionLinks,
     pub snapshot: BackendSurfacesSnapshot,
+}
+
+/// Returned by `GET /api/web/launch-context`; tells the web shell whether it is
+/// direct Omegon-owned or proxied by Auspex, and who owns policy decisions.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackendLaunchContextResponse {
+    pub mode: String,
+    pub proxied_by: Option<String>,
+    pub back_url: Option<String>,
+    pub policy_owner: String,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -223,14 +308,25 @@ pub struct BackendSettingsSurface {
 }
 
 pub const BACKEND_SESSION_FIXTURE: &str = include_str!("../fixtures/omegon-web-session-default.json");
+pub const BACKEND_LAUNCH_CONTEXT_PROXIED_FIXTURE: &str =
+    include_str!("../fixtures/omegon-web-launch-context-proxied.json");
 
 pub fn parse_backend_session(input: &str) -> Result<BackendSessionShowResponse, serde_json::Error> {
+    serde_json::from_str(input)
+}
+
+pub fn parse_launch_context(input: &str) -> Result<BackendLaunchContextResponse, serde_json::Error> {
     serde_json::from_str(input)
 }
 
 pub fn fixture_session() -> BackendSessionShowResponse {
     parse_backend_session(BACKEND_SESSION_FIXTURE)
         .expect("fixtures/omegon-web-session-default.json must match omegon-secundus web session contract")
+}
+
+pub fn proxied_launch_context_fixture() -> BackendLaunchContextResponse {
+    parse_launch_context(BACKEND_LAUNCH_CONTEXT_PROXIED_FIXTURE)
+        .expect("fixtures/omegon-web-launch-context-proxied.json must match omegon-secundus launch context contract")
 }
 
 #[cfg(test)]
@@ -277,6 +373,38 @@ mod tests {
         assert_eq!(
             session.snapshot.surfaces.runtime.autonomy_mode.as_deref(),
             Some("Conservative")
+        );
+    }
+
+    #[test]
+    fn proxied_launch_context_fixture_matches_backend_contract() {
+        let launch = proxied_launch_context_fixture();
+        assert_eq!(launch.mode, "proxied");
+        assert_eq!(launch.proxied_by.as_deref(), Some("auspex"));
+        assert_eq!(launch.back_url.as_deref(), Some("http://127.0.0.1:7820/"));
+        assert_eq!(launch.policy_owner, "auspex");
+    }
+
+    #[test]
+    fn trusted_principal_headers_use_standard_backend_names() {
+        let headers = TrustedPrincipalHeaders::auspex_operator("operator:wilson")
+            .display_name("Wilson")
+            .session_id("default")
+            .client_id("auspex-web")
+            .back_url("http://127.0.0.1:7820/")
+            .pairs();
+
+        assert_eq!(
+            headers,
+            vec![
+                (HEADER_PRINCIPAL_ISSUER, "auspex".to_string()),
+                (HEADER_PRINCIPAL_SUBJECT, "operator:wilson".to_string()),
+                (HEADER_PRINCIPAL_ROLE, "operator".to_string()),
+                (HEADER_PRINCIPAL_DISPLAY_NAME, "Wilson".to_string()),
+                (HEADER_PRINCIPAL_SESSION_ID, "default".to_string()),
+                (HEADER_PRINCIPAL_CLIENT_ID, "auspex-web".to_string()),
+                (HEADER_BACK_URL, "http://127.0.0.1:7820/".to_string()),
+            ]
         );
     }
 }

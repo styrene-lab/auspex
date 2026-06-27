@@ -1,0 +1,6 @@
+{
+  "mode": "proxied",
+  "proxied_by": "auspex",
+  "back_url": "http://127.0.0.1:7820/",
+  "policy_owner": "auspex"
+}

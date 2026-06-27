@@ -396,7 +396,8 @@ const MENU_SURFACE: MenuSurface = MenuSurface { items: MENU_ITEMS };
 
 const SETTINGS_SECTIONS: &[ModalSection] = &[
     ModalSection { label: "Session", value: "default · current", detail: "Native session envelope from POST /api/sessions; singleton for phase 1." },
-    ModalSection { label: "Assistant", value: "omegon-default · ready", detail: "Assistant readiness is validated by the daemon before the browser binds controls." },
+    ModalSection { label: "Proxy", value: "auspex · trusted", detail: "Auspex forwards standard Omegon-Principal-* headers plus Omegon-Back-Url." },
+    ModalSection { label: "Policy owner", value: "auspex", detail: "RBAC decisions are evaluated by Omegon using the trusted Auspex principal." },
     ModalSection { label: "Transport", value: "/api/sessions/default/surfaces/stream", detail: "Native session stream; legacy /api/web/surfaces remains a compatibility path." },
     ModalSection { label: "Autonomy", value: "conservative", detail: "Operator confirmations required for elevated or ambiguous actions." },
 ];
@@ -458,7 +459,7 @@ const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
     launch: LaunchSurface {
         title: "Persistent agent chat",
         subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex",
-        policy_owner: "local daemon",
+        policy_owner: "auspex",
     },
     transcript: TRANSCRIPT,
     plan: PLAN,
@@ -974,9 +975,11 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
 #[component]
 pub fn OmegonWebMockApp() -> Element {
     let backend_session = crate::omegon_web_contract::fixture_session();
+    let launch_context = crate::omegon_web_contract::proxied_launch_context_fixture();
     let surface = MOCK_SURFACE;
     debug_assert_eq!(backend_session.schema_version, surface.session.schema_version);
     debug_assert_eq!(backend_session.session.session_id, surface.session.session_id);
+    debug_assert_eq!(launch_context.policy_owner, surface.launch.policy_owner);
     debug_assert_eq!(
         backend_session.links.surfaces.as_deref(),
         surface.session.links.surfaces
