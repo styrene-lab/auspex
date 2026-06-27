@@ -619,33 +619,43 @@ fn TopBar(
 ) -> Element {
     rsx! {
         header { class: "omegon-web-topbar",
-            div { class: "owm-hud-mark", title: "{launch.title} · session {session.session_id}",
-                div { class: "owm-core-glyph owm-mark-glyph" }
-                span { class: "owm-mark-id", "{runtime.agent_id}" }
-            }
-
-            div { class: "owm-hud-readouts",
+            // Left HUD bank: identity + session context, consolidated as one module
+            div { class: "owm-hud-bank owm-bank-left",
+                div { class: "owm-hud-cell owm-cell-mark", title: "{launch.title} · session {session.session_id}",
+                    div { class: "owm-core-glyph owm-mark-glyph" }
+                    span { class: "owm-mark-id", "{runtime.agent_id}" }
+                }
                 HudReadout { label: "SESSION", value: session.session_id.to_string(), modifier: "owm-readout-mono" }
                 HudReadout { label: "WORKSPACE", value: runtime.workspace.to_string(), modifier: "owm-readout-path" }
                 HudReadout { label: "MODEL", value: runtime.model.to_string(), modifier: "owm-readout-live" }
+            }
+
+            // Center emblem — placeholder mount for the Omegon mark/logo
+            div { class: "owm-hud-emblem", title: "Omegon",
+                div { class: "owm-emblem-ring" }
+                div { class: "owm-emblem-core" }
+                span { class: "owm-emblem-label", "OMEGON" }
+            }
+
+            // Right HUD bank: live telemetry + global controls
+            div { class: "owm-hud-bank owm-bank-right",
                 LinkGauge { status: runtime.link_status, latency: runtime.latency }
                 HudReadout { label: "AUTONOMY", value: runtime.autonomy.to_string(), modifier: "" }
                 HudReadout { label: "UPTIME", value: runtime.uptime.to_string(), modifier: "owm-readout-mono" }
-            }
-
-            div { class: "owm-hud-controls",
-                omegon-arwes-status-pill { class: "owm-status-pill", status, "{status}" }
-                button {
-                    class: "owm-hud-knob",
-                    title: "Command palette",
-                    onclick: move |_| on_open.call(ModalTarget::Commands),
-                    "⌘"
-                }
-                button {
-                    class: "owm-hud-knob",
-                    title: "Settings",
-                    onclick: move |_| on_open.call(ModalTarget::Settings),
-                    "⚙"
+                div { class: "owm-hud-controls",
+                    omegon-arwes-status-pill { class: "owm-status-pill", status, "{status}" }
+                    button {
+                        class: "owm-hud-knob",
+                        title: "Command palette",
+                        onclick: move |_| on_open.call(ModalTarget::Commands),
+                        "⌘"
+                    }
+                    button {
+                        class: "owm-hud-knob",
+                        title: "Settings",
+                        onclick: move |_| on_open.call(ModalTarget::Settings),
+                        "⚙"
+                    }
                 }
             }
         }

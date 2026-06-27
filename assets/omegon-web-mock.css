@@ -216,100 +216,106 @@
   border-top: none;
 }
 
-/* ---- Top bar ----------------------------------------------- */
+/* ---- Top bar : split HUD with centered emblem ---------------------------- */
 
 .omegon-web-topbar {
   position: relative;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: start;
-  gap: 26px;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: stretch;
+  gap: 18px;
   min-width: 0;
-  padding: 30px 30px 14px;
+  padding: 16px 26px;
   border: 0;
   background: transparent;
   overflow: visible;
 }
 
-/* One ceiling rail spans the whole strip; every cluster hangs from it. */
-.omegon-web-topbar::before {
+/* Each side is one consolidated HUD bank: a framed instrument housing whose
+   readouts are separated by internal dividers, not floating in space. */
+.owm-hud-bank {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  min-width: 0;
+  min-height: 60px;
+  background:
+    linear-gradient(180deg, rgba(10, 26, 34, 0.66), rgba(3, 11, 17, 0.78));
+  border: 1px solid var(--glass-edge);
+  border-top-color: var(--glass-edge-bright);
+  box-shadow: inset 0 1px 0 rgba(120, 230, 255, 0.12), 0 10px 30px rgba(0, 0, 0, 0.4);
+}
+
+.owm-bank-left {
+  justify-content: flex-start;
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 14px 100%, 0 calc(100% - 14px));
+}
+.owm-bank-right {
+  justify-content: flex-end;
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 14px), calc(100% - 14px) 100%, 0 100%);
+}
+
+/* bright inner corner rule that gives each bank a "machined" top edge */
+.owm-hud-bank::before {
   content: "";
   position: absolute;
-  top: 14px;
-  left: 30px;
-  right: 30px;
+  top: 7px;
   height: 1px;
   pointer-events: none;
-  background: linear-gradient(90deg,
-    rgba(100, 244, 255, 0.05),
-    rgba(100, 244, 255, 0.42) 12%,
-    rgba(100, 244, 255, 0.42) 88%,
-    rgba(100, 244, 255, 0.05));
+  background: linear-gradient(90deg, transparent, rgba(120, 230, 255, 0.35), transparent);
 }
+.owm-bank-left::before { left: 16px; right: 10px; }
+.owm-bank-right::before { left: 10px; right: 16px; }
 
-/* ---- HUD top strip ----------------------------------------------------------
-   Each element hangs from the shared ceiling rail on a short hairline stem.
-   Pods carry NO box: no fill, no frame, no clip — just a label/value stack and
-   the stem + node that make it read as instrumentation dropped from the rail.
-   The drop is uniform so the row reads ordered, not staggered. */
-
-.owm-hud-mark,
+/* A HUD cell — the atomic instrument bay. Bounded, padded, baseline-aligned,
+   divided from its neighbour by a hairline. No floating ticks. */
+.owm-hud-cell,
 .owm-hud-readout {
-  --drop: 16px;
   position: relative;
-  margin-top: var(--drop);
-  padding: 0;
-  background: none !important;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+  min-width: 0;
+  padding: 10px 18px;
+  background: none;
   border: 0;
-  box-shadow: none;
-  clip-path: none;
+  border-left: 1px solid rgba(96, 200, 224, 0.16);
 }
+.owm-hud-bank > :first-child { border-left: 0; }
 
-/* stem: hairline from the ceiling rail to the pod top, capped by a node */
-.owm-hud-mark::before,
+/* small accent stud at the top-left of each bay — anchored to the cell, not
+   hovering above it */
+.owm-hud-cell::before,
 .owm-hud-readout::before {
   content: "";
   position: absolute;
-  left: 0;
-  top: calc(-1 * var(--drop));
-  width: 1px;
-  height: var(--drop);
-  pointer-events: none;
-  background: linear-gradient(180deg, var(--accent), rgba(100, 244, 255, 0.12));
-}
-
-.owm-hud-mark::after,
-.owm-hud-readout::after {
-  content: "";
-  position: absolute;
-  left: -2px;
-  top: calc(-1 * var(--drop) - 1px);
-  width: 5px;
+  top: 9px;
+  left: 18px;
+  width: 12px;
   height: 2px;
   pointer-events: none;
   background: var(--accent);
-  box-shadow: 0 0 6px rgba(100, 244, 255, 0.55);
+  box-shadow: 0 0 6px rgba(100, 244, 255, 0.5);
 }
 
-.owm-hud-mark {
-  display: grid;
-  grid-template-columns: 30px minmax(0, 1fr);
+.owm-hud-cell { padding-top: 14px; }
+.owm-hud-readout { padding-top: 14px; }
+
+.owm-cell-mark {
+  flex-direction: row;
   align-items: center;
   gap: 11px;
-  min-width: 0;
+  padding-left: 16px;
 }
+.owm-cell-mark::before { left: 16px; }
 
-.owm-mark-glyph {
-  width: 28px;
-  height: 28px;
-}
+.owm-mark-glyph { width: 30px; height: 30px; flex: 0 0 auto; }
 
 .owm-mark-id {
   min-width: 0;
   color: var(--text-bright);
-  font: 800 0.8rem/1 var(--font-mono, ui-monospace, monospace);
+  font: 800 0.84rem/1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.06em;
   text-transform: uppercase;
   overflow: hidden;
@@ -317,31 +323,9 @@
   white-space: nowrap;
 }
 
-/* readouts share the centre track as an evenly-spaced, single-row instrument
-   bank — no wrapping, no boxes, just rail-hung label/value bays */
-.owm-hud-readouts {
-  display: flex;
-  flex: 1 1 auto;
-  flex-wrap: nowrap;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 24px;
-  min-width: 0;
-  overflow: visible;
-}
-
-.owm-hud-readout {
-  display: flex;
-  flex: 0 1 auto;
-  flex-direction: column;
-  justify-content: start;
-  gap: 6px;
-  min-width: 0;
-}
-
 .owm-hud-readout-label {
   color: var(--accent);
-  font: 800 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  font: 800 0.56rem/1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.16em;
   text-transform: uppercase;
 }
@@ -354,16 +338,13 @@
   white-space: nowrap;
 }
 
-/* only the workspace path truncates (bounded width + ellipsis); every other
-   value sizes to its content so nothing clips */
 .owm-readout-path .owm-hud-readout-value {
-  max-width: 190px;
+  max-width: 200px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 .owm-readout-mono .owm-hud-readout-value { letter-spacing: 0.04em; }
 
-/* live model readout gets a pulsing presence dot */
 .owm-readout-live .owm-hud-readout-value {
   position: relative;
   padding-left: 14px;
@@ -381,14 +362,54 @@
   box-shadow: 0 0 8px var(--accent);
 }
 
-/* Link gauge */
+/* ---- Center emblem (Omegon mark placeholder) ----------------------------- */
+.owm-hud-emblem {
+  position: relative;
+  flex: 0 0 auto;
+  align-self: stretch;
+  display: grid;
+  grid-template-rows: 1fr auto;
+  place-items: center;
+  gap: 4px;
+  width: 96px;
+  padding: 8px 0 6px;
+}
+
+.owm-emblem-ring {
+  position: relative;
+  width: 44px;
+  height: 44px;
+  clip-path: polygon(50% 0, 93% 25%, 93% 75%, 50% 100%, 7% 75%, 7% 25%);
+  background:
+    radial-gradient(circle at 50% 42%, rgba(100, 244, 255, 0.22), transparent 70%),
+    linear-gradient(180deg, rgba(12, 30, 38, 0.9), rgba(3, 11, 17, 0.95));
+  border: 1px solid rgba(120, 230, 255, 0.5);
+  box-shadow: 0 0 18px rgba(0, 229, 255, 0.18), inset 0 0 14px rgba(0, 229, 255, 0.1);
+}
+.owm-emblem-core {
+  position: absolute;
+  top: 14px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, #bff6ff, var(--accent) 60%, rgba(0, 120, 140, 0.6));
+  box-shadow: 0 0 12px rgba(120, 244, 255, 0.8);
+}
+.owm-emblem-label {
+  color: rgba(176, 230, 240, 0.78);
+  font: 800 0.52rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.34em;
+  text-indent: 0.34em;
+  text-transform: uppercase;
+}
+
+/* ---- Link gauge ---------------------------------------------------------- */
 .owm-link-gauge-row {
   display: flex;
   align-items: center;
   gap: 8px;
   min-width: 0;
 }
-
 .owm-link-bars {
   display: flex;
   align-items: flex-end;
@@ -396,56 +417,43 @@
   height: 12px;
   flex: 0 0 auto;
 }
-
-.owm-link-bars i {
-  width: 3px;
-  background: var(--accent);
-  opacity: 0.9;
-}
+.owm-link-bars i { width: 3px; background: var(--accent); opacity: 0.9; }
 .owm-link-bars i:nth-child(1) { height: 30%; }
 .owm-link-bars i:nth-child(2) { height: 55%; }
 .owm-link-bars i:nth-child(3) { height: 78%; }
 .owm-link-bars i:nth-child(4) { height: 100%; opacity: 0.32; }
-
 .owm-link-gauge-state {
   color: var(--text-dim);
-  font: 700 0.56rem/1 var(--font-mono, ui-monospace, monospace);
+  font: 700 0.54rem/1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
 }
 
-/* Global controls cluster (top-right) — hangs from the same rail, no stems */
-.owm-hud-mark { flex: 0 0 auto; }
-
+/* ---- Right-bank controls (status pill + knobs) --------------------------- */
 .owm-hud-controls {
   position: relative;
   display: flex;
   flex: 0 0 auto;
-  align-items: start;
-  gap: 10px;
-  margin-top: 6px;
-  padding: 0;
+  align-items: center;
+  gap: 8px;
+  padding: 0 14px 0 16px;
+  border-left: 1px solid rgba(96, 200, 224, 0.16);
 }
 
 .owm-status-pill,
 .owm-hud-knob {
   position: relative;
-  margin-top: 0;
-}
-
-.owm-hud-knob,
-.owm-status-pill {
   min-height: 32px;
-  background: rgba(6, 18, 26, 0.5);
+  background: rgba(6, 18, 26, 0.6);
   border: 1px solid var(--glass-edge);
   border-top-color: var(--glass-edge-bright);
   box-shadow: none;
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 7px), calc(100% - 7px) 100%, 7px 100%, 0 calc(100% - 7px));
 }
 
 .owm-hud-knob {
-  width: 36px;
+  width: 34px;
   height: 32px;
   display: grid;
   place-items: center;
