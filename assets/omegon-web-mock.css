@@ -205,34 +205,32 @@
   overflow: visible;
 }
 
-/* ---- HUD top strip: every item is a pod suspended from the ceiling on its
-   own stem. Per-pod --drop sets how far it hangs; the stem length matches so
-   all nodes meet one ceiling while pods sit at staggered depths. No shared
-   header bar. */
+/* ---- HUD top strip: every item is just a label+value hanging from the
+   ceiling on a thin stem. No boxes — boxes at staggered heights collide and
+   read as a broken bar. Two tidy tiers (near/far) give intentional rhythm. */
 
 .owm-hud-mark,
 .owm-hud-readout {
   position: relative;
-  margin-top: var(--drop, 30px);
-  border: 1px solid rgba(92, 240, 255, 0.22);
-  border-top-color: rgba(100, 244, 255, 0.5);
-  background: linear-gradient(180deg, rgba(0, 26, 32, 0.46), rgba(0, 8, 12, 0.12));
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px));
+  margin-top: var(--drop, 22px);
+  border: 0;
+  background: none;
+  clip-path: none;
 }
 
-/* stem: a vertical line rising from each pod up to the ceiling */
+/* stem: a hairline rising from the item up to the ceiling node */
 .owm-hud-mark::before,
 .owm-hud-readout::before,
 .owm-status-pill::before,
 .owm-hud-knob::before {
   content: "";
   position: absolute;
-  left: 15px;
-  top: calc(-1 * var(--drop, 30px));
+  left: 1px;
+  top: calc(-1 * var(--drop, 22px));
   width: 1px;
-  height: var(--drop, 30px);
+  height: var(--drop, 22px);
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(100, 244, 255, 0.72), rgba(100, 244, 255, 0.05));
+  background: linear-gradient(180deg, rgba(100, 244, 255, 0.6), rgba(100, 244, 255, 0.04));
 }
 
 /* node: where each stem clamps onto the ceiling */
@@ -242,30 +240,32 @@
 .owm-hud-knob::after {
   content: "";
   position: absolute;
-  left: 11px;
-  top: calc(-1 * var(--drop, 30px) - 2px);
-  width: 9px;
-  height: 3px;
+  left: -3px;
+  top: calc(-1 * var(--drop, 22px) - 1px);
+  width: 8px;
+  height: 2px;
   pointer-events: none;
   background: var(--accent);
-  box-shadow: 0 0 8px rgba(100, 244, 255, 0.55);
+  box-shadow: 0 0 7px rgba(100, 244, 255, 0.5);
 }
 
-/* per-pod hang depths — staggered so they read as individually dropped */
-.owm-hud-mark { --drop: 40px; }
+/* two tiers: even readouts hang lower than odd ones */
+.owm-hud-mark { --drop: 22px; }
+.owm-hud-readout:nth-child(odd) { --drop: 22px; }
+.owm-hud-readout:nth-child(even) { --drop: 42px; }
 
 .owm-hud-mark {
   display: grid;
-  grid-template-columns: 36px minmax(0, 1fr);
+  grid-template-columns: 34px minmax(0, 1fr);
   align-items: center;
-  gap: 12px;
+  gap: 11px;
   min-width: 0;
-  padding: 10px 12px;
+  padding: 0;
 }
 
 .owm-mark-glyph {
-  width: 34px;
-  height: 34px;
+  width: 32px;
+  height: 32px;
 }
 
 .owm-mark-id {
@@ -282,14 +282,14 @@
 .owm-hud-readouts {
   display: grid;
   grid-template-columns:
-    minmax(64px, 0.4fr)
-    minmax(150px, 1fr)
-    minmax(196px, 1.15fr)
-    minmax(112px, 0.6fr)
-    minmax(150px, 0.66fr)
-    minmax(96px, 0.5fr);
+    minmax(52px, 0.42fr)
+    minmax(118px, 0.9fr)
+    minmax(168px, 1.2fr)
+    minmax(78px, 0.6fr)
+    minmax(108px, 0.7fr)
+    minmax(78px, 0.5fr);
   align-items: start;
-  gap: 12px;
+  gap: 20px;
   min-width: 0;
   overflow: visible;
 }
@@ -298,19 +298,11 @@
   display: flex;
   flex-direction: column;
   justify-content: start;
-  gap: 7px;
+  gap: 6px;
   min-width: 0;
-  padding: 9px 12px 11px;
+  padding: 0;
   box-shadow: none;
 }
-
-/* stagger the hang depths across the readout row */
-.owm-hud-readout:nth-child(1) { --drop: 24px; }
-.owm-hud-readout:nth-child(2) { --drop: 52px; }
-.owm-hud-readout:nth-child(3) { --drop: 30px; }
-.owm-hud-readout:nth-child(4) { --drop: 60px; }
-.owm-hud-readout:nth-child(5) { --drop: 36px; }
-.owm-hud-readout:nth-child(6) { --drop: 48px; }
 
 .owm-hud-readout-label {
   color: var(--accent);
@@ -399,9 +391,9 @@
   position: relative;
 }
 
-.owm-status-pill { --drop: 30px; margin-top: var(--drop); }
-.owm-hud-knob:nth-of-type(1) { --drop: 54px; margin-top: var(--drop); }
-.owm-hud-knob:nth-of-type(2) { --drop: 38px; margin-top: var(--drop); }
+.owm-status-pill { --drop: 22px; margin-top: var(--drop); }
+.owm-hud-knob:nth-of-type(1) { --drop: 42px; margin-top: var(--drop); }
+.owm-hud-knob:nth-of-type(2) { --drop: 22px; margin-top: var(--drop); }
 
 .owm-hud-knob,
 .owm-status-pill {
