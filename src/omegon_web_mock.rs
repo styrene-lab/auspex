@@ -973,7 +973,19 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
 
 #[component]
 pub fn OmegonWebMockApp() -> Element {
+    let backend_session = crate::omegon_web_contract::fixture_session();
     let surface = MOCK_SURFACE;
+    debug_assert_eq!(backend_session.schema_version, surface.session.schema_version);
+    debug_assert_eq!(backend_session.session.session_id, surface.session.session_id);
+    debug_assert_eq!(
+        backend_session.links.surfaces.as_deref(),
+        surface.session.links.surfaces
+    );
+    debug_assert_eq!(
+        backend_session.links.actions.as_deref(),
+        surface.session.links.actions
+    );
+    debug_assert_eq!(backend_session.links.stream.as_deref(), surface.session.links.stream);
     let composer = use_signal(|| String::from(surface.composer.initial_prompt));
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");

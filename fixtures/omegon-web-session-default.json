@@ -1,0 +1,202 @@
+{
+  "schema_version": 1,
+  "session": {
+    "session_id": "default",
+    "cwd": "/Users/wilson/workspace/styrene-labs/auspex",
+    "created_at": "2026-06-27T00:00:00Z",
+    "turns": 3,
+    "tool_calls": 2,
+    "last_prompt_snippet": "Current live session",
+    "current": true
+  },
+  "allocation_mode": "singleton-live",
+  "links": {
+    "surfaces": "/api/sessions/default/surfaces",
+    "actions": "/api/sessions/default/actions",
+    "stream": "/api/sessions/default/surfaces/stream"
+  },
+  "snapshot": {
+    "schema_version": 1,
+    "session_id": "default",
+    "revision": 7,
+    "generated_at": "2026-06-27T00:00:01Z",
+    "surfaces": {
+      "conversation": {
+        "segments": [
+          {
+            "index": 0,
+            "role": "user",
+            "title": "Operator",
+            "summary": "Release candidate prompt",
+            "body": "Pick up the 0.1.0 release candidate work — I want the Omegon Web surface demoable by Friday, running off the daemon snapshot instead of mock data.",
+            "complete": true,
+            "copyable": true,
+            "selectable": true
+          },
+          {
+            "index": 1,
+            "role": "assistant",
+            "title": "Omegon",
+            "summary": "Implementation plan",
+            "body": "Understood. The critical path is the daemon-owned web surface: native session snapshot first, live transport second, action round-trip last.",
+            "complete": true,
+            "copyable": true,
+            "selectable": true
+          }
+        ]
+      },
+      "editor": {
+        "accepts_prompt": true,
+        "placeholder": "Ask anything, or type / for commands",
+        "queue_mode": "until_ready",
+        "supports_attachments": true
+      },
+      "command": {
+        "pending_prompt": null
+      },
+      "command_menu": {
+        "available": true,
+        "open": false
+      },
+      "dashboard": {
+        "session": {
+          "turns": 3,
+          "tool_calls": 2,
+          "compactions": 0
+        },
+        "lifecycle_available": true,
+        "cleave_available": true,
+        "delegate_available": true,
+        "harness_available": true
+      },
+      "footer": {
+        "busy": false
+      },
+      "instruments": {
+        "active_tool": "bash",
+        "tools": [
+          {
+            "id": "tool-1",
+            "name": "bash",
+            "status": "completed",
+            "args": { "command": "cargo test -p omegon --bin omegon web::" },
+            "output_tail": "141 passed; 0 failed",
+            "result_summary": "focused web suite passed",
+            "is_error": false,
+            "elapsed_ms": 360,
+            "phase": "verify"
+          },
+          {
+            "id": "tool-2",
+            "name": "read",
+            "status": "running",
+            "args": { "path": "core/crates/omegon/src/web/surfaces.rs" },
+            "output_tail": null,
+            "result_summary": null,
+            "is_error": false,
+            "elapsed_ms": 41,
+            "phase": "snapshot"
+          }
+        ]
+      },
+      "memory_status": {
+        "active_facts": 0,
+        "total_facts": 0
+      },
+      "operations": {
+        "active_child_runtimes": 2,
+        "kind": "cleave",
+        "running": 2,
+        "completed": 1,
+        "failed": 0,
+        "children": [
+          {
+            "label": "transport-wiring",
+            "status": "running",
+            "activity": "editing action bridge",
+            "tasks_done": 3,
+            "tasks_total": 5,
+            "result_summary": null
+          },
+          {
+            "label": "approval-cards",
+            "status": "running",
+            "activity": "rendering policy gate",
+            "tasks_done": 1,
+            "tasks_total": 3,
+            "result_summary": null
+          },
+          {
+            "label": "snapshot-scout",
+            "status": "done",
+            "activity": "returned web DTOs",
+            "tasks_done": 2,
+            "tasks_total": 2,
+            "result_summary": "surface contract mapped"
+          }
+        ]
+      },
+      "plan": {
+        "active": {
+          "plan_id": "session:current",
+          "mode": "executing",
+          "guidance": "bind Auspex to the native session surface",
+          "status": "active",
+          "scope": "session",
+          "source": "operator",
+          "completed": 1,
+          "total": 4,
+          "items": [
+            {
+              "id": "surface-contract",
+              "label": "surface snapshot contract",
+              "status": "done",
+              "intent": "spec",
+              "writable": false
+            },
+            {
+              "id": "ui-action-transport",
+              "label": "UI action transport",
+              "status": "active",
+              "intent": "implementation",
+              "writable": true
+            },
+            {
+              "id": "approval-cards",
+              "label": "approval and tool cards",
+              "status": "pending",
+              "intent": "review",
+              "writable": true
+            },
+            {
+              "id": "auspex-launch-context",
+              "label": "Auspex launch context",
+              "status": "pending",
+              "intent": "operations",
+              "writable": true
+            }
+          ]
+        },
+        "workstreams": [],
+        "reconciliation_issues": 0,
+        "promotion_nudges": [],
+        "resume_candidates": 0
+      },
+      "runtime": {
+        "context_class": "compact",
+        "thinking_level": "high",
+        "capability_grade": "web-native",
+        "posture": "engineering",
+        "operating_profile": "coding",
+        "autonomy_mode": "Conservative",
+        "session_kind": "native-web",
+        "git_branch": "feature/ui-improvements-polish",
+        "active_persona": null
+      },
+      "settings": {
+        "auth_mode": "bearer",
+        "auth_source": "ephemeral"
+      }
+    }
+  }
+}

@@ -1,4 +1,6 @@
 mod app;
+#[cfg(feature = "omegon-web-mock")]
+mod omegon_web_contract;
 #[cfg(all(target_arch = "wasm32", feature = "omegon-web-mock"))]
 mod omegon_web_mock;
 mod screens;
