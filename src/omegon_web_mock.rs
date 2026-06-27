@@ -43,28 +43,29 @@ struct ModalSurface {
     sections: &'static [ModalSection],
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct SessionLinks {
-    surfaces: Option<&'static str>,
-    actions: Option<&'static str>,
-    stream: Option<&'static str>,
+    surfaces: Option<String>,
+    actions: Option<String>,
+    stream: Option<String>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct SessionDescriptor {
     schema_version: u8,
-    session_id: &'static str,
+    session_id: String,
     current: bool,
-    assistant_profile_id: Option<&'static str>,
-    assistant_readiness: Option<&'static str>,
+    assistant_profile_id: Option<String>,
+    assistant_readiness: Option<String>,
     links: SessionLinks,
 }
 
+#[derive(Clone, PartialEq)]
 struct WebSurfaceSnapshot {
     session: SessionDescriptor,
     runtime: RuntimeSurface,
     launch: LaunchSurface,
-    transcript: &'static [TranscriptEvent],
+    transcript: Vec<TranscriptEvent>,
     plan: PlanLane,
     operations: OperationSurface,
     daemon_events: DaemonEventsSurface,
@@ -74,102 +75,102 @@ struct WebSurfaceSnapshot {
     composer: ComposerSurface,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct RuntimeSurface {
-    agent_id: &'static str,
-    state: &'static str,
-    workspace: &'static str,
-    model: &'static str,
-    context_window: &'static str,
+    agent_id: String,
+    state: String,
+    workspace: String,
+    model: String,
+    context_window: String,
     tool_count: u16,
     tool_online: u16,
     tool_sockets: u16,
-    transport: &'static str,
-    link_status: &'static str,
-    latency: &'static str,
-    autonomy: &'static str,
-    uptime: &'static str,
+    transport: String,
+    link_status: String,
+    latency: String,
+    autonomy: String,
+    uptime: String,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct LaunchSurface {
-    title: &'static str,
-    subtitle: &'static str,
-    policy_owner: &'static str,
+    title: String,
+    subtitle: String,
+    policy_owner: String,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct ComposerSurface {
-    queue_mode: &'static str,
-    initial_prompt: &'static str,
+    queue_mode: String,
+    initial_prompt: String,
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct TranscriptEvent {
-    role: &'static str,
-    label: &'static str,
-    body: &'static str,
-    meta: &'static str,
+    role: String,
+    label: String,
+    body: String,
+    meta: String,
     /// Present on tool calls: full payload shown in the expansion modal.
-    detail: &'static str,
+    detail: String,
 }
 
 /// Mirrors `omegon_traits::PlanItemProjection`: status is one of
 /// pending|active|done|skipped; intent tags the kind of work.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PlanItem {
-    status: &'static str,
-    intent: &'static str,
-    label: &'static str,
-    progress: &'static str,
+    status: String,
+    intent: String,
+    label: String,
+    progress: String,
 }
 
 /// Mirrors `omegon_traits::PlanLaneProjection`: a mode + progress + items.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct PlanLane {
-    mode: &'static str,
+    mode: String,
     completed: usize,
     total: usize,
-    items: &'static [PlanItem],
+    items: Vec<PlanItem>,
 }
 
 /// Mirrors `omegon_traits::OperationChildProjection`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct OperationChild {
-    label: &'static str,
-    status: &'static str,
-    activity: &'static str,
-    progress: &'static str,
-    progress_pct: &'static str,
+    label: String,
+    status: String,
+    activity: String,
+    progress: String,
+    progress_pct: String,
 }
 
 /// Mirrors `omegon_traits::OperationProjection`: delegate / cleave / background.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct OperationSurface {
-    kind: &'static str,
+    kind: String,
     running: usize,
     completed: usize,
     failed: usize,
-    children: &'static [OperationChild],
+    children: Vec<OperationChild>,
 }
 
 /// Mirrors `/api/events/stream` daemon/app SSE payloads.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct DaemonEventItem {
-    event_type: &'static str,
-    lane: &'static str,
-    summary: &'static str,
-    age: &'static str,
+    event_type: String,
+    lane: String,
+    summary: String,
+    age: String,
 }
 
 /// Mirrors the daemon event snapshot/stream pair: `/api/events` + `/api/events/stream`.
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, PartialEq)]
 struct DaemonEventsSurface {
     queued: usize,
     processed: usize,
-    stream_href: &'static str,
-    snapshot_href: &'static str,
-    events: &'static [DaemonEventItem],
+    stream_href: String,
+    snapshot_href: String,
+    events: Vec<DaemonEventItem>,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -185,181 +186,221 @@ const CONTEXT_SPARK: SparklineSpec = SparklineSpec {
     bars: &["35%", "42%", "52%", "64%", "58%", "72%", "68%"],
 };
 
-const PLAN: PlanLane = PlanLane {
-    mode: "executing",
-    completed: 1,
-    total: 4,
-    items: &[
-        PlanItem {
-            status: "done",
-            intent: "spec",
-            label: "surface snapshot contract",
-            progress: "100%",
-        },
-        PlanItem {
-            status: "active",
-            intent: "implementation",
-            label: "UI action transport",
-            progress: "42%",
-        },
-        PlanItem {
-            status: "pending",
-            intent: "review",
-            label: "approval and tool cards",
-            progress: "0%",
-        },
-        PlanItem {
-            status: "pending",
-            intent: "operations",
-            label: "Auspex launch context",
-            progress: "0%",
-        },
-    ],
-};
+fn default_daemon_events() -> DaemonEventsSurface {
+    DaemonEventsSurface {
+        queued: 2,
+        processed: 47,
+        stream_href: "/api/events/stream".to_string(),
+        snapshot_href: "/api/events".to_string(),
+        events: vec![
+            DaemonEventItem {
+                event_type: "runtime.context_changed".to_string(),
+                lane: "runtime".to_string(),
+                summary: "context window recalculated: 82k / 128k tokens".to_string(),
+                age: "12s".to_string(),
+            },
+            DaemonEventItem {
+                event_type: "lifecycle.snapshot_changed".to_string(),
+                lane: "plan".to_string(),
+                summary: "plan projection updated; active lane still executing".to_string(),
+                age: "33s".to_string(),
+            },
+            DaemonEventItem {
+                event_type: "provider.status_changed".to_string(),
+                lane: "provider".to_string(),
+                summary: "openai-codex:gpt-5.5 remains selected and serving".to_string(),
+                age: "1m".to_string(),
+            },
+            DaemonEventItem {
+                event_type: "stream.lagged".to_string(),
+                lane: "recovery".to_string(),
+                summary: "client skipped events; refetch snapshot from /api/events".to_string(),
+                age: "3m".to_string(),
+            },
+        ],
+    }
+}
 
-const OPERATIONS: OperationSurface = OperationSurface {
-    kind: "cleave",
-    running: 2,
-    completed: 1,
-    failed: 0,
-    children: &[
-        OperationChild {
-            label: "transport-wiring",
-            status: "running",
-            activity: "editing action_bridge.rs",
-            progress: "3/5",
-            progress_pct: "60%",
-        },
-        OperationChild {
-            label: "approval-cards",
-            status: "running",
-            activity: "rendering policy gate",
-            progress: "1/3",
-            progress_pct: "33%",
-        },
-        OperationChild {
-            label: "snapshot-scout",
-            status: "done",
-            activity: "returned 4 sections",
-            progress: "2/2",
-            progress_pct: "100%",
-        },
-    ],
-};
+fn normalize_backend_session(
+    session: crate::omegon_web_contract::BackendSessionShowResponse,
+    launch_context: crate::omegon_web_contract::BackendLaunchContextResponse,
+) -> WebSurfaceSnapshot {
+    let surfaces = session.snapshot.surfaces;
+    let active_tool_count = surfaces
+        .instruments
+        .tools
+        .iter()
+        .filter(|tool| tool.status == "running")
+        .count() as u16;
+    let tool_count = surfaces.instruments.tools.len() as u16;
+    let tool_sockets = tool_count.max(12);
+    let stream_href = session
+        .links
+        .stream
+        .clone()
+        .unwrap_or_else(|| "/api/sessions/default/surfaces/stream".to_string());
+    let context_window = format!(
+        "{} facts · {} turns",
+        surfaces.memory_status.active_facts, surfaces.dashboard.session.turns
+    );
+    let mut transcript: Vec<TranscriptEvent> = surfaces
+        .conversation
+        .segments
+        .into_iter()
+        .map(|segment| TranscriptEvent {
+            role: match segment.role.as_str() {
+                "user" => "operator".to_string(),
+                other => other.to_string(),
+            },
+            label: segment.title.unwrap_or_else(|| match segment.role.as_str() {
+                "user" => "Operator".to_string(),
+                "assistant" => "Omegon".to_string(),
+                other => other.to_string(),
+            }),
+            body: segment.body.or(segment.summary).unwrap_or_default(),
+            meta: if segment.complete { "conversation · complete" } else { "conversation · streaming" }.to_string(),
+            detail: String::new(),
+        })
+        .collect();
+    transcript.extend(surfaces.instruments.tools.iter().map(|tool| {
+        let body = tool
+            .result_summary
+            .clone()
+            .or_else(|| tool.output_tail.clone())
+            .unwrap_or_else(|| format!("{} {}", tool.name, tool.status));
+        let args = serde_json::to_string_pretty(&tool.args).unwrap_or_else(|_| "{}".to_string());
+        let mut detail = format!("tool {} · {}\nargs:\n{}", tool.name, tool.status, args);
+        if let Some(output_tail) = &tool.output_tail {
+            detail.push_str("\n\noutput tail:\n");
+            detail.push_str(output_tail);
+        }
+        if let Some(summary) = &tool.result_summary {
+            detail.push_str("\n\nsummary:\n");
+            detail.push_str(summary);
+        }
+        TranscriptEvent {
+            role: "tool".to_string(),
+            label: format!("Tool · {}", tool.name),
+            body,
+            meta: format!(
+                "{} · {} ms",
+                tool.phase.clone().unwrap_or_else(|| "tool".to_string()),
+                tool.elapsed_ms.unwrap_or(0)
+            ),
+            detail,
+        }
+    }));
 
-const DAEMON_EVENTS: DaemonEventsSurface = DaemonEventsSurface {
-    queued: 2,
-    processed: 47,
-    stream_href: "/api/events/stream",
-    snapshot_href: "/api/events",
-    events: &[
-        DaemonEventItem {
-            event_type: "runtime.context_changed",
-            lane: "runtime",
-            summary: "context window recalculated: 82k / 128k tokens",
-            age: "12s",
+    let active_plan = surfaces.plan.active;
+    WebSurfaceSnapshot {
+        session: SessionDescriptor {
+            schema_version: session.schema_version,
+            session_id: session.session.session_id,
+            current: session.session.current,
+            assistant_profile_id: None,
+            assistant_readiness: Some("ready".to_string()),
+            links: SessionLinks {
+                surfaces: session.links.surfaces,
+                actions: session.links.actions,
+                stream: session.links.stream,
+            },
         },
-        DaemonEventItem {
-            event_type: "lifecycle.snapshot_changed",
-            lane: "plan",
-            summary: "plan projection updated; active lane still executing",
-            age: "33s",
+        runtime: RuntimeSurface {
+            agent_id: "daemon-01".to_string(),
+            state: if session.session.current { "attached" } else { "archived" }.to_string(),
+            workspace: session.session.cwd,
+            model: surfaces
+                .runtime
+                .capability_grade
+                .clone()
+                .unwrap_or_else(|| "daemon snapshot".to_string()),
+            context_window,
+            tool_count,
+            tool_online: active_tool_count,
+            tool_sockets: tool_sockets.max(1),
+            transport: stream_href,
+            link_status: "STREAM NOMINAL".to_string(),
+            latency: "fixture".to_string(),
+            autonomy: surfaces
+                .runtime
+                .autonomy_mode
+                .unwrap_or_else(|| "Conservative".to_string())
+                .to_lowercase(),
+            uptime: format!("{}t", session.session.turns),
         },
-        DaemonEventItem {
-            event_type: "provider.status_changed",
-            lane: "provider",
-            summary: "openai-codex:gpt-5.5 remains selected and serving",
-            age: "1m",
+        launch: LaunchSurface {
+            title: "Persistent agent chat".to_string(),
+            subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex".to_string(),
+            policy_owner: launch_context.policy_owner,
         },
-        DaemonEventItem {
-            event_type: "stream.lagged",
-            lane: "recovery",
-            summary: "client skipped events; refetch snapshot from /api/events",
-            age: "3m",
+        transcript,
+        plan: active_plan
+            .map(|plan| PlanLane {
+                mode: plan.mode,
+                completed: plan.completed,
+                total: plan.total,
+                items: plan
+                    .items
+                    .into_iter()
+                    .map(|item| PlanItem {
+                        progress: match item.status.as_str() {
+                            "done" => "100%".to_string(),
+                            "active" => "42%".to_string(),
+                            _ => "0%".to_string(),
+                        },
+                        status: item.status,
+                        intent: item.intent.unwrap_or_else(|| "work".to_string()),
+                        label: item.label,
+                    })
+                    .collect(),
+            })
+            .unwrap_or_else(|| PlanLane {
+                mode: "idle".to_string(),
+                completed: 0,
+                total: 0,
+                items: Vec::new(),
+            }),
+        operations: OperationSurface {
+            kind: surfaces
+                .operations
+                .kind
+                .unwrap_or_else(|| "idle".to_string()),
+            running: surfaces.operations.running,
+            completed: surfaces.operations.completed,
+            failed: surfaces.operations.failed,
+            children: surfaces
+                .operations
+                .children
+                .into_iter()
+                .map(|child| {
+                    let progress_pct = if child.tasks_total == 0 {
+                        0
+                    } else {
+                        child.tasks_done.saturating_mul(100) / child.tasks_total
+                    };
+                    OperationChild {
+                        label: child.label,
+                        status: child.status,
+                        activity: child
+                            .activity
+                            .or(child.result_summary)
+                            .unwrap_or_else(|| "idle".to_string()),
+                        progress: format!("{}/{}", child.tasks_done, child.tasks_total),
+                        progress_pct: format!("{progress_pct}%"),
+                    }
+                })
+                .collect(),
         },
-    ],
-};
-
-const TRANSCRIPT: &[TranscriptEvent] = &[
-    TranscriptEvent {
-        role: "operator",
-        label: "Operator",
-        body: "Pick up the 0.1.0 release candidate work — I want the Omegon Web surface demoable by Friday, running off the daemon snapshot instead of mock data.",
-        meta: "prompt · 7m ago",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "assistant",
-        label: "Omegon",
-        body: "Understood. The release framework already verifies, so the critical path is the daemon-owned web surface. I'll land it in three slices: contract-shaped snapshot first, live transport second, action round-trip last.",
-        meta: "assistant · 7m ago",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "tool",
-        label: "Tool call",
-        body: "GET /api/web/surfaces → 200. Returned runtime, transcript, objectives, and approval surfaces (4 sections, 11 events).",
-        meta: "surface snapshot · 41 ms",
-        detail: "GET /api/web/surfaces\nstatus 200 · 41 ms\n\nsections: runtime, transcript, objectives, approval\nevents: 11\nbytes: 4.2 KB",
-    },
-    TranscriptEvent {
-        role: "lifecycle",
-        label: "Plan advanced",
-        body: "Objective 'surface snapshot contract' marked complete. The semantic snapshot now matches the Rust struct one-to-one — no shadow shapes.",
-        meta: "plan · objective 1 of 4",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "operator",
-        label: "Operator",
-        body: "Good. Start on the UI action transport so Send and the approval buttons actually reach the daemon.",
-        meta: "prompt · 4m ago",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "assistant",
-        label: "Omegon",
-        body: "I'll open a WebSocket to the surfaces stream and post operator actions as intents. The daemon stays authoritative; the surface only proposes. Approval gates resolve server-side and echo back as lifecycle events.",
-        meta: "assistant · 4m ago",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "tool",
-        label: "Tool call",
-        body: "cargo test --features omegon-web-mock surfaces:: → 12 passed, 0 failed. Snapshot round-trips through serde without drift.",
-        meta: "test run · 1.8 s",
-        detail: "cargo test --features omegon-web-mock\n\nrunning 12 tests\n............ ok\n\ntest result: ok. 12 passed; 0 failed; 0 ignored\nfinished in 1.81s",
-    },
-    TranscriptEvent {
-        role: "lifecycle",
-        label: "Memory written",
-        body: "Stored constraint: the web surface must never mutate state locally — every action is a proposal the daemon accepts or rejects.",
-        meta: "memory · constraints",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "assistant",
-        label: "Omegon",
-        body: "Transport scaffolding is in place. I'm wiring the context meter and objective rows to live snapshot fields now, then I'll exercise a real approval round-trip.",
-        meta: "assistant · streaming",
-        detail: "",
-    },
-    TranscriptEvent {
-        role: "tool",
-        label: "Tool call",
-        body: "cargo check --target wasm32-unknown-unknown --no-default-features --features omegon-web-mock",
-        meta: "build · running",
-        detail: "cargo build --target wasm32-unknown-unknown\n  --no-default-features --features omegon-web-mock\n\nCompiling auspex v0.2.0-rc.1\n  Building [=========>        ] 218/256\nstatus: running",
-    },
-    TranscriptEvent {
-        role: "approval",
-        label: "Approval needed",
-        body: "Allow shell command: trunk build web/omegon-web-mock.html and publish the bundle to the daemon's static surface route.",
-        meta: "policy gate · pending",
-        detail: "",
-    },
-];
-
+        daemon_events: default_daemon_events(),
+        context_spark: CONTEXT_SPARK,
+        menu: MENU_SURFACE,
+        modal_surfaces: MODAL_SURFACES,
+        composer: ComposerSurface {
+            queue_mode: surfaces.editor.queue_mode,
+            initial_prompt: surfaces.editor.placeholder,
+        },
+    }
+}
 
 const MENU_ITEMS: &[MenuItem] = &[
     MenuItem {
@@ -428,56 +469,6 @@ const MODAL_SURFACES: &[ModalSurface] = &[
     ModalSurface { target: ModalTarget::Commands, eyebrow: "COMMANDS", title: "Command palette", summary: "Operator shortcuts and command-shaped intents.", sections: COMMAND_SECTIONS },
 ];
 
-const MOCK_SURFACE: WebSurfaceSnapshot = WebSurfaceSnapshot {
-    session: SessionDescriptor {
-        schema_version: 1,
-        session_id: "default",
-        current: true,
-        assistant_profile_id: Some("omegon-default"),
-        assistant_readiness: Some("ready"),
-        links: SessionLinks {
-            surfaces: Some("/api/sessions/default/surfaces"),
-            actions: Some("/api/sessions/default/actions"),
-            stream: Some("/api/sessions/default/surfaces/stream"),
-        },
-    },
-    runtime: RuntimeSurface {
-        agent_id: "daemon-01",
-        state: "attached",
-        workspace: "/Users/wilson/workspace/styrene-labs/auspex",
-        model: "openai-codex:gpt-5.5",
-        context_window: "82k / 128k",
-        tool_count: 17,
-        tool_online: 9,
-        tool_sockets: 12,
-        transport: "/api/sessions/default/surfaces/stream",
-        link_status: "stream nominal",
-        latency: "38 ms",
-        autonomy: "conservative",
-        uptime: "01:24:36",
-    },
-    launch: LaunchSurface {
-        title: "Persistent agent chat",
-        subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex",
-        policy_owner: "auspex",
-    },
-    transcript: TRANSCRIPT,
-    plan: PLAN,
-    operations: OPERATIONS,
-    daemon_events: DAEMON_EVENTS,
-    context_spark: CONTEXT_SPARK,
-    menu: MENU_SURFACE,
-    modal_surfaces: MODAL_SURFACES,
-    composer: ComposerSurface {
-        queue_mode: "interruptible",
-        initial_prompt: "Once the build clears, run the approval round-trip end to end and report latency.",
-    },
-};
-
-// ============================================================
-// Reusable primitives — the shared HUD vocabulary.
-// ============================================================
-
 /// Tick + label + extending-rule section header.
 #[component]
 fn Eyebrow(label: &'static str) -> Element {
@@ -486,7 +477,7 @@ fn Eyebrow(label: &'static str) -> Element {
 
 /// Amber signal chip for live status words.
 #[component]
-fn StateChip(label: &'static str) -> Element {
+fn StateChip(label: String) -> Element {
     rsx! { div { class: "owm-state-chip", "{label}" } }
 }
 
@@ -546,7 +537,7 @@ fn Sparkline(spec: SparklineSpec) -> Element {
 /// progress fills inward. Mirrors PlanItemProjection.
 #[component]
 fn PlanRow(item: PlanItem) -> Element {
-    let glyph = match item.status {
+    let glyph = match item.status.as_str() {
         "done" => "✓",
         "active" => "▸",
         "skipped" => "–",
@@ -590,7 +581,7 @@ fn HudReadout(label: &'static str, value: String, modifier: &'static str) -> Ele
 
 /// Link gauge — signal bars + latency, the cockpit's connection instrument.
 #[component]
-fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
+fn LinkGauge(status: String, latency: String) -> Element {
     rsx! {
         div { class: "owm-runtime-display owm-link-instrument",
             span { class: "owm-display-label", "LINK" }
@@ -610,7 +601,7 @@ fn LinkGauge(status: &'static str, latency: &'static str) -> Element {
 
 /// Uptime rendered as a clock instrument, not another text readout.
 #[component]
-fn UptimeGauge(uptime: &'static str) -> Element {
+fn UptimeGauge(uptime: String) -> Element {
     rsx! {
         div { class: "owm-runtime-display owm-clock-instrument",
             span { class: "owm-display-label", "UPTIME" }
@@ -629,7 +620,7 @@ fn UptimeGauge(uptime: &'static str) -> Element {
 
 /// Session state rendered as a beacon/display, not a plain status pill.
 #[component]
-fn StateIndicator(status: &'static str) -> Element {
+fn StateIndicator(status: String) -> Element {
     rsx! {
         div { class: "owm-runtime-display owm-state-instrument owm-state-{status}",
             span { class: "owm-state-lamp" }
@@ -648,7 +639,7 @@ fn TopBar(
     launch: LaunchSurface,
     runtime: RuntimeSurface,
     session: SessionDescriptor,
-    status: &'static str,
+    status: String,
     on_open: EventHandler<ModalTarget>,
 ) -> Element {
     rsx! {
@@ -732,7 +723,7 @@ fn PlanCard(plan: PlanLane) -> Element {
             }
             div { class: "owm-objective-stack",
                 for item in plan.items.iter() {
-                    PlanRow { item: *item }
+                    PlanRow { item: item.clone() }
                 }
             }
         }
@@ -770,7 +761,7 @@ fn OperationsCard(operations: OperationSurface) -> Element {
             }
             div { class: "owm-op-stack",
                 for child in operations.children.iter() {
-                    OperationRow { child: *child }
+                    OperationRow { child: child.clone() }
                 }
             }
         }
@@ -814,10 +805,11 @@ fn TranscriptEntry(
     // Tool calls collapse to a single compact, clickable row; the full payload
     // opens in the expansion modal rather than inflating the transcript.
     if event.role == "tool" {
+        let expanded_event = event.clone();
         return rsx! {
             button {
                 class: "owm-transcript-card owm-tool-row tool",
-                onclick: move |_| on_expand.call(event),
+                onclick: move |_| on_expand.call(expanded_event.clone()),
                 div { class: "owm-event-head",
                     strong { "{event.label}" }
                     span { "{event.meta}" }
@@ -854,7 +846,7 @@ fn TranscriptEntry(
 
 #[component]
 fn Composer(
-    queue_mode: &'static str,
+    queue_mode: String,
     composer: Signal<String>,
     sent_count: Signal<u32>,
     on_open: EventHandler<ModalTarget>,
@@ -976,19 +968,22 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
 pub fn OmegonWebMockApp() -> Element {
     let backend_session = crate::omegon_web_contract::fixture_session();
     let launch_context = crate::omegon_web_contract::proxied_launch_context_fixture();
-    let surface = MOCK_SURFACE;
-    debug_assert_eq!(backend_session.schema_version, surface.session.schema_version);
-    debug_assert_eq!(backend_session.session.session_id, surface.session.session_id);
-    debug_assert_eq!(launch_context.policy_owner, surface.launch.policy_owner);
+    debug_assert_eq!(backend_session.schema_version, 1);
+    debug_assert_eq!(backend_session.session.session_id, "default");
+    debug_assert_eq!(launch_context.policy_owner, "auspex");
     debug_assert_eq!(
         backend_session.links.surfaces.as_deref(),
-        surface.session.links.surfaces
+        Some("/api/sessions/default/surfaces")
     );
     debug_assert_eq!(
         backend_session.links.actions.as_deref(),
-        surface.session.links.actions
+        Some("/api/sessions/default/actions")
     );
-    debug_assert_eq!(backend_session.links.stream.as_deref(), surface.session.links.stream);
+    debug_assert_eq!(
+        backend_session.links.stream.as_deref(),
+        Some("/api/sessions/default/surfaces/stream")
+    );
+    let surface = normalize_backend_session(backend_session, launch_context);
     let composer = use_signal(|| String::from(surface.composer.initial_prompt));
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");
@@ -996,9 +991,9 @@ pub fn OmegonWebMockApp() -> Element {
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
 
     let status = if *approval_state.read() == "pending" {
-        "waiting"
+        "waiting".to_string()
     } else {
-        "running"
+        "running".to_string()
     };
 
     rsx! {
@@ -1008,7 +1003,7 @@ pub fn OmegonWebMockApp() -> Element {
 
             TopBar {
                 launch: surface.launch,
-                runtime: surface.runtime,
+                runtime: surface.runtime.clone(),
                 session: surface.session,
                 status,
                 on_open: move |target| modal_target.set(Some(target)),
@@ -1030,7 +1025,7 @@ pub fn OmegonWebMockApp() -> Element {
                         div { class: "owm-transcript-list",
                             for event in surface.transcript.iter() {
                                 TranscriptEntry {
-                                    event: *event,
+                                    event: event.clone(),
                                     on_deny: move |_| approval_state.set("denied"),
                                     on_approve: move |_| approval_state.set("approved"),
                                     on_expand: move |ev| tool_modal.set(Some(ev)),
@@ -1045,7 +1040,7 @@ pub fn OmegonWebMockApp() -> Element {
                     }
 
                     Composer {
-                        queue_mode: surface.composer.queue_mode,
+                        queue_mode: surface.composer.queue_mode.clone(),
                         composer,
                         sent_count,
                         on_open: move |target| modal_target.set(Some(target)),
