@@ -195,74 +195,77 @@
 .omegon-web-topbar {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(168px, 210px) minmax(0, 1fr) auto;
-  align-items: stretch;
-  gap: 26px;
+  grid-template-columns: minmax(168px, 206px) minmax(0, 1fr) auto;
+  align-items: start;
+  gap: 14px;
   min-width: 0;
-  min-height: 86px;
-  padding: 26px 30px 12px;
+  padding: 6px 30px 14px;
   border: 0;
   background: transparent;
+  overflow: visible;
 }
 
-/* One faint ceiling rail. Every module hangs from it with an identical cap +
-   drop-line, so the strip reads as instruments descending from a common
-   overhead plane rather than a row of boxes with vertical dividers. */
-.omegon-web-topbar::before {
+/* ---- HUD top strip: every item is a pod suspended from the ceiling on its
+   own stem. Per-pod --drop sets how far it hangs; the stem length matches so
+   all nodes meet one ceiling while pods sit at staggered depths. No shared
+   header bar. */
+
+.owm-hud-mark,
+.owm-hud-readout {
+  position: relative;
+  margin-top: var(--drop, 30px);
+  border: 1px solid rgba(92, 240, 255, 0.22);
+  border-top-color: rgba(100, 244, 255, 0.5);
+  background: linear-gradient(180deg, rgba(0, 26, 32, 0.46), rgba(0, 8, 12, 0.12));
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 9px), calc(100% - 9px) 100%, 9px 100%, 0 calc(100% - 9px));
+}
+
+/* stem: a vertical line rising from each pod up to the ceiling */
+.owm-hud-mark::before,
+.owm-hud-readout::before,
+.owm-status-pill::before,
+.owm-hud-knob::before {
   content: "";
   position: absolute;
-  top: 16px;
-  left: 26px;
-  right: 26px;
-  height: 1px;
+  left: 15px;
+  top: calc(-1 * var(--drop, 30px));
+  width: 1px;
+  height: var(--drop, 30px);
   pointer-events: none;
-  background: linear-gradient(90deg, rgba(100, 244, 255, 0.34), rgba(100, 244, 255, 0.12) 60%, rgba(100, 244, 255, 0.04));
+  background: linear-gradient(180deg, rgba(100, 244, 255, 0.72), rgba(100, 244, 255, 0.05));
 }
 
-/* ---- HUD top strip: mark · readouts · controls ------------- */
+/* node: where each stem clamps onto the ceiling */
+.owm-hud-mark::after,
+.owm-hud-readout::after,
+.owm-status-pill::after,
+.owm-hud-knob::after {
+  content: "";
+  position: absolute;
+  left: 11px;
+  top: calc(-1 * var(--drop, 30px) - 2px);
+  width: 9px;
+  height: 3px;
+  pointer-events: none;
+  background: var(--accent);
+  box-shadow: 0 0 8px rgba(100, 244, 255, 0.55);
+}
+
+/* per-pod hang depths — staggered so they read as individually dropped */
+.owm-hud-mark { --drop: 40px; }
 
 .owm-hud-mark {
-  position: relative;
   display: grid;
-  grid-template-columns: 38px minmax(0, 1fr);
+  grid-template-columns: 36px minmax(0, 1fr);
   align-items: center;
   gap: 12px;
   min-width: 0;
-  padding: 8px 0 8px 2px;
-}
-
-/* Uniform ceiling attachment: a short bright cap sitting on the rail, plus a
-   thin drop-line. Identical for every module — that uniformity is the HUD. */
-.owm-hud-mark::after,
-.owm-hud-readout::after,
-.owm-hud-controls::after {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 0;
-  width: 20px;
-  height: 2px;
-  pointer-events: none;
-  background: var(--accent);
-  box-shadow: 0 0 8px rgba(100, 244, 255, 0.45);
-}
-
-.owm-hud-mark::before,
-.owm-hud-readout::before,
-.owm-hud-controls::before {
-  content: "";
-  position: absolute;
-  top: -10px;
-  left: 0;
-  width: 1px;
-  height: 10px;
-  pointer-events: none;
-  background: linear-gradient(180deg, rgba(100, 244, 255, 0.55), rgba(100, 244, 255, 0));
+  padding: 10px 12px;
 }
 
 .owm-mark-glyph {
-  width: 36px;
-  height: 36px;
+  width: 34px;
+  height: 34px;
 }
 
 .owm-mark-id {
@@ -286,24 +289,28 @@
     minmax(150px, 0.66fr)
     minmax(96px, 0.5fr);
   align-items: start;
-  gap: 24px;
+  gap: 12px;
   min-width: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
 .owm-hud-readout {
-  position: relative;
   display: flex;
   flex-direction: column;
   justify-content: start;
   gap: 7px;
   min-width: 0;
-  padding: 2px 0 6px;
-  background: transparent;
-  border: 0;
+  padding: 9px 12px 11px;
   box-shadow: none;
-  clip-path: none;
 }
+
+/* stagger the hang depths across the readout row */
+.owm-hud-readout:nth-child(1) { --drop: 24px; }
+.owm-hud-readout:nth-child(2) { --drop: 52px; }
+.owm-hud-readout:nth-child(3) { --drop: 30px; }
+.owm-hud-readout:nth-child(4) { --drop: 60px; }
+.owm-hud-readout:nth-child(5) { --drop: 36px; }
+.owm-hud-readout:nth-child(6) { --drop: 48px; }
 
 .owm-hud-readout-label {
   color: var(--accent);
@@ -378,14 +385,23 @@
   white-space: nowrap;
 }
 
-/* Global controls cluster (top-right knobs) */
+/* Global controls cluster (top-right knobs) — each item drops on its own stem */
 .owm-hud-controls {
   position: relative;
   display: flex;
   align-items: start;
-  gap: 8px;
-  padding: 2px 0 0;
+  gap: 10px;
+  padding: 0;
 }
+
+.owm-status-pill,
+.owm-hud-knob {
+  position: relative;
+}
+
+.owm-status-pill { --drop: 30px; margin-top: var(--drop); }
+.owm-hud-knob:nth-of-type(1) { --drop: 54px; margin-top: var(--drop); }
+.owm-hud-knob:nth-of-type(2) { --drop: 38px; margin-top: var(--drop); }
 
 .owm-hud-knob,
 .owm-status-pill {
