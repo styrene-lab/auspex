@@ -221,91 +221,89 @@
 .omegon-web-topbar {
   position: relative;
   display: grid;
-  grid-template-columns: minmax(168px, 206px) minmax(0, 1fr) auto;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: start;
-  gap: 14px;
+  gap: 26px;
   min-width: 0;
-  padding: 6px 30px 14px;
+  padding: 30px 30px 14px;
   border: 0;
   background: transparent;
   overflow: visible;
 }
 
-/* ---- HUD top strip: every item is a glass-holographic pod, top-aligned and
-   evenly distributed. A centered stem drops from the ceiling and unfolds into
-   a bracket that caps the pod's top edge. Height varies with content; tops
-   stay flush — no stagger, no wave. */
+/* One ceiling rail spans the whole strip; every cluster hangs from it. */
+.omegon-web-topbar::before {
+  content: "";
+  position: absolute;
+  top: 14px;
+  left: 30px;
+  right: 30px;
+  height: 1px;
+  pointer-events: none;
+  background: linear-gradient(90deg,
+    rgba(100, 244, 255, 0.05),
+    rgba(100, 244, 255, 0.42) 12%,
+    rgba(100, 244, 255, 0.42) 88%,
+    rgba(100, 244, 255, 0.05));
+}
+
+/* ---- HUD top strip ----------------------------------------------------------
+   Each element hangs from the shared ceiling rail on a short hairline stem.
+   Pods carry NO box: no fill, no frame, no clip — just a label/value stack and
+   the stem + node that make it read as instrumentation dropped from the rail.
+   The drop is uniform so the row reads ordered, not staggered. */
 
 .owm-hud-mark,
 .owm-hud-readout {
-  --drop: 30px;
+  --drop: 16px;
   position: relative;
   margin-top: var(--drop);
-  padding: 11px 13px 10px;
-  background: var(--glass-fill), var(--glass-grid);
-  background-size: auto, var(--glass-grid-size);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
-  border: 1px solid var(--glass-edge);
-  border-top-color: var(--glass-edge-bright);
-  box-shadow: var(--glass-glow);
-  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
+  padding: 0;
+  background: none !important;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  border: 0;
+  box-shadow: none;
+  clip-path: none;
 }
 
-/* stem: a centered hairline dropping from the ceiling to the pod's top edge */
+/* stem: hairline from the ceiling rail to the pod top, capped by a node */
 .owm-hud-mark::before,
-.owm-hud-readout::before,
-.owm-status-pill::before,
-.owm-hud-knob::before {
+.owm-hud-readout::before {
   content: "";
   position: absolute;
-  left: 50%;
+  left: 0;
   top: calc(-1 * var(--drop));
   width: 1px;
   height: var(--drop);
   pointer-events: none;
-  background: linear-gradient(180deg, var(--glass-edge-bright), rgba(100, 244, 255, 0.12));
+  background: linear-gradient(180deg, var(--accent), rgba(100, 244, 255, 0.12));
 }
 
-/* bracket: the stem unfolds into a ⊓ cap hugging the pod's top corners, plus
-   a ceiling node where the stem clamps on */
 .owm-hud-mark::after,
-.owm-hud-readout::after,
-.owm-status-pill::after,
-.owm-hud-knob::after {
+.owm-hud-readout::after {
   content: "";
   position: absolute;
-  left: 10px;
-  right: 10px;
-  top: 4px;
-  height: 7px;
+  left: -2px;
+  top: calc(-1 * var(--drop) - 1px);
+  width: 5px;
+  height: 2px;
   pointer-events: none;
-  border-top: 1px solid var(--glass-edge-bright);
-  border-left: 1px solid var(--glass-edge-bright);
-  border-right: 1px solid var(--glass-edge-bright);
-  opacity: 0.85;
+  background: var(--accent);
+  box-shadow: 0 0 6px rgba(100, 244, 255, 0.55);
 }
-
-/* ceiling node: small tick where each centered stem meets the ceiling */
-.owm-hud-mark,
-.owm-hud-readout,
-.owm-status-pill,
-.owm-hud-knob {
-  background-clip: padding-box;
-}
-.owm-hud-readouts::before { content: none; }
 
 .owm-hud-mark {
   display: grid;
-  grid-template-columns: 32px minmax(0, 1fr);
+  grid-template-columns: 30px minmax(0, 1fr);
   align-items: center;
   gap: 11px;
   min-width: 0;
 }
 
 .owm-mark-glyph {
-  width: 30px;
-  height: 30px;
+  width: 28px;
+  height: 28px;
 }
 
 .owm-mark-id {
@@ -319,28 +317,26 @@
   white-space: nowrap;
 }
 
+/* readouts share the centre track as an evenly-spaced, single-row instrument
+   bank — no wrapping, no boxes, just rail-hung label/value bays */
 .owm-hud-readouts {
-  display: grid;
-  grid-template-columns:
-    minmax(58px, 0.5fr)
-    minmax(128px, 1fr)
-    minmax(176px, 1.2fr)
-    minmax(84px, 0.62fr)
-    minmax(116px, 0.74fr)
-    minmax(86px, 0.56fr);
-  align-items: start;
-  gap: 14px;
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: nowrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 24px;
   min-width: 0;
   overflow: visible;
 }
 
 .owm-hud-readout {
   display: flex;
+  flex: 0 1 auto;
   flex-direction: column;
   justify-content: start;
   gap: 6px;
   min-width: 0;
-  box-shadow: var(--glass-glow);
 }
 
 .owm-hud-readout-label {
@@ -356,12 +352,15 @@
   font: 700 0.84rem/1.1 var(--font-mono, ui-monospace, monospace);
   letter-spacing: 0;
   white-space: nowrap;
+}
+
+/* only the workspace path truncates (bounded width + ellipsis); every other
+   value sizes to its content so nothing clips */
+.owm-readout-path .owm-hud-readout-value {
+  max-width: 190px;
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
-.owm-readout-path .owm-hud-readout-value,
-.owm-readout-live .owm-hud-readout-value { text-overflow: ellipsis; }
 .owm-readout-mono .owm-hud-readout-value { letter-spacing: 0.04em; }
 
 /* live model readout gets a pulsing presence dot */
@@ -416,32 +415,32 @@
   white-space: nowrap;
 }
 
-/* Global controls cluster (top-right knobs) — each item drops on its own stem */
+/* Global controls cluster (top-right) — hangs from the same rail, no stems */
+.owm-hud-mark { flex: 0 0 auto; }
+
 .owm-hud-controls {
   position: relative;
   display: flex;
+  flex: 0 0 auto;
   align-items: start;
   gap: 10px;
+  margin-top: 6px;
   padding: 0;
 }
 
 .owm-status-pill,
 .owm-hud-knob {
   position: relative;
-  --drop: 30px;
-  margin-top: var(--drop);
+  margin-top: 0;
 }
 
 .owm-hud-knob,
 .owm-status-pill {
-  min-height: 34px;
-  background: var(--glass-fill), var(--glass-grid);
-  background-size: auto, var(--glass-grid-size);
-  backdrop-filter: var(--glass-blur);
-  -webkit-backdrop-filter: var(--glass-blur);
+  min-height: 32px;
+  background: rgba(6, 18, 26, 0.5);
   border: 1px solid var(--glass-edge);
   border-top-color: var(--glass-edge-bright);
-  box-shadow: var(--glass-glow);
+  box-shadow: none;
   clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
 }
 
