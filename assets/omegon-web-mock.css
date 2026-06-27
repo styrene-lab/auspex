@@ -26,7 +26,33 @@
   --text-faint: rgba(196, 236, 248, 0.3);
   --panel-bg: rgba(2, 12, 16, 0.7);
   --bracket: 14px;
+
+  /* ---- Glass-holographic material (driving principle) -------------------
+     Every projected surface — top-bar pods, rail instruments, modals — is a
+     translucent pane: a faint teal fill, blur behind it, hairline bright
+     edges, and an inner grid that reads as the holographic substrate.
+     Compose these tokens; don't reinvent the material per element. */
+  --glass-fill: linear-gradient(180deg, rgba(28, 78, 92, 0.16), rgba(4, 20, 28, 0.07));
+  --glass-grid:
+    linear-gradient(rgba(120, 240, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(120, 240, 255, 0.05) 1px, transparent 1px);
+  --glass-grid-size: 13px 13px;
+  --glass-edge: rgba(110, 244, 255, 0.32);
+  --glass-edge-bright: rgba(150, 250, 255, 0.7);
+  --glass-blur: blur(7px);
+  --glass-glow: 0 0 18px rgba(0, 229, 255, 0.1), inset 0 0 18px rgba(0, 229, 255, 0.05);
 }
+
+/* Reusable glass pane: translucent fill + blur + inner grid + hairline edges. */
+.owm-glass {
+  background: var(--glass-fill), var(--glass-grid);
+  background-size: auto, var(--glass-grid-size);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  box-shadow: var(--glass-glow);
+}
+
 
 /* ---- Shell ------------------------------------------------- */
 
@@ -205,67 +231,81 @@
   overflow: visible;
 }
 
-/* ---- HUD top strip: every item is just a label+value hanging from the
-   ceiling on a thin stem. No boxes — boxes at staggered heights collide and
-   read as a broken bar. Two tidy tiers (near/far) give intentional rhythm. */
+/* ---- HUD top strip: every item is a glass-holographic pod, top-aligned and
+   evenly distributed. A centered stem drops from the ceiling and unfolds into
+   a bracket that caps the pod's top edge. Height varies with content; tops
+   stay flush — no stagger, no wave. */
 
 .owm-hud-mark,
 .owm-hud-readout {
+  --drop: 30px;
   position: relative;
-  margin-top: var(--drop, 22px);
-  border: 0;
-  background: none;
-  clip-path: none;
+  margin-top: var(--drop);
+  padding: 11px 13px 10px;
+  background: var(--glass-fill), var(--glass-grid);
+  background-size: auto, var(--glass-grid-size);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-top-color: var(--glass-edge-bright);
+  box-shadow: var(--glass-glow);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
 }
 
-/* stem: a hairline rising from the item up to the ceiling node */
+/* stem: a centered hairline dropping from the ceiling to the pod's top edge */
 .owm-hud-mark::before,
 .owm-hud-readout::before,
 .owm-status-pill::before,
 .owm-hud-knob::before {
   content: "";
   position: absolute;
-  left: 1px;
-  top: calc(-1 * var(--drop, 22px));
+  left: 50%;
+  top: calc(-1 * var(--drop));
   width: 1px;
-  height: var(--drop, 22px);
+  height: var(--drop);
   pointer-events: none;
-  background: linear-gradient(180deg, rgba(100, 244, 255, 0.6), rgba(100, 244, 255, 0.04));
+  background: linear-gradient(180deg, var(--glass-edge-bright), rgba(100, 244, 255, 0.12));
 }
 
-/* node: where each stem clamps onto the ceiling */
+/* bracket: the stem unfolds into a ⊓ cap hugging the pod's top corners, plus
+   a ceiling node where the stem clamps on */
 .owm-hud-mark::after,
 .owm-hud-readout::after,
 .owm-status-pill::after,
 .owm-hud-knob::after {
   content: "";
   position: absolute;
-  left: -3px;
-  top: calc(-1 * var(--drop, 22px) - 1px);
-  width: 8px;
-  height: 2px;
+  left: 10px;
+  right: 10px;
+  top: 4px;
+  height: 7px;
   pointer-events: none;
-  background: var(--accent);
-  box-shadow: 0 0 7px rgba(100, 244, 255, 0.5);
+  border-top: 1px solid var(--glass-edge-bright);
+  border-left: 1px solid var(--glass-edge-bright);
+  border-right: 1px solid var(--glass-edge-bright);
+  opacity: 0.85;
 }
 
-/* two tiers: even readouts hang lower than odd ones */
-.owm-hud-mark { --drop: 22px; }
-.owm-hud-readout:nth-child(odd) { --drop: 22px; }
-.owm-hud-readout:nth-child(even) { --drop: 42px; }
+/* ceiling node: small tick where each centered stem meets the ceiling */
+.owm-hud-mark,
+.owm-hud-readout,
+.owm-status-pill,
+.owm-hud-knob {
+  background-clip: padding-box;
+}
+.owm-hud-readouts::before { content: none; }
 
 .owm-hud-mark {
   display: grid;
-  grid-template-columns: 34px minmax(0, 1fr);
+  grid-template-columns: 32px minmax(0, 1fr);
   align-items: center;
   gap: 11px;
   min-width: 0;
-  padding: 0;
 }
 
 .owm-mark-glyph {
-  width: 32px;
-  height: 32px;
+  width: 30px;
+  height: 30px;
 }
 
 .owm-mark-id {
@@ -282,14 +322,14 @@
 .owm-hud-readouts {
   display: grid;
   grid-template-columns:
-    minmax(52px, 0.42fr)
-    minmax(118px, 0.9fr)
-    minmax(168px, 1.2fr)
-    minmax(78px, 0.6fr)
-    minmax(108px, 0.7fr)
-    minmax(78px, 0.5fr);
+    minmax(58px, 0.5fr)
+    minmax(128px, 1fr)
+    minmax(176px, 1.2fr)
+    minmax(84px, 0.62fr)
+    minmax(116px, 0.74fr)
+    minmax(86px, 0.56fr);
   align-items: start;
-  gap: 20px;
+  gap: 14px;
   min-width: 0;
   overflow: visible;
 }
@@ -300,8 +340,7 @@
   justify-content: start;
   gap: 6px;
   min-width: 0;
-  padding: 0;
-  box-shadow: none;
+  box-shadow: var(--glass-glow);
 }
 
 .owm-hud-readout-label {
@@ -389,18 +428,21 @@
 .owm-status-pill,
 .owm-hud-knob {
   position: relative;
+  --drop: 30px;
+  margin-top: var(--drop);
 }
-
-.owm-status-pill { --drop: 22px; margin-top: var(--drop); }
-.owm-hud-knob:nth-of-type(1) { --drop: 42px; margin-top: var(--drop); }
-.owm-hud-knob:nth-of-type(2) { --drop: 22px; margin-top: var(--drop); }
 
 .owm-hud-knob,
 .owm-status-pill {
-  min-height: 32px;
-  border: 1px solid rgba(92, 240, 255, 0.34);
-  background: rgba(0, 11, 16, 0.42);
-  clip-path: polygon(0 0, calc(100% - 9px) 0, 100% 9px, 100% 100%, 0 100%);
+  min-height: 34px;
+  background: var(--glass-fill), var(--glass-grid);
+  background-size: auto, var(--glass-grid-size);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: 1px solid var(--glass-edge);
+  border-top-color: var(--glass-edge-bright);
+  box-shadow: var(--glass-glow);
+  clip-path: polygon(0 0, 100% 0, 100% calc(100% - 8px), calc(100% - 8px) 100%, 8px 100%, 0 calc(100% - 8px));
 }
 
 .owm-hud-knob {
