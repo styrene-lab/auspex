@@ -319,6 +319,60 @@ pub fn parse_launch_context(input: &str) -> Result<BackendLaunchContextResponse,
     serde_json::from_str(input)
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum BackendLoadError {
+    UnsupportedTarget,
+    Fetch { endpoint: &'static str, reason: String },
+}
+
+impl std::fmt::Display for BackendLoadError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedTarget => write!(f, "live backend fetch is only available in wasm builds"),
+            Self::Fetch { endpoint, reason } => write!(f, "{endpoint}: {reason}"),
+        }
+    }
+}
+
+impl std::error::Error for BackendLoadError {}
+
+#[cfg(target_arch = "wasm32")]
+async fn fetch_json<T>(endpoint: &'static str) -> Result<T, BackendLoadError>
+where
+    T: for<'de> Deserialize<'de>,
+{
+    gloo_net::http::Request::get(endpoint)
+        .send()
+        .await
+        .map_err(|error| BackendLoadError::Fetch {
+            endpoint,
+            reason: error.to_string(),
+        })?
+        .json::<T>()
+        .await
+        .map_err(|error| BackendLoadError::Fetch {
+            endpoint,
+            reason: error.to_string(),
+        })
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn load_initial_session(
+) -> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
+    let launch_context = fetch_json::<BackendLaunchContextResponse>("/api/web/launch-context").await?;
+    // Compatibility session endpoint is intentionally used for bootstrap: native
+    // `/api/sessions/default` is RBAC-gated and belongs to the next action/auth
+    // slice once Auspex forwards bearer + Omegon-Principal-* headers.
+    let session = fetch_json::<BackendSessionShowResponse>("/api/web/sessions/default").await?;
+    Ok((session, launch_context))
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn load_initial_session(
+) -> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
+    Err(BackendLoadError::UnsupportedTarget)
+}
+
 pub fn fixture_session() -> BackendSessionShowResponse {
     parse_backend_session(BACKEND_SESSION_FIXTURE)
         .expect("fixtures/omegon-web-session-default.json must match omegon-secundus web session contract")

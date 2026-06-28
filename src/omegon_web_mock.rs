@@ -402,6 +402,12 @@ fn normalize_backend_session(
     }
 }
 
+fn with_bootstrap_status(mut surface: WebSurfaceSnapshot, status: &str, latency: &str) -> WebSurfaceSnapshot {
+    surface.runtime.link_status = status.to_string();
+    surface.runtime.latency = latency.to_string();
+    surface
+}
+
 const MENU_ITEMS: &[MenuItem] = &[
     MenuItem {
         target: ModalTarget::Settings,
@@ -966,24 +972,46 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
 
 #[component]
 pub fn OmegonWebMockApp() -> Element {
-    let backend_session = crate::omegon_web_contract::fixture_session();
-    let launch_context = crate::omegon_web_contract::proxied_launch_context_fixture();
-    debug_assert_eq!(backend_session.schema_version, 1);
-    debug_assert_eq!(backend_session.session.session_id, "default");
-    debug_assert_eq!(launch_context.policy_owner, "auspex");
+    let surface_resource = use_resource(|| async { crate::omegon_web_contract::load_initial_session().await });
+    let fallback_session = crate::omegon_web_contract::fixture_session();
+    let fallback_launch = crate::omegon_web_contract::proxied_launch_context_fixture();
+
+    debug_assert_eq!(fallback_session.schema_version, 1);
+    debug_assert_eq!(fallback_session.session.session_id, "default");
+    debug_assert_eq!(fallback_launch.policy_owner, "auspex");
     debug_assert_eq!(
-        backend_session.links.surfaces.as_deref(),
+        fallback_session.links.surfaces.as_deref(),
         Some("/api/sessions/default/surfaces")
     );
     debug_assert_eq!(
-        backend_session.links.actions.as_deref(),
+        fallback_session.links.actions.as_deref(),
         Some("/api/sessions/default/actions")
     );
     debug_assert_eq!(
-        backend_session.links.stream.as_deref(),
+        fallback_session.links.stream.as_deref(),
         Some("/api/sessions/default/surfaces/stream")
     );
-    let surface = normalize_backend_session(backend_session, launch_context);
+
+    let surface = {
+        let loaded = surface_resource.read();
+        match loaded.as_ref() {
+            Some(Ok((session, launch_context))) => with_bootstrap_status(
+                normalize_backend_session(session.clone(), launch_context.clone()),
+                "STREAM LIVE",
+                "live",
+            ),
+            Some(Err(_error)) => with_bootstrap_status(
+                normalize_backend_session(fallback_session, fallback_launch),
+                "FIXTURE FALLBACK",
+                "offline",
+            ),
+            None => with_bootstrap_status(
+                normalize_backend_session(fallback_session, fallback_launch),
+                "CONNECTING",
+                "boot",
+            ),
+        }
+    };
     let composer = use_signal(|| String::from(surface.composer.initial_prompt));
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");
