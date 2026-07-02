@@ -12,6 +12,20 @@ pub const HEADER_PRINCIPAL_CLIENT_ID: &str = "Omegon-Principal-Client-Id";
 /// Auspex return URL honored by `/api/web/launch-context` when proxied.
 pub const HEADER_BACK_URL: &str = "Omegon-Back-Url";
 
+/// Mirrors the public unauthenticated startup descriptor. It includes the
+/// current ephemeral web token specifically so local browser clients can attach
+/// without an out-of-band copy step.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackendStartupResponse {
+    pub schema_version: u32,
+    pub http_base: String,
+    pub startup_url: String,
+    pub ws_url: String,
+    pub token: Option<String>,
+    pub auth_mode: Option<String>,
+    pub auth_source: Option<String>,
+}
+
 /// Bearer token for RBAC-gated daemon routes (`/api/sessions/*`).
 ///
 /// The omegon daemon issues an ephemeral bearer (or signed-attach) token at
@@ -20,10 +34,16 @@ pub const HEADER_BACK_URL: &str = "Omegon-Back-Url";
 /// headers). The web surface reads it from the page URL: `/?token=<token>`.
 #[cfg(target_arch = "wasm32")]
 pub fn page_query_token() -> Option<String> {
+    page_query_param("token")
+}
+
+#[cfg(target_arch = "wasm32")]
+fn page_query_param(name: &str) -> Option<String> {
     let search = web_sys::window()?.location().search().ok()?;
     let query = search.strip_prefix('?').unwrap_or(&search);
+    let prefix = format!("{name}=");
     for pair in query.split('&') {
-        if let Some(value) = pair.strip_prefix("token=") {
+        if let Some(value) = pair.strip_prefix(&prefix) {
             if !value.is_empty() {
                 return Some(value.to_string());
             }
@@ -36,6 +56,45 @@ pub fn page_query_token() -> Option<String> {
 pub fn page_query_token() -> Option<String> {
     None
 }
+
+#[cfg(target_arch = "wasm32")]
+pub fn store_page_token(_token: &str) {}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn store_page_token(_token: &str) {}
+
+#[cfg(target_arch = "wasm32")]
+pub fn stored_page_token() -> Option<String> {
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn stored_page_token() -> Option<String> {
+    None
+}
+
+pub fn active_web_token() -> Option<String> {
+    page_query_token().or_else(stored_page_token)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub fn replace_page_token(token: &str) {
+    let Some(window) = web_sys::window() else {
+        return;
+    };
+    let location = window.location();
+    let Ok(pathname) = location.pathname() else {
+        return;
+    };
+    let hash = location.hash().unwrap_or_default();
+    let next_url = format!("{pathname}?token={token}{hash}");
+    if let Ok(history) = window.history() {
+        let _ = history.replace_state_with_url(&wasm_bindgen::JsValue::NULL, "", Some(&next_url));
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn replace_page_token(_token: &str) {}
 
 /// Append the daemon query token to a stream endpoint, preserving existing
 /// query parameters.
@@ -66,7 +125,7 @@ pub async fn fetch_events_snapshot(
     endpoint: &str,
 ) -> Result<BackendDaemonEventsResponse, SurfaceRefreshError> {
     let mut builder = gloo_net::http::Request::get(endpoint);
-    if let Some(token) = page_query_token() {
+    if let Some(token) = active_web_token() {
         builder = builder.header("authorization", &format!("Bearer {token}"));
     }
     let response = builder
@@ -676,7 +735,7 @@ pub async fn post_action_request(
         .map_err(|error| ActionTransportError::Serialize(error.to_string()))?;
     let mut builder =
         gloo_net::http::Request::post(endpoint).header("content-type", "application/json");
-    if let Some(token) = page_query_token() {
+    if let Some(token) = active_web_token() {
         builder = builder.header("authorization", &format!("Bearer {token}"));
     }
     if let Some(principal) = principal {
@@ -732,7 +791,7 @@ pub async fn refresh_surfaces_snapshot(
     endpoint: &str,
 ) -> Result<BackendSurfacesSnapshot, SurfaceRefreshError> {
     let mut builder = gloo_net::http::Request::get(endpoint);
-    if let Some(token) = page_query_token() {
+    if let Some(token) = active_web_token() {
         builder = builder.header("authorization", &format!("Bearer {token}"));
     }
     let response = builder
@@ -771,8 +830,24 @@ pub async fn refresh_surfaces_snapshot(
 }
 
 #[cfg(target_arch = "wasm32")]
+pub async fn discover_startup_token() -> Result<Option<String>, BackendLoadError> {
+    let startup = fetch_json::<BackendStartupResponse>("/api/startup").await?;
+    if let Some(token) = startup.token.as_deref().filter(|token| !token.is_empty()) {
+        store_page_token(token);
+        replace_page_token(token);
+    }
+    Ok(startup.token)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn discover_startup_token() -> Result<Option<String>, BackendLoadError> {
+    Err(BackendLoadError::UnsupportedTarget)
+}
+
+#[cfg(target_arch = "wasm32")]
 pub async fn load_initial_session()
 -> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
+    let _ = discover_startup_token().await;
     let launch_context =
         fetch_json::<BackendLaunchContextResponse>("/api/web/launch-context").await?;
     // Compatibility session endpoint is intentionally used for bootstrap: native
