@@ -308,7 +308,8 @@ pub struct BackendSettingsSurface {
     pub auth_source: Option<String>,
 }
 
-pub const BACKEND_SESSION_FIXTURE: &str = include_str!("../fixtures/omegon-web-session-default.json");
+pub const BACKEND_SESSION_FIXTURE: &str =
+    include_str!("../fixtures/omegon-web-session-default.json");
 pub const BACKEND_LAUNCH_CONTEXT_PROXIED_FIXTURE: &str =
     include_str!("../fixtures/omegon-web-launch-context-proxied.json");
 
@@ -418,26 +419,74 @@ pub fn parse_backend_session(input: &str) -> Result<BackendSessionShowResponse, 
     serde_json::from_str(input)
 }
 
-pub fn parse_launch_context(input: &str) -> Result<BackendLaunchContextResponse, serde_json::Error> {
+pub fn parse_launch_context(
+    input: &str,
+) -> Result<BackendLaunchContextResponse, serde_json::Error> {
     serde_json::from_str(input)
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum BackendLoadError {
     UnsupportedTarget,
-    Fetch { endpoint: &'static str, reason: String },
+    Fetch {
+        endpoint: &'static str,
+        reason: String,
+    },
 }
 
 impl std::fmt::Display for BackendLoadError {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         match self {
-            Self::UnsupportedTarget => write!(f, "live backend fetch is only available in wasm builds"),
+            Self::UnsupportedTarget => {
+                write!(f, "live backend fetch is only available in wasm builds")
+            }
             Self::Fetch { endpoint, reason } => write!(f, "{endpoint}: {reason}"),
         }
     }
 }
 
 impl std::error::Error for BackendLoadError {}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ActionTransportError {
+    UnsupportedTarget,
+    Serialize(String),
+    Request {
+        endpoint: String,
+        reason: String,
+    },
+    Http {
+        endpoint: String,
+        status: u16,
+        body: String,
+    },
+    Decode {
+        endpoint: String,
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for ActionTransportError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedTarget => {
+                write!(f, "live backend actions are only available in wasm builds")
+            }
+            Self::Serialize(reason) => write!(f, "serialize action request: {reason}"),
+            Self::Request { endpoint, reason } => write!(f, "POST {endpoint} failed: {reason}"),
+            Self::Http {
+                endpoint,
+                status,
+                body,
+            } => write!(f, "POST {endpoint} returned {status}: {body}"),
+            Self::Decode { endpoint, reason } => {
+                write!(f, "POST {endpoint} response decode failed: {reason}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for ActionTransportError {}
 
 #[cfg(target_arch = "wasm32")]
 async fn fetch_json<T>(endpoint: &'static str) -> Result<T, BackendLoadError>
@@ -460,9 +509,68 @@ where
 }
 
 #[cfg(target_arch = "wasm32")]
-pub async fn load_initial_session(
-) -> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
-    let launch_context = fetch_json::<BackendLaunchContextResponse>("/api/web/launch-context").await?;
+pub async fn post_action_request(
+    endpoint: &str,
+    request: &WebActionRequest,
+    principal: Option<&TrustedPrincipalHeaders>,
+) -> Result<UiActionOutcomeEnvelope, ActionTransportError> {
+    let body = serde_json::to_string(request)
+        .map_err(|error| ActionTransportError::Serialize(error.to_string()))?;
+    let mut builder =
+        gloo_net::http::Request::post(endpoint).header("content-type", "application/json");
+    if let Some(principal) = principal {
+        for (name, value) in principal.pairs() {
+            builder = builder.header(name, &value);
+        }
+    }
+    let request = builder
+        .body(body)
+        .map_err(|error| ActionTransportError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    let response = request
+        .send()
+        .await
+        .map_err(|error| ActionTransportError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| ActionTransportError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    if !(200..300).contains(&status) {
+        return Err(ActionTransportError::Http {
+            endpoint: endpoint.to_string(),
+            status,
+            body: text,
+        });
+    }
+    serde_json::from_str(&text).map_err(|error| ActionTransportError::Decode {
+        endpoint: endpoint.to_string(),
+        reason: error.to_string(),
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn post_action_request(
+    _endpoint: &str,
+    _request: &WebActionRequest,
+    _principal: Option<&TrustedPrincipalHeaders>,
+) -> Result<UiActionOutcomeEnvelope, ActionTransportError> {
+    Err(ActionTransportError::UnsupportedTarget)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn load_initial_session()
+-> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
+    let launch_context =
+        fetch_json::<BackendLaunchContextResponse>("/api/web/launch-context").await?;
     // Compatibility session endpoint is intentionally used for bootstrap: native
     // `/api/sessions/default` is RBAC-gated and belongs to the next action/auth
     // slice once Auspex forwards bearer + Omegon-Principal-* headers.
@@ -471,14 +579,15 @@ pub async fn load_initial_session(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-pub async fn load_initial_session(
-) -> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
+pub async fn load_initial_session()
+-> Result<(BackendSessionShowResponse, BackendLaunchContextResponse), BackendLoadError> {
     Err(BackendLoadError::UnsupportedTarget)
 }
 
 pub fn fixture_session() -> BackendSessionShowResponse {
-    parse_backend_session(BACKEND_SESSION_FIXTURE)
-        .expect("fixtures/omegon-web-session-default.json must match omegon-secundus web session contract")
+    parse_backend_session(BACKEND_SESSION_FIXTURE).expect(
+        "fixtures/omegon-web-session-default.json must match omegon-secundus web session contract",
+    )
 }
 
 pub fn proxied_launch_context_fixture() -> BackendLaunchContextResponse {
@@ -581,20 +690,26 @@ mod tests {
         assert_eq!(submit_json["client_id"], "auspex-web");
         assert_eq!(submit_json["session_id"], "default");
         assert_eq!(submit_json["action"]["type"], "submit_prompt");
-        assert_eq!(submit_json["action"]["text"], "continue from the release candidate plan");
+        assert_eq!(
+            submit_json["action"]["text"],
+            "continue from the release candidate plan"
+        );
         assert_eq!(submit_json["action"]["attachments"][0], "att-1");
 
-        let approval = respond_permission_action(
-            "act-2",
-            "auspex-web",
-            "default",
-            "perm-7",
-            true,
-        );
+        let approval = respond_permission_action("act-2", "auspex-web", "default", "perm-7", true);
         let approval_json = serde_json::to_value(&approval).expect("serialize approval action");
         assert_eq!(approval_json["action"]["type"], "respond_permission");
         assert_eq!(approval_json["action"]["request_id"], "perm-7");
         assert_eq!(approval_json["action"]["allow"], true);
+
+        let defaulted: WebActionRequest = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "action_id": "act-3",
+            "client_id": "auspex-web",
+            "action": { "type": "cancel_active_turn" }
+        }))
+        .expect("session_id defaults for compatibility with backend");
+        assert_eq!(defaulted.session_id, "default");
     }
 
     #[test]

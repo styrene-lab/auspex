@@ -252,13 +252,20 @@ fn normalize_backend_session(
                 "user" => "operator".to_string(),
                 other => other.to_string(),
             },
-            label: segment.title.unwrap_or_else(|| match segment.role.as_str() {
-                "user" => "Operator".to_string(),
-                "assistant" => "Omegon".to_string(),
-                other => other.to_string(),
-            }),
+            label: segment
+                .title
+                .unwrap_or_else(|| match segment.role.as_str() {
+                    "user" => "Operator".to_string(),
+                    "assistant" => "Omegon".to_string(),
+                    other => other.to_string(),
+                }),
             body: segment.body.or(segment.summary).unwrap_or_default(),
-            meta: if segment.complete { "conversation · complete" } else { "conversation · streaming" }.to_string(),
+            meta: if segment.complete {
+                "conversation · complete"
+            } else {
+                "conversation · streaming"
+            }
+            .to_string(),
             detail: String::new(),
         })
         .collect();
@@ -307,7 +314,12 @@ fn normalize_backend_session(
         },
         runtime: RuntimeSurface {
             agent_id: "daemon-01".to_string(),
-            state: if session.session.current { "attached" } else { "archived" }.to_string(),
+            state: if session.session.current {
+                "attached"
+            } else {
+                "archived"
+            }
+            .to_string(),
             workspace: session.session.cwd,
             model: surfaces
                 .runtime
@@ -330,7 +342,8 @@ fn normalize_backend_session(
         },
         launch: LaunchSurface {
             title: "Persistent agent chat".to_string(),
-            subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex".to_string(),
+            subtitle: "Daemon-owned single-agent surface · opened standalone or through Auspex"
+                .to_string(),
             policy_owner: launch_context.policy_owner,
         },
         transcript,
@@ -402,7 +415,11 @@ fn normalize_backend_session(
     }
 }
 
-fn with_bootstrap_status(mut surface: WebSurfaceSnapshot, status: &str, latency: &str) -> WebSurfaceSnapshot {
+fn with_bootstrap_status(
+    mut surface: WebSurfaceSnapshot,
+    status: &str,
+    latency: &str,
+) -> WebSurfaceSnapshot {
     surface.runtime.link_status = status.to_string();
     surface.runtime.latency = latency.to_string();
     surface
@@ -442,37 +459,121 @@ const MENU_ITEMS: &[MenuItem] = &[
 const MENU_SURFACE: MenuSurface = MenuSurface { items: MENU_ITEMS };
 
 const SETTINGS_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "Session", value: "default · current", detail: "Native session envelope from POST /api/sessions; singleton for phase 1." },
-    ModalSection { label: "Proxy", value: "auspex · trusted", detail: "Auspex forwards standard Omegon-Principal-* headers plus Omegon-Back-Url." },
-    ModalSection { label: "Policy owner", value: "auspex", detail: "RBAC decisions are evaluated by Omegon using the trusted Auspex principal." },
-    ModalSection { label: "Transport", value: "/api/sessions/default/surfaces/stream", detail: "Native session stream; legacy /api/web/surfaces remains a compatibility path." },
-    ModalSection { label: "Autonomy", value: "conservative", detail: "Operator confirmations required for elevated or ambiguous actions." },
+    ModalSection {
+        label: "Session",
+        value: "default · current",
+        detail: "Native session envelope from POST /api/sessions; singleton for phase 1.",
+    },
+    ModalSection {
+        label: "Proxy",
+        value: "auspex · trusted",
+        detail: "Auspex forwards standard Omegon-Principal-* headers plus Omegon-Back-Url.",
+    },
+    ModalSection {
+        label: "Policy owner",
+        value: "auspex",
+        detail: "RBAC decisions are evaluated by Omegon using the trusted Auspex principal.",
+    },
+    ModalSection {
+        label: "Transport",
+        value: "/api/sessions/default/surfaces/stream",
+        detail: "Native session stream; legacy /api/web/surfaces remains a compatibility path.",
+    },
+    ModalSection {
+        label: "Autonomy",
+        value: "conservative",
+        detail: "Operator confirmations required for elevated or ambiguous actions.",
+    },
 ];
 
 const CONFIG_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "Bootstrap", value: "POST /api/sessions", detail: "Create or attach first, then follow daemon-provided links instead of hardcoded web paths." },
-    ModalSection { label: "Snapshot", value: "/api/sessions/default/surfaces", detail: "HTTP bootstrap for the current semantic surface bundle." },
-    ModalSection { label: "Actions", value: "/api/sessions/default/actions", detail: "Prompt sends, approvals, and UI actions post here; daemon remains authoritative." },
-    ModalSection { label: "Transcript mode", value: "chat + collapsed tools", detail: "Operator/agent prose stays in the feed; tool payloads expand in modal overlays." },
+    ModalSection {
+        label: "Bootstrap",
+        value: "POST /api/sessions",
+        detail: "Create or attach first, then follow daemon-provided links instead of hardcoded web paths.",
+    },
+    ModalSection {
+        label: "Snapshot",
+        value: "/api/sessions/default/surfaces",
+        detail: "HTTP bootstrap for the current semantic surface bundle.",
+    },
+    ModalSection {
+        label: "Actions",
+        value: "/api/sessions/default/actions",
+        detail: "Prompt sends, approvals, and UI actions post here; daemon remains authoritative.",
+    },
+    ModalSection {
+        label: "Transcript mode",
+        value: "chat + collapsed tools",
+        detail: "Operator/agent prose stays in the feed; tool payloads expand in modal overlays.",
+    },
 ];
 
 const ARMORY_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "Shell", value: "enabled · gated", detail: "Command execution is available through policy prompts and audit entries." },
-    ModalSection { label: "Files", value: "read/write scoped", detail: "Workspace edits remain constrained to approved project roots." },
-    ModalSection { label: "Subagents", value: "delegate · cleave", detail: "Background workers surface as Operations rows instead of transcript noise." },
+    ModalSection {
+        label: "Shell",
+        value: "enabled · gated",
+        detail: "Command execution is available through policy prompts and audit entries.",
+    },
+    ModalSection {
+        label: "Files",
+        value: "read/write scoped",
+        detail: "Workspace edits remain constrained to approved project roots.",
+    },
+    ModalSection {
+        label: "Subagents",
+        value: "delegate · cleave",
+        detail: "Background workers surface as Operations rows instead of transcript noise.",
+    },
 ];
 
 const COMMAND_SECTIONS: &[ModalSection] = &[
-    ModalSection { label: "/continue", value: "resume plan", detail: "Continue from the active plan item." },
-    ModalSection { label: "/plan status", value: "inspect", detail: "Open the current plan lane and workstream summary." },
-    ModalSection { label: "/tools", value: "armory", detail: "Inspect available tool surfaces and safety gates." },
+    ModalSection {
+        label: "/continue",
+        value: "resume plan",
+        detail: "Continue from the active plan item.",
+    },
+    ModalSection {
+        label: "/plan status",
+        value: "inspect",
+        detail: "Open the current plan lane and workstream summary.",
+    },
+    ModalSection {
+        label: "/tools",
+        value: "armory",
+        detail: "Inspect available tool surfaces and safety gates.",
+    },
 ];
 
 const MODAL_SURFACES: &[ModalSurface] = &[
-    ModalSurface { target: ModalTarget::Settings, eyebrow: "SETTINGS", title: "Session settings", summary: "Session authority and transport controls. These are global levers, not chat content.", sections: SETTINGS_SECTIONS },
-    ModalSurface { target: ModalTarget::Config, eyebrow: "CONFIG", title: "Surface configuration", summary: "Renderer and data-source settings for the web cockpit.", sections: CONFIG_SECTIONS },
-    ModalSurface { target: ModalTarget::Armory, eyebrow: "ARMORY", title: "Capability armory", summary: "Curated tool/capability inventory with safety posture attached.", sections: ARMORY_SECTIONS },
-    ModalSurface { target: ModalTarget::Commands, eyebrow: "COMMANDS", title: "Command palette", summary: "Operator shortcuts and command-shaped intents.", sections: COMMAND_SECTIONS },
+    ModalSurface {
+        target: ModalTarget::Settings,
+        eyebrow: "SETTINGS",
+        title: "Session settings",
+        summary: "Session authority and transport controls. These are global levers, not chat content.",
+        sections: SETTINGS_SECTIONS,
+    },
+    ModalSurface {
+        target: ModalTarget::Config,
+        eyebrow: "CONFIG",
+        title: "Surface configuration",
+        summary: "Renderer and data-source settings for the web cockpit.",
+        sections: CONFIG_SECTIONS,
+    },
+    ModalSurface {
+        target: ModalTarget::Armory,
+        eyebrow: "ARMORY",
+        title: "Capability armory",
+        summary: "Curated tool/capability inventory with safety posture attached.",
+        sections: ARMORY_SECTIONS,
+    },
+    ModalSurface {
+        target: ModalTarget::Commands,
+        eyebrow: "COMMANDS",
+        title: "Command palette",
+        summary: "Operator shortcuts and command-shaped intents.",
+        sections: COMMAND_SECTIONS,
+    },
 ];
 
 /// Tick + label + extending-rule section header.
@@ -855,15 +956,21 @@ fn Composer(
     queue_mode: String,
     composer: Signal<String>,
     sent_count: Signal<u32>,
+    submit_status: Signal<String>,
+    action_endpoint: Option<String>,
+    session_id: String,
+    client_id: String,
     on_open: EventHandler<ModalTarget>,
 ) -> Element {
     let mut composer = composer;
     let mut sent_count = sent_count;
+    let mut submit_status = submit_status;
     rsx! {
         section { class: "owm-panel owm-composer-panel",
             div { class: "owm-composer-meta",
                 span { "queue mode: {queue_mode}" }
                 span { "sent: {sent_count}" }
+                span { "action: {submit_status}" }
             }
             textarea {
                 value: "{composer}",
@@ -879,8 +986,43 @@ fn Composer(
                 button {
                     class: "owm-primary-button",
                     onclick: move |_| {
-                        let next = *sent_count.read() + 1;
-                        sent_count.set(next);
+                        let text = composer.read().trim().to_string();
+                        if text.is_empty() {
+                            submit_status.set("empty prompt".to_string());
+                            return;
+                        }
+                        let Some(endpoint) = action_endpoint.clone() else {
+                            submit_status.set("no action endpoint".to_string());
+                            return;
+                        };
+                        let action_id = format!("auspex-web-{}", *sent_count.read() + 1);
+                        let request = crate::omegon_web_contract::submit_prompt_action(
+                            action_id,
+                            client_id.clone(),
+                            session_id.clone(),
+                            text,
+                            Vec::new(),
+                        );
+                        let principal = crate::omegon_web_contract::TrustedPrincipalHeaders::auspex_operator("operator:web")
+                            .display_name("Web Operator")
+                            .session_id(session_id.clone())
+                            .client_id(client_id.clone());
+                        submit_status.set("posting".to_string());
+                        spawn(async move {
+                            match crate::omegon_web_contract::post_action_request(&endpoint, &request, Some(&principal)).await {
+                                Ok(outcome) => {
+                                    let status = format!("{:?}", outcome.status).to_lowercase();
+                                    let accepted = outcome.error.is_none();
+                                    submit_status.set(outcome.message.unwrap_or(status));
+                                    if accepted {
+                                        let next = *sent_count.read() + 1;
+                                        sent_count.set(next);
+                                        composer.set(String::new());
+                                    }
+                                }
+                                Err(error) => submit_status.set(error.to_string()),
+                            }
+                        });
                     },
                     "Send"
                 }
@@ -972,7 +1114,8 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
 
 #[component]
 pub fn OmegonWebMockApp() -> Element {
-    let surface_resource = use_resource(|| async { crate::omegon_web_contract::load_initial_session().await });
+    let surface_resource =
+        use_resource(|| async { crate::omegon_web_contract::load_initial_session().await });
     let fallback_session = crate::omegon_web_contract::fixture_session();
     let fallback_launch = crate::omegon_web_contract::proxied_launch_context_fixture();
 
@@ -1016,7 +1159,11 @@ pub fn OmegonWebMockApp() -> Element {
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
+    let submit_status = use_signal(|| "idle".to_string());
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
+    let action_endpoint = surface.session.links.actions.clone();
+    let session_id = surface.session.session_id.clone();
+    let client_id = "auspex-web".to_string();
 
     let status = if *approval_state.read() == "pending" {
         "waiting".to_string()
@@ -1071,6 +1218,10 @@ pub fn OmegonWebMockApp() -> Element {
                         queue_mode: surface.composer.queue_mode.clone(),
                         composer,
                         sent_count,
+                        submit_status,
+                        action_endpoint,
+                        session_id,
+                        client_id,
                         on_open: move |target| modal_target.set(Some(target)),
                     }
                 }
