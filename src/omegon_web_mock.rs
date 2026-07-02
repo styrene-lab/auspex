@@ -105,7 +105,7 @@ struct LaunchSurface {
 #[derive(Clone, PartialEq)]
 struct ComposerSurface {
     queue_mode: String,
-    initial_prompt: String,
+    placeholder: String,
 }
 
 #[derive(Clone, PartialEq)]
@@ -522,7 +522,7 @@ fn normalize_backend_session(
         modal_surfaces: MODAL_SURFACES,
         composer: ComposerSurface {
             queue_mode: surfaces.editor.queue_mode,
-            initial_prompt: surfaces.editor.placeholder,
+            placeholder: surfaces.editor.placeholder,
         },
     }
 }
@@ -1155,13 +1155,26 @@ fn TranscriptEntry(
     let approve_client_id = client_id.clone();
     let deny_refresh_context = refresh_context.clone();
     let approve_refresh_context = refresh_context.clone();
+    let pending = event.body.trim().is_empty() && event.meta.contains("streaming");
+    let body = if pending {
+        "Waiting for Omegon response…".to_string()
+    } else if event.body.trim().is_empty() {
+        "No content reported for this segment.".to_string()
+    } else {
+        event.body.clone()
+    };
+    let card_class = if pending {
+        format!("owm-transcript-card {} pending", event.role)
+    } else {
+        format!("owm-transcript-card {}", event.role)
+    };
     rsx! {
-        article { class: "owm-transcript-card {event.role}",
+        article { class: "{card_class}",
             div { class: "owm-event-head",
                 strong { "{event.label}" }
                 span { "{event.meta}" }
             }
-            p { "{event.body}" }
+            p { "{body}" }
             if event.role == "approval" {
                 div { class: "owm-approval-actions",
                     button {
@@ -1275,6 +1288,7 @@ fn submit_permission_response(
 #[component]
 fn Composer(
     queue_mode: String,
+    placeholder: String,
     composer: Signal<String>,
     sent_count: Signal<u32>,
     submit_status: Signal<String>,
@@ -1298,6 +1312,7 @@ fn Composer(
             }
             textarea {
                 value: "{composer}",
+                placeholder: "{placeholder}",
                 oninput: move |event| composer.set(event.value()),
             }
             div { class: "owm-composer-actions",
@@ -1659,8 +1674,7 @@ pub fn OmegonWebMockApp() -> Element {
             }
         }
     };
-    let composer_initial_prompt = surface.composer.initial_prompt.clone();
-    let composer = use_signal(move || composer_initial_prompt.clone());
+    let composer = use_signal(String::new);
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
@@ -1754,6 +1768,7 @@ pub fn OmegonWebMockApp() -> Element {
 
                     Composer {
                         queue_mode: surface.composer.queue_mode.clone(),
+                        placeholder: surface.composer.placeholder.clone(),
                         composer,
                         sent_count,
                         submit_status,
