@@ -70,7 +70,6 @@ struct WebSurfaceSnapshot {
     operations: OperationSurface,
     backend: BackendLinkSurface,
     daemon_events: DaemonEventsSurface,
-    context_spark: SparklineSpec,
     menu: MenuSurface,
     modal_surfaces: &'static [ModalSurface],
     composer: ComposerSurface,
@@ -82,6 +81,9 @@ struct RuntimeSurface {
     state: String,
     workspace: String,
     model: String,
+    posture: String,
+    thinking: String,
+    branch: String,
     context_window: String,
     tool_count: u16,
     tool_online: u16,
@@ -196,51 +198,93 @@ struct DaemonEventsSurface {
     events: Vec<DaemonEventItem>,
 }
 
-#[derive(Clone, Copy, PartialEq)]
-struct SparklineSpec {
-    label: &'static str,
-    bars: &'static [&'static str],
-}
-
 // ---- Mock data ---------------------------------------------
 
-const CONTEXT_SPARK: SparklineSpec = SparklineSpec {
-    label: "Context load",
-    bars: &["35%", "42%", "52%", "64%", "58%", "72%", "68%"],
-};
+/// Split camel-case daemon enums into readable words:
+/// "GuardedAutonomous" → "guarded autonomous".
+fn prettify_mode(raw: &str) -> String {
+    let mut out = String::with_capacity(raw.len() + 4);
+    for (index, ch) in raw.chars().enumerate() {
+        if ch.is_uppercase() && index > 0 {
+            out.push(' ');
+        }
+        out.extend(ch.to_lowercase());
+    }
+    out.replace('_', " ")
+}
 
-fn default_daemon_events() -> DaemonEventsSurface {
+/// Honest empty default — real numbers arrive from `GET /api/events`.
+fn empty_daemon_events() -> DaemonEventsSurface {
     DaemonEventsSurface {
-        queued: 2,
-        processed: 47,
+        queued: 0,
+        processed: 0,
         stream_href: "/api/events/stream".to_string(),
         snapshot_href: "/api/events".to_string(),
-        events: vec![
+        events: Vec::new(),
+    }
+}
+
+/// Normalize raw daemon event payloads from `/api/events` into display items.
+/// Payload shape is daemon-versioned; extract defensively.
+fn normalize_daemon_events(
+    response: &crate::omegon_web_contract::BackendDaemonEventsResponse,
+) -> DaemonEventsSurface {
+    let events = response
+        .events
+        .iter()
+        .rev()
+        .take(6)
+        .map(|value| {
+            let event_type = value
+                .get("type")
+                .or_else(|| value.get("event_type"))
+                .or_else(|| value.get("kind"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("event")
+                .to_string();
+            let summary = value
+                .get("summary")
+                .or_else(|| value.get("message"))
+                .or_else(|| value.get("detail"))
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| {
+                    let raw = value.to_string();
+                    if raw.len() > 96 {
+                        format!("{}…", &raw[..96])
+                    } else {
+                        raw
+                    }
+                });
+            let lane = match event_type.split('.').next().unwrap_or("") {
+                "runtime" | "session" => "runtime",
+                "lifecycle" | "plan" => "plan",
+                "provider" | "model" => "provider",
+                "stream" | "recovery" | "error" => "recovery",
+                _ => "runtime",
+            }
+            .to_string();
+            let age = value
+                .get("age")
+                .or_else(|| value.get("ts"))
+                .or_else(|| value.get("timestamp"))
+                .and_then(|v| v.as_str())
+                .unwrap_or("—")
+                .to_string();
             DaemonEventItem {
-                event_type: "runtime.context_changed".to_string(),
-                lane: "runtime".to_string(),
-                summary: "context window recalculated: 82k / 128k tokens".to_string(),
-                age: "12s".to_string(),
-            },
-            DaemonEventItem {
-                event_type: "lifecycle.snapshot_changed".to_string(),
-                lane: "plan".to_string(),
-                summary: "plan projection updated; active lane still executing".to_string(),
-                age: "33s".to_string(),
-            },
-            DaemonEventItem {
-                event_type: "provider.status_changed".to_string(),
-                lane: "provider".to_string(),
-                summary: "openai-codex:gpt-5.5 remains selected and serving".to_string(),
-                age: "1m".to_string(),
-            },
-            DaemonEventItem {
-                event_type: "stream.lagged".to_string(),
-                lane: "recovery".to_string(),
-                summary: "client skipped events; refetch snapshot from /api/events".to_string(),
-                age: "3m".to_string(),
-            },
-        ],
+                event_type,
+                lane,
+                summary,
+                age,
+            }
+        })
+        .collect();
+    DaemonEventsSurface {
+        queued: response.queued_events,
+        processed: response.processed_events,
+        stream_href: "/api/events/stream".to_string(),
+        snapshot_href: "/api/events".to_string(),
+        events,
     }
 }
 
@@ -356,18 +400,43 @@ fn normalize_backend_session(
         },
         runtime: RuntimeSurface {
             agent_id: "daemon-01".to_string(),
-            state: if session.session.current {
-                "attached"
+            state: if surfaces.footer.busy {
+                "busy"
+            } else if session.session.current {
+                "ready"
             } else {
                 "archived"
             }
             .to_string(),
             workspace: session.session.cwd,
-            model: surfaces
+            model: format!(
+                "{} · {}",
+                surfaces
+                    .runtime
+                    .capability_grade
+                    .clone()
+                    .unwrap_or_else(|| "?".to_string()),
+                surfaces
+                    .runtime
+                    .context_class
+                    .clone()
+                    .unwrap_or_else(|| "unknown class".to_string()),
+            ),
+            posture: surfaces
                 .runtime
-                .capability_grade
+                .posture
                 .clone()
-                .unwrap_or_else(|| "daemon snapshot".to_string()),
+                .unwrap_or_else(|| "—".to_string()),
+            thinking: surfaces
+                .runtime
+                .thinking_level
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
+            branch: surfaces
+                .runtime
+                .git_branch
+                .clone()
+                .unwrap_or_else(|| "—".to_string()),
             context_window,
             tool_count,
             tool_online: active_tool_count,
@@ -378,8 +447,9 @@ fn normalize_backend_session(
             autonomy: surfaces
                 .runtime
                 .autonomy_mode
-                .unwrap_or_else(|| "Conservative".to_string())
-                .to_lowercase(),
+                .as_deref()
+                .map(prettify_mode)
+                .unwrap_or_else(|| "conservative".to_string()),
             uptime: format!("{}t", session.session.turns),
         },
         launch: LaunchSurface {
@@ -447,8 +517,7 @@ fn normalize_backend_session(
                 .collect(),
         },
         backend,
-        daemon_events: default_daemon_events(),
-        context_spark: CONTEXT_SPARK,
+        daemon_events: empty_daemon_events(),
         menu: MENU_SURFACE,
         modal_surfaces: MODAL_SURFACES,
         composer: ComposerSurface {
@@ -701,18 +770,6 @@ fn MeterHead(label: &'static str, value: String) -> Element {
     }
 }
 
-/// Segmented capacity gauge.
-#[component]
-fn SegmentMeter(lit: u16, total: u16) -> Element {
-    rsx! {
-        div { class: "owm-segment-meter", aria_label: "capacity",
-            for index in 0..total {
-                i { class: if index < lit { "lit" } else { "" } }
-            }
-        }
-    }
-}
-
 /// Slotted socket grid; `online` slots are lit.
 #[component]
 fn SocketGrid(online: u16, total: u16) -> Element {
@@ -720,21 +777,6 @@ fn SocketGrid(online: u16, total: u16) -> Element {
         div { class: "owm-socket-grid",
             for index in 0..total {
                 i { class: if index < online { "online" } else { "idle" } }
-            }
-        }
-    }
-}
-
-/// Unboxed micro bar-chart.
-#[component]
-fn Sparkline(spec: SparklineSpec) -> Element {
-    rsx! {
-        div { class: "owm-sparkline",
-            span { "{spec.label}" }
-            div { class: "owm-spark-bars",
-                for bar in spec.bars.iter() {
-                    i { style: "--h: {bar}" }
-                }
             }
         }
     }
@@ -900,7 +942,7 @@ fn TopBar(
 }
 
 #[component]
-fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Element {
+fn DaemonCoreCard(runtime: RuntimeSurface) -> Element {
     rsx! {
         InstrumentCard { modifier: "owm-daemon-core", eyebrow: "DAEMON CORE",
             div { class: "owm-core-readout",
@@ -912,15 +954,24 @@ fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Elem
             }
             div { class: "owm-meter-block",
                 MeterHead { label: "Context window", value: runtime.context_window.to_string() }
-                // Mock capacity: no numeric context ratio in the snapshot yet.
-                SegmentMeter { lit: 7, total: 10 }
             }
-            div { class: "owm-toolbelt",
+            div { class: "owm-socket-meter",
                 MeterHead { label: "Tool sockets", value: format!("{} active · {} tools", runtime.tool_online, runtime.tool_count) }
                 SocketGrid { online: runtime.tool_online, total: runtime.tool_sockets }
             }
-            div { class: "owm-spark-grid",
-                Sparkline { spec: context_spark }
+            div { class: "owm-core-profile",
+                div { class: "owm-profile-row",
+                    span { "POSTURE" }
+                    strong { "{runtime.posture}" }
+                }
+                div { class: "owm-profile-row",
+                    span { "THINKING" }
+                    strong { "{runtime.thinking}" }
+                }
+                div { class: "owm-profile-row",
+                    span { "BRANCH" }
+                    strong { "{runtime.branch}" }
+                }
             }
         }
     }
@@ -1616,6 +1667,7 @@ pub fn OmegonWebMockApp() -> Element {
     let submit_status = use_signal(|| "idle".to_string());
     let stream_status = use_signal(|| "connecting".to_string());
     let stream_started = use_signal(|| false);
+    let events_override = use_signal(|| Option::<DaemonEventsSurface>::None);
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
     let refresh_context = refresh_context_for(&surface);
     let action_endpoint = surface.session.links.actions.clone();
@@ -1628,19 +1680,23 @@ pub fn OmegonWebMockApp() -> Element {
         let surface_override = surface_override;
         let stream_status = stream_status;
         let mut stream_started = stream_started;
+        let mut events_override = events_override;
         use_effect(move || {
             if !*stream_started.read() {
                 stream_started.set(true);
                 start_surface_stream(refresh_context.clone(), surface_override, stream_status);
+                wasm_bindgen_futures::spawn_local(async move {
+                    if let Ok(response) =
+                        crate::omegon_web_contract::fetch_events_snapshot("/api/events").await
+                    {
+                        events_override.set(Some(normalize_daemon_events(&response)));
+                    }
+                });
             }
         });
     }
 
-    let status = if *approval_state.read() == "pending" {
-        "waiting".to_string()
-    } else {
-        "running".to_string()
-    };
+    let status = surface.runtime.state.clone();
 
     rsx! {
         div { class: "omegon-web-shell",
@@ -1657,9 +1713,9 @@ pub fn OmegonWebMockApp() -> Element {
 
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
-                    DaemonCoreCard { runtime: surface.runtime, context_spark: surface.context_spark }
+                    DaemonCoreCard { runtime: surface.runtime.clone() }
                     BackendStatusCard { backend: surface.backend, action_status: submit_status, stream_status }
-                    DaemonEventsCard { events: surface.daemon_events }
+                    DaemonEventsCard { events: events_override.read().clone().unwrap_or(surface.daemon_events) }
                 }
 
                 section { class: "owm-conversation-column",

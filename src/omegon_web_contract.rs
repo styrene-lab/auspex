@@ -49,6 +49,61 @@ pub fn endpoint_with_token(endpoint: &str, token: Option<&str>) -> String {
     }
 }
 
+/// Mirrors `GET /api/events` (`DaemonEventsResponse` in omegon-secundus).
+/// Event payloads are daemon-versioned; keep them as raw values and let the
+/// display layer extract what it can.
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackendDaemonEventsResponse {
+    pub schema_version: u8,
+    pub queued_events: usize,
+    pub processed_events: usize,
+    #[serde(default)]
+    pub events: Vec<Value>,
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn fetch_events_snapshot(
+    endpoint: &str,
+) -> Result<BackendDaemonEventsResponse, SurfaceRefreshError> {
+    let mut builder = gloo_net::http::Request::get(endpoint);
+    if let Some(token) = page_query_token() {
+        builder = builder.header("authorization", &format!("Bearer {token}"));
+    }
+    let response = builder
+        .send()
+        .await
+        .map_err(|error| SurfaceRefreshError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| SurfaceRefreshError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    if !(200..300).contains(&status) {
+        return Err(SurfaceRefreshError::Http {
+            endpoint: endpoint.to_string(),
+            status,
+            body: text,
+        });
+    }
+    serde_json::from_str(&text).map_err(|error| SurfaceRefreshError::Decode {
+        endpoint: endpoint.to_string(),
+        reason: error.to_string(),
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn fetch_events_snapshot(
+    _endpoint: &str,
+) -> Result<BackendDaemonEventsResponse, SurfaceRefreshError> {
+    Err(SurfaceRefreshError::UnsupportedTarget)
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrustedPrincipalHeaders {
     pub issuer: String,
