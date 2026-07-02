@@ -106,6 +106,18 @@ struct ComposerSurface {
 }
 
 #[derive(Clone, PartialEq)]
+struct SurfaceRefreshContext {
+    session_schema_version: u8,
+    session_id: String,
+    current: bool,
+    cwd: String,
+    description: String,
+    links: SessionLinks,
+    launch: LaunchSurface,
+    surfaces_endpoint: Option<String>,
+}
+
+#[derive(Clone, PartialEq)]
 struct TranscriptEvent {
     role: String,
     label: String,
@@ -423,6 +435,58 @@ fn with_bootstrap_status(
     surface.runtime.link_status = status.to_string();
     surface.runtime.latency = latency.to_string();
     surface
+}
+
+fn refresh_context_for(surface: &WebSurfaceSnapshot) -> SurfaceRefreshContext {
+    SurfaceRefreshContext {
+        session_schema_version: surface.session.schema_version,
+        session_id: surface.session.session_id.clone(),
+        current: surface.session.current,
+        cwd: surface.runtime.workspace.clone(),
+        description: if surface.session.current {
+            "Current live session".to_string()
+        } else {
+            "Historical session".to_string()
+        },
+        links: surface.session.links.clone(),
+        launch: surface.launch.clone(),
+        surfaces_endpoint: surface.session.links.surfaces.clone(),
+    }
+}
+
+fn normalize_refreshed_surface(
+    context: &SurfaceRefreshContext,
+    snapshot: crate::omegon_web_contract::BackendSurfacesSnapshot,
+) -> WebSurfaceSnapshot {
+    let turns = snapshot.surfaces.dashboard.session.turns;
+    let tool_calls = snapshot.surfaces.dashboard.session.tool_calls;
+    let session = crate::omegon_web_contract::BackendSessionShowResponse {
+        schema_version: context.session_schema_version,
+        session: crate::omegon_web_contract::BackendSessionSummary {
+            session_id: context.session_id.clone(),
+            cwd: context.cwd.clone(),
+            created_at: snapshot.generated_at.clone(),
+            turns,
+            tool_calls,
+            description: context.description.clone(),
+            last_prompt_snippet: context.description.clone(),
+            current: context.current,
+        },
+        allocation_mode: "singleton-live".to_string(),
+        links: crate::omegon_web_contract::BackendSessionLinks {
+            surfaces: context.links.surfaces.clone(),
+            actions: context.links.actions.clone(),
+            stream: context.links.stream.clone(),
+        },
+        snapshot,
+    };
+    let launch = crate::omegon_web_contract::BackendLaunchContextResponse {
+        mode: "proxied".to_string(),
+        proxied_by: Some("auspex".to_string()),
+        back_url: None,
+        policy_owner: context.launch.policy_owner.clone(),
+    };
+    normalize_backend_session(session, launch)
 }
 
 const MENU_ITEMS: &[MenuItem] = &[
@@ -957,6 +1021,8 @@ fn Composer(
     composer: Signal<String>,
     sent_count: Signal<u32>,
     submit_status: Signal<String>,
+    surface_override: Signal<Option<WebSurfaceSnapshot>>,
+    refresh_context: SurfaceRefreshContext,
     action_endpoint: Option<String>,
     session_id: String,
     client_id: String,
@@ -965,6 +1031,7 @@ fn Composer(
     let mut composer = composer;
     let mut sent_count = sent_count;
     let mut submit_status = submit_status;
+    let mut surface_override = surface_override;
     rsx! {
         section { class: "owm-panel owm-composer-panel",
             div { class: "owm-composer-meta",
@@ -1007,17 +1074,35 @@ fn Composer(
                             .display_name("Web Operator")
                             .session_id(session_id.clone())
                             .client_id(client_id.clone());
+                        let refresh_context = refresh_context.clone();
                         submit_status.set("posting".to_string());
                         spawn(async move {
                             match crate::omegon_web_contract::post_action_request(&endpoint, &request, Some(&principal)).await {
                                 Ok(outcome) => {
                                     let status = format!("{:?}", outcome.status).to_lowercase();
                                     let accepted = outcome.error.is_none();
-                                    submit_status.set(outcome.message.unwrap_or(status));
+                                    let outcome_message = outcome.message.unwrap_or(status);
+                                    submit_status.set(outcome_message.clone());
                                     if accepted {
                                         let next = *sent_count.read() + 1;
                                         sent_count.set(next);
                                         composer.set(String::new());
+                                        if let Some(surfaces_endpoint) = refresh_context.surfaces_endpoint.clone() {
+                                            match crate::omegon_web_contract::refresh_surfaces_snapshot(&surfaces_endpoint).await {
+                                                Ok(snapshot) => {
+                                                    let refreshed = with_bootstrap_status(
+                                                        normalize_refreshed_surface(&refresh_context, snapshot),
+                                                        "STREAM LIVE",
+                                                        "refreshed",
+                                                    );
+                                                    surface_override.set(Some(refreshed));
+                                                    submit_status.set(format!("{outcome_message} · refreshed"));
+                                                }
+                                                Err(error) => submit_status.set(format!(
+                                                    "{outcome_message} · refresh failed: {error}"
+                                                )),
+                                            }
+                                        }
                                     }
                                 }
                                 Err(error) => submit_status.set(error.to_string()),
@@ -1135,32 +1220,39 @@ pub fn OmegonWebMockApp() -> Element {
         Some("/api/sessions/default/surfaces/stream")
     );
 
+    let surface_override = use_signal(|| Option::<WebSurfaceSnapshot>::None);
     let surface = {
-        let loaded = surface_resource.read();
-        match loaded.as_ref() {
-            Some(Ok((session, launch_context))) => with_bootstrap_status(
-                normalize_backend_session(session.clone(), launch_context.clone()),
-                "STREAM LIVE",
-                "live",
-            ),
-            Some(Err(_error)) => with_bootstrap_status(
-                normalize_backend_session(fallback_session, fallback_launch),
-                "FIXTURE FALLBACK",
-                "offline",
-            ),
-            None => with_bootstrap_status(
-                normalize_backend_session(fallback_session, fallback_launch),
-                "CONNECTING",
-                "boot",
-            ),
+        if let Some(surface) = surface_override.read().clone() {
+            surface
+        } else {
+            let loaded = surface_resource.read();
+            match loaded.as_ref() {
+                Some(Ok((session, launch_context))) => with_bootstrap_status(
+                    normalize_backend_session(session.clone(), launch_context.clone()),
+                    "STREAM LIVE",
+                    "live",
+                ),
+                Some(Err(_error)) => with_bootstrap_status(
+                    normalize_backend_session(fallback_session, fallback_launch),
+                    "FIXTURE FALLBACK",
+                    "offline",
+                ),
+                None => with_bootstrap_status(
+                    normalize_backend_session(fallback_session, fallback_launch),
+                    "CONNECTING",
+                    "boot",
+                ),
+            }
         }
     };
-    let composer = use_signal(|| String::from(surface.composer.initial_prompt));
+    let composer_initial_prompt = surface.composer.initial_prompt.clone();
+    let composer = use_signal(move || composer_initial_prompt.clone());
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
     let submit_status = use_signal(|| "idle".to_string());
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
+    let refresh_context = refresh_context_for(&surface);
     let action_endpoint = surface.session.links.actions.clone();
     let session_id = surface.session.session_id.clone();
     let client_id = "auspex-web".to_string();
@@ -1219,6 +1311,8 @@ pub fn OmegonWebMockApp() -> Element {
                         composer,
                         sent_count,
                         submit_status,
+                        surface_override,
+                        refresh_context,
                         action_endpoint,
                         session_id,
                         client_id,

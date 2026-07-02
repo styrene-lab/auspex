@@ -488,6 +488,45 @@ impl std::fmt::Display for ActionTransportError {
 
 impl std::error::Error for ActionTransportError {}
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum SurfaceRefreshError {
+    UnsupportedTarget,
+    Request {
+        endpoint: String,
+        reason: String,
+    },
+    Http {
+        endpoint: String,
+        status: u16,
+        body: String,
+    },
+    Decode {
+        endpoint: String,
+        reason: String,
+    },
+}
+
+impl std::fmt::Display for SurfaceRefreshError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::UnsupportedTarget => {
+                write!(f, "live surface refresh is only available in wasm builds")
+            }
+            Self::Request { endpoint, reason } => write!(f, "GET {endpoint} failed: {reason}"),
+            Self::Http {
+                endpoint,
+                status,
+                body,
+            } => write!(f, "GET {endpoint} returned {status}: {body}"),
+            Self::Decode { endpoint, reason } => {
+                write!(f, "GET {endpoint} response decode failed: {reason}")
+            }
+        }
+    }
+}
+
+impl std::error::Error for SurfaceRefreshError {}
+
 #[cfg(target_arch = "wasm32")]
 async fn fetch_json<T>(endpoint: &'static str) -> Result<T, BackendLoadError>
 where
@@ -564,6 +603,45 @@ pub async fn post_action_request(
     _principal: Option<&TrustedPrincipalHeaders>,
 ) -> Result<UiActionOutcomeEnvelope, ActionTransportError> {
     Err(ActionTransportError::UnsupportedTarget)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn refresh_surfaces_snapshot(
+    endpoint: &str,
+) -> Result<BackendSurfacesSnapshot, SurfaceRefreshError> {
+    let response = gloo_net::http::Request::get(endpoint)
+        .send()
+        .await
+        .map_err(|error| SurfaceRefreshError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    let status = response.status();
+    let text = response
+        .text()
+        .await
+        .map_err(|error| SurfaceRefreshError::Request {
+            endpoint: endpoint.to_string(),
+            reason: error.to_string(),
+        })?;
+    if !(200..300).contains(&status) {
+        return Err(SurfaceRefreshError::Http {
+            endpoint: endpoint.to_string(),
+            status,
+            body: text,
+        });
+    }
+    serde_json::from_str(&text).map_err(|error| SurfaceRefreshError::Decode {
+        endpoint: endpoint.to_string(),
+        reason: error.to_string(),
+    })
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn refresh_surfaces_snapshot(
+    _endpoint: &str,
+) -> Result<BackendSurfacesSnapshot, SurfaceRefreshError> {
+    Err(SurfaceRefreshError::UnsupportedTarget)
 }
 
 #[cfg(target_arch = "wasm32")]
