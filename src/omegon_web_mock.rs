@@ -995,6 +995,16 @@ fn BackendStatusCard(
     action_status: Signal<String>,
     stream_status: Signal<String>,
 ) -> Element {
+    let (auth_state, auth_note) = if crate::omegon_web_contract::page_query_token().is_some() {
+        ("bearer attached", "page ?token= → Authorization")
+    } else {
+        ("no token", "gated routes will 401 — open /?token=<daemon token>")
+    };
+    let auth_live = if crate::omegon_web_contract::page_query_token().is_some() {
+        "owm-backend-row live"
+    } else {
+        "owm-backend-row"
+    };
     rsx! {
         section { class: "owm-panel owm-backend-card",
             div { class: "owm-op-head",
@@ -1002,6 +1012,11 @@ fn BackendStatusCard(
                 span { class: "owm-op-kind", "rev {backend.revision}" }
             }
             div { class: "owm-backend-stack",
+                div { class: "{auth_live}",
+                    span { "auth" }
+                    strong { "{auth_state}" }
+                    em { "{auth_note}" }
+                }
                 div { class: "owm-backend-row live",
                     span { "stream" }
                     strong { "{stream_status}" }
@@ -1425,7 +1440,10 @@ fn start_surface_stream(
         return;
     };
     let url = match stream_websocket_url(&stream_endpoint) {
-        Ok(url) => url,
+        Ok(url) => crate::omegon_web_contract::endpoint_with_token(
+            &url,
+            crate::omegon_web_contract::page_query_token().as_deref(),
+        ),
         Err(error) => {
             stream_status.set(format!("stream url failed: {error}"));
             return;

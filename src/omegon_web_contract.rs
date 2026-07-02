@@ -12,6 +12,43 @@ pub const HEADER_PRINCIPAL_CLIENT_ID: &str = "Omegon-Principal-Client-Id";
 /// Auspex return URL honored by `/api/web/launch-context` when proxied.
 pub const HEADER_BACK_URL: &str = "Omegon-Back-Url";
 
+/// Bearer token for RBAC-gated daemon routes (`/api/sessions/*`).
+///
+/// The omegon daemon issues an ephemeral bearer (or signed-attach) token at
+/// startup and expects it as `Authorization: Bearer <token>` on HTTP and as a
+/// `?token=` query parameter on WebSocket upgrades (browsers cannot set WS
+/// headers). The web surface reads it from the page URL: `/?token=<token>`.
+#[cfg(target_arch = "wasm32")]
+pub fn page_query_token() -> Option<String> {
+    let search = web_sys::window()?.location().search().ok()?;
+    let query = search.strip_prefix('?').unwrap_or(&search);
+    for pair in query.split('&') {
+        if let Some(value) = pair.strip_prefix("token=") {
+            if !value.is_empty() {
+                return Some(value.to_string());
+            }
+        }
+    }
+    None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn page_query_token() -> Option<String> {
+    None
+}
+
+/// Append the daemon query token to a stream endpoint, preserving existing
+/// query parameters.
+pub fn endpoint_with_token(endpoint: &str, token: Option<&str>) -> String {
+    match token {
+        Some(token) if !token.is_empty() => {
+            let separator = if endpoint.contains('?') { '&' } else { '?' };
+            format!("{endpoint}{separator}token={token}")
+        }
+        _ => endpoint.to_string(),
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TrustedPrincipalHeaders {
     pub issuer: String,
@@ -569,6 +606,9 @@ pub async fn post_action_request(
         .map_err(|error| ActionTransportError::Serialize(error.to_string()))?;
     let mut builder =
         gloo_net::http::Request::post(endpoint).header("content-type", "application/json");
+    if let Some(token) = page_query_token() {
+        builder = builder.header("authorization", &format!("Bearer {token}"));
+    }
     if let Some(principal) = principal {
         for (name, value) in principal.pairs() {
             builder = builder.header(name, &value);
@@ -621,7 +661,11 @@ pub async fn post_action_request(
 pub async fn refresh_surfaces_snapshot(
     endpoint: &str,
 ) -> Result<BackendSurfacesSnapshot, SurfaceRefreshError> {
-    let response = gloo_net::http::Request::get(endpoint)
+    let mut builder = gloo_net::http::Request::get(endpoint);
+    if let Some(token) = page_query_token() {
+        builder = builder.header("authorization", &format!("Bearer {token}"));
+    }
+    let response = builder
         .send()
         .await
         .map_err(|error| SurfaceRefreshError::Request {
@@ -688,6 +732,25 @@ pub fn proxied_launch_context_fixture() -> BackendLaunchContextResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn endpoint_with_token_appends_query_parameter() {
+        assert_eq!(
+            endpoint_with_token("/api/sessions/default/surfaces/stream", Some("abc123")),
+            "/api/sessions/default/surfaces/stream?token=abc123"
+        );
+        assert_eq!(
+            endpoint_with_token("/stream?mode=live", Some("abc123")),
+            "/stream?mode=live&token=abc123"
+        );
+        assert_eq!(endpoint_with_token("/stream", None), "/stream");
+        assert_eq!(endpoint_with_token("/stream", Some("")), "/stream");
+    }
+
+    #[test]
+    fn page_query_token_is_none_off_wasm() {
+        assert_eq!(page_query_token(), None);
+    }
 
     #[test]
     fn fixture_matches_native_session_surface_contract() {
