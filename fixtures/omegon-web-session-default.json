@@ -6,6 +6,7 @@
     "created_at": "2026-06-27T00:00:00Z",
     "turns": 3,
     "tool_calls": 2,
+    "description": "Current live session",
     "last_prompt_snippet": "Current live session",
     "current": true
   },

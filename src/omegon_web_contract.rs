@@ -1,6 +1,6 @@
 #![allow(dead_code)]
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 pub const HEADER_PRINCIPAL_ISSUER: &str = "Omegon-Principal-Issuer";
@@ -110,6 +110,7 @@ pub struct BackendSessionSummary {
     pub created_at: String,
     pub turns: u32,
     pub tool_calls: u32,
+    pub description: String,
     pub last_prompt_snippet: String,
     pub current: bool,
 }
@@ -311,6 +312,108 @@ pub const BACKEND_SESSION_FIXTURE: &str = include_str!("../fixtures/omegon-web-s
 pub const BACKEND_LAUNCH_CONTEXT_PROXIED_FIXTURE: &str =
     include_str!("../fixtures/omegon-web-launch-context-proxied.json");
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct WebActionRequest {
+    pub schema_version: u32,
+    pub action_id: String,
+    pub client_id: String,
+    #[serde(default = "default_web_session_id")]
+    pub session_id: String,
+    pub action: WebActionPayload,
+}
+
+fn default_web_session_id() -> String {
+    "default".to_string()
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WebActionPayload {
+    SubmitPrompt {
+        text: String,
+        #[serde(default)]
+        attachments: Vec<String>,
+    },
+    CancelActiveTurn,
+    RunSlashCommand {
+        raw: String,
+    },
+    RespondPermission {
+        request_id: String,
+        allow: bool,
+    },
+    RespondOperatorWait {
+        request_id: String,
+        completed: bool,
+    },
+    CopyLatestResponse,
+    SelectSegment {
+        index: usize,
+    },
+    CopySegment {
+        index: usize,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UiActionOutcomeEnvelope {
+    pub protocol_version: u32,
+    pub session_id: String,
+    pub action_id: String,
+    pub status: UiActionOutcomeStatus,
+    pub revision_after: Option<u64>,
+    pub message: Option<String>,
+    pub error: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum UiActionOutcomeStatus {
+    Accepted,
+    Rejected,
+    Noop,
+    Deferred,
+}
+
+pub fn submit_prompt_action(
+    action_id: impl Into<String>,
+    client_id: impl Into<String>,
+    session_id: impl Into<String>,
+    text: impl Into<String>,
+    attachments: Vec<String>,
+) -> WebActionRequest {
+    WebActionRequest {
+        schema_version: 1,
+        action_id: action_id.into(),
+        client_id: client_id.into(),
+        session_id: session_id.into(),
+        action: WebActionPayload::SubmitPrompt {
+            text: text.into(),
+            attachments,
+        },
+    }
+}
+
+pub fn respond_permission_action(
+    action_id: impl Into<String>,
+    client_id: impl Into<String>,
+    session_id: impl Into<String>,
+    request_id: impl Into<String>,
+    allow: bool,
+) -> WebActionRequest {
+    WebActionRequest {
+        schema_version: 1,
+        action_id: action_id.into(),
+        client_id: client_id.into(),
+        session_id: session_id.into(),
+        action: WebActionPayload::RespondPermission {
+            request_id: request_id.into(),
+            allow,
+        },
+    }
+}
+
 pub fn parse_backend_session(input: &str) -> Result<BackendSessionShowResponse, serde_json::Error> {
     serde_json::from_str(input)
 }
@@ -392,6 +495,7 @@ mod tests {
         let session = fixture_session();
         assert_eq!(session.schema_version, 1);
         assert_eq!(session.session.session_id, "default");
+        assert_eq!(session.session.description, "Current live session");
         assert_eq!(session.allocation_mode, "singleton-live");
         assert_eq!(
             session.links.surfaces.as_deref(),
@@ -460,5 +564,67 @@ mod tests {
                 (HEADER_BACK_URL, "http://127.0.0.1:7820/".to_string()),
             ]
         );
+    }
+
+    #[test]
+    fn action_requests_serialize_to_native_backend_shape() {
+        let submit = submit_prompt_action(
+            "act-1",
+            "auspex-web",
+            "default",
+            "continue from the release candidate plan",
+            vec!["att-1".to_string()],
+        );
+        let submit_json = serde_json::to_value(&submit).expect("serialize submit action");
+        assert_eq!(submit_json["schema_version"], 1);
+        assert_eq!(submit_json["action_id"], "act-1");
+        assert_eq!(submit_json["client_id"], "auspex-web");
+        assert_eq!(submit_json["session_id"], "default");
+        assert_eq!(submit_json["action"]["type"], "submit_prompt");
+        assert_eq!(submit_json["action"]["text"], "continue from the release candidate plan");
+        assert_eq!(submit_json["action"]["attachments"][0], "att-1");
+
+        let approval = respond_permission_action(
+            "act-2",
+            "auspex-web",
+            "default",
+            "perm-7",
+            true,
+        );
+        let approval_json = serde_json::to_value(&approval).expect("serialize approval action");
+        assert_eq!(approval_json["action"]["type"], "respond_permission");
+        assert_eq!(approval_json["action"]["request_id"], "perm-7");
+        assert_eq!(approval_json["action"]["allow"], true);
+    }
+
+    #[test]
+    fn ui_action_outcome_deserializes_backend_envelope() {
+        let accepted: UiActionOutcomeEnvelope = serde_json::from_value(serde_json::json!({
+            "protocolVersion": 1,
+            "sessionId": "default",
+            "actionId": "act-1",
+            "status": "accepted",
+            "revisionAfter": 42,
+            "message": "queued",
+            "error": null
+        }))
+        .expect("accepted outcome");
+        assert_eq!(accepted.protocol_version, 1);
+        assert_eq!(accepted.status, UiActionOutcomeStatus::Accepted);
+        assert_eq!(accepted.revision_after, Some(42));
+        assert_eq!(accepted.message.as_deref(), Some("queued"));
+
+        let rejected: UiActionOutcomeEnvelope = serde_json::from_value(serde_json::json!({
+            "protocolVersion": 1,
+            "sessionId": "default",
+            "actionId": "act-2",
+            "status": "rejected",
+            "revisionAfter": null,
+            "message": null,
+            "error": "capability_not_granted"
+        }))
+        .expect("rejected outcome");
+        assert_eq!(rejected.status, UiActionOutcomeStatus::Rejected);
+        assert_eq!(rejected.error.as_deref(), Some("capability_not_granted"));
     }
 }
