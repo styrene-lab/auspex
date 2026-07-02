@@ -1518,12 +1518,11 @@ fn start_surface_stream(
         stream_status.set("stream unavailable".to_string());
         return;
     };
-    let Some(token) = crate::omegon_web_contract::active_web_token() else {
-        stream_status.set("snapshot mode".to_string());
-        return;
-    };
     let url = match stream_websocket_url(&stream_endpoint) {
-        Ok(url) => crate::omegon_web_contract::endpoint_with_token(&url, Some(&token)),
+        Ok(url) => crate::omegon_web_contract::endpoint_with_token(
+            &url,
+            crate::omegon_web_contract::active_web_token().as_deref(),
+        ),
         Err(error) => {
             stream_status.set(format!("stream url failed: {error}"));
             return;
