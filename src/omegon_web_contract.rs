@@ -308,6 +308,17 @@ pub struct BackendSettingsSurface {
     pub auth_source: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct BackendSurfaceStreamEnvelope {
+    pub schema_version: u8,
+    pub session_id: String,
+    pub revision: u64,
+    #[serde(rename = "type")]
+    pub event_type: String,
+    pub surface: Option<String>,
+    pub payload: Value,
+}
+
 pub const BACKEND_SESSION_FIXTURE: &str =
     include_str!("../fixtures/omegon-web-session-default.json");
 pub const BACKEND_LAUNCH_CONTEXT_PROXIED_FIXTURE: &str =
@@ -788,6 +799,25 @@ mod tests {
         }))
         .expect("session_id defaults for compatibility with backend");
         assert_eq!(defaulted.session_id, "default");
+    }
+
+    #[test]
+    fn surface_stream_envelope_deserializes_snapshot_event() {
+        let fixture: Value = serde_json::from_str(BACKEND_SESSION_FIXTURE).expect("fixture json");
+        let envelope: BackendSurfaceStreamEnvelope = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "session_id": "default",
+            "revision": 7,
+            "type": "snapshot",
+            "surface": null,
+            "payload": fixture["snapshot"].clone()
+        }))
+        .expect("stream snapshot envelope");
+        assert_eq!(envelope.event_type, "snapshot");
+        assert_eq!(envelope.revision, 7);
+        let snapshot: BackendSurfacesSnapshot = serde_json::from_value(envelope.payload)
+            .expect("snapshot payload follows surfaces contract");
+        assert_eq!(snapshot.session_id, "default");
     }
 
     #[test]

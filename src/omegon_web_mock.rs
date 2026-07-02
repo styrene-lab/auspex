@@ -115,6 +115,7 @@ struct SurfaceRefreshContext {
     links: SessionLinks,
     launch: LaunchSurface,
     surfaces_endpoint: Option<String>,
+    stream_endpoint: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -451,6 +452,7 @@ fn refresh_context_for(surface: &WebSurfaceSnapshot) -> SurfaceRefreshContext {
         links: surface.session.links.clone(),
         launch: surface.launch.clone(),
         surfaces_endpoint: surface.session.links.surfaces.clone(),
+        stream_endpoint: surface.session.links.stream.clone(),
     }
 }
 
@@ -1193,6 +1195,160 @@ fn SemanticModal(surface: ModalSurface, on_close: EventHandler<()>) -> Element {
     }
 }
 
+#[cfg(target_arch = "wasm32")]
+fn stream_websocket_url(endpoint: &str) -> Result<String, String> {
+    if endpoint.starts_with("ws://") || endpoint.starts_with("wss://") {
+        return Ok(endpoint.to_string());
+    }
+    if endpoint.starts_with("http://") {
+        return Ok(endpoint.replacen("http://", "ws://", 1));
+    }
+    if endpoint.starts_with("https://") {
+        return Ok(endpoint.replacen("https://", "wss://", 1));
+    }
+    let window = web_sys::window().ok_or_else(|| "window unavailable".to_string())?;
+    let location = window.location();
+    let protocol = location
+        .protocol()
+        .map_err(|_| "location.protocol unavailable".to_string())?;
+    let host = location
+        .host()
+        .map_err(|_| "location.host unavailable".to_string())?;
+    let scheme = if protocol == "https:" { "wss" } else { "ws" };
+    let path = if endpoint.starts_with('/') {
+        endpoint.to_string()
+    } else {
+        format!("/{endpoint}")
+    };
+    Ok(format!("{scheme}://{host}{path}"))
+}
+
+#[cfg(target_arch = "wasm32")]
+fn start_surface_stream(
+    context: SurfaceRefreshContext,
+    mut surface_override: Signal<Option<WebSurfaceSnapshot>>,
+    mut stream_status: Signal<String>,
+) {
+    use wasm_bindgen::JsCast;
+
+    let Some(stream_endpoint) = context.stream_endpoint.clone() else {
+        stream_status.set("stream unavailable".to_string());
+        return;
+    };
+    let url = match stream_websocket_url(&stream_endpoint) {
+        Ok(url) => url,
+        Err(error) => {
+            stream_status.set(format!("stream url failed: {error}"));
+            return;
+        }
+    };
+    let ws = match web_sys::WebSocket::new(&url) {
+        Ok(ws) => ws,
+        Err(error) => {
+            stream_status.set(format!("stream open failed: {error:?}"));
+            return;
+        }
+    };
+
+    let mut open_status = stream_status;
+    let onopen =
+        wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_| {
+            open_status.set("stream connected".to_string())
+        }));
+    ws.set_onopen(Some(onopen.as_ref().unchecked_ref()));
+    onopen.forget();
+
+    let message_context = context.clone();
+    let mut message_status = stream_status;
+    let onmessage = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::MessageEvent)>::wrap(
+        Box::new(move |event: web_sys::MessageEvent| {
+            let Some(text) = event.data().as_string() else {
+                message_status.set("stream non-text frame".to_string());
+                return;
+            };
+            let envelope: crate::omegon_web_contract::BackendSurfaceStreamEnvelope =
+                match serde_json::from_str(&text) {
+                    Ok(envelope) => envelope,
+                    Err(error) => {
+                        message_status.set(format!("stream decode failed: {error}"));
+                        return;
+                    }
+                };
+            if envelope.event_type == "snapshot" {
+                match serde_json::from_value::<crate::omegon_web_contract::BackendSurfacesSnapshot>(
+                    envelope.payload,
+                ) {
+                    Ok(snapshot) => {
+                        let refreshed = with_bootstrap_status(
+                            normalize_refreshed_surface(&message_context, snapshot),
+                            "STREAM LIVE",
+                            "stream",
+                        );
+                        surface_override.set(Some(refreshed));
+                        message_status.set(format!("stream snapshot r{}", envelope.revision));
+                    }
+                    Err(error) => {
+                        message_status.set(format!("stream snapshot decode failed: {error}"))
+                    }
+                }
+                return;
+            }
+
+            let Some(surfaces_endpoint) = message_context.surfaces_endpoint.clone() else {
+                message_status.set(format!(
+                    "stream {} r{}",
+                    envelope.event_type, envelope.revision
+                ));
+                return;
+            };
+            let refresh_context = message_context.clone();
+            let event_type = envelope.event_type.clone();
+            let revision = envelope.revision;
+            let mut override_signal = surface_override;
+            let mut status_signal = message_status;
+            wasm_bindgen_futures::spawn_local(async move {
+                match crate::omegon_web_contract::refresh_surfaces_snapshot(&surfaces_endpoint)
+                    .await
+                {
+                    Ok(snapshot) => {
+                        let refreshed = with_bootstrap_status(
+                            normalize_refreshed_surface(&refresh_context, snapshot),
+                            "STREAM LIVE",
+                            "stream",
+                        );
+                        override_signal.set(Some(refreshed));
+                        status_signal.set(format!("stream {event_type} r{revision} · refreshed"));
+                    }
+                    Err(error) => status_signal.set(format!(
+                        "stream {event_type} r{revision} · refresh failed: {error}"
+                    )),
+                }
+            });
+        }),
+    );
+    ws.set_onmessage(Some(onmessage.as_ref().unchecked_ref()));
+    onmessage.forget();
+
+    let mut error_status = stream_status;
+    let onerror =
+        wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::Event)>::wrap(Box::new(move |_| {
+            error_status.set("stream error".to_string())
+        }));
+    ws.set_onerror(Some(onerror.as_ref().unchecked_ref()));
+    onerror.forget();
+
+    let mut close_status = stream_status;
+    let onclose = wasm_bindgen::closure::Closure::<dyn FnMut(web_sys::CloseEvent)>::wrap(Box::new(
+        move |event: web_sys::CloseEvent| {
+            close_status.set(format!("stream closed {}", event.code()))
+        },
+    ));
+    ws.set_onclose(Some(onclose.as_ref().unchecked_ref()));
+    onclose.forget();
+
+    std::mem::forget(ws);
+}
+
 // ============================================================
 // App root — wires state and composes the surfaces.
 // ============================================================
@@ -1251,11 +1407,26 @@ pub fn OmegonWebMockApp() -> Element {
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
     let submit_status = use_signal(|| "idle".to_string());
+    let stream_started = use_signal(|| false);
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
     let refresh_context = refresh_context_for(&surface);
     let action_endpoint = surface.session.links.actions.clone();
     let session_id = surface.session.session_id.clone();
     let client_id = "auspex-web".to_string();
+
+    #[cfg(target_arch = "wasm32")]
+    {
+        let refresh_context = refresh_context.clone();
+        let surface_override = surface_override;
+        let stream_status = submit_status;
+        let mut stream_started = stream_started;
+        use_effect(move || {
+            if !*stream_started.read() {
+                stream_started.set(true);
+                start_surface_stream(refresh_context.clone(), surface_override, stream_status);
+            }
+        });
+    }
 
     let status = if *approval_state.read() == "pending" {
         "waiting".to_string()
