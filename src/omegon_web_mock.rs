@@ -68,6 +68,7 @@ struct WebSurfaceSnapshot {
     transcript: Vec<TranscriptEvent>,
     plan: PlanLane,
     operations: OperationSurface,
+    backend: BackendLinkSurface,
     daemon_events: DaemonEventsSurface,
     context_spark: SparklineSpec,
     menu: MenuSurface,
@@ -167,6 +168,14 @@ struct OperationSurface {
     children: Vec<OperationChild>,
 }
 
+#[derive(Clone, PartialEq)]
+struct BackendLinkSurface {
+    surfaces_href: String,
+    actions_href: String,
+    stream_href: String,
+    revision: u64,
+}
+
 /// Mirrors `/api/events/stream` daemon/app SSE payloads.
 #[derive(Clone, PartialEq)]
 struct DaemonEventItem {
@@ -239,6 +248,7 @@ fn normalize_backend_session(
     launch_context: crate::omegon_web_contract::BackendLaunchContextResponse,
 ) -> WebSurfaceSnapshot {
     let surfaces = session.snapshot.surfaces;
+    let snapshot_revision = session.snapshot.revision;
     let active_tool_count = surfaces
         .instruments
         .tools
@@ -312,6 +322,26 @@ fn normalize_backend_session(
     }));
 
     let active_plan = surfaces.plan.active;
+    let session_links = SessionLinks {
+        surfaces: session.links.surfaces,
+        actions: session.links.actions,
+        stream: session.links.stream,
+    };
+    let backend = BackendLinkSurface {
+        surfaces_href: session_links
+            .surfaces
+            .clone()
+            .unwrap_or_else(|| "offline".to_string()),
+        actions_href: session_links
+            .actions
+            .clone()
+            .unwrap_or_else(|| "read-only".to_string()),
+        stream_href: session_links
+            .stream
+            .clone()
+            .unwrap_or_else(|| "unavailable".to_string()),
+        revision: snapshot_revision,
+    };
     WebSurfaceSnapshot {
         session: SessionDescriptor {
             schema_version: session.schema_version,
@@ -319,11 +349,7 @@ fn normalize_backend_session(
             current: session.session.current,
             assistant_profile_id: None,
             assistant_readiness: Some("ready".to_string()),
-            links: SessionLinks {
-                surfaces: session.links.surfaces,
-                actions: session.links.actions,
-                stream: session.links.stream,
-            },
+            links: session_links,
         },
         runtime: RuntimeSurface {
             agent_id: "daemon-01".to_string(),
@@ -417,6 +443,7 @@ fn normalize_backend_session(
                 })
                 .collect(),
         },
+        backend,
         daemon_events: default_daemon_events(),
         context_spark: CONTEXT_SPARK,
         menu: MENU_SURFACE,
@@ -944,6 +971,39 @@ fn OperationsCard(operations: OperationSurface) -> Element {
 /// Daemon/app event stream instrument. Mirrors `/api/events` snapshot plus the
 /// `/api/events/stream` SSE feed; this is operational activity, not chat.
 #[component]
+fn BackendStatusCard(
+    backend: BackendLinkSurface,
+    action_status: Signal<String>,
+    stream_status: Signal<String>,
+) -> Element {
+    rsx! {
+        section { class: "owm-panel owm-backend-card",
+            div { class: "owm-op-head",
+                Eyebrow { label: "BACKEND" }
+                span { class: "owm-op-kind", "rev {backend.revision}" }
+            }
+            div { class: "owm-backend-stack",
+                div { class: "owm-backend-row live",
+                    span { "stream" }
+                    strong { "{stream_status}" }
+                    em { "{backend.stream_href}" }
+                }
+                div { class: "owm-backend-row",
+                    span { "actions" }
+                    strong { "{action_status}" }
+                    em { "{backend.actions_href}" }
+                }
+                div { class: "owm-backend-row",
+                    span { "surfaces" }
+                    strong { "snapshot refresh" }
+                    em { "{backend.surfaces_href}" }
+                }
+            }
+        }
+    }
+}
+
+#[component]
 fn DaemonEventsCard(events: DaemonEventsSurface) -> Element {
     rsx! {
         InstrumentCard { modifier: "owm-events-card", eyebrow: "EVENT STREAM",
@@ -1407,6 +1467,7 @@ pub fn OmegonWebMockApp() -> Element {
     let mut approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
     let submit_status = use_signal(|| "idle".to_string());
+    let stream_status = use_signal(|| "connecting".to_string());
     let stream_started = use_signal(|| false);
     let mut tool_modal = use_signal(|| Option::<TranscriptEvent>::None);
     let refresh_context = refresh_context_for(&surface);
@@ -1418,7 +1479,7 @@ pub fn OmegonWebMockApp() -> Element {
     {
         let refresh_context = refresh_context.clone();
         let surface_override = surface_override;
-        let stream_status = submit_status;
+        let stream_status = stream_status;
         let mut stream_started = stream_started;
         use_effect(move || {
             if !*stream_started.read() {
@@ -1494,6 +1555,7 @@ pub fn OmegonWebMockApp() -> Element {
                 aside { class: "owm-cockpit-rail owm-right-rail",
                     PlanCard { plan: surface.plan }
                     OperationsCard { operations: surface.operations }
+                    BackendStatusCard { backend: surface.backend, action_status: submit_status, stream_status }
                     DaemonEventsCard { events: surface.daemon_events }
                 }
             }
