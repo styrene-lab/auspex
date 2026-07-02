@@ -14,17 +14,11 @@ enum ModalTarget {
 }
 
 #[derive(Clone, Copy, PartialEq)]
-struct MenuSurface {
-    items: &'static [MenuItem],
-}
-
-#[derive(Clone, Copy, PartialEq)]
-struct MenuItem {
-    target: ModalTarget,
-    eyebrow: &'static str,
+struct CommandItem {
+    command: &'static str,
     label: &'static str,
-    summary: &'static str,
-    signal: &'static str,
+    group: &'static str,
+    detail: &'static str,
 }
 
 #[derive(Clone, Copy, PartialEq)]
@@ -70,7 +64,6 @@ struct WebSurfaceSnapshot {
     operations: OperationSurface,
     backend: BackendLinkSurface,
     daemon_events: DaemonEventsSurface,
-    menu: MenuSurface,
     modal_surfaces: &'static [ModalSurface],
     composer: ComposerSurface,
 }
@@ -518,7 +511,6 @@ fn normalize_backend_session(
         },
         backend,
         daemon_events: empty_daemon_events(),
-        menu: MENU_SURFACE,
         modal_surfaces: MODAL_SURFACES,
         composer: ComposerSurface {
             queue_mode: surfaces.editor.queue_mode,
@@ -590,38 +582,56 @@ fn normalize_refreshed_surface(
     normalize_backend_session(session, launch)
 }
 
-const MENU_ITEMS: &[MenuItem] = &[
-    MenuItem {
-        target: ModalTarget::Settings,
-        eyebrow: "SESSION",
-        label: "Settings",
-        summary: "Policy owner, transport, and local authority profile.",
-        signal: "nominal",
+const COMMAND_ITEMS: &[CommandItem] = &[
+    CommandItem {
+        command: "/status",
+        label: "Status",
+        group: "Session",
+        detail: "Show runtime, provider, and session state.",
     },
-    MenuItem {
-        target: ModalTarget::Config,
-        eyebrow: "SURFACE",
-        label: "Config",
-        summary: "Renderer bindings, data source selection, and stream behavior.",
-        signal: "draft",
+    CommandItem {
+        command: "/model providers",
+        label: "Model providers",
+        group: "Model",
+        detail: "Inspect configured providers and current route.",
     },
-    MenuItem {
-        target: ModalTarget::Armory,
-        eyebrow: "TOOLS",
-        label: "Armory",
-        summary: "Enabled capabilities, safety posture, and tool inventory.",
-        signal: "17 tools",
+    CommandItem {
+        command: "/model openai-codex:gpt-5.5",
+        label: "Use Codex GPT-5.5",
+        group: "Model",
+        detail: "Switch the active model route when the backend permits it.",
     },
-    MenuItem {
-        target: ModalTarget::Commands,
-        eyebrow: "INPUT",
-        label: "Commands",
-        summary: "Slash commands and quick operator intents.",
-        signal: "8 ready",
+    CommandItem {
+        command: "/context massive",
+        label: "Massive context",
+        group: "Runtime",
+        detail: "Request the largest available context profile.",
+    },
+    CommandItem {
+        command: "/compact",
+        label: "Compact context",
+        group: "Runtime",
+        detail: "Ask Omegon to compact the current session context.",
+    },
+    CommandItem {
+        command: "/tools",
+        label: "Tools",
+        group: "Inventory",
+        detail: "Open tool inventory and capability status.",
+    },
+    CommandItem {
+        command: "/skills",
+        label: "Skills",
+        group: "Inventory",
+        detail: "Inspect active skills and loaded instruction bundles.",
+    },
+    CommandItem {
+        command: "/clear",
+        label: "Clear transcript",
+        group: "Session",
+        detail: "Clear visible conversation state if supported by the backend.",
     },
 ];
-
-const MENU_SURFACE: MenuSurface = MenuSurface { items: MENU_ITEMS };
 
 const SETTINGS_SECTIONS: &[ModalSection] = &[
     ModalSection {
@@ -1409,18 +1419,25 @@ fn ToolModal(event: TranscriptEvent, on_close: EventHandler<()>) -> Element {
 }
 
 #[component]
-fn MenuDock(menu: MenuSurface, on_open: EventHandler<ModalTarget>) -> Element {
+fn CommandDock(composer: Signal<String>, on_open: EventHandler<ModalTarget>) -> Element {
+    let mut composer_signal = composer;
     rsx! {
-        div { class: "owm-menu-dock",
-            for item in menu.items.iter() {
-                button {
-                    class: "owm-menu-card",
-                    onclick: move |_| on_open.call(item.target),
-                    span { class: "owm-menu-eyebrow", "{item.eyebrow}" }
-                    strong { "{item.label}" }
-                    p { "{item.summary}" }
-                    em { "{item.signal}" }
+        div { class: "owm-command-dock",
+            div { class: "owm-command-grid",
+                for item in COMMAND_ITEMS.iter() {
+                    button {
+                        class: "owm-command-item",
+                        onclick: move |_| composer_signal.set(item.command.to_string()),
+                        span { class: "owm-command-group", "{item.group}" }
+                        strong { "{item.command}" }
+                        p { "{item.detail}" }
+                    }
                 }
+            }
+            div { class: "owm-command-utilities",
+                button { class: "owm-ghost-button", onclick: move |_| on_open.call(ModalTarget::Settings), "Settings" }
+                button { class: "owm-ghost-button", onclick: move |_| on_open.call(ModalTarget::Config), "Config" }
+                button { class: "owm-ghost-button", onclick: move |_| on_open.call(ModalTarget::Armory), "Armory" }
             }
         }
     }
@@ -1761,8 +1778,8 @@ pub fn OmegonWebMockApp() -> Element {
                         }
                     }
 
-                    MenuDock {
-                        menu: surface.menu,
+                    CommandDock {
+                        composer,
                         on_open: move |target| modal_target.set(Some(target)),
                     }
 

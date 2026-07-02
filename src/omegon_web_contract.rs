@@ -500,6 +500,21 @@ pub fn submit_prompt_action(
     }
 }
 
+pub fn run_slash_command_action(
+    action_id: impl Into<String>,
+    client_id: impl Into<String>,
+    session_id: impl Into<String>,
+    raw: impl Into<String>,
+) -> WebActionRequest {
+    WebActionRequest {
+        schema_version: 1,
+        action_id: action_id.into(),
+        client_id: client_id.into(),
+        session_id: session_id.into(),
+        action: WebActionPayload::RunSlashCommand { raw: raw.into() },
+    }
+}
+
 pub fn respond_permission_action(
     action_id: impl Into<String>,
     client_id: impl Into<String>,

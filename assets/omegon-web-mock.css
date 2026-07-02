@@ -1430,21 +1430,32 @@
   margin-top: 2px;
 }
 
-/* menu dock */
-.owm-menu-dock {
+/* command dock */
+.owm-command-dock {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  grid-template-columns: minmax(0, 1fr) auto;
   gap: var(--gap-tight);
   flex: 0 0 auto;
+  min-width: 0;
 }
 
-.owm-menu-card {
+.owm-command-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: var(--gap-tight);
+  min-width: 0;
+}
+
+.owm-command-item {
   appearance: none;
-  display: flex;
-  flex-direction: column;
-  align-items: flex-start;
+  display: grid;
+  grid-template-rows: auto auto 1fr;
+  align-items: start;
   gap: 3px;
+  min-width: 0;
   padding: 10px 12px;
+  border: 1px solid var(--line-soft);
+  background: linear-gradient(180deg, rgba(8, 30, 38, 0.28), rgba(2, 12, 16, 0.14));
   color: var(--text);
   font-family: var(--font-ui);
   font-size: var(--fs-label);
@@ -1453,29 +1464,43 @@
   transition: border-color 120ms, box-shadow 120ms;
 }
 
-.owm-menu-card:hover {
+.owm-command-item:hover {
   border-color: var(--line-strong);
   box-shadow: 0 0 14px rgba(0, 229, 255, 0.16);
 }
 
-.owm-menu-card > strong {
+.owm-command-group {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--accent-dim);
+}
+
+.owm-command-item > strong {
+  font-family: var(--font-mono);
   font-size: var(--fs-body);
   font-weight: 600;
   color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.owm-menu-card > p {
+.owm-command-item > p {
   margin: 0;
   color: var(--text-dim);
-  line-height: 1.4;
+  line-height: 1.35;
 }
 
-.owm-menu-card > em {
-  font-style: normal;
-  font-family: var(--font-mono);
-  font-size: var(--fs-eyebrow);
-  letter-spacing: 0.1em;
-  color: var(--accent-dim);
+.owm-command-utilities {
+  display: flex;
+  gap: var(--gap-tight);
+  align-items: stretch;
+}
+
+.owm-command-utilities .owm-ghost-button {
+  padding-inline: 12px;
 }
 
 /* composer */
