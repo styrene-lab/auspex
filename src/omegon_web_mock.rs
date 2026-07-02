@@ -1057,15 +1057,11 @@ fn BackendStatusCard(
     stream_status: Signal<String>,
 ) -> Element {
     let (auth_state, auth_note) = if crate::omegon_web_contract::active_web_token().is_some() {
-        ("bearer discovered", "startup token → Authorization")
+        ("direct bearer", "page token → Authorization")
     } else {
-        ("discovering token", "fetching /api/startup for current bearer")
+        ("proxy mediated", "Auspex proxy owns bearer + principal headers")
     };
-    let auth_live = if crate::omegon_web_contract::active_web_token().is_some() {
-        "owm-backend-row live"
-    } else {
-        "owm-backend-row"
-    };
+    let auth_live = "owm-backend-row live";
     rsx! {
         section { class: "owm-panel owm-backend-card",
             div { class: "owm-op-head",
@@ -1522,11 +1518,12 @@ fn start_surface_stream(
         stream_status.set("stream unavailable".to_string());
         return;
     };
+    let Some(token) = crate::omegon_web_contract::active_web_token() else {
+        stream_status.set("snapshot mode".to_string());
+        return;
+    };
     let url = match stream_websocket_url(&stream_endpoint) {
-        Ok(url) => crate::omegon_web_contract::endpoint_with_token(
-            &url,
-            crate::omegon_web_contract::active_web_token().as_deref(),
-        ),
+        Ok(url) => crate::omegon_web_contract::endpoint_with_token(&url, Some(&token)),
         Err(error) => {
             stream_status.set(format!("stream url failed: {error}"));
             return;

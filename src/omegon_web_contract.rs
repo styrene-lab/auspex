@@ -832,10 +832,10 @@ pub async fn refresh_surfaces_snapshot(
 #[cfg(target_arch = "wasm32")]
 pub async fn discover_startup_token() -> Result<Option<String>, BackendLoadError> {
     let startup = fetch_json::<BackendStartupResponse>("/api/startup").await?;
-    if let Some(token) = startup.token.as_deref().filter(|token| !token.is_empty()) {
-        store_page_token(token);
-        replace_page_token(token);
-    }
+    // Reverse-proxy mode deliberately keeps the daemon bearer server-side.
+    // If a direct-to-daemon development URL still exposes a token, callers may
+    // read it from the returned value, but the page no longer writes it into
+    // browser-visible location state.
     Ok(startup.token)
 }
 

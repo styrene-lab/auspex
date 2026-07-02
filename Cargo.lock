@@ -308,13 +308,14 @@ dependencies = [
  "anyhow",
  "async-trait",
  "auspex-core",
+ "axum 0.7.9",
  "dioxus",
  "futures-util",
  "getrandom 0.3.4",
  "gloo-net",
  "gloo-timers",
  "omegon-flow",
- "omegon-traits 0.27.0",
+ "omegon-traits 0.27.0-rc.3",
  "pretty_assertions",
  "pulldown-cmark",
  "reqwest",
@@ -4573,7 +4574,7 @@ dependencies = [
 
 [[package]]
 name = "omegon-traits"
-version = "0.27.0"
+version = "0.27.0-rc.3"
 dependencies = [
  "anyhow",
  "async-trait",
