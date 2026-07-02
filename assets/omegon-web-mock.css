@@ -659,7 +659,7 @@
   background: var(--line-soft);
 }
 
-.owm-segment-meter i:nth-child(-n + 5) {
+.owm-segment-meter i.lit {
   background: var(--accent);
   opacity: 0.85;
 }
@@ -696,6 +696,14 @@
   gap: 4px;
 }
 
+.owm-sparkline > span {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+}
+
 .owm-spark-bars {
   display: flex;
   align-items: flex-end;
@@ -705,6 +713,7 @@
 
 .owm-spark-bars i {
   flex: 1;
+  height: var(--h, 15%);
   background: linear-gradient(180deg, var(--accent), rgba(100, 244, 255, 0.15));
   opacity: 0.75;
   min-height: 2px;
@@ -739,10 +748,11 @@
 }
 
 .owm-objective-row {
-  display: flex;
-  align-items: baseline;
+  display: grid;
+  grid-template-columns: 14px minmax(0, 1fr) auto 52px;
+  align-items: center;
   gap: var(--gap-tight);
-  padding: 5px 0;
+  padding: 6px 0;
   border-top: 1px solid var(--line-soft);
   font-size: var(--fs-body);
   color: var(--text-dim);
@@ -752,20 +762,73 @@
   border-top: 0;
 }
 
+.owm-objective-row > span {
+  font-family: var(--font-mono);
+  text-align: center;
+  color: var(--text-faint);
+}
+
+.owm-objective-row > strong {
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.owm-plan-intent {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
+
+/* per-item progress strip, filled by --p */
+.owm-objective-row > i {
+  position: relative;
+  height: 3px;
+  background: var(--line-soft);
+  overflow: hidden;
+}
+
+.owm-objective-row > i::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  width: var(--p, 0%);
+  background: var(--accent);
+}
+
 .owm-objective-row.done {
   color: var(--text-faint);
 }
 
-.owm-objective-row.done::before {
-  content: "";
+.owm-objective-row.done > span {
+  color: var(--ok);
+}
+
+.owm-objective-row.done > i::before {
+  background: var(--ok);
 }
 
 .owm-objective-row.active {
   color: var(--text-bright);
 }
 
+.owm-objective-row.active > span {
+  color: var(--accent);
+}
+
 .owm-objective-row.blocked {
   color: var(--danger);
+}
+
+.owm-objective-row.blocked > span,
+.owm-objective-row.blocked > i::before {
+  color: var(--danger);
+  background: var(--danger);
 }
 
 /* operations */
@@ -837,9 +900,10 @@
 }
 
 .owm-op-bar {
+  display: block;
+  position: relative;
   height: 3px;
   background: var(--line-soft);
-  position: relative;
   overflow: hidden;
 }
 
@@ -847,19 +911,18 @@
   content: "";
   position: absolute;
   inset: 0;
-  transform-origin: left;
+  width: var(--p, 0%);
   background: var(--accent);
-  transform: scaleX(var(--op-progress, 0.4));
 }
 
 .owm-op-row.done .owm-op-bar::before {
   background: var(--ok);
-  transform: scaleX(1);
+  width: 100%;
 }
 
 .owm-op-row.failed .owm-op-bar::before {
   background: var(--danger);
-  transform: scaleX(1);
+  width: 100%;
 }
 
 /* backend transport */
@@ -869,15 +932,14 @@
 }
 
 .owm-backend-row {
-  display: flex;
-  justify-content: space-between;
+  display: grid;
+  grid-template-columns: 64px auto minmax(0, 1fr);
   align-items: baseline;
   gap: var(--gap-tight);
   padding: 5px 0;
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
   font-size: var(--fs-label);
-  color: var(--text-dim);
   min-width: 0;
 }
 
@@ -885,18 +947,34 @@
   border-top: 0;
 }
 
-.owm-backend-row > :last-child {
+.owm-backend-row > span {
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  font-size: var(--fs-eyebrow);
+  color: var(--text-faint);
+}
+
+.owm-backend-row > strong {
+  font-weight: 500;
   color: var(--text);
-  overflow: hidden;
-  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.owm-backend-row.live > :last-child {
+.owm-backend-row > em {
+  font-style: normal;
+  color: var(--text-dim);
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  direction: rtl;
+}
+
+.owm-backend-row.live > strong {
   color: var(--ok);
 }
 
-.owm-backend-row.live > :last-child::before {
+.owm-backend-row.live > strong::before {
   content: "";
   display: inline-block;
   width: 5px;
@@ -959,6 +1037,36 @@
 .owm-daemon-event.plan { border-left-color: var(--ok); }
 .owm-daemon-event.provider { border-left-color: var(--signal); }
 .owm-daemon-event.recovery { border-left-color: var(--danger); }
+
+.owm-daemon-event > strong {
+  font-weight: 400;
+  color: var(--text-dim);
+  overflow-wrap: anywhere;
+}
+
+.owm-daemon-event > em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  color: var(--text-faint);
+}
+
+/* shared empty-state row for quiet instruments */
+.owm-empty {
+  padding: 8px 0;
+  font-family: var(--font-mono);
+  font-size: var(--fs-label);
+  letter-spacing: 0.06em;
+  color: var(--text-faint);
+}
+
+.owm-panel-meta {
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.12em;
+  color: var(--text-faint);
+  white-space: nowrap;
+}
 
 /* ---- 7. Conversation column ----------------------------------- */
 
@@ -1070,8 +1178,13 @@
   white-space: nowrap;
 }
 
-/* tool rows: compact, expandable */
+/* tool rows: compact, expandable — rendered as <button>, so reset chrome */
 .owm-tool-row {
+  appearance: none;
+  width: 100%;
+  font: inherit;
+  text-align: left;
+  color: inherit;
   cursor: pointer;
   border-left-color: var(--accent-dim);
   transition: border-color 120ms, background 120ms;
@@ -1148,6 +1261,26 @@
 .owm-menu-card:hover {
   border-color: var(--line-strong);
   box-shadow: 0 0 14px rgba(0, 229, 255, 0.16);
+}
+
+.owm-menu-card > strong {
+  font-size: var(--fs-body);
+  font-weight: 600;
+  color: var(--text-bright);
+}
+
+.owm-menu-card > p {
+  margin: 0;
+  color: var(--text-dim);
+  line-height: 1.4;
+}
+
+.owm-menu-card > em {
+  font-style: normal;
+  font-family: var(--font-mono);
+  font-size: var(--fs-eyebrow);
+  letter-spacing: 0.1em;
+  color: var(--accent-dim);
 }
 
 /* composer */

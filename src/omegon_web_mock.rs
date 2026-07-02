@@ -703,8 +703,14 @@ fn MeterHead(label: &'static str, value: String) -> Element {
 
 /// Segmented capacity gauge.
 #[component]
-fn SegmentMeter() -> Element {
-    rsx! { div { class: "owm-segment-meter", aria_label: "capacity" } }
+fn SegmentMeter(lit: u16, total: u16) -> Element {
+    rsx! {
+        div { class: "owm-segment-meter", aria_label: "capacity",
+            for index in 0..total {
+                i { class: if index < lit { "lit" } else { "" } }
+            }
+        }
+    }
 }
 
 /// Slotted socket grid; `online` slots are lit.
@@ -850,7 +856,7 @@ fn TopBar(
             // Left HUD bank: identity + session context, consolidated as one module
             div { class: "owm-hud-bank owm-bank-left",
                 div { class: "owm-hud-cell owm-cell-mark", title: "{launch.title} · session {session.session_id}",
-                    div { class: "owm-core-glyph owm-mark-glyph" }
+                    div { class: "owm-mark-glyph" }
                     span { class: "owm-mark-id", "{runtime.agent_id}" }
                 }
                 HudReadout { label: "SESSION", value: session.session_id.to_string(), modifier: "owm-readout-mono" }
@@ -903,7 +909,8 @@ fn DaemonCoreCard(runtime: RuntimeSurface, context_spark: SparklineSpec) -> Elem
             }
             div { class: "owm-meter-block",
                 MeterHead { label: "Context window", value: runtime.context_window.to_string() }
-                SegmentMeter {}
+                // Mock capacity: no numeric context ratio in the snapshot yet.
+                SegmentMeter { lit: 7, total: 10 }
             }
             div { class: "owm-toolbelt",
                 MeterHead { label: "Tool sockets", value: format!("{} active · {} tools", runtime.tool_online, runtime.tool_count) }
@@ -925,6 +932,9 @@ fn PlanCard(plan: PlanLane) -> Element {
                 span { class: "owm-plan-count", "{plan.completed}/{plan.total}" }
             }
             div { class: "owm-objective-stack",
+                if plan.items.is_empty() {
+                    div { class: "owm-empty", "No active plan lane" }
+                }
                 for item in plan.items.iter() {
                     PlanRow { item: item.clone() }
                 }
@@ -963,6 +973,9 @@ fn OperationsCard(operations: OperationSurface) -> Element {
                 }
             }
             div { class: "owm-op-stack",
+                if operations.children.is_empty() {
+                    div { class: "owm-empty", "No delegate or cleave work running" }
+                }
                 for child in operations.children.iter() {
                     OperationRow { child: child.clone() }
                 }
@@ -1019,6 +1032,9 @@ fn DaemonEventsCard(events: DaemonEventsSurface) -> Element {
                 code { "snapshot {events.snapshot_href}" }
             }
             div { class: "owm-daemon-event-stack",
+                if events.events.is_empty() {
+                    div { class: "owm-empty", "Event stream quiet" }
+                }
                 for event in events.events.iter() {
                     div { class: "owm-daemon-event {event.lane}",
                         span { class: "owm-daemon-event-type", "{event.event_type}" }
@@ -1630,8 +1646,12 @@ pub fn OmegonWebMockApp() -> Element {
                                 Eyebrow { label: "CURRENT TURN" }
                                 h2 { "Single-agent transcript" }
                             }
+                            span { class: "owm-panel-meta", "{surface.transcript.len()} events" }
                         }
                         div { class: "owm-transcript-list",
+                            if surface.transcript.is_empty() {
+                                div { class: "owm-empty", "Transcript idle — no events this turn" }
+                            }
                             for event in surface.transcript.iter() {
                                 TranscriptEntry {
                                     event: event.clone(),
