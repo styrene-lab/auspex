@@ -7,12 +7,6 @@ release = true
 watch = ["../src", "../auspex-core/src", "../assets"]
 
 [[proxy]]
-# WebSocket surface stream must be proxied with upgrade support.
-backend = "ws://localhost:8080/api/sessions/default/surfaces/stream"
-rewrite = "/api/sessions/default/surfaces/stream"
-ws = true
-
-[[proxy]]
 # Proxy fleet API calls to the operator during local development.
 # In production, the operator serves both the WASM bundle and the API.
 rewrite = "/api/"

@@ -1,0 +1,18 @@
+[build]
+target = "omegon-web-mock.html"
+dist = "../dist-omegon-web-mock"
+release = true
+
+[watch]
+watch = ["../src", "../auspex-core/src", "../assets"]
+
+[[proxy]]
+# WebSocket surface stream must be proxied with upgrade support.
+backend = "ws://localhost:8080/api/sessions/default/surfaces/stream"
+rewrite = "/api/sessions/default/surfaces/stream"
+ws = true
+
+[[proxy]]
+# Proxy daemon API calls to the real Omegon 0.27.0 instance during local development.
+rewrite = "/api/"
+backend = "http://localhost:8080/api/"
