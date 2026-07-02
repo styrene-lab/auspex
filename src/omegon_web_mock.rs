@@ -755,9 +755,11 @@ fn PlanRow(item: PlanItem) -> Element {
     };
     rsx! {
         div { class: "owm-objective-row {item.status}",
-            span { "{glyph}" }
-            strong { "{item.label}" }
-            em { class: "owm-plan-intent", "{item.intent}" }
+            div { class: "owm-objective-head",
+                span { "{glyph}" }
+                strong { "{item.label}" }
+                em { class: "owm-plan-intent", "{item.intent}" }
+            }
             i { style: "--p: {item.progress}" }
         }
     }
@@ -866,8 +868,9 @@ fn TopBar(
 
             // Center emblem — placeholder mount for the Omegon mark/logo
             div { class: "owm-hud-emblem", title: "Omegon",
-                div { class: "owm-emblem-ring" }
-                div { class: "owm-emblem-core" }
+                div { class: "owm-emblem-ring",
+                    div { class: "owm-emblem-core" }
+                }
                 span { class: "owm-emblem-label", "OMEGON" }
             }
 
@@ -1070,9 +1073,9 @@ fn TranscriptEntry(
                 div { class: "owm-event-head",
                     strong { "{event.label}" }
                     span { "{event.meta}" }
+                    span { class: "owm-tool-expand", "expand ⤢" }
                 }
                 p { class: "owm-tool-summary", "{event.body}" }
-                span { class: "owm-tool-expand", "expand ⤢" }
             }
         };
     }
@@ -1637,6 +1640,8 @@ pub fn OmegonWebMockApp() -> Element {
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
                     DaemonCoreCard { runtime: surface.runtime, context_spark: surface.context_spark }
+                    BackendStatusCard { backend: surface.backend, action_status: submit_status, stream_status }
+                    DaemonEventsCard { events: surface.daemon_events }
                 }
 
                 section { class: "owm-conversation-column",
@@ -1690,8 +1695,6 @@ pub fn OmegonWebMockApp() -> Element {
                 aside { class: "owm-cockpit-rail owm-right-rail",
                     PlanCard { plan: surface.plan }
                     OperationsCard { operations: surface.operations }
-                    BackendStatusCard { backend: surface.backend, action_status: submit_status, stream_status }
-                    DaemonEventsCard { events: surface.daemon_events }
                 }
             }
 

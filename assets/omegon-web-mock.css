@@ -272,7 +272,8 @@
   position: relative;
 }
 
-/* instrument bays */
+/* instrument bays — workspace is the only flexible cell; identity readouts
+   keep their intrinsic width so values never truncate to nonsense */
 .owm-hud-cell,
 .owm-hud-readout {
   position: relative;
@@ -280,9 +281,18 @@
   flex-direction: column;
   justify-content: center;
   gap: 3px;
+  flex: 0 0 auto;
   min-width: 0;
   padding: 14px var(--pad) 10px;
   border-left: 1px solid var(--line-soft);
+}
+
+.owm-hud-readout.owm-readout-path {
+  flex: 1 1 auto;
+}
+
+.owm-hud-readout.owm-readout-live {
+  max-width: 220px;
 }
 
 .owm-hud-bank > :first-child {
@@ -396,8 +406,8 @@
 }
 
 .owm-emblem-core {
-  width: 18px;
-  height: 18px;
+  width: 16px;
+  height: 16px;
   border-radius: 50%;
   background: radial-gradient(circle, var(--accent) 0 30%, rgba(100, 244, 255, 0.25) 70%, transparent);
   box-shadow: 0 0 12px rgba(100, 244, 255, 0.5);
@@ -500,6 +510,14 @@
   flex-direction: row;
   align-items: center;
   gap: var(--gap-tight);
+}
+
+/* label + value stack beside the lamp */
+.owm-state-instrument > div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
 }
 
 .owm-state-instrument .owm-state-value {
@@ -605,23 +623,52 @@
   margin-bottom: 2px;
 }
 
+/* header hairline anchors each instrument */
+.owm-rail-card > .owm-eyebrow,
+.owm-rail-card > .owm-plan-head,
+.owm-rail-card > .owm-op-head,
+.owm-backend-card > .owm-op-head {
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--line-soft);
+}
+
 /* daemon core */
+.owm-core-readout {
+  display: flex;
+  align-items: center;
+  gap: var(--gap);
+  min-width: 0;
+}
+
+.owm-core-readout > div {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-width: 0;
+}
+
+.owm-core-readout h3 {
+  margin: 0;
+  font-size: var(--fs-value);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--text-bright);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .owm-core-glyph {
+  flex: 0 0 auto;
   width: 54px;
   height: 54px;
-  margin: 4px auto;
   border-radius: 50%;
   border: 1px solid var(--line-strong);
   background:
     radial-gradient(circle, rgba(100, 244, 255, 0.4) 0 6px, transparent 8px),
     conic-gradient(from 0deg, transparent 0 30%, rgba(100, 244, 255, 0.2) 30% 50%, transparent 50% 80%, rgba(100, 244, 255, 0.2) 80%);
   box-shadow: var(--glass-glow);
-}
-
-.owm-core-readout {
-  display: flex;
-  flex-direction: column;
-  gap: var(--gap-tight);
 }
 
 .owm-meter-block {
@@ -634,11 +681,14 @@
   display: flex;
   justify-content: space-between;
   align-items: baseline;
+  gap: var(--gap-tight);
   font-family: var(--font-mono);
   font-size: var(--fs-eyebrow);
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
+  white-space: nowrap;
+  min-width: 0;
 }
 
 .owm-meter-head b {
@@ -646,6 +696,8 @@
   font-weight: 600;
   color: var(--signal);
   letter-spacing: 0.06em;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .owm-segment-meter {
@@ -714,8 +766,8 @@
 .owm-spark-bars i {
   flex: 1;
   height: var(--h, 15%);
-  background: linear-gradient(180deg, var(--accent), rgba(100, 244, 255, 0.15));
-  opacity: 0.75;
+  background: linear-gradient(180deg, var(--accent), rgba(100, 244, 255, 0.25));
+  opacity: 0.9;
   min-height: 2px;
 }
 
@@ -748,11 +800,10 @@
 }
 
 .owm-objective-row {
-  display: grid;
-  grid-template-columns: 14px minmax(0, 1fr) auto 52px;
-  align-items: center;
-  gap: var(--gap-tight);
-  padding: 6px 0;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 7px 0;
   border-top: 1px solid var(--line-soft);
   font-size: var(--fs-body);
   color: var(--text-dim);
@@ -762,20 +813,31 @@
   border-top: 0;
 }
 
-.owm-objective-row > span {
+.owm-objective-head {
+  display: flex;
+  align-items: baseline;
+  gap: var(--gap-tight);
+  min-width: 0;
+}
+
+.owm-objective-head > span {
+  flex: 0 0 14px;
   font-family: var(--font-mono);
   text-align: center;
   color: var(--text-faint);
 }
 
-.owm-objective-row > strong {
+.owm-objective-head > strong {
+  flex: 1 1 auto;
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
 }
 
 .owm-plan-intent {
+  flex: 0 0 auto;
   font-style: normal;
   font-family: var(--font-mono);
   font-size: var(--fs-eyebrow);
@@ -785,10 +847,11 @@
   white-space: nowrap;
 }
 
-/* per-item progress strip, filled by --p */
+/* per-item progress strip, filled by --p, inset past the glyph column */
 .owm-objective-row > i {
   position: relative;
   height: 3px;
+  margin-left: 22px;
   background: var(--line-soft);
   overflow: hidden;
 }
@@ -805,7 +868,7 @@
   color: var(--text-faint);
 }
 
-.owm-objective-row.done > span {
+.owm-objective-row.done .owm-objective-head > span {
   color: var(--ok);
 }
 
@@ -817,7 +880,7 @@
   color: var(--text-bright);
 }
 
-.owm-objective-row.active > span {
+.owm-objective-row.active .owm-objective-head > span {
   color: var(--accent);
 }
 
@@ -825,9 +888,11 @@
   color: var(--danger);
 }
 
-.owm-objective-row.blocked > span,
-.owm-objective-row.blocked > i::before {
+.owm-objective-row.blocked .owm-objective-head > span {
   color: var(--danger);
+}
+
+.owm-objective-row.blocked > i::before {
   background: var(--danger);
 }
 
@@ -852,6 +917,10 @@
   font-family: var(--font-mono);
   font-size: var(--fs-eyebrow);
   letter-spacing: 0.06em;
+}
+
+.owm-op-counts span {
+  white-space: nowrap;
 }
 
 .owm-op-running { color: var(--accent); }
@@ -931,12 +1000,13 @@
   flex-direction: column;
 }
 
+/* two-line row: label + status on top, endpoint on its own full-width line */
 .owm-backend-row {
   display: grid;
-  grid-template-columns: 64px auto minmax(0, 1fr);
+  grid-template-columns: 64px minmax(0, 1fr);
   align-items: baseline;
-  gap: var(--gap-tight);
-  padding: 5px 0;
+  gap: 3px var(--gap-tight);
+  padding: 6px 0;
   border-top: 1px solid var(--line-soft);
   font-family: var(--font-mono);
   font-size: var(--fs-label);
@@ -957,17 +1027,19 @@
 .owm-backend-row > strong {
   font-weight: 500;
   color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
   white-space: nowrap;
 }
 
 .owm-backend-row > em {
+  grid-column: 1 / -1;
   font-style: normal;
-  color: var(--text-dim);
-  text-align: right;
+  font-size: var(--fs-eyebrow);
+  color: var(--text-faint);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  direction: rtl;
 }
 
 .owm-backend-row.live > strong {
@@ -1157,7 +1229,6 @@
 
 .owm-event-head {
   display: flex;
-  justify-content: space-between;
   align-items: baseline;
   gap: var(--gap-tight);
   font-family: var(--font-mono);
@@ -1165,6 +1236,21 @@
   letter-spacing: 0.16em;
   text-transform: uppercase;
   color: var(--text-faint);
+  min-width: 0;
+}
+
+.owm-event-head > strong {
+  flex: 1 1 auto;
+  color: var(--text-dim);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.owm-event-head > span {
+  flex: 0 0 auto;
+  white-space: nowrap;
 }
 
 .owm-state-chip {
@@ -1206,11 +1292,15 @@
 }
 
 .owm-tool-expand {
-  align-self: flex-end;
   font-family: var(--font-mono);
   font-size: var(--fs-eyebrow);
   letter-spacing: 0.1em;
   color: var(--accent-dim);
+  white-space: nowrap;
+}
+
+.owm-tool-row:hover .owm-tool-expand {
+  color: var(--accent);
 }
 
 .owm-tool-detail {
