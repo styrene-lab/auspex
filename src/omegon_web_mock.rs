@@ -125,6 +125,7 @@ struct TranscriptEvent {
     label: String,
     body: String,
     meta: String,
+    request_id: Option<String>,
     /// Present on tool calls: full payload shown in the expansion modal.
     detail: String,
 }
@@ -289,6 +290,7 @@ fn normalize_backend_session(
                 "conversation · streaming"
             }
             .to_string(),
+            request_id: segment.request_id,
             detail: String::new(),
         })
         .collect();
@@ -317,6 +319,7 @@ fn normalize_backend_session(
                 tool.phase.clone().unwrap_or_else(|| "tool".to_string()),
                 tool.elapsed_ms.unwrap_or(0)
             ),
+            request_id: None,
             detail,
         }
     }));
@@ -1031,8 +1034,13 @@ fn DaemonEventsCard(events: DaemonEventsSurface) -> Element {
 #[component]
 fn TranscriptEntry(
     event: TranscriptEvent,
-    on_deny: EventHandler<()>,
-    on_approve: EventHandler<()>,
+    action_endpoint: Option<String>,
+    session_id: String,
+    client_id: String,
+    refresh_context: SurfaceRefreshContext,
+    surface_override: Signal<Option<WebSurfaceSnapshot>>,
+    submit_status: Signal<String>,
+    approval_state: Signal<&'static str>,
     on_expand: EventHandler<TranscriptEvent>,
 ) -> Element {
     // Tool calls collapse to a single compact, clickable row; the full payload
@@ -1052,6 +1060,16 @@ fn TranscriptEntry(
             }
         };
     }
+    let deny_event = event.clone();
+    let approve_event = event.clone();
+    let deny_action_endpoint = action_endpoint.clone();
+    let approve_action_endpoint = action_endpoint.clone();
+    let deny_session_id = session_id.clone();
+    let approve_session_id = session_id.clone();
+    let deny_client_id = client_id.clone();
+    let approve_client_id = client_id.clone();
+    let deny_refresh_context = refresh_context.clone();
+    let approve_refresh_context = refresh_context.clone();
     rsx! {
         article { class: "owm-transcript-card {event.role}",
             div { class: "owm-event-head",
@@ -1063,18 +1081,110 @@ fn TranscriptEntry(
                 div { class: "owm-approval-actions",
                     button {
                         class: "owm-danger-button",
-                        onclick: move |_| on_deny.call(()),
+                        onclick: move |_| submit_permission_response(
+                            deny_event.clone(),
+                            false,
+                            deny_action_endpoint.clone(),
+                            deny_session_id.clone(),
+                            deny_client_id.clone(),
+                            deny_refresh_context.clone(),
+                            surface_override,
+                            submit_status,
+                            approval_state,
+                        ),
                         "Deny"
                     }
                     button {
                         class: "owm-primary-button",
-                        onclick: move |_| on_approve.call(()),
+                        onclick: move |_| submit_permission_response(
+                            approve_event.clone(),
+                            true,
+                            approve_action_endpoint.clone(),
+                            approve_session_id.clone(),
+                            approve_client_id.clone(),
+                            approve_refresh_context.clone(),
+                            surface_override,
+                            submit_status,
+                            approval_state,
+                        ),
                         "Approve"
                     }
                 }
             }
         }
     }
+}
+
+fn submit_permission_response(
+    event: TranscriptEvent,
+    allow: bool,
+    action_endpoint: Option<String>,
+    session_id: String,
+    client_id: String,
+    refresh_context: SurfaceRefreshContext,
+    mut surface_override: Signal<Option<WebSurfaceSnapshot>>,
+    mut submit_status: Signal<String>,
+    mut approval_state: Signal<&'static str>,
+) {
+    let Some(request_id) = event.request_id.clone() else {
+        submit_status.set("permission missing request_id".to_string());
+        return;
+    };
+    let Some(endpoint) = action_endpoint else {
+        submit_status.set("no action endpoint".to_string());
+        return;
+    };
+    let action_id = format!(
+        "auspex-web-permission-{}-{}",
+        request_id,
+        if allow { "allow" } else { "deny" }
+    );
+    let request = crate::omegon_web_contract::respond_permission_action(
+        action_id,
+        client_id.clone(),
+        session_id.clone(),
+        request_id,
+        allow,
+    );
+    let principal =
+        crate::omegon_web_contract::TrustedPrincipalHeaders::auspex_operator("operator:web")
+            .display_name("Web Operator")
+            .session_id(session_id)
+            .client_id(client_id);
+    submit_status.set(if allow { "approving" } else { "denying" }.to_string());
+    spawn(async move {
+        match crate::omegon_web_contract::post_action_request(&endpoint, &request, Some(&principal))
+            .await
+        {
+            Ok(outcome) => {
+                let status = format!("{:?}", outcome.status).to_lowercase();
+                let accepted = outcome.error.is_none();
+                submit_status.set(outcome.message.unwrap_or(status));
+                if accepted {
+                    approval_state.set(if allow { "approved" } else { "denied" });
+                    if let Some(surfaces_endpoint) = refresh_context.surfaces_endpoint.clone() {
+                        match crate::omegon_web_contract::refresh_surfaces_snapshot(
+                            &surfaces_endpoint,
+                        )
+                        .await
+                        {
+                            Ok(snapshot) => {
+                                let refreshed = with_bootstrap_status(
+                                    normalize_refreshed_surface(&refresh_context, snapshot),
+                                    "ACTION REFRESHED",
+                                    "actions",
+                                );
+                                surface_override.set(Some(refreshed));
+                            }
+                            Err(error) => submit_status
+                                .set(format!("permission accepted · refresh failed: {error}")),
+                        }
+                    }
+                }
+            }
+            Err(error) => submit_status.set(error.to_string()),
+        }
+    });
 }
 
 #[component]
@@ -1464,7 +1574,7 @@ pub fn OmegonWebMockApp() -> Element {
     let composer_initial_prompt = surface.composer.initial_prompt.clone();
     let composer = use_signal(move || composer_initial_prompt.clone());
     let mut modal_target = use_signal(|| Option::<ModalTarget>::None);
-    let mut approval_state = use_signal(|| "pending");
+    let approval_state = use_signal(|| "pending");
     let sent_count = use_signal(|| 0_u32);
     let submit_status = use_signal(|| "idle".to_string());
     let stream_status = use_signal(|| "connecting".to_string());
@@ -1525,8 +1635,13 @@ pub fn OmegonWebMockApp() -> Element {
                             for event in surface.transcript.iter() {
                                 TranscriptEntry {
                                     event: event.clone(),
-                                    on_deny: move |_| approval_state.set("denied"),
-                                    on_approve: move |_| approval_state.set("approved"),
+                                    action_endpoint: action_endpoint.clone(),
+                                    session_id: session_id.clone(),
+                                    client_id: client_id.clone(),
+                                    refresh_context: refresh_context.clone(),
+                                    surface_override,
+                                    submit_status,
+                                    approval_state,
                                     on_expand: move |ev| tool_modal.set(Some(ev)),
                                 }
                             }
@@ -1544,10 +1659,10 @@ pub fn OmegonWebMockApp() -> Element {
                         sent_count,
                         submit_status,
                         surface_override,
-                        refresh_context,
-                        action_endpoint,
-                        session_id,
-                        client_id,
+                        refresh_context: refresh_context.clone(),
+                        action_endpoint: action_endpoint.clone(),
+                        session_id: session_id.clone(),
+                        client_id: client_id.clone(),
                         on_open: move |target| modal_target.set(Some(target)),
                     }
                 }

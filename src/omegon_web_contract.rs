@@ -159,6 +159,7 @@ pub struct BackendConversationSegment {
     pub title: Option<String>,
     pub summary: Option<String>,
     pub body: Option<String>,
+    pub request_id: Option<String>,
     pub complete: bool,
     pub copyable: bool,
     pub selectable: bool,
