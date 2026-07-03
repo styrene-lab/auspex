@@ -9,7 +9,8 @@ mod native {
         body::Bytes,
         extract::{
             ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
-            Path, State,
+            Path as AxumPath,
+            State,
         },
         http::{HeaderMap, Method, StatusCode},
         response::{IntoResponse, Response},
@@ -19,7 +20,13 @@ mod native {
     use futures_util::{SinkExt, StreamExt};
     use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
     use serde::{Deserialize, Serialize};
-    use std::{net::SocketAddr, sync::Arc};
+    use std::{
+        fs,
+        net::SocketAddr,
+        path::{Path, PathBuf},
+        sync::Arc,
+        time::{SystemTime, UNIX_EPOCH},
+    };
     use tokio::sync::Mutex;
     use tokio_tungstenite::{connect_async, tungstenite::Message as UpstreamWsMessage};
 
@@ -35,6 +42,7 @@ mod native {
         "omegon-principal-session-id",
         "omegon-principal-client-id",
         "omegon-back-url",
+        "auspex-proxy-identity-fingerprint",
         "host",
         "connection",
         "upgrade",
@@ -49,6 +57,30 @@ mod native {
         client: reqwest::Client,
         omegon_base: String,
         token: Arc<Mutex<Option<String>>>,
+        identity: Option<AuthorityIdentity>,
+    }
+
+    #[derive(Debug, Clone, Serialize, Deserialize)]
+    struct AuthorityIdentity {
+        schema_version: u8,
+        subject: String,
+        fingerprint: String,
+        created_at_unix: u64,
+        strict_daemon_identity: bool,
+    }
+
+    impl AuthorityIdentity {
+        fn create() -> Self {
+            let id = uuid::Uuid::new_v4().to_string();
+            let fingerprint = uuid::Uuid::new_v4().simple().to_string();
+            Self {
+                schema_version: 1,
+                subject: format!("styrene:local-operator:{id}"),
+                fingerprint,
+                created_at_unix: now_unix(),
+                strict_daemon_identity: false,
+            }
+        }
     }
 
     #[derive(Debug, Deserialize)]
@@ -94,16 +126,22 @@ mod native {
 
     #[tokio::main]
     pub async fn main() -> anyhow::Result<()> {
+        let identity_path = identity_path()?;
+        if std::env::args().any(|arg| arg == "--init-identity") {
+            return init_identity(&identity_path);
+        }
         let bind =
             std::env::var("AUSPEX_WEB_PROXY_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_string());
         let omegon_base = std::env::var("AUSPEX_OMEGON_BASE")
             .unwrap_or_else(|_| DEFAULT_OMEGON_BASE.to_string())
             .trim_end_matches('/')
             .to_string();
+        let identity = load_identity(&identity_path)?;
         let state = ProxyState {
             client: reqwest::Client::new(),
             omegon_base,
             token: Arc::new(Mutex::new(None)),
+            identity,
         };
         let app = Router::new()
             .route("/_auspex/proxy/status", axum::routing::get(proxy_status))
@@ -114,6 +152,41 @@ mod native {
         eprintln!("auspex web proxy listening on http://{addr}");
         axum::serve(listener, app).await?;
         Ok(())
+    }
+
+    fn identity_path() -> anyhow::Result<PathBuf> {
+        let path = std::env::var("AUSPEX_WEB_PROXY_IDENTITY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(".auspex/identity/web-proxy.json"));
+        Ok(path)
+    }
+
+    fn init_identity(path: &Path) -> anyhow::Result<()> {
+        if let Some(parent) = path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let identity = AuthorityIdentity::create();
+        let json = serde_json::to_string_pretty(&identity)?;
+        fs::write(path, format!("{json}\n"))?;
+        eprintln!("initialized Auspex web proxy identity: {}", path.display());
+        eprintln!("subject: {}", identity.subject);
+        eprintln!("fingerprint: {}", identity.fingerprint);
+        Ok(())
+    }
+
+    fn load_identity(path: &Path) -> anyhow::Result<Option<AuthorityIdentity>> {
+        match fs::read_to_string(path) {
+            Ok(raw) => Ok(Some(serde_json::from_str(&raw)?)),
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(error) => Err(error.into()),
+        }
+    }
+
+    fn now_unix() -> u64 {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|duration| duration.as_secs())
+            .unwrap_or_default()
     }
 
     async fn proxy_status(State(state): State<ProxyState>) -> axum::Json<ProxyStatusResponse> {
@@ -133,10 +206,17 @@ mod native {
                 token_cached,
             },
             identity: IdentityProxyStatus {
-                configured: false,
-                subject: None,
-                fingerprint: None,
-                strict_daemon_identity: false,
+                configured: state.identity.is_some(),
+                subject: state.identity.as_ref().map(|identity| identity.subject.clone()),
+                fingerprint: state
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.fingerprint.clone()),
+                strict_daemon_identity: state
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.strict_daemon_identity)
+                    .unwrap_or(false),
             },
             websocket: WebSocketProxyStatus {
                 surface_stream_proxy: true,
@@ -147,7 +227,7 @@ mod native {
     async fn proxy_api(
         State(state): State<ProxyState>,
         method: Method,
-        Path(path): Path<String>,
+        AxumPath(path): AxumPath<String>,
         headers: HeaderMap,
         ws: Option<WebSocketUpgrade>,
         body: Bytes,
@@ -276,12 +356,24 @@ mod native {
             if let Some(token) = current_token(state).await? {
                 request = request.header(AUTHORIZATION, format!("Bearer {token}"));
             }
+            let principal_subject = state
+                .identity
+                .as_ref()
+                .map(|identity| identity.subject.as_str())
+                .unwrap_or("local-operator");
+            let identity_fingerprint = state
+                .identity
+                .as_ref()
+                .map(|identity| identity.fingerprint.as_str());
             request = request
                 .header("Omegon-Principal-Issuer", "auspex")
-                .header("Omegon-Principal-Subject", "local-operator")
+                .header("Omegon-Principal-Subject", principal_subject)
                 .header("Omegon-Principal-Role", "operator")
                 .header("Omegon-Principal-Client-Id", "auspex-web")
                 .header("Omegon-Back-Url", "http://127.0.0.1:9310/");
+            if let Some(fingerprint) = identity_fingerprint {
+                request = request.header("Auspex-Proxy-Identity-Fingerprint", fingerprint);
+            }
         }
         if !body.is_empty() {
             request = request.body(body);
