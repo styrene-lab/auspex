@@ -12,3 +12,9 @@ watch = ["../src", "../auspex-core/src", "../assets"]
 # not receive or forward the daemon bearer in this mode.
 rewrite = "/api/"
 backend = "http://localhost:9311/api/"
+
+[[proxy]]
+# Auspex-owned diagnostics/control plane for the local web proxy. This is not an
+# Omegon route and must stay under the _auspex namespace.
+rewrite = "/_auspex/"
+backend = "http://localhost:9311/_auspex/"

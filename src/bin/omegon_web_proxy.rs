@@ -18,7 +18,7 @@ mod native {
     };
     use futures_util::{SinkExt, StreamExt};
     use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
-    use serde::Deserialize;
+    use serde::{Deserialize, Serialize};
     use std::{net::SocketAddr, sync::Arc};
     use tokio::sync::Mutex;
     use tokio_tungstenite::{connect_async, tungstenite::Message as UpstreamWsMessage};
@@ -56,6 +56,42 @@ mod native {
         token: Option<String>,
     }
 
+    #[derive(Debug, Serialize)]
+    struct ProxyStatusResponse {
+        schema_version: u8,
+        mode: &'static str,
+        browser_tls: BrowserTlsStatus,
+        daemon: DaemonProxyStatus,
+        identity: IdentityProxyStatus,
+        websocket: WebSocketProxyStatus,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct BrowserTlsStatus {
+        enabled: bool,
+        trusted_local_ca: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct DaemonProxyStatus {
+        base_url: String,
+        reachable: bool,
+        token_cached: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct IdentityProxyStatus {
+        configured: bool,
+        subject: Option<String>,
+        fingerprint: Option<String>,
+        strict_daemon_identity: bool,
+    }
+
+    #[derive(Debug, Serialize)]
+    struct WebSocketProxyStatus {
+        surface_stream_proxy: bool,
+    }
+
     #[tokio::main]
     pub async fn main() -> anyhow::Result<()> {
         let bind =
@@ -70,6 +106,7 @@ mod native {
             token: Arc::new(Mutex::new(None)),
         };
         let app = Router::new()
+            .route("/_auspex/proxy/status", axum::routing::get(proxy_status))
             .route("/api/*path", any(proxy_api))
             .with_state(state);
         let addr: SocketAddr = bind.parse()?;
@@ -77,6 +114,34 @@ mod native {
         eprintln!("auspex web proxy listening on http://{addr}");
         axum::serve(listener, app).await?;
         Ok(())
+    }
+
+    async fn proxy_status(State(state): State<ProxyState>) -> axum::Json<ProxyStatusResponse> {
+        let startup_url = format!("{}/api/startup", state.omegon_base);
+        let reachable = state.client.get(startup_url).send().await.is_ok();
+        let token_cached = state.token.lock().await.is_some();
+        axum::Json(ProxyStatusResponse {
+            schema_version: 1,
+            mode: "proxy-mediated",
+            browser_tls: BrowserTlsStatus {
+                enabled: false,
+                trusted_local_ca: false,
+            },
+            daemon: DaemonProxyStatus {
+                base_url: state.omegon_base.clone(),
+                reachable,
+                token_cached,
+            },
+            identity: IdentityProxyStatus {
+                configured: false,
+                subject: None,
+                fingerprint: None,
+                strict_daemon_identity: false,
+            },
+            websocket: WebSocketProxyStatus {
+                surface_stream_proxy: true,
+            },
+        })
     }
 
     async fn proxy_api(

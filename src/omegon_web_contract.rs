@@ -26,6 +26,42 @@ pub struct BackendStartupResponse {
     pub auth_source: Option<String>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProxyStatusResponse {
+    pub schema_version: u8,
+    pub mode: String,
+    pub browser_tls: ProxyBrowserTlsStatus,
+    pub daemon: ProxyDaemonStatus,
+    pub identity: ProxyIdentityStatus,
+    pub websocket: ProxyWebSocketStatus,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProxyBrowserTlsStatus {
+    pub enabled: bool,
+    pub trusted_local_ca: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProxyDaemonStatus {
+    pub base_url: String,
+    pub reachable: bool,
+    pub token_cached: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProxyIdentityStatus {
+    pub configured: bool,
+    pub subject: Option<String>,
+    pub fingerprint: Option<String>,
+    pub strict_daemon_identity: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+pub struct ProxyWebSocketStatus {
+    pub surface_stream_proxy: bool,
+}
+
 /// Bearer token for RBAC-gated daemon routes (`/api/sessions/*`).
 ///
 /// The omegon daemon issues an ephemeral bearer (or signed-attach) token at
@@ -827,6 +863,16 @@ pub async fn refresh_surfaces_snapshot(
     _endpoint: &str,
 ) -> Result<BackendSurfacesSnapshot, SurfaceRefreshError> {
     Err(SurfaceRefreshError::UnsupportedTarget)
+}
+
+#[cfg(target_arch = "wasm32")]
+pub async fn fetch_proxy_status() -> Result<ProxyStatusResponse, BackendLoadError> {
+    fetch_json::<ProxyStatusResponse>("/_auspex/proxy/status").await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn fetch_proxy_status() -> Result<ProxyStatusResponse, BackendLoadError> {
+    Err(BackendLoadError::UnsupportedTarget)
 }
 
 #[cfg(target_arch = "wasm32")]
