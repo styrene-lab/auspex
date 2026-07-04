@@ -1109,4 +1109,38 @@ mod tests {
         assert_eq!(rejected.status, UiActionOutcomeStatus::Rejected);
         assert_eq!(rejected.error.as_deref(), Some("capability_not_granted"));
     }
+
+    #[test]
+    fn proxy_status_deserializes_authority_contract() {
+        let status: ProxyStatusResponse = serde_json::from_value(serde_json::json!({
+            "schema_version": 1,
+            "mode": "proxy-mediated",
+            "browser_tls": {
+                "enabled": true,
+                "mode": "self_signed_local",
+                "production_pki": false,
+                "trusted_local_ca": false,
+                "cert_path": ".auspex/tls/localhost.crt",
+                "public_origin": "https://127.0.0.1:9443"
+            },
+            "daemon": {
+                "base_url": "http://127.0.0.1:8080",
+                "reachable": true,
+                "token_cached": true
+            },
+            "identity": {
+                "configured": true,
+                "subject": "styrene:local-operator:demo",
+                "fingerprint": "abc123",
+                "strict_daemon_identity": true
+            },
+            "websocket": {
+                "surface_stream_proxy": true
+            }
+        }))
+        .expect("proxy authority contract");
+        assert_eq!(status.browser_tls.public_origin, "https://127.0.0.1:9443");
+        assert!(status.identity.strict_daemon_identity);
+        assert!(status.websocket.surface_stream_proxy);
+    }
 }
