@@ -1053,6 +1053,7 @@ fn OperationsCard(operations: OperationSurface) -> Element {
 #[component]
 fn BackendStatusCard(
     backend: BackendLinkSurface,
+    proxy_status: Option<crate::omegon_web_contract::ProxyStatusResponse>,
     action_status: Signal<String>,
     stream_status: Signal<String>,
 ) -> Element {
@@ -1061,6 +1062,34 @@ fn BackendStatusCard(
     } else {
         ("proxy mediated", "Auspex proxy owns bearer + principal headers")
     };
+    let identity_state = proxy_status
+        .as_ref()
+        .map(|status| {
+            if status.identity.configured {
+                "identity bound"
+            } else {
+                "identity absent"
+            }
+        })
+        .unwrap_or("proxy unknown");
+    let identity_note = proxy_status
+        .as_ref()
+        .and_then(|status| status.identity.subject.as_deref())
+        .unwrap_or("/_auspex/proxy/status unavailable");
+    let daemon_identity_state = proxy_status
+        .as_ref()
+        .map(|status| {
+            if status.identity.strict_daemon_identity {
+                "strict"
+            } else {
+                "permissive"
+            }
+        })
+        .unwrap_or("unknown");
+    let tls_state = proxy_status
+        .as_ref()
+        .map(|status| if status.browser_tls.enabled { "enabled" } else { "http-local" })
+        .unwrap_or("unknown");
     let auth_live = "owm-backend-row live";
     rsx! {
         section { class: "owm-panel owm-backend-card",
@@ -1073,6 +1102,21 @@ fn BackendStatusCard(
                     span { "auth" }
                     strong { "{auth_state}" }
                     em { "{auth_note}" }
+                }
+                div { class: "owm-backend-row live",
+                    span { "identity" }
+                    strong { "{identity_state}" }
+                    em { "{identity_note}" }
+                }
+                div { class: "owm-backend-row",
+                    span { "policy" }
+                    strong { "{daemon_identity_state}" }
+                    em { "daemon proxy-identity requirement" }
+                }
+                div { class: "owm-backend-row",
+                    span { "tls" }
+                    strong { "{tls_state}" }
+                    em { "browser → local authority proxy" }
                 }
                 div { class: "owm-backend-row live",
                     span { "stream" }
@@ -1643,6 +1687,8 @@ fn start_surface_stream(
 pub fn OmegonWebMockApp() -> Element {
     let surface_resource =
         use_resource(|| async { crate::omegon_web_contract::load_initial_session().await });
+    let proxy_status_resource =
+        use_resource(|| async { crate::omegon_web_contract::fetch_proxy_status().await });
     let fallback_session = crate::omegon_web_contract::fixture_session();
     let fallback_launch = crate::omegon_web_contract::proxied_launch_context_fixture();
 
@@ -1724,6 +1770,10 @@ pub fn OmegonWebMockApp() -> Element {
     }
 
     let status = surface.runtime.state.clone();
+    let proxy_status = proxy_status_resource
+        .read()
+        .as_ref()
+        .and_then(|result| result.as_ref().ok().cloned());
 
     rsx! {
         div { class: "omegon-web-shell",
@@ -1741,7 +1791,7 @@ pub fn OmegonWebMockApp() -> Element {
             main { class: "owm-cockpit-layout",
                 aside { class: "owm-cockpit-rail owm-left-rail",
                     DaemonCoreCard { runtime: surface.runtime.clone() }
-                    BackendStatusCard { backend: surface.backend, action_status: submit_status, stream_status }
+                    BackendStatusCard { backend: surface.backend, proxy_status, action_status: submit_status, stream_status }
                     DaemonEventsCard { events: events_override.read().clone().unwrap_or(surface.daemon_events) }
                 }
 

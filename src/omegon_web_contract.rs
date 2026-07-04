@@ -26,7 +26,7 @@ pub struct BackendStartupResponse {
     pub auth_source: Option<String>,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyStatusResponse {
     pub schema_version: u8,
     pub mode: String,
@@ -36,20 +36,20 @@ pub struct ProxyStatusResponse {
     pub websocket: ProxyWebSocketStatus,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyBrowserTlsStatus {
     pub enabled: bool,
     pub trusted_local_ca: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyDaemonStatus {
     pub base_url: String,
     pub reachable: bool,
     pub token_cached: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyIdentityStatus {
     pub configured: bool,
     pub subject: Option<String>,
@@ -57,7 +57,7 @@ pub struct ProxyIdentityStatus {
     pub strict_daemon_identity: bool,
 }
 
-#[derive(Debug, Clone, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyWebSocketStatus {
     pub surface_stream_proxy: bool,
 }

@@ -193,6 +193,11 @@ mod native {
         let startup_url = format!("{}/api/startup", state.omegon_base);
         let reachable = state.client.get(startup_url).send().await.is_ok();
         let token_cached = state.token.lock().await.is_some();
+        let strict_daemon_identity = if reachable {
+            daemon_requires_proxy_identity(&state).await.unwrap_or(false)
+        } else {
+            false
+        };
         axum::Json(ProxyStatusResponse {
             schema_version: 1,
             mode: "proxy-mediated",
@@ -212,16 +217,30 @@ mod native {
                     .identity
                     .as_ref()
                     .map(|identity| identity.fingerprint.clone()),
-                strict_daemon_identity: state
-                    .identity
-                    .as_ref()
-                    .map(|identity| identity.strict_daemon_identity)
-                    .unwrap_or(false),
+                strict_daemon_identity,
             },
             websocket: WebSocketProxyStatus {
                 surface_stream_proxy: true,
             },
         })
+    }
+
+    async fn daemon_requires_proxy_identity(state: &ProxyState) -> Result<bool, String> {
+        let Some(token) = current_token(state).await? else {
+            return Ok(false);
+        };
+        let probe_url = format!("{}/api/sessions/default/surfaces", state.omegon_base);
+        let response = state
+            .client
+            .get(probe_url)
+            .header(AUTHORIZATION, format!("Bearer {token}"))
+            .send()
+            .await
+            .map_err(|error| format!("strict identity probe failed: {error}"))?;
+        Ok(matches!(
+            response.status(),
+            StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
+        ))
     }
 
     async fn proxy_api(
