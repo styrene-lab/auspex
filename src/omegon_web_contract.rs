@@ -43,6 +43,7 @@ pub struct ProxyBrowserTlsStatus {
     pub production_pki: bool,
     pub trusted_local_ca: bool,
     pub cert_path: Option<String>,
+    pub public_origin: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

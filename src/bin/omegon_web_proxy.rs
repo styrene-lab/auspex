@@ -28,7 +28,10 @@ mod native {
         time::{SystemTime, UNIX_EPOCH},
     };
     use tokio::sync::Mutex;
-    use tokio_tungstenite::{connect_async, tungstenite::Message as UpstreamWsMessage};
+    use tokio_tungstenite::{
+        connect_async,
+        tungstenite::{client::IntoClientRequest, http::HeaderValue as WsHeaderValue, Message as UpstreamWsMessage},
+    };
 
     const DEFAULT_BIND: &str = "127.0.0.1:9311";
     const DEFAULT_OMEGON_BASE: &str = "http://127.0.0.1:8080";
@@ -58,6 +61,7 @@ mod native {
         client: reqwest::Client,
         omegon_base: String,
         ui_base: String,
+        browser_origin: String,
         token: Arc<Mutex<Option<String>>>,
         identity: Option<AuthorityIdentity>,
         browser_tls: BrowserTlsRuntime,
@@ -116,6 +120,7 @@ mod native {
         production_pki: bool,
         trusted_local_ca: bool,
         cert_path: Option<String>,
+        public_origin: String,
     }
 
     #[derive(Debug, Serialize)]
@@ -154,6 +159,13 @@ mod native {
                 "127.0.0.1:9443".to_string()
             }
         });
+        let browser_origin = std::env::var("AUSPEX_WEB_PROXY_PUBLIC_ORIGIN").unwrap_or_else(|_| {
+            if insecure_http {
+                format!("http://{bind}")
+            } else {
+                format!("https://{bind}")
+            }
+        });
         let omegon_base = std::env::var("AUSPEX_OMEGON_BASE")
             .unwrap_or_else(|_| DEFAULT_OMEGON_BASE.to_string())
             .trim_end_matches('/')
@@ -183,6 +195,7 @@ mod native {
             client: reqwest::Client::new(),
             omegon_base,
             ui_base,
+            browser_origin,
             token: Arc::new(Mutex::new(None)),
             identity,
             browser_tls: browser_tls.clone(),
@@ -327,6 +340,7 @@ mod native {
                     .cert_path
                     .as_ref()
                     .map(|path| path.display().to_string()),
+                public_origin: state.browser_origin.clone(),
             },
             daemon: DaemonProxyStatus {
                 base_url: state.omegon_base.clone(),
@@ -416,7 +430,7 @@ mod native {
         state: ProxyState,
         path: String,
     ) -> Response {
-        match current_token(&state).await {
+        match fresh_token(&state).await {
             Ok(Some(token)) => {
                 let ws_base = state
                     .omegon_base
@@ -429,18 +443,49 @@ mod native {
                             .map(|rest| format!("ws://{rest}"))
                     })
                     .unwrap_or_else(|| state.omegon_base.clone());
-                let separator = if path.contains('?') { '&' } else { '?' };
-                let upstream = format!("{ws_base}/api/{path}{separator}token={token}");
-                ws.on_upgrade(move |socket| bridge_websocket(socket, upstream))
+                let upstream = format!("{ws_base}/api/{path}");
+                let identity = state.identity.clone();
+                ws.on_upgrade(move |socket| bridge_websocket(socket, upstream, token, identity))
             }
             Ok(None) => proxy_error("startup discovery returned no token".to_string()),
             Err(error) => proxy_error(error),
         }
     }
 
-    async fn bridge_websocket(socket: WebSocket, upstream_url: String) {
-        let Ok((upstream, _response)) = connect_async(&upstream_url).await else {
+    async fn bridge_websocket(
+        socket: WebSocket,
+        upstream_url: String,
+        token: String,
+        identity: Option<AuthorityIdentity>,
+    ) {
+        let Ok(mut request) = upstream_url.into_client_request() else {
             return;
+        };
+        let headers = request.headers_mut();
+        if let Ok(value) = WsHeaderValue::from_str(&format!("Bearer {token}")) {
+            headers.insert("Authorization", value);
+        }
+        let subject = identity
+            .as_ref()
+            .map(|identity| identity.subject.as_str())
+            .unwrap_or("local-operator");
+        headers.insert("Omegon-Principal-Issuer", WsHeaderValue::from_static("auspex"));
+        if let Ok(value) = WsHeaderValue::from_str(subject) {
+            headers.insert("Omegon-Principal-Subject", value);
+        }
+        headers.insert("Omegon-Principal-Role", WsHeaderValue::from_static("operator"));
+        headers.insert("Omegon-Principal-Client-Id", WsHeaderValue::from_static("auspex-web"));
+        if let Some(fingerprint) = identity.as_ref().map(|identity| identity.fingerprint.as_str()) {
+            if let Ok(value) = WsHeaderValue::from_str(fingerprint) {
+                headers.insert("Auspex-Proxy-Identity-Fingerprint", value);
+            }
+        }
+        let (upstream, _response) = match connect_async(request).await {
+            Ok(upstream) => upstream,
+            Err(error) => {
+                eprintln!("websocket upstream connect failed: {error}");
+                return;
+            }
         };
         let (mut browser_tx, mut browser_rx) = socket.split();
         let (mut upstream_tx, mut upstream_rx) = upstream.split();
@@ -530,7 +575,7 @@ mod native {
                 .header("Omegon-Principal-Subject", principal_subject)
                 .header("Omegon-Principal-Role", "operator")
                 .header("Omegon-Principal-Client-Id", "auspex-web")
-                .header("Omegon-Back-Url", "http://127.0.0.1:9310/");
+                .header("Omegon-Back-Url", state.browser_origin.as_str());
             if let Some(fingerprint) = identity_fingerprint {
                 request = request.header("Auspex-Proxy-Identity-Fingerprint", fingerprint);
             }
@@ -557,10 +602,7 @@ mod native {
         Ok(response)
     }
 
-    async fn current_token(state: &ProxyState) -> Result<Option<String>, String> {
-        if let Some(token) = state.token.lock().await.clone() {
-            return Ok(Some(token));
-        }
+    async fn fresh_token(state: &ProxyState) -> Result<Option<String>, String> {
         let startup_url = format!("{}/api/startup", state.omegon_base);
         let startup = state
             .client
@@ -574,6 +616,13 @@ mod native {
         let mut slot = state.token.lock().await;
         *slot = startup.token.clone();
         Ok(startup.token)
+    }
+
+    async fn current_token(state: &ProxyState) -> Result<Option<String>, String> {
+        if let Some(token) = state.token.lock().await.clone() {
+            return Ok(Some(token));
+        }
+        fresh_token(state).await
     }
 
     fn should_forward_header(name: &str) -> bool {
