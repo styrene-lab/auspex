@@ -12,7 +12,7 @@ mod native {
             Path as AxumPath,
             State,
         },
-        http::{HeaderMap, Method, StatusCode},
+        http::{HeaderMap, Method, StatusCode, Uri},
         response::{IntoResponse, Response},
         routing::any,
         Router,
@@ -32,6 +32,7 @@ mod native {
 
     const DEFAULT_BIND: &str = "127.0.0.1:9311";
     const DEFAULT_OMEGON_BASE: &str = "http://127.0.0.1:8080";
+    const DEFAULT_UI_BASE: &str = "http://127.0.0.1:9310";
 
     const STRIPPED_INBOUND_HEADERS: &[&str] = &[
         "authorization",
@@ -56,8 +57,18 @@ mod native {
     struct ProxyState {
         client: reqwest::Client,
         omegon_base: String,
+        ui_base: String,
         token: Arc<Mutex<Option<String>>>,
         identity: Option<AuthorityIdentity>,
+        browser_tls: BrowserTlsRuntime,
+    }
+
+    #[derive(Debug, Clone)]
+    struct BrowserTlsRuntime {
+        enabled: bool,
+        mode: &'static str,
+        production_pki: bool,
+        cert_path: Option<PathBuf>,
     }
 
     #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -101,7 +112,10 @@ mod native {
     #[derive(Debug, Serialize)]
     struct BrowserTlsStatus {
         enabled: bool,
+        mode: &'static str,
+        production_pki: bool,
         trusted_local_ca: bool,
+        cert_path: Option<String>,
     }
 
     #[derive(Debug, Serialize)]
@@ -126,32 +140,134 @@ mod native {
 
     #[tokio::main]
     pub async fn main() -> anyhow::Result<()> {
+        let _ = rustls::crypto::ring::default_provider().install_default();
         let identity_path = identity_path()?;
         if std::env::args().any(|arg| arg == "--init-identity") {
             return init_identity(&identity_path);
         }
-        let bind =
-            std::env::var("AUSPEX_WEB_PROXY_BIND").unwrap_or_else(|_| DEFAULT_BIND.to_string());
+        let insecure_http = std::env::args().any(|arg| arg == "--insecure-http")
+            || matches!(std::env::var("AUSPEX_WEB_PROXY_INSECURE_HTTP").as_deref(), Ok("1" | "true" | "yes"));
+        let bind = std::env::var("AUSPEX_WEB_PROXY_BIND").unwrap_or_else(|_| {
+            if insecure_http {
+                DEFAULT_BIND.to_string()
+            } else {
+                "127.0.0.1:9443".to_string()
+            }
+        });
         let omegon_base = std::env::var("AUSPEX_OMEGON_BASE")
             .unwrap_or_else(|_| DEFAULT_OMEGON_BASE.to_string())
             .trim_end_matches('/')
             .to_string();
+        let ui_base = std::env::var("AUSPEX_WEB_UI_BASE")
+            .unwrap_or_else(|_| DEFAULT_UI_BASE.to_string())
+            .trim_end_matches('/')
+            .to_string();
         let identity = load_identity(&identity_path)?;
+        let browser_tls = if insecure_http {
+            BrowserTlsRuntime {
+                enabled: false,
+                mode: "insecure_http",
+                production_pki: false,
+                cert_path: None,
+            }
+        } else {
+            let cert_paths = ensure_local_https_cert()?;
+            BrowserTlsRuntime {
+                enabled: true,
+                mode: "self_signed_local",
+                production_pki: false,
+                cert_path: Some(cert_paths.cert_path.clone()),
+            }
+        };
         let state = ProxyState {
             client: reqwest::Client::new(),
             omegon_base,
+            ui_base,
             token: Arc::new(Mutex::new(None)),
             identity,
+            browser_tls: browser_tls.clone(),
         };
         let app = Router::new()
             .route("/_auspex/proxy/status", axum::routing::get(proxy_status))
             .route("/api/*path", any(proxy_api))
+            .fallback(any(proxy_ui))
             .with_state(state);
         let addr: SocketAddr = bind.parse()?;
-        let listener = tokio::net::TcpListener::bind(addr).await?;
-        eprintln!("auspex web proxy listening on http://{addr}");
-        axum::serve(listener, app).await?;
+        if let Some(cert_paths) = browser_tls.cert_path.as_ref().map(|cert_path| LocalCertPaths {
+            cert_path: cert_path.clone(),
+            key_path: local_https_key_path(),
+        }) {
+            let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
+                &cert_paths.cert_path,
+                &cert_paths.key_path,
+            )
+            .await?;
+            eprintln!("auspex web proxy listening on https://{addr}");
+            axum_server::bind_rustls(addr, config)
+                .serve(app.into_make_service())
+                .await?;
+        } else {
+            let listener = tokio::net::TcpListener::bind(addr).await?;
+            eprintln!("auspex web proxy listening on http://{addr} (--insecure-http)");
+            axum::serve(listener, app).await?;
+        }
         Ok(())
+    }
+
+    #[derive(Debug, Clone)]
+    struct LocalCertPaths {
+        cert_path: PathBuf,
+        key_path: PathBuf,
+    }
+
+    fn local_https_cert_path() -> PathBuf {
+        std::env::var("AUSPEX_WEB_PROXY_CERT")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(".auspex/tls/localhost.crt"))
+    }
+
+    fn local_https_key_path() -> PathBuf {
+        std::env::var("AUSPEX_WEB_PROXY_KEY")
+            .map(PathBuf::from)
+            .unwrap_or_else(|_| PathBuf::from(".auspex/tls/localhost.key"))
+    }
+
+    fn ensure_local_https_cert() -> anyhow::Result<LocalCertPaths> {
+        let paths = LocalCertPaths {
+            cert_path: local_https_cert_path(),
+            key_path: local_https_key_path(),
+        };
+        if paths.cert_path.exists() && paths.key_path.exists() {
+            return Ok(paths);
+        }
+        if let Some(parent) = paths.cert_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        if let Some(parent) = paths.key_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut params = rcgen::CertificateParams::new(vec![
+            "localhost".to_string(),
+            "127.0.0.1".to_string(),
+            "::1".to_string(),
+        ])?;
+        params.not_before = rcgen::date_time_ymd(2025, 1, 1);
+        params.not_after = rcgen::date_time_ymd(2035, 1, 1);
+        params.distinguished_name = rcgen::DistinguishedName::new();
+        let key_pair = rcgen::KeyPair::generate()?;
+        let cert = params.self_signed(&key_pair)?;
+        fs::write(&paths.cert_path, cert.pem())?;
+        fs::write(&paths.key_path, key_pair.serialize_pem())?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            fs::set_permissions(&paths.key_path, fs::Permissions::from_mode(0o600))?;
+        }
+        eprintln!(
+            "generated self-signed local HTTPS certificate: {}",
+            paths.cert_path.display()
+        );
+        Ok(paths)
     }
 
     fn identity_path() -> anyhow::Result<PathBuf> {
@@ -202,8 +318,15 @@ mod native {
             schema_version: 1,
             mode: "proxy-mediated",
             browser_tls: BrowserTlsStatus {
-                enabled: false,
+                enabled: state.browser_tls.enabled,
+                mode: state.browser_tls.mode,
+                production_pki: state.browser_tls.production_pki,
                 trusted_local_ca: false,
+                cert_path: state
+                    .browser_tls
+                    .cert_path
+                    .as_ref()
+                    .map(|path| path.display().to_string()),
             },
             daemon: DaemonProxyStatus {
                 base_url: state.omegon_base.clone(),
@@ -241,6 +364,24 @@ mod native {
             response.status(),
             StatusCode::UNAUTHORIZED | StatusCode::FORBIDDEN
         ))
+    }
+
+    async fn proxy_ui(
+        State(state): State<ProxyState>,
+        method: Method,
+        uri: Uri,
+        headers: HeaderMap,
+        body: Bytes,
+    ) -> Response {
+        let path_and_query = uri
+            .path_and_query()
+            .map(|pq| pq.as_str())
+            .unwrap_or("/");
+        let upstream_url = format!("{}{}", state.ui_base, path_and_query);
+        match forward_once(&state, &method, &upstream_url, &headers, body, false).await {
+            Ok(response) => response,
+            Err(error) => proxy_error(error),
+        }
     }
 
     async fn proxy_api(

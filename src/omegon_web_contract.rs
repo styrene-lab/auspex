@@ -39,7 +39,10 @@ pub struct ProxyStatusResponse {
 #[derive(Debug, Clone, PartialEq, Deserialize)]
 pub struct ProxyBrowserTlsStatus {
     pub enabled: bool,
+    pub mode: String,
+    pub production_pki: bool,
     pub trusted_local_ca: bool,
+    pub cert_path: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Deserialize)]

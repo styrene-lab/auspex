@@ -6,6 +6,7 @@ dist/
 
 # local agent/runtime artifacts
 .omegon/
+.auspex/
 ai/memory/
 
 # local release/test artifacts
