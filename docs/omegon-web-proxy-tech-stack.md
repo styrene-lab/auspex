@@ -618,3 +618,57 @@ The exact CLI shape can change; the lifecycle needs `init`, `status`, `reset`, a
 - Treat mTLS as an implementation option, not a design requirement.
 - Implement signed Styrene/local identity assertion first unless Omegon server TLS support is already trivial.
 - Add strict daemon enforcement only after proxy status and trust-store diagnostics exist.
+
+## Transition Plan: Reference Adapter to Caddy / Traefik / Envoy
+
+The hand-rolled proxy is a reference adapter, not the target infrastructure product. End users should see the same browser origin and the same authority semantics regardless of whether the adapter is the built-in Rust helper, Caddy, Traefik, or Envoy.
+
+### Stable Adapter Contract
+
+Any replacement must implement these externally observable routes:
+
+| Route | Browser-facing behavior | Upstream owner |
+|---|---|---|
+| `/` and static assets | Serve or reverse-proxy the Auspex UI bundle | Auspex UI / static server |
+| `/_auspex/proxy/status` | Return proxy posture JSON | Authority adapter |
+| `/api/*` | Forward daemon-compatible HTTP routes | Omegon daemon |
+| `/api/sessions/default/surfaces/stream` | WebSocket upgrade and frame bridge | Omegon daemon |
+
+And these authority rules:
+
+1. Strip inbound browser `Authorization`, `Omegon-Principal-*`, and `Auspex-Proxy-*` headers.
+2. Discover or receive the daemon bearer server-side; never expose it to browser JavaScript or URL state.
+3. Inject trusted principal headers only after local identity verification.
+4. Preserve WebSocket upgrade semantics.
+5. Publish the effective posture through `/_auspex/proxy/status`.
+
+### What Breaks During Migration
+
+| Breakpoint | Why it breaks | Mitigation |
+|---|---|---|
+| Header spoofing | Generic reverse proxies forward browser headers by default | Explicit strip middleware before any injection |
+| Bearer discovery | Caddy/Traefik config cannot call `/api/startup` and cache tokens safely by itself | Use sidecar/plugin/ext_authz; keep Rust adapter as sidecar until plugin exists |
+| WebSocket stream | Some proxy configs need explicit upgrade support | Add WS upgrade config and integration test `wss://.../surfaces/stream` |
+| Browser TLS trust | Self-signed certs trigger warnings until local CA is trusted | First-run trust install or Caddy `tls internal`; status reports `trusted_local_ca` |
+| Back URL / origin | Daemon actions may use origin/back-url for operator flows | Adapter injects `Omegon-Back-Url` from configured `public_origin` |
+| Status endpoint | Stock proxies do not know Styrene identity posture | Keep a tiny sidecar for `/_auspex/proxy/status` or add plugin endpoint |
+| Token rotation | Daemon restart rotates bearer | Adapter must refresh on 401 and before WS connect |
+
+### Recommended User-Facing Migration Stages
+
+1. **Reference mode** — built-in Rust adapter owns all authority behavior. Best default for MVP.
+2. **Sidecar mode** — Caddy/Traefik/Envoy owns browser TLS/static serving; Rust adapter remains mounted under `/_auspex/*` and `/api/*` for token/identity injection.
+3. **Plugin mode** — production proxy plugin or ext_authz service implements token discovery, identity signing, and status directly.
+4. **Strict deployed mode** — no public startup bearer, daemon accepts only verified adapter identity.
+
+Do not jump from reference mode directly to stock reverse proxy config. A stock reverse proxy can handle TLS and routing, but not the authority contract.
+
+### Example Configs
+
+Skeletons live in `examples/web-proxy/`:
+
+- `Caddyfile` — route shape and `tls internal` sketch.
+- `traefik-dynamic.yml` — routers/services and header-stripping middleware sketch.
+- `envoy.yaml` — route shape with websocket upgrade enabled.
+
+These files are deliberately labelled sketches. The missing piece in all stock configs is server-side bearer discovery plus Styrene identity proof. Until that exists as plugin/ext_authz, the Rust adapter remains the authority sidecar.

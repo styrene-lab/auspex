@@ -1,0 +1,25 @@
+# Auspex/Omegon authority-adapter contract sketch for Caddy.
+# This is NOT drop-in complete because Caddy cannot safely discover/cache the
+# daemon bearer or sign Styrene identity assertions without an auth plugin.
+# Keep the public route shape identical to the reference adapter.
+
+https://127.0.0.1:9443 {
+  tls internal
+
+  # Static/UI origin. In dev this is Trunk; in packaged mode point at files.
+  reverse_proxy /* 127.0.0.1:9310
+
+  # Proxy diagnostics must be implemented by an adapter/plugin or sidecar.
+  handle /_auspex/* {
+    reverse_proxy 127.0.0.1:9311
+  }
+
+  # Daemon API authority boundary. A production Caddy adapter must:
+  # - strip inbound Authorization/Omegon-Principal-*/Auspex-Proxy-* headers
+  # - inject current daemon bearer server-side
+  # - inject verified single-operator principal headers
+  # - support websocket upgrade for /surfaces/stream
+  handle /api/* {
+    reverse_proxy 127.0.0.1:8080
+  }
+}
