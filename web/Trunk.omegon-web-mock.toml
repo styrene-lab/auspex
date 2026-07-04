@@ -7,12 +7,20 @@ release = true
 watch = ["../src", "../auspex-core/src", "../assets"]
 
 [[proxy]]
-# WebSocket surface stream must be proxied with upgrade support.
-backend = "ws://localhost:8080/api/sessions/default/surfaces/stream"
+# WebSocket surface stream must be proxied with upgrade support. Route it
+# through the Auspex local authority proxy so browser code never receives the
+# daemon bearer.
+backend = "ws://localhost:9311/api/sessions/default/surfaces/stream"
 rewrite = "/api/sessions/default/surfaces/stream"
 ws = true
 
 [[proxy]]
-# Proxy daemon API calls to the real Omegon 0.27.0 instance during local development.
+# Proxy daemon API calls through the Auspex local authority proxy. The proxy owns
+# token discovery and trusted local principal headers.
 rewrite = "/api/"
-backend = "http://localhost:8080/api/"
+backend = "http://localhost:9311/api/"
+
+[[proxy]]
+# Auspex-owned diagnostics/control plane for the local web proxy.
+rewrite = "/_auspex/"
+backend = "http://localhost:9311/_auspex/"
