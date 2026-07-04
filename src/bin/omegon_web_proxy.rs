@@ -646,6 +646,36 @@ mod native {
         );
         response
     }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn forward_header_policy_strips_browser_authority() {
+            for header in [
+                "authorization",
+                "Authorization",
+                "omegon-principal-subject",
+                "Omegon-Principal-Role",
+                "auspex-proxy-identity-fingerprint",
+                "Sec-WebSocket-Key",
+            ] {
+                assert!(!should_forward_header(header), "{header} must be stripped");
+            }
+            assert!(should_forward_header("accept"));
+            assert!(should_forward_header("x-request-id"));
+        }
+
+        #[test]
+        fn return_header_policy_strips_hop_by_hop_headers() {
+            for header in ["connection", "transfer-encoding", "content-length"] {
+                assert!(!should_return_header(header), "{header} must be stripped");
+            }
+            assert!(should_return_header("content-type"));
+            assert!(should_return_header("cache-control"));
+        }
+    }
 }
 
 #[cfg(not(target_arch = "wasm32"))]
