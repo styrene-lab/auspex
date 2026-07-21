@@ -6587,7 +6587,13 @@ fn render_selected_activity_cop(
     })
 }
 
-fn render_chat_shell(title: &str, kicker: &str, body: Element, footer: Element) -> Element {
+fn render_chat_shell(
+    title: &str,
+    kicker: &str,
+    context: Element,
+    body: Element,
+    footer: Element,
+) -> Element {
     rsx! {
         div { class: "assistant-workspace chat-shell",
             header { class: "chat-target-bar",
@@ -6597,6 +6603,7 @@ fn render_chat_shell(title: &str, kicker: &str, body: Element, footer: Element) 
                 }
                 p { class: "panel-muted", "{kicker}" }
             }
+            div { class: "chat-shell-context", {context} }
             div { class: "chat-shell-body", {body} }
             div { class: "chat-shell-footer", {footer} }
         }
@@ -6728,9 +6735,11 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         }
     };
 
+    let context = render_chat_acp_surface(&acp_surface);
     render_chat_shell(
         acp_surface.target_label.as_str(),
         acp_surface.target_detail.as_str(),
+        context,
         body,
         footer,
     )

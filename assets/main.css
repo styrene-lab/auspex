@@ -5519,6 +5519,14 @@ body {
   min-height: auto;
 }
 
+.chat-shell-context {
+  min-width: 0;
+}
+
+.chat-shell-context .chat-acp-surface {
+  margin: 0;
+}
+
 .chat-shell-body {
   min-height: 0;
   display: flex;
@@ -5694,8 +5702,12 @@ body {
 }
 
 .chat-shell {
+  display: grid;
+  grid-template-rows: auto auto minmax(0, 1fr) auto;
   gap: 0.55rem;
   min-height: calc(100vh - 4.25rem);
+  height: calc(100vh - 4.25rem);
+  overflow: hidden;
 }
 
 .chat-transcript {
@@ -5927,7 +5939,8 @@ body {
 }
 
 .chat-transcript {
-  min-height: calc(100vh - 18rem);
+  min-height: 0;
+  height: 100%;
   padding: 0.85rem;
 }
 
