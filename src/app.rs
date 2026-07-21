@@ -4928,8 +4928,9 @@ fn render_assistant_workspace(
                 section { class: "assistant-detail-panel agent-console-panel",
                     div { class: "assistant-section-title agent-dashboard-titlebar agent-primary-titlebar",
                         div { class: "agent-primary-titlecopy",
-                            span { "AUSPEX AGENT" }
-                            h3 { "Primary agent dashboard" }
+                            span { class: "agent-connection-state", "Connected" }
+                            h3 { "Primary agent" }
+                            p { "{agent_workspace_label} · {runtime_label} · {effective_model_label}" }
                         }
                         div { class: "agent-dashboard-actions",
 
@@ -4968,7 +4969,15 @@ fn render_assistant_workspace(
                         }
                     }
                     div { class: "assistant-detail-stack agent-config-form",
-                        div { class: "assistant-detail-heading agent-live-panel agent-live-panel-compact",
+                        details { class: "agent-context-disclosure",
+                            summary {
+                                div { class: "agent-context-summary-copy",
+                                    span { "Runtime details" }
+                                    strong { "{sync_label} · {session.session_turns} turns · {session.session_tool_calls} tools" }
+                                }
+                                span { class: "agent-context-summary-action", "Inspect" }
+                            }
+                            div { class: "assistant-detail-heading agent-live-panel agent-live-panel-compact",
                             div { class: "agent-live-grid agent-live-board",
                                 div { class: "agent-live-domain agent-live-domain-identity",
                                     span { class: "agent-live-domain-label", "identity" }
@@ -5013,6 +5022,7 @@ fn render_assistant_workspace(
                             if primary_agent_instance_id(&controller.read()).is_none() {
                                 span { class: "assistant-issue", "data-state": "warn", "No attached primary chat runtime." }
                             }
+                        }
                         }
 
                         if snapshot.add_agent_open {
@@ -5179,29 +5189,41 @@ fn render_assistant_workspace(
 
                             section { class: if snapshot.chat_expanded { "agent-page-section agent-page-section-chat agent-chat-expanded" } else { "agent-page-section agent-page-section-chat" },
                                 div { class: "agent-page-section-heading",
-                                    h4 { "Chat" }
+                                    div { class: "agent-chat-target",
+                                        span { class: "agent-chat-presence" }
+                                        div {
+                                            h4 { "Conversation" }
+                                            span { "Primary agent · {agent_workspace_label}" }
+                                        }
+                                    }
                                     div { class: "agent-chat-heading-actions",
-                                        span { "primary agent session" }
+                                        span { class: "agent-chat-compact-status", "{transport_label} · {sync_label}" }
                                         button {
                                             class: "agent-chat-expand-button",
                                             r#type: "button",
+                                            title: if snapshot.chat_expanded { "Exit focused conversation" } else { "Focus conversation" },
                                             onclick: move |_| {
                                                 let expanded = state.read().chat_expanded;
                                                 state.write().chat_expanded = !expanded;
                                             },
-                                            if snapshot.chat_expanded { "↙" } else { "↗" }
+                                            if snapshot.chat_expanded { "Exit focus" } else { "Focus" }
                                         }
                                     }
                                 }
-                                div { class: "agent-command-strip",
-                                    span { "link" }
-                                    strong { "{control_endpoint_label}" }
-                                    span { "transport" }
-                                    strong { "{transport_label}" }
-                                    span { "envelope" }
-                                    strong { "{sync_label}" }
-                                }
-                            div { class: "agent-runtime-bar agent-turn-envelope",
+                                details { class: "agent-diagnostics-disclosure",
+                                    summary {
+                                        span { "Connection and next-turn configuration" }
+                                        strong { "{effective_model_label} · {selected_thinking} · {selected_context}" }
+                                    }
+                                    div { class: "agent-command-strip",
+                                        span { "Endpoint" }
+                                        strong { "{control_endpoint_label}" }
+                                        span { "Transport" }
+                                        strong { "{transport_label}" }
+                                        span { "Observed" }
+                                        strong { "{sync_label}" }
+                                    }
+                                div { class: "agent-runtime-bar agent-turn-envelope",
                                     div { class: "agent-page-section-heading",
                                         h4 { "Next turn" }
                                         span { "{envelope_detail}" }
@@ -5332,9 +5354,10 @@ fn render_assistant_workspace(
                                             }
                                         });
                                     },
-                                    if snapshot.applying_profile { "Syncing" } else { "Sync" }
+                                    if snapshot.applying_profile { "Applying" } else { "Apply next turn" }
                                 }
                             }
+                                }
                                 div { class: if embedded_transcript_empty { "agent-embedded-chat agent-embedded-chat-empty" } else { "agent-embedded-chat" },
                                     if history.is_empty() {
                                         div { class: "agent-embedded-empty",

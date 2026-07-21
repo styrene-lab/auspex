@@ -8895,3 +8895,353 @@ body,
     grid-row: auto;
   }
 }
+
+/* Chat-first primary agent application shell. This final layer intentionally
+   supersedes the earlier dashboard iterations above. */
+.shell-assistant-focus .assistant-workspace {
+  padding: 0 !important;
+  background: #050a12;
+}
+
+.shell-assistant-focus .assistant-detail-stack.agent-config-form {
+  grid-template-rows: auto minmax(0, 1fr) !important;
+  gap: 0 !important;
+}
+
+.shell-assistant-focus .agent-dashboard-titlebar {
+  min-height: 4.25rem;
+  padding: 0.7rem 1.1rem !important;
+  border-width: 0 0 1px !important;
+  border-color: rgba(42, 180, 200, 0.28) !important;
+  background: rgba(7, 13, 23, 0.96) !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  column-gap: 0.7rem;
+  align-items: center;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy h3 {
+  margin: 0;
+  color: var(--agent-text);
+  font: 750 1.05rem/1.15 var(--font-sans, system-ui, sans-serif);
+  letter-spacing: -0.02em;
+  text-transform: none;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy p {
+  grid-column: 2;
+  margin: 0.15rem 0 0;
+  color: var(--agent-muted);
+  font-size: 0.74rem;
+  line-height: 1.2;
+  overflow-wrap: anywhere;
+}
+
+.shell-assistant-focus .agent-connection-state {
+  grid-row: 1 / span 2;
+  align-self: center;
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: rgba(142, 220, 178, 0.92) !important;
+  font: 750 0.65rem/1 var(--font-sans, system-ui, sans-serif) !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.shell-assistant-focus .agent-connection-state::before {
+  content: "";
+  width: 0.48rem;
+  height: 0.48rem;
+  border-radius: 50%;
+  background: #62d49d;
+  box-shadow: 0 0 0.6rem rgba(98, 212, 157, 0.42);
+}
+
+.shell-assistant-focus .agent-dashboard-actions {
+  gap: 0.4rem;
+}
+
+.shell-assistant-focus .agent-mini-action {
+  min-height: 2.1rem;
+  padding-inline: 0.75rem;
+  font-size: 0.63rem;
+}
+
+.shell-assistant-focus .agent-mini-action-primary {
+  display: none;
+}
+
+.shell-assistant-focus .agent-context-disclosure {
+  border-bottom: 1px solid rgba(26, 52, 72, 0.58);
+  background: rgba(6, 12, 21, 0.8);
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary,
+.shell-assistant-focus .agent-diagnostics-disclosure > summary {
+  list-style: none;
+  cursor: pointer;
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary::-webkit-details-marker,
+.shell-assistant-focus .agent-diagnostics-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary {
+  min-height: 2.65rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 1.1rem;
+}
+
+.shell-assistant-focus .agent-context-summary-copy {
+  min-width: 0;
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+}
+
+.shell-assistant-focus .agent-context-summary-copy span,
+.shell-assistant-focus .agent-context-summary-action {
+  color: var(--agent-accent);
+  font: 800 0.62rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .agent-context-summary-copy strong {
+  color: var(--agent-muted);
+  font: 650 0.72rem/1.2 var(--font-sans, system-ui, sans-serif);
+}
+
+.shell-assistant-focus .agent-context-summary-action::after {
+  content: " +";
+}
+
+.shell-assistant-focus .agent-context-disclosure[open] .agent-context-summary-action::after {
+  content: " −";
+}
+
+.shell-assistant-focus .agent-context-disclosure .agent-live-panel {
+  margin: 0 1rem 0.8rem;
+}
+
+.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
+  display: block !important;
+  height: 100%;
+  padding: 0 !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  height: 100%;
+  display: grid !important;
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+  gap: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: #050a12 !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat::before {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
+  min-height: 3.7rem;
+  display: flex;
+  align-items: center;
+  margin: 0;
+  padding: 0.6rem 1.1rem !important;
+  border-bottom: 1px solid rgba(26, 52, 72, 0.5);
+}
+
+.shell-assistant-focus .agent-chat-target {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.shell-assistant-focus .agent-chat-presence {
+  width: 0.55rem;
+  height: 0.55rem;
+  border-radius: 50%;
+  background: var(--agent-accent);
+  box-shadow: 0 0 0.75rem rgba(110, 202, 216, 0.45);
+}
+
+.shell-assistant-focus .agent-chat-target h4 {
+  margin: 0;
+  color: var(--agent-text);
+  font: 760 0.94rem/1.15 var(--font-sans, system-ui, sans-serif);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.shell-assistant-focus .agent-chat-target span:not(.agent-chat-presence) {
+  display: block;
+  margin-top: 0.12rem;
+  color: var(--agent-muted);
+  font-size: 0.7rem;
+}
+
+.shell-assistant-focus .agent-chat-compact-status {
+  color: var(--agent-muted) !important;
+  font-size: 0.66rem !important;
+  letter-spacing: 0 !important;
+  text-transform: none !important;
+}
+
+.shell-assistant-focus .agent-chat-expand-button {
+  min-height: 2rem;
+  padding-inline: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: none;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure {
+  border-bottom: 1px solid rgba(26, 52, 72, 0.46);
+  background: rgba(5, 10, 18, 0.9);
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary {
+  min-height: 2.55rem;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.45rem 1.1rem;
+  color: var(--agent-muted);
+  font-size: 0.72rem;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary span {
+  color: var(--agent-text);
+  font-weight: 700;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary strong {
+  min-width: 0;
+  color: var(--agent-muted);
+  font: 650 0.68rem/1.2 var(--font-sans, system-ui, sans-serif);
+  text-align: right;
+  overflow-wrap: anywhere;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip,
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
+  margin-inline: 1rem;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip {
+  padding-top: 0.55rem;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
+  margin-bottom: 0.75rem;
+}
+
+.shell-assistant-focus .agent-embedded-chat {
+  min-height: 0 !important;
+  height: auto !important;
+  justify-content: flex-start !important;
+  padding: clamp(1rem, 2.2vw, 2.25rem) max(1.1rem, calc((100% - 64rem) / 2)) !important;
+  background:
+    radial-gradient(circle at 50% 35%, rgba(42, 180, 200, 0.04), transparent 28rem),
+    #040911 !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  width: 100%;
+  max-width: 64rem;
+  margin: auto auto 0;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  max-width: min(48rem, 82%) !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  max-width: 42rem !important;
+  opacity: 0.72;
+}
+
+.shell-assistant-focus .agent-embedded-empty {
+  width: min(36rem, 100%);
+  margin: auto;
+  text-align: center;
+}
+
+.shell-assistant-focus .agent-embedded-empty strong {
+  color: var(--agent-text);
+  font: 760 1.22rem/1.25 var(--font-sans, system-ui, sans-serif);
+}
+
+.shell-assistant-focus .agent-embedded-empty span {
+  margin-top: 0.35rem;
+  color: var(--agent-muted);
+  font-size: 0.86rem;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  width: min(64rem, calc(100% - 2rem));
+  margin: 0 auto 0.85rem !important;
+  padding: 0.45rem !important;
+  border: 1px solid rgba(42, 180, 200, 0.28) !important;
+  border-radius: 0.7rem !important;
+  background: rgba(6, 12, 21, 0.96) !important;
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.28);
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  height: 3.15rem !important;
+  min-height: 3.15rem !important;
+  max-height: 3.15rem !important;
+  border: 0 !important;
+  border-radius: 0.45rem !important;
+  background: rgba(1, 4, 9, 0.72) !important;
+  font-family: var(--font-sans, system-ui, sans-serif) !important;
+  line-height: 3.15rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  border-radius: 0.45rem !important;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+@media (max-width: 760px) {
+  .shell-assistant-focus .agent-dashboard-titlebar {
+    align-items: start;
+  }
+
+  .shell-assistant-focus .agent-primary-titlecopy p,
+  .shell-assistant-focus .agent-chat-compact-status,
+  .shell-assistant-focus .agent-mini-action:first-child {
+    display: none;
+  }
+
+  .shell-assistant-focus .agent-context-summary-copy strong {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .shell-assistant-focus .agent-chat-heading-actions {
+    gap: 0.35rem;
+  }
+
+  .shell-assistant-focus .agent-embedded-chat {
+    padding: 1rem !important;
+  }
+
+  .shell-assistant-focus .agent-turn-card {
+    max-width: 92% !important;
+  }
+}
