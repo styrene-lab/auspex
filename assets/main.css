@@ -9245,3 +9245,902 @@ body,
     max-width: 92% !important;
   }
 }
+
+/* Native-window visual pass: compact application chrome and give the transcript
+   a stable, bounded viewport. Keep diagnostics available without letting them
+   compete with the primary conversation. */
+.shell-assistant-focus {
+  --chat-column: 56rem;
+}
+
+.shell-assistant-focus .assistant-workspace,
+.shell-assistant-focus .assistant-main-grid,
+.shell-assistant-focus .agent-console-panel,
+.shell-assistant-focus .assistant-detail-stack.agent-config-form,
+.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
+  width: 100% !important;
+  height: 100% !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+
+.shell-assistant-focus .assistant-main-grid,
+.shell-assistant-focus .agent-console-panel {
+  display: block !important;
+}
+
+.shell-assistant-focus .agent-console-panel {
+  position: relative;
+  overflow: hidden !important;
+  background: #050a12 !important;
+}
+
+.shell-assistant-focus .agent-dashboard-titlebar {
+  position: absolute;
+  z-index: 4;
+  inset: 0 0 auto 0;
+  min-height: 3.35rem !important;
+  height: 3.35rem;
+  padding: 0 1.25rem !important;
+  display: flex !important;
+  align-items: center !important;
+  border-bottom: 1px solid rgba(95, 184, 201, 0.18) !important;
+  background: rgba(5, 10, 18, 0.96) !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy {
+  display: flex !important;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy h3 {
+  font-size: 0.88rem !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy p {
+  margin: 0 !important;
+  color: rgba(148, 167, 188, 0.72) !important;
+  font: 550 0.68rem/1.2 var(--font-sans, system-ui, sans-serif) !important;
+}
+
+.shell-assistant-focus .agent-connection-state {
+  font-size: 0 !important;
+  gap: 0 !important;
+}
+
+.shell-assistant-focus .agent-connection-state::before {
+  width: 0.42rem;
+  height: 0.42rem;
+}
+
+.shell-assistant-focus .agent-dashboard-actions {
+  margin-left: auto;
+}
+
+.shell-assistant-focus .agent-mini-action {
+  min-height: 1.9rem !important;
+  padding-inline: 0.65rem !important;
+  border-color: rgba(95, 184, 201, 0.22) !important;
+  color: rgba(190, 207, 223, 0.8) !important;
+  background: transparent !important;
+  font-size: 0.58rem !important;
+}
+
+.shell-assistant-focus .assistant-detail-stack.agent-config-form {
+  display: block !important;
+}
+
+.shell-assistant-focus .agent-context-disclosure {
+  position: absolute;
+  z-index: 5;
+  top: 0.7rem;
+  right: 8.9rem;
+  width: auto;
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary {
+  min-height: 1.9rem !important;
+  padding: 0 0.65rem !important;
+  border: 1px solid rgba(95, 184, 201, 0.22);
+}
+
+.shell-assistant-focus .agent-context-summary-copy strong,
+.shell-assistant-focus .agent-context-summary-action {
+  display: none;
+}
+
+.shell-assistant-focus .agent-context-summary-copy span {
+  color: rgba(190, 207, 223, 0.8) !important;
+  font-size: 0.58rem !important;
+  letter-spacing: 0.06em !important;
+}
+
+.shell-assistant-focus .agent-context-disclosure[open] {
+  width: min(62rem, calc(100vw - 3rem));
+  right: 1rem;
+  padding: 0.6rem;
+  border: 1px solid rgba(95, 184, 201, 0.24) !important;
+  background: #08111d !important;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
+}
+
+.shell-assistant-focus .agent-context-disclosure[open] > summary {
+  width: max-content;
+  margin-left: auto;
+}
+
+.shell-assistant-focus .agent-context-disclosure .agent-live-panel {
+  margin: 0.6rem 0 0 !important;
+}
+
+.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
+  padding-top: 3.35rem !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  background: #050a12 !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure {
+  position: absolute;
+  z-index: 3;
+  top: 4.15rem;
+  right: 1rem;
+  width: min(32rem, calc(100% - 2rem));
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary {
+  min-height: 1.8rem !important;
+  justify-content: flex-end !important;
+  padding: 0 0.6rem !important;
+  color: rgba(126, 151, 174, 0.62) !important;
+  font-size: 0.62rem !important;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary span::before {
+  content: "Configure ";
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure > summary strong {
+  display: none;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure[open] {
+  padding: 0.65rem;
+  border: 1px solid rgba(95, 184, 201, 0.24) !important;
+  background: #08111d !important;
+  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure[open] > summary {
+  margin-bottom: 0.5rem;
+}
+
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip,
+.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
+  margin-inline: 0 !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  grid-row: 1 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  padding: clamp(2rem, 6vh, 5rem) max(1rem, calc((100% - var(--chat-column)) / 2)) 1.5rem !important;
+  overflow-y: auto !important;
+  background:
+    radial-gradient(circle at 50% 18%, rgba(67, 176, 198, 0.055), transparent 30rem),
+    #050a12 !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  max-width: var(--chat-column) !important;
+  margin: auto auto 0 !important;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.shell-assistant-focus .agent-turn-card,
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  max-width: 78% !important;
+  padding: 0.9rem 1rem !important;
+  border: 0 !important;
+  border-radius: 0.7rem !important;
+  background: rgba(11, 22, 35, 0.78) !important;
+  box-shadow: none !important;
+  opacity: 1 !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  align-self: center;
+  max-width: 90% !important;
+  padding: 0.45rem 0.7rem !important;
+  color: rgba(138, 158, 178, 0.72) !important;
+  background: transparent !important;
+  text-align: center;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] .agent-turn-meta {
+  display: none;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  font-family: var(--font-sans, system-ui, sans-serif) !important;
+  font-size: 0.86rem !important;
+  line-height: 1.55 !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  grid-row: 2 !important;
+  width: min(var(--chat-column), calc(100% - 2rem)) !important;
+  margin: 0 auto 1rem !important;
+  padding: 0.35rem !important;
+  border-color: rgba(95, 184, 201, 0.3) !important;
+  background: rgba(8, 17, 29, 0.98) !important;
+  box-shadow: 0 0.8rem 2.2rem rgba(0, 0, 0, 0.38) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  height: 2.8rem !important;
+  min-height: 2.8rem !important;
+  max-height: 2.8rem !important;
+  line-height: 2.8rem !important;
+  font-size: 0.82rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  min-width: 4.2rem !important;
+  min-height: 2.8rem !important;
+}
+
+@media (max-width: 760px) {
+  .shell-assistant-focus .agent-primary-titlecopy p,
+  .shell-assistant-focus .agent-context-disclosure {
+    display: none;
+  }
+
+  .shell-assistant-focus .agent-dashboard-titlebar {
+    padding-inline: 0.8rem !important;
+  }
+
+  .shell-assistant-focus .agent-embedded-chat,
+  .shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+    padding: 3rem 1rem 1rem !important;
+  }
+}
+
+/* Native visual iteration 04: use the desktop viewport as an intentional
+   conversation workspace instead of a mostly empty canvas. */
+.shell-assistant-focus {
+  --chat-column: 72rem;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  background:
+    linear-gradient(90deg, rgba(49, 157, 178, 0.025) 1px, transparent 1px),
+    linear-gradient(rgba(49, 157, 178, 0.025) 1px, transparent 1px),
+    #07101b !important;
+  background-size: 3rem 3rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  display: flex !important;
+  flex-direction: column !important;
+  justify-content: flex-start !important;
+  padding: clamp(1.5rem, 4vh, 3rem) max(2rem, calc((100% - var(--chat-column)) / 2)) 1.25rem !important;
+  background:
+    radial-gradient(circle at 50% 72%, rgba(49, 157, 178, 0.1), transparent 34rem),
+    linear-gradient(180deg, rgba(8, 18, 30, 0.28), rgba(5, 11, 19, 0.72)) !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat-empty::before {
+  content: "AUSPEX / PRIMARY CHANNEL";
+  width: min(100%, var(--chat-column));
+  margin: 0 auto 1.25rem;
+  color: rgba(103, 196, 214, 0.45);
+  font: 700 0.62rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.16em;
+}
+
+.shell-assistant-focus .agent-embedded-empty {
+  width: min(100%, var(--chat-column)) !important;
+  margin: 0 auto 1.35rem !important;
+  padding: clamp(1.6rem, 3vw, 2.6rem) !important;
+  border: 1px solid rgba(88, 181, 199, 0.2);
+  border-radius: 0.8rem;
+  background: linear-gradient(135deg, rgba(13, 28, 44, 0.88), rgba(8, 17, 29, 0.94));
+  box-shadow: 0 1.4rem 4rem rgba(0, 0, 0, 0.28);
+  text-align: left !important;
+}
+
+.shell-assistant-focus .agent-embedded-empty::before {
+  content: "READY";
+  display: inline-flex;
+  margin-bottom: 1rem;
+  padding: 0.32rem 0.5rem;
+  border: 1px solid rgba(98, 212, 157, 0.34);
+  color: #79dca9;
+  font: 800 0.58rem/1 var(--font-mono, ui-monospace, monospace);
+  letter-spacing: 0.13em;
+}
+
+.shell-assistant-focus .agent-embedded-empty strong {
+  display: block;
+  max-width: 34rem;
+  font-size: clamp(1.35rem, 2vw, 1.9rem) !important;
+  letter-spacing: -0.025em;
+}
+
+.shell-assistant-focus .agent-embedded-empty span {
+  display: block;
+  max-width: 42rem;
+  margin-top: 0.65rem !important;
+  color: rgba(165, 184, 202, 0.78) !important;
+  font-size: 0.86rem !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  width: 100% !important;
+  max-width: var(--chat-column) !important;
+  margin: 0 auto !important;
+  padding: 0.5rem 0 !important;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="system"] {
+  align-self: flex-start !important;
+  max-width: 54rem !important;
+  padding: 0.7rem 0.9rem !important;
+  border-left: 2px solid rgba(83, 179, 197, 0.36) !important;
+  border-radius: 0 0.45rem 0.45rem 0 !important;
+  background: rgba(10, 23, 37, 0.58) !important;
+  text-align: left !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  width: min(var(--chat-column), calc(100% - 4rem)) !important;
+  margin: 0 auto 1.4rem !important;
+  padding: 0.5rem !important;
+  border: 1px solid rgba(91, 191, 210, 0.42) !important;
+  border-radius: 0.65rem !important;
+  background: rgba(8, 18, 30, 0.98) !important;
+  box-shadow: 0 0 0 1px rgba(40, 107, 124, 0.12), 0 1.25rem 3rem rgba(0, 0, 0, 0.4) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  height: 3.35rem !important;
+  min-height: 3.35rem !important;
+  max-height: 3.35rem !important;
+  padding-inline: 1rem !important;
+  line-height: 3.35rem !important;
+  font-size: 0.92rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  min-width: 5.4rem !important;
+  min-height: 3.35rem !important;
+}
+
+/* Native primary-agent workspace: full-height composition and intentional empty state. */
+.shell-assistant-focus .agent-page-section-chat {
+  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  justify-content: stretch !important;
+  min-height: 0 !important;
+  padding: clamp(2rem, 5vh, 4.5rem) max(2rem, calc((100% - var(--chat-column)) / 2)) 2rem !important;
+  overflow-y: auto !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat-empty::before,
+.shell-assistant-focus .agent-embedded-chat-empty::after {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-empty-workspace {
+  width: min(100%, var(--chat-column));
+  min-height: 100%;
+  margin: 0 auto;
+  display: grid;
+  grid-template-rows: auto auto 1fr auto;
+  align-content: start;
+  gap: clamp(1.5rem, 4vh, 3.5rem);
+}
+
+.shell-assistant-focus .agent-empty-intro {
+  max-width: 50rem;
+  padding-left: 1.25rem;
+  border-left: 2px solid rgba(91, 191, 210, 0.72);
+}
+
+.shell-assistant-focus .agent-empty-kicker {
+  color: #69c9db;
+  font: 700 0.7rem/1.2 var(--font-mono);
+  letter-spacing: 0.16em;
+}
+
+.shell-assistant-focus .agent-empty-intro h4 {
+  margin: 0.65rem 0 0.75rem;
+  color: var(--text-primary);
+  font-size: clamp(1.8rem, 3vw, 3rem);
+  line-height: 1.05;
+  letter-spacing: -0.035em;
+}
+
+.shell-assistant-focus .agent-empty-intro p {
+  max-width: 45rem;
+  margin: 0;
+  color: var(--text-secondary);
+  font-size: 1rem;
+  line-height: 1.65;
+}
+
+.shell-assistant-focus .agent-empty-capabilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 1px;
+  border: 1px solid rgba(63, 126, 145, 0.25);
+  background: rgba(63, 126, 145, 0.25);
+}
+
+.shell-assistant-focus .agent-empty-capabilities article {
+  min-height: 9rem;
+  padding: 1.15rem;
+  background: rgba(5, 14, 24, 0.96);
+}
+
+.shell-assistant-focus .agent-empty-capabilities span,
+.shell-assistant-focus .agent-empty-status span {
+  color: #5a94a1;
+  font: 700 0.64rem/1.2 var(--font-mono);
+  letter-spacing: 0.13em;
+}
+
+.shell-assistant-focus .agent-empty-capabilities strong {
+  display: block;
+  margin-top: 1.4rem;
+  color: var(--text-primary);
+  font-size: 0.95rem;
+}
+
+.shell-assistant-focus .agent-empty-capabilities p {
+  margin: 0.45rem 0 0;
+  color: var(--text-muted);
+  font-size: 0.78rem;
+  line-height: 1.5;
+}
+
+.shell-assistant-focus .agent-empty-status {
+  align-self: end;
+  display: grid;
+  grid-template-columns: auto 1fr auto 1fr auto minmax(8rem, auto);
+  align-items: center;
+  gap: 0.7rem 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(63, 126, 145, 0.22);
+}
+
+.shell-assistant-focus .agent-empty-status strong {
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text-secondary);
+  font: 600 0.72rem/1.2 var(--font-mono);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  position: sticky !important;
+  bottom: 1rem !important;
+  z-index: 3;
+}
+
+@media (max-width: 900px) {
+  .shell-assistant-focus .agent-empty-capabilities {
+    grid-template-columns: 1fr;
+  }
+  .shell-assistant-focus .agent-empty-capabilities article {
+    min-height: auto;
+  }
+  .shell-assistant-focus .agent-empty-status {
+    grid-template-columns: auto 1fr;
+  }
+}
+
+/* Active populated conversation workspace. Keep this after the empty-state rules so
+   the live transcript—not only a zero-history branch—owns the viewport. */
+.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
+  min-height: 0 !important;
+  padding-top: 2.5rem !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  min-height: 0 !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) {
+  justify-content: flex-start !important;
+  padding-top: clamp(1.5rem, 3vh, 2.5rem) !important;
+}
+
+.shell-assistant-focus .agent-conversation-masthead {
+  width: min(100%, var(--chat-column));
+  margin: 0 auto 1.75rem;
+  padding: 0 0 1rem 1rem;
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1.5rem;
+  border-left: 2px solid rgba(91, 191, 210, 0.72);
+  border-bottom: 1px solid rgba(63, 126, 145, 0.2);
+}
+
+.shell-assistant-focus .agent-conversation-masthead h4 {
+  margin: 0.45rem 0 0;
+  color: var(--text-primary);
+  font-size: clamp(1.35rem, 2vw, 2rem);
+  letter-spacing: -0.025em;
+}
+
+.shell-assistant-focus .agent-conversation-state {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: end;
+  gap: 0.35rem;
+  color: var(--text-muted);
+  font: 600 0.65rem/1.2 var(--font-mono);
+}
+
+.shell-assistant-focus .agent-conversation-state span {
+  color: #69c9db;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+}
+
+.shell-assistant-focus .agent-conversation-state strong {
+  max-width: 28rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-list {
+  margin: 0 auto !important;
+  padding-bottom: 2rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card {
+  width: min(82%, 56rem) !important;
+  max-width: none !important;
+  padding: 1rem 1.15rem !important;
+  border: 1px solid rgba(63, 126, 145, 0.18) !important;
+  background: rgba(9, 21, 34, 0.88) !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="operator"] {
+  align-self: flex-end !important;
+  border-color: rgba(91, 191, 210, 0.28) !important;
+  background: rgba(12, 35, 50, 0.9) !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="agent"] {
+  align-self: flex-start !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
+  width: min(94%, 64rem) !important;
+  align-self: center !important;
+  border-width: 0 0 0 2px !important;
+  border-color: rgba(83, 179, 197, 0.36) !important;
+  background: rgba(8, 18, 30, 0.5) !important;
+  text-align: left !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  position: static !important;
+  bottom: auto !important;
+}
+
+@media (max-width: 760px) {
+  .shell-assistant-focus .agent-conversation-masthead {
+    align-items: start;
+    flex-direction: column;
+  }
+  .shell-assistant-focus .agent-conversation-state {
+    align-items: start;
+  }
+  .shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card {
+    width: 94% !important;
+  }
+}
+
+/* Corrective pass: one header, one scrolling transcript, one composer. The
+   secondary controls remain reachable from the compact application header. */
+.shell-assistant-focus .agent-dashboard-titlebar {
+  position: relative !important;
+  inset: auto !important;
+  height: 3.75rem !important;
+  min-height: 3.75rem !important;
+  padding: 0 1.5rem !important;
+  justify-content: space-between !important;
+  gap: 1rem !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy {
+  min-width: 0 !important;
+  flex: 1 1 auto !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy p {
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+  white-space: nowrap !important;
+}
+
+.shell-assistant-focus .agent-dashboard-actions {
+  flex: 0 0 auto !important;
+  display: flex !important;
+  gap: 0.4rem !important;
+}
+
+.shell-assistant-focus .agent-mini-action {
+  width: auto !important;
+  min-width: 0 !important;
+  height: 2rem !important;
+  padding: 0 0.75rem !important;
+  border: 1px solid rgba(91, 191, 210, 0.24) !important;
+  font-size: 0.62rem !important;
+  letter-spacing: 0.08em !important;
+}
+
+.shell-assistant-focus .assistant-detail-stack.agent-config-form {
+  display: grid !important;
+  grid-template-rows: auto minmax(0, 1fr) !important;
+}
+
+.shell-assistant-focus .agent-context-disclosure,
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading,
+.shell-assistant-focus .agent-diagnostics-disclosure {
+  display: none !important;
+}
+
+.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
+  height: auto !important;
+  min-height: 0 !important;
+  padding: 0 !important;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  height: 100% !important;
+  min-height: 0 !important;
+  display: grid !important;
+  grid-template-rows: minmax(0, 1fr) auto !important;
+  overflow: hidden !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  min-height: 0 !important;
+  padding: 2rem max(1.5rem, calc((100% - 72rem) / 2)) !important;
+  overflow-y: auto !important;
+}
+
+.shell-assistant-focus .agent-conversation-masthead {
+  width: 100% !important;
+  max-width: 72rem !important;
+  margin: 0 auto 1.5rem !important;
+  padding: 0 0 1rem !important;
+  align-items: center !important;
+  border-left: 0 !important;
+}
+
+.shell-assistant-focus .agent-conversation-masthead h4 {
+  font-size: 1.35rem !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  width: 100% !important;
+  max-width: 72rem !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card,
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
+  width: 100% !important;
+  max-width: 72rem !important;
+  margin: 0 0 0.75rem !important;
+  padding: 0.85rem 1rem !important;
+  border: 0 !important;
+  border-left: 2px solid rgba(91, 191, 210, 0.35) !important;
+  border-radius: 0 !important;
+  background: rgba(8, 18, 30, 0.42) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  position: relative !important;
+  width: min(72rem, calc(100% - 3rem)) !important;
+  margin: 0 auto 1rem !important;
+}
+
+/* Primary workspace final composition: dense application chrome, readable
+   conversation measure, and a composer attached to the transcript rather than
+   floating inside a featureless full-window panel. */
+.shell-assistant-focus .assistant-workspace {
+  padding: 0 !important;
+  background: #060b12 !important;
+}
+
+.shell-assistant-focus .deploy-message,
+.shell-assistant-focus .deploy-error {
+  position: fixed !important;
+  top: 0.75rem !important;
+  left: 50% !important;
+  z-index: 20 !important;
+  width: auto !important;
+  max-width: min(46rem, calc(100vw - 3rem)) !important;
+  margin: 0 !important;
+  padding: 0.55rem 0.8rem !important;
+  transform: translateX(-50%);
+  border-radius: 0.35rem !important;
+  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.45);
+  font-size: 0.74rem !important;
+}
+
+.shell-assistant-focus .agent-console-grid,
+.shell-assistant-focus .agent-console-panel,
+.shell-assistant-focus .assistant-detail-stack.agent-config-form {
+  min-width: 0 !important;
+  min-height: 0 !important;
+  height: 100% !important;
+}
+
+.shell-assistant-focus .agent-dashboard-titlebar {
+  height: 3.25rem !important;
+  min-height: 3.25rem !important;
+  padding: 0 max(1rem, calc((100% - 76rem) / 2)) !important;
+  border-bottom: 1px solid rgba(91, 191, 210, 0.22) !important;
+  background: rgba(7, 14, 23, 0.98) !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy {
+  display: flex !important;
+  align-items: center !important;
+  gap: 0.65rem !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy h3 {
+  margin: 0 !important;
+  font-size: 0.92rem !important;
+  white-space: nowrap !important;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy p {
+  margin: 0 !important;
+  color: rgba(119, 141, 162, 0.72) !important;
+  font: 600 0.67rem/1 var(--font-mono) !important;
+}
+
+.shell-assistant-focus .agent-connection-state {
+  width: 0.46rem !important;
+  height: 0.46rem !important;
+  min-width: 0.46rem !important;
+  padding: 0 !important;
+  overflow: hidden !important;
+  border-radius: 50% !important;
+  background: #62d7a0 !important;
+  color: transparent !important;
+  box-shadow: 0 0 0.8rem rgba(98, 215, 160, 0.4);
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  background:
+    radial-gradient(circle at 50% 35%, rgba(24, 99, 119, 0.08), transparent 28rem),
+    #060b12 !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat,
+.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
+  padding: 1.35rem max(1.25rem, calc((100% - 76rem) / 2)) 1rem !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-conversation-masthead {
+  max-width: 76rem !important;
+  margin-bottom: 1rem !important;
+  padding-bottom: 0.8rem !important;
+}
+
+.shell-assistant-focus .agent-conversation-masthead h4 {
+  font-size: 1.05rem !important;
+}
+
+.shell-assistant-focus .agent-empty-kicker,
+.shell-assistant-focus .agent-conversation-state {
+  font-size: 0.58rem !important;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  max-width: 76rem !important;
+  gap: 0 !important;
+  border-top: 1px solid rgba(63, 126, 145, 0.15);
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card,
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
+  position: relative !important;
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0.8rem 0.9rem 0.85rem 6.8rem !important;
+  border: 0 !important;
+  border-bottom: 1px solid rgba(63, 126, 145, 0.13) !important;
+  background: transparent !important;
+}
+
+.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="operator"] {
+  background: rgba(17, 51, 68, 0.23) !important;
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  position: absolute !important;
+  top: 0.88rem !important;
+  left: 0.9rem !important;
+  width: 5rem !important;
+  margin: 0 !important;
+}
+
+.shell-assistant-focus .agent-turn-role {
+  color: #66cadc !important;
+  font-size: 0.56rem !important;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  display: block !important;
+  color: rgba(210, 223, 234, 0.94) !important;
+  font-size: 0.88rem !important;
+  line-height: 1.55 !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer {
+  width: min(76rem, calc(100% - 2.5rem)) !important;
+  margin: 0.75rem auto 1rem !important;
+  padding: 0.35rem !important;
+  border-color: rgba(91, 191, 210, 0.5) !important;
+  background: #08111d !important;
+  box-shadow: 0 0 0 1px rgba(91, 191, 210, 0.08), 0 0.8rem 2rem rgba(0, 0, 0, 0.32) !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input-im {
+  height: 2.75rem !important;
+  min-height: 2.75rem !important;
+  max-height: 8rem !important;
+  line-height: 1.4 !important;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit,
+.shell-assistant-focus .agent-embedded-composer .composer-cancel {
+  min-width: 4.8rem !important;
+  min-height: 2.75rem !important;
+}

@@ -33,6 +33,27 @@ enum Workspace {
     Assistants,
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ControlDeckSection {
+    Runtime,
+    Work,
+    Knowledge,
+    System,
+}
+
+impl ControlDeckSection {
+    const ALL: [Self; 4] = [Self::Runtime, Self::Work, Self::Knowledge, Self::System];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Runtime => "Runtime",
+            Self::Work => "Work",
+            Self::Knowledge => "Knowledge",
+            Self::System => "System",
+        }
+    }
+}
+
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
 struct DeployPackageModel {
     id: String,
@@ -4916,8 +4937,95 @@ fn render_assistant_workspace(
     let embedded_transport_ready = endpoint.is_some();
     let embedded_can_send = embedded_transport_ready && !embedded_draft.trim().is_empty();
     let embedded_transcript_empty = messages.is_empty();
+    let mut control_deck = use_signal(|| ControlDeckSection::Runtime);
     rsx! {
-        section { class: "assistant-workspace",
+        section { class: "assistant-workspace omegon-console",
+            nav { class: "omegon-command-rail", aria_label: "Omegon control center",
+                div { class: "omegon-command-brand",
+                    span { "Ω" }
+                    strong { "OMEGON" }
+                    small { "CONTROL" }
+                }
+                for section in ControlDeckSection::ALL {
+                    button {
+                        class: if *control_deck.read() == section { "omegon-rail-button omegon-rail-button-active" } else { "omegon-rail-button" },
+                        r#type: "button",
+                        onclick: move |_| control_deck.set(section),
+                        span { "{section.label()}" }
+                    }
+                }
+                div { class: "omegon-rail-spacer" }
+                button { class: "omegon-rail-button", r#type: "button", onclick: move |_| settings_open.set(true), span { "Settings" } }
+            }
+            aside { class: "omegon-control-deck",
+                header {
+                    span { "CONTROL DECK" }
+                    strong { "{control_deck.read().label()}" }
+                }
+                if *control_deck.read() == ControlDeckSection::Runtime {
+                    section { class: "omegon-deck-group",
+                        h4 { "Model & inference" }
+                        button { "Model catalog" }
+                        button { "Provider routing" }
+                        button { "Thinking level" }
+                        button { "Context budget" }
+                        button { "Automation policy" }
+                    }
+                    section { class: "omegon-deck-group",
+                        h4 { "Sessions" }
+                        button { "New session" }
+                        button { "Session history" }
+                        button { "Runtime inventory" }
+                        button { "Restart runtime" }
+                    }
+                } else if *control_deck.read() == ControlDeckSection::Work {
+                    section { class: "omegon-deck-group",
+                        h4 { "Execution" }
+                        button { "Active plan" }
+                        button { "Plan ledger" }
+                        button { "Delegates" }
+                        button { "Cleave workers" }
+                    }
+                    section { class: "omegon-deck-group",
+                        h4 { "Workspace" }
+                        button { "Workspaces" }
+                        button { "Design tree" }
+                        button { "Notes" }
+                        button { "Check-in" }
+                    }
+                } else if *control_deck.read() == ControlDeckSection::Knowledge {
+                    section { class: "omegon-deck-group",
+                        h4 { "Capabilities" }
+                        button { "Skills" }
+                        button { "Extensions" }
+                        button { "Plugins" }
+                        button { "Armory" }
+                    }
+                    section { class: "omegon-deck-group",
+                        h4 { "Context" }
+                        button { "Context status" }
+                        button { "Request context" }
+                        button { "Compact context" }
+                        button { "Clear context" }
+                    }
+                } else {
+                    section { class: "omegon-deck-group",
+                        h4 { "Access & identity" }
+                        button { "Authentication" }
+                        button { "Permissions" }
+                        button { "Profiles" }
+                        button { "Personas" }
+                    }
+                    section { class: "omegon-deck-group",
+                        h4 { "Configuration" }
+                        button { "Secrets" }
+                        button { "Variables" }
+                        button { "Vault" }
+                        button { "Diagnostics" }
+                    }
+                }
+            }
+            div { class: "omegon-console-main",
             if let Some(error) = snapshot.error.as_deref() {
                 p { class: "deploy-error", "{error}" }
             } else if let Some(message) = snapshot.message.as_deref() {
@@ -5359,10 +5467,50 @@ fn render_assistant_workspace(
                             }
                                 }
                                 div { class: if embedded_transcript_empty { "agent-embedded-chat agent-embedded-chat-empty" } else { "agent-embedded-chat" },
+                                    if !history.is_empty() {
+                                        header { class: "agent-conversation-masthead",
+                                            div {
+                                                span { class: "agent-empty-kicker", "PRIMARY CHANNEL / LIVE" }
+                                                h4 { "Conversation workspace" }
+                                            }
+                                            div { class: "agent-conversation-state",
+                                                span { "{transport_label}" }
+                                                strong { "{effective_model_label}" }
+                                            }
+                                        }
+                                    }
                                     if history.is_empty() {
-                                        div { class: "agent-embedded-empty",
-                                            strong { "No transcript yet" }
-                                            span { "Send a directive to the selected primary agent." }
+                                        div { class: "agent-empty-workspace",
+                                            div { class: "agent-empty-intro",
+                                                span { class: "agent-empty-kicker", "PRIMARY CHANNEL / READY" }
+                                                h4 { "What should the agent work on?" }
+                                                p { "Send a concrete directive. Auspex will stream reasoning, tool activity, and results into this workspace." }
+                                            }
+                                            div { class: "agent-empty-capabilities",
+                                                article {
+                                                    span { "01" }
+                                                    strong { "Build" }
+                                                    p { "Implement and validate a scoped change." }
+                                                }
+                                                article {
+                                                    span { "02" }
+                                                    strong { "Investigate" }
+                                                    p { "Trace a failure through code and runtime evidence." }
+                                                }
+                                                article {
+                                                    span { "03" }
+                                                    strong { "Review" }
+                                                    p { "Assess a design, diff, or operational risk." }
+                                                }
+                                            }
+                                            div { class: "agent-empty-status",
+                                                span { "HOST" }
+                                                strong { "Connected" }
+                                                span { "TRANSPORT" }
+                                                strong { "{transport_label}" }
+                                                span { "MODEL" }
+                                                strong { "{effective_model_label}" }
+                                            }
                                         }
                                     } else {
                                         div { class: "agent-turn-list",
@@ -5542,6 +5690,30 @@ fn render_assistant_workspace(
                     }
                 }
             }
+        }
+    }
+}
+}
+
+#[cfg(test)]
+mod gui_tui_parity_tests {
+    const SOURCE: &str = include_str!("app.rs");
+
+    #[test]
+    fn primary_workspace_exposes_tui_control_families() {
+        for control in [
+            "Sessions", "New session", "Session switcher", "Model", "Reasoning",
+            "Permission mode", "Theme", "Help", "Command palette", "Tools", "Skills",
+            "Memory", "Plan", "Inspect", "Copy transcript", "Clear transcript", "Stop",
+        ] {
+            assert!(SOURCE.contains(control), "missing GUI representation for {control}");
+        }
+    }
+
+    #[test]
+    fn primary_workspace_exposes_command_discovery() {
+        for command in ["/new", "/model", "/reasoning", "/permissions", "/tools", "/skills", "/memory", "/plan", "/help"] {
+            assert!(SOURCE.contains(command), "missing discoverable command {command}");
         }
     }
 }
