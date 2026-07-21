@@ -246,14 +246,14 @@ async fn run_ipc_event_stream(handle: IpcEventStreamHandle) {
                             Err(error) => {
                                 eprintln!(
                                     "Ignoring malformed IPC event frame from {}: {error}",
-                                    &handle.socket_path
+                                    handle.socket_path
                                 );
                             }
                         },
                         Err(error) => {
                             eprintln!(
                                 "IPC event stream disconnected from {}: {error}",
-                                &handle.socket_path
+                                handle.socket_path
                             );
                             break;
                         }
@@ -263,7 +263,7 @@ async fn run_ipc_event_stream(handle: IpcEventStreamHandle) {
             Err(error) => {
                 eprintln!(
                     "IPC event stream attach failed for {}: {error}",
-                    &handle.socket_path
+                    handle.socket_path
                 );
             }
         }

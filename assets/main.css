@@ -9770,17 +9770,21 @@ body,
 
 /* Omegon console shell. Keep navigation, controls, and transcript in bounded regions. */
 .shell-assistant-focus .assistant-workspace.omegon-console {
-  display: grid;
-  grid-template-columns: 5.5rem 18rem minmax(0, 1fr);
-  gap: 0;
-  min-height: calc(100vh - 5.1rem);
-  padding: 0;
-  overflow: hidden;
+  display: grid !important;
+  grid-template-columns: 6rem 19rem minmax(0, 1fr) !important;
+  gap: 0 !important;
+  width: 100% !important;
+  max-width: none !important;
+  height: calc(100vh - 5.1rem) !important;
+  min-height: calc(100vh - 5.1rem) !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden !important;
   background: #050b13;
 }
 
 .shell-assistant-focus .omegon-command-rail {
-  display: flex;
+  display: flex !important;
   min-width: 0;
   min-height: 0;
   flex-direction: column;
@@ -9846,6 +9850,7 @@ body,
 .shell-assistant-focus .omegon-rail-spacer { flex: 1; }
 
 .shell-assistant-focus .omegon-control-deck {
+  display: block !important;
   min-width: 0;
   min-height: 0;
   padding: 1.2rem 1rem;
