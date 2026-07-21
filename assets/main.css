@@ -9768,6 +9768,165 @@ body,
   }
 }
 
+/* Omegon console shell. Keep navigation, controls, and transcript in bounded regions. */
+.shell-assistant-focus .assistant-workspace.omegon-console {
+  display: grid;
+  grid-template-columns: 5.5rem 18rem minmax(0, 1fr);
+  gap: 0;
+  min-height: calc(100vh - 5.1rem);
+  padding: 0;
+  overflow: hidden;
+  background: #050b13;
+}
+
+.shell-assistant-focus .omegon-command-rail {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 0.35rem;
+  padding: 1rem 0.6rem;
+  border-right: 1px solid rgba(62, 150, 170, 0.24);
+  background: #07111c;
+}
+
+.shell-assistant-focus .omegon-command-brand {
+  display: grid;
+  justify-items: center;
+  gap: 0.12rem;
+  margin-bottom: 1rem;
+  color: #dbeafe;
+  font-family: var(--font-mono);
+}
+
+.shell-assistant-focus .omegon-command-brand > span {
+  color: #64d4e8;
+  font-size: 1.45rem;
+}
+
+.shell-assistant-focus .omegon-command-brand strong {
+  font-size: 0.68rem;
+  letter-spacing: 0.09em;
+}
+
+.shell-assistant-focus .omegon-command-brand small {
+  color: #60788d;
+  font-size: 0.52rem;
+  letter-spacing: 0.15em;
+}
+
+.shell-assistant-focus .omegon-rail-button {
+  display: grid;
+  min-height: 3.4rem;
+  place-items: center;
+  padding: 0.45rem 0.2rem;
+  border: 1px solid transparent;
+  border-radius: 0.45rem;
+  color: #71869a;
+  background: transparent;
+  font: 700 0.58rem/1.2 var(--font-mono);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .omegon-rail-button:hover {
+  border-color: rgba(86, 186, 207, 0.22);
+  color: #b9d6df;
+  background: rgba(39, 105, 121, 0.12);
+}
+
+.shell-assistant-focus .omegon-rail-button-active {
+  border-color: rgba(94, 202, 222, 0.38);
+  color: #75d9eb;
+  background: rgba(36, 118, 139, 0.2);
+  box-shadow: inset 2px 0 #67d3e6;
+}
+
+.shell-assistant-focus .omegon-rail-spacer { flex: 1; }
+
+.shell-assistant-focus .omegon-control-deck {
+  min-width: 0;
+  min-height: 0;
+  padding: 1.2rem 1rem;
+  overflow-y: auto;
+  border-right: 1px solid rgba(62, 150, 170, 0.2);
+  background: linear-gradient(180deg, #091521, #07101a);
+}
+
+.shell-assistant-focus .omegon-control-deck > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.8rem;
+  margin-bottom: 1.4rem;
+  padding-bottom: 0.8rem;
+  border-bottom: 1px solid rgba(80, 154, 171, 0.2);
+}
+
+.shell-assistant-focus .omegon-control-deck > header span {
+  color: #547287;
+  font: 700 0.58rem/1 var(--font-mono);
+  letter-spacing: 0.15em;
+}
+
+.shell-assistant-focus .omegon-control-deck > header strong {
+  color: #c9e5ec;
+  font: 700 0.75rem/1 var(--font-mono);
+}
+
+.shell-assistant-focus .omegon-deck-group {
+  display: grid;
+  gap: 0.38rem;
+  margin-bottom: 1.5rem;
+}
+
+.shell-assistant-focus .omegon-deck-group h4 {
+  margin: 0 0 0.45rem;
+  color: #7892a6;
+  font: 700 0.64rem/1.2 var(--font-mono);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.shell-assistant-focus .omegon-deck-group button {
+  min-height: 2.35rem;
+  padding: 0 0.75rem;
+  border: 1px solid transparent;
+  border-radius: 0.35rem;
+  color: #9eafbf;
+  background: transparent;
+  font: 600 0.72rem/1.2 var(--font-mono);
+  text-align: left;
+}
+
+.shell-assistant-focus .omegon-deck-group button:hover,
+.shell-assistant-focus .omegon-deck-group button:focus-visible {
+  border-color: rgba(78, 176, 197, 0.28);
+  color: #d9edf1;
+  background: rgba(31, 94, 110, 0.16);
+  outline: none;
+}
+
+.shell-assistant-focus .omegon-console-main {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shell-assistant-focus .omegon-console-main > .agent-console-grid {
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+}
+
+@media (max-width: 1050px) {
+  .shell-assistant-focus .assistant-workspace.omegon-console {
+    grid-template-columns: 4.5rem minmax(0, 1fr);
+  }
+  .shell-assistant-focus .omegon-control-deck { display: none; }
+}
+
 /* Active populated conversation workspace. Keep this after the empty-state rules so
    the live transcript—not only a zero-history branch—owns the viewport. */
 .shell-assistant-focus .agent-page-sections.agent-page-sections-live {
