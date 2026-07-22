@@ -220,6 +220,9 @@ pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 #[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
+
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_CONTROL_PORT: u16 = 7842;
 #[cfg(not(target_arch = "wasm32"))]
 const DEFAULT_TLS_STATE_URL: &str = "https://127.0.0.1:7842/api/state";
 pub const AUSPEX_PRIMARY_DEFAULT_POSTURE: &str = "architect";
@@ -1120,7 +1123,15 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
             match bootstrap_from_http_state_async(&default_state_url, &ConnectHints::from_env())
                 .await
             {
-                Ok(result) => return result,
+                Ok(result) => {
+                    // Attached to an existing Auspex primary on the
+                    // default port. Sweep orphans stranded on fallback
+                    // ports by earlier SIGKILLed sessions — the pid file
+                    // only remembers the most recent child, so this is
+                    // the only place they get found.
+                    reap_orphaned_omegon_serves(Some(DEFAULT_CONTROL_PORT));
+                    return result;
+                }
                 Err(error) => {
                     eprintln!(
                         "auspex: existing Auspex primary Omegon at {default_state_url} failed bootstrap ({error}); reaping and spawning fresh one"
@@ -1135,8 +1146,18 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         }
     }
 
+    // Sweep every orphaned Auspex-owned serve process (any port) before
+    // picking a port, so a TERM'd orphan on the default port doesn't
+    // force this launch up the fallback range.
+    if reap_orphaned_omegon_serves(None) > 0 {
+        for _ in 0..10 {
+            if port_is_free(DEFAULT_CONTROL_PORT).await {
+                break;
+            }
+            tokio::time::sleep(SPAWN_POLL).await;
+        }
+    }
     let control_port = choose_auspex_control_port().await;
-    reap_owned_omegon_child();
     ensure_omegon_profile_for_auspex();
     validate_deploy_prerequisites();
     install_auspex_omegon_assets();
@@ -1171,10 +1192,15 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     };
 
     record_owned_omegon_pid(child.id());
+    register_owned_omegon_exit_reaper();
 
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
+            // Kill the child we just spawned — returning a failure while
+            // it keeps running is exactly the orphan leak.
+            let _ = child.start_kill();
+            clear_owned_omegon_pid();
             return BootstrapResult::startup_failure(
                 "Owned Omegon backend spawned but stdout was not captured.".into(),
             );
@@ -1236,6 +1262,10 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     }
 
     let Some(info) = startup_info else {
+        // Startup timed out or stdout closed without a handshake. Do not
+        // leave the half-started child running behind a failure result.
+        let _ = child.start_kill();
+        clear_owned_omegon_pid();
         let stderr_tail = if startup_stderr.is_empty() {
             String::new()
         } else {
@@ -1368,7 +1398,19 @@ fn clear_owned_omegon_pid() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn owned_omegon_pids() -> Vec<u32> {
+fn command_is_owned_omegon_serve(command: &str) -> bool {
+    // Match the shape produced by build_omegon_serve_args():
+    //   omegon --posture <p> serve --agent <...>/agents/auspex-agent --control-port <port> --strict-port --model <m>
+    // The agent bundle path is the ownership signal; the port varies
+    // (7842 plus fallbacks), so it must not be part of the match.
+    command.contains("omegon")
+        && command.contains(" serve ")
+        && command.contains(AUSPEX_AGENT_BUNDLE_REL)
+        && command.contains("--strict-port")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn owned_omegon_processes() -> Vec<(u32, String)> {
     let output = match std::process::Command::new("ps")
         .args(["ax", "-o", "pid=,command="])
         .output()
@@ -1386,14 +1428,103 @@ fn owned_omegon_pids() -> Vec<u32> {
         .filter_map(|line| {
             let trimmed = line.trim();
             let (pid, command) = trimmed.split_once(' ')?;
-            if !(command.contains("omegon serve --control-port 7842 --strict-port")
-                || command.contains("omegon serve --strict-port --control-port 7842"))
-            {
+            if !command_is_owned_omegon_serve(command) {
                 return None;
             }
-            pid.parse::<u32>().ok()
+            Some((pid.parse::<u32>().ok()?, command.to_string()))
         })
         .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn owned_omegon_pids() -> Vec<u32> {
+    owned_omegon_processes()
+        .into_iter()
+        .map(|(pid, _)| pid)
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn command_is_on_control_port(command: &str, port: u16) -> bool {
+    let with_space = format!("--control-port {port} ");
+    let at_end = format!("--control-port {port}");
+    command.contains(&with_space) || command.ends_with(&at_end)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn parent_pid_of(pid: u32) -> Option<u32> {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "ppid=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|ppid| *ppid > 1)
+}
+
+/// Pids that must never be swept: this process and its ancestor chain.
+/// If Auspex (or a test harness) is itself hosted under an owned
+/// `omegon serve`, killing that ancestor kills the session doing the
+/// cleanup.
+#[cfg(not(target_arch = "wasm32"))]
+fn protected_pids() -> Vec<u32> {
+    let mut protected = vec![std::process::id()];
+    let mut current = std::process::id();
+    // Bounded walk — ancestor chains are short; avoid loops on ps quirks.
+    for _ in 0..16 {
+        match parent_pid_of(current) {
+            Some(ppid) if !protected.contains(&ppid) => {
+                protected.push(ppid);
+                current = ppid;
+            }
+            _ => break,
+        }
+    }
+    protected
+}
+
+/// Kill every Auspex-owned `omegon serve` process except the one bound to
+/// `keep_port` (the primary being attached to, if any). Returns the number
+/// of processes killed.
+///
+/// Orphans accumulate on fallback ports when an Auspex process dies
+/// without running its exit reaper (SIGKILL, crash): the pid file only
+/// remembers the most recent child, so a matcher-based sweep is the only
+/// way to find the rest.
+#[cfg(not(target_arch = "wasm32"))]
+fn reap_orphaned_omegon_serves(keep_port: Option<u16>) -> usize {
+    let candidates = owned_omegon_processes();
+    if candidates.is_empty() {
+        return 0;
+    }
+    let protected = protected_pids();
+    let mut kept_any = false;
+    let mut killed = 0;
+    for (pid, command) in candidates {
+        if protected.contains(&pid) {
+            kept_any = true;
+            continue;
+        }
+        if let Some(port) = keep_port
+            && command_is_on_control_port(&command, port)
+        {
+            kept_any = true;
+            continue;
+        }
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        killed += 1;
+    }
+    if !kept_any {
+        clear_owned_omegon_pid();
+    }
+    killed
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1401,6 +1532,25 @@ fn pid_is_owned_omegon(pid: u32) -> bool {
     owned_omegon_pids()
         .into_iter()
         .any(|candidate| candidate == pid)
+}
+
+/// Kill the owned Omegon child when the Auspex process exits.
+///
+/// Dioxus's desktop event loop terminates the process from inside
+/// `launch()` (it never returns), so ordinary post-loop teardown code is
+/// unreachable. `atexit` handlers still run on that normal-exit path
+/// (including `std::process::exit`), which makes this the one reliable
+/// hook for reaping the child on Cmd+Q. SIGKILL still leaks — the
+/// launch-time reap in `spawn_and_attach_omegon` covers that case.
+#[cfg(not(target_arch = "wasm32"))]
+fn register_owned_omegon_exit_reaper() {
+    extern "C" fn reap_on_exit() {
+        reap_owned_omegon_child();
+    }
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| unsafe {
+        libc::atexit(reap_on_exit);
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1695,12 +1845,7 @@ fn default_omegon_control_port_pids() -> Vec<u32> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_conflicting_omegon_children() {
-    for pid in owned_omegon_pids() {
-        let _ = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status();
-    }
-    clear_owned_omegon_pid();
+    reap_orphaned_omegon_serves(None);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1775,6 +1920,60 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn command_matcher_accepts_real_spawn_shape_on_any_port() {
+        let real = "/Users/x/omegon/target/release/omegon --posture architect serve \
+                    --agent /Users/x/auspex/agents/auspex-agent --control-port 7883 \
+                    --strict-port --model openai-codex:gpt-5.5";
+        assert!(command_is_owned_omegon_serve(real));
+    }
+
+    #[test]
+    fn control_port_filter_matches_exact_port_only() {
+        let primary = "omegon --posture architect serve --agent /x/agents/auspex-agent \
+                       --control-port 7842 --strict-port --model m";
+        assert!(command_is_on_control_port(primary, 7842));
+        // Prefix of a longer port number must not match.
+        assert!(!command_is_on_control_port(primary, 784));
+        assert!(!command_is_on_control_port(primary, 7843));
+
+        // Port as the final token (no trailing args).
+        let fallback = "omegon serve --agent /x/agents/auspex-agent --control-port 7843";
+        assert!(command_is_on_control_port(fallback, 7843));
+        assert!(!command_is_on_control_port(fallback, 7842));
+    }
+
+    #[test]
+    fn protected_pids_includes_self_and_walks_ancestors() {
+        let protected = protected_pids();
+        assert!(protected.contains(&std::process::id()));
+        // The test process always has a live parent (cargo test runner).
+        assert!(
+            protected.len() >= 2,
+            "expected at least self + one ancestor, got {protected:?}"
+        );
+        // Never protect pid 1 or 0 — filter guards against sweeping init,
+        // and against a degenerate chain.
+        assert!(!protected.contains(&0));
+        assert!(!protected.contains(&1));
+    }
+
+    #[test]
+    fn command_matcher_rejects_foreign_omegon_processes() {
+        // An omegon serve not launched with the auspex agent bundle is not ours.
+        assert!(!command_is_owned_omegon_serve(
+            "omegon serve --control-port 7842 --strict-port"
+        ));
+        // Non-serve omegon invocations are never ours.
+        assert!(!command_is_owned_omegon_serve(
+            "omegon auth login openai-codex"
+        ));
+        // Unrelated processes mentioning the bundle path are not serve commands.
+        assert!(!command_is_owned_omegon_serve(
+            "vim /Users/x/auspex/agents/auspex-agent/manifest.toml"
+        ));
     }
 
     #[test]
