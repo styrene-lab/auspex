@@ -1,6 +1,8 @@
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeSet;
 
+use crate::omegon_control::DelegateSummarySnapshot;
+
 pub type RunId = String;
 pub type WorkerId = String;
 
@@ -132,6 +134,68 @@ pub enum RunTransitionError {
     ResultRequired,
 }
 
+/// Compatibility adapter for Omegon's current active-delegate projection.
+///
+/// The upstream snapshot does not yet carry parent turn, directive, budget,
+/// scope, or a distinct worker id. Auspex therefore preserves only reported
+/// evidence and supplies explicit conservative defaults. `task_id` is stable
+/// enough to serve as the run identity; worker identity remains attributed to
+/// the reported agent name until the control plane exposes a worker id.
+pub fn run_from_delegate_snapshot(
+    snapshot: &DelegateSummarySnapshot,
+    parent_session_id: &str,
+) -> ManagedAgentRun {
+    let run_id = non_empty_or(&snapshot.task_id, "unidentified-delegate");
+    let worker_id = non_empty_or(&snapshot.agent_name, "unidentified-worker");
+    let status = delegate_status(&snapshot.status);
+    ManagedAgentRun {
+        run_id,
+        worker_id,
+        parent_session_id: parent_session_id.to_string(),
+        parent_turn_id: String::new(),
+        directive: String::new(),
+        scope: BTreeSet::new(),
+        budget: ManagedAgentBudget::compatibility_default(),
+        status,
+        last_sequence: 0,
+        result: None,
+        failure: (status == RunStatus::Failed).then(|| snapshot.status.clone()),
+    }
+}
+
+impl ManagedAgentBudget {
+    /// Bounded defaults for legacy delegate snapshots that report no budget.
+    /// These describe Auspex's projection boundary; they do not claim that the
+    /// upstream execution was launched with these constraints.
+    pub fn compatibility_default() -> Self {
+        Self {
+            max_turns: 50,
+            token_limit: 0,
+            wall_clock_seconds: 0,
+            allowed_tools: BTreeSet::new(),
+            allowed_paths: BTreeSet::new(),
+            network_policy: NetworkPolicy::Denied,
+            max_result_bytes: 64 * 1024,
+        }
+    }
+}
+
+fn delegate_status(reported: &str) -> RunStatus {
+    match reported.trim().to_ascii_lowercase().as_str() {
+        "queued" | "pending" => RunStatus::Queued,
+        "waiting" | "waiting_for_guidance" | "needs_input" => RunStatus::WaitingForGuidance,
+        "completed" | "complete" | "done" | "succeeded" => RunStatus::Completed,
+        "failed" | "error" => RunStatus::Failed,
+        "cancelled" | "canceled" => RunStatus::Cancelled,
+        _ => RunStatus::Running,
+    }
+}
+
+fn non_empty_or(value: &str, fallback: &str) -> String {
+    let value = value.trim();
+    if value.is_empty() { fallback } else { value }.to_string()
+}
+
 impl ManagedAgentRun {
     pub fn apply_event(&mut self, event: &ManagedAgentEvent) -> Result<(), RunTransitionError> {
         if event.run_id != self.run_id || event.worker_id != self.worker_id {
@@ -259,5 +323,50 @@ mod tests {
         run.apply_event(&event(1, ManagedAgentEventKind::RunAccepted)).unwrap();
         run.apply_event(&event(2, ManagedAgentEventKind::RunCancelled)).unwrap();
         assert_eq!(run.apply_event(&event(3, ManagedAgentEventKind::ProgressReported)), Err(RunTransitionError::TerminalRun));
+    }
+
+    #[test]
+    fn adapts_active_delegate_without_inventing_unreported_fields() {
+        let snapshot = DelegateSummarySnapshot {
+            task_id: "delegate-42".into(),
+            agent_name: "scout".into(),
+            status: "running".into(),
+            elapsed_ms: 1200,
+        };
+        let run = run_from_delegate_snapshot(&snapshot, "session-1");
+        assert_eq!(run.run_id, "delegate-42");
+        assert_eq!(run.worker_id, "scout");
+        assert_eq!(run.parent_session_id, "session-1");
+        assert_eq!(run.status, RunStatus::Running);
+        assert!(run.parent_turn_id.is_empty());
+        assert!(run.directive.is_empty());
+        assert!(run.scope.is_empty());
+    }
+
+    #[test]
+    fn maps_terminal_delegate_statuses() {
+        for (reported, expected) in [
+            ("done", RunStatus::Completed),
+            ("failed", RunStatus::Failed),
+            ("cancelled", RunStatus::Cancelled),
+        ] {
+            let snapshot = DelegateSummarySnapshot {
+                task_id: "task".into(),
+                agent_name: "worker".into(),
+                status: reported.into(),
+                elapsed_ms: 0,
+            };
+            assert_eq!(run_from_delegate_snapshot(&snapshot, "session").status, expected);
+        }
+    }
+
+    #[test]
+    fn assigns_explicit_fallback_identity_for_missing_legacy_fields() {
+        let snapshot = DelegateSummarySnapshot::default();
+        let run = run_from_delegate_snapshot(&snapshot, "session");
+        assert_eq!(run.run_id, "unidentified-delegate");
+        assert_eq!(run.worker_id, "unidentified-worker");
+        assert_eq!(run.status, RunStatus::Running);
+        assert_eq!(run.budget.network_policy, NetworkPolicy::Denied);
     }
 }
