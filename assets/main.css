@@ -119,11 +119,19 @@ body {
   grid-template-rows: auto minmax(0, 1fr) auto;
   grid-template-columns: minmax(0, 1fr);
   width: 100%;
-  height: 100%;
+  height: 100vh;
   box-sizing: border-box;
   overflow: hidden;
   padding: 1.5rem 0.35rem 0.35rem;
   gap: 0.35rem;
+}
+
+html,
+body,
+#main {
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
 }
 
 .top-chrome {
@@ -1567,14 +1575,14 @@ body {
 
 .tool-summary::before,
 .system-summary::before {
-  content: "▸";
+  content: "\25B8";
   color: var(--text-muted);
   margin-right: 0.2rem;
 }
 
 .tool-details[open] .tool-summary::before,
 .system-details[open] .system-summary::before {
-  content: "▾";
+  content: "\25BE";
 }
 
 .tool-detail-body,
@@ -3946,7 +3954,7 @@ body {
 }
 
 .widget-disclosure-summary[aria-expanded="true"]::after {
-  content: "−";
+  content: "\2212";
 }
 
 .widget-disclosure-body {
@@ -7377,14 +7385,6 @@ body,
   box-shadow: none !important;
 }
 
-.shell-assistant-focus .agent-turn-card::before {
-  content: "";
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 0.18rem;
-  background: rgba(96, 120, 136, 0.55);
-}
-
 .shell-assistant-focus .agent-turn-card[data-role="operator"] {
   justify-self: end;
   border-right: 0.18rem solid rgba(42, 180, 200, 0.92) !important;
@@ -7817,7 +7817,7 @@ body,
 }
 
 .shell-assistant-focus .agent-catalog-copy strong::after {
-  content: " · ports 7842 / 7843-7899 / 7900-7999";
+  content: " \B7  ports 7842 / 7843-7899 / 7900-7999";
   color: rgba(110, 202, 216, 0.74);
   font-size: 0.58rem;
   letter-spacing: 0.08em;
@@ -8309,11 +8309,14 @@ body,
 .shell-assistant-focus .assistant-workspace.omegon-console {
   display: grid !important;
   grid-template-columns: 6rem 19rem minmax(0, 1fr) !important;
+  grid-template-rows: minmax(0, 1fr) !important;
+  align-items: stretch !important;
+  align-content: stretch !important;
   gap: 0 !important;
   width: 100% !important;
   max-width: none !important;
-  height: calc(100vh - 5.1rem) !important;
-  min-height: calc(100vh - 5.1rem) !important;
+  height: 100% !important;
+  min-height: 100% !important;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
@@ -8643,14 +8646,6 @@ body,
   border-top: 1px solid rgba(63, 126, 145, 0.15);
 }
 
-.shell-assistant-focus .agent-turn-meta {
-  position: absolute !important;
-  top: 0.88rem !important;
-  left: 0.9rem !important;
-  width: 5rem !important;
-  margin: 0 !important;
-}
-
 .shell-assistant-focus .agent-turn-role {
   color: #66cadc !important;
   font-size: 0.56rem !important;
@@ -8681,13 +8676,81 @@ body,
    No absolute positioning for operational chrome.
    ============================================================ */
 
-.shell-assistant-focus .assistant-stage {
+.shell.shell-assistant-focus {
   display: flex;
   flex-direction: column;
   height: 100vh;
   min-height: 0;
   overflow: hidden;
+}
+
+/* The Assistants workspace wraps the stage in .assistant-shell
+   (app.rs render: .shell > .assistant-shell > main.assistant-stage).
+   The wrapper MUST be part of the stretch chain or everything below
+   collapses to content height → dead band at the window bottom. */
+.shell > .assistant-shell,
+.shell-assistant-focus .assistant-shell-single {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Non-focus shell: the same stretch chain must apply, or the stage
+   collapses to content height and the window bottom renders as a dead
+   band (stage stuck at content height regardless of viewport). */
+.shell > .assistant-stage,
+.shell > .assistant-stage-integrated,
+.assistant-shell > .assistant-stage,
+.assistant-shell > .assistant-stage-integrated {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.assistant-stage > .assistant-workspace,
+.assistant-stage > .omegon-console,
+.assistant-stage-integrated > .assistant-workspace,
+.assistant-stage-integrated > .omegon-console {
+  flex: 1;
+  min-height: 0;
+}
+
+.assistant-stage .omegon-console-main,
+.assistant-stage .agent-console-grid,
+.assistant-stage .agent-console-panel,
+.assistant-stage .agent-config-form,
+.assistant-stage .agent-page-sections-live,
+.assistant-stage .agent-page-section-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  height: auto;
+}
+
+.assistant-stage .agent-embedded-chat {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+
+/* Chain: .shell > main.assistant-stage > section.assistant-workspace.omegon-console
+   (app.rs render_assistant_stage). Every link must stretch, or the whole
+   console collapses to content height. */
+.shell-assistant-focus .assistant-stage,
+.shell-assistant-focus .assistant-stage-integrated {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
   padding: 0;
+  margin: 0;
+  overflow: hidden;
 }
 
 .shell-assistant-focus .assistant-workspace.omegon-console {
@@ -8703,6 +8766,8 @@ body,
   flex-direction: column;
   flex: 1;
   min-height: 0;
+  height: auto;
+  overflow: hidden;
   padding: 0.75rem 1rem 1rem;
 }
 
@@ -8773,7 +8838,7 @@ body,
 }
 
 .shell-assistant-focus .agent-connection-state::before {
-  content: "●";
+  content: "\25CF";
   margin-right: 0.35rem;
 }
 
@@ -8851,7 +8916,7 @@ body,
 
 .shell-assistant-focus .agent-context-disclosure > summary::after,
 .shell-assistant-focus .agent-diagnostics-disclosure > summary::after {
-  content: "▸";
+  content: "\25B8";
   color: rgba(94, 210, 255, 0.6);
   transition: transform 120ms ease;
 }
@@ -8990,6 +9055,7 @@ body,
   position: static;
   flex-shrink: 0;
   display: flex;
+  flex-direction: row;
   align-items: flex-end;
   gap: 0.6rem;
   margin: 0;

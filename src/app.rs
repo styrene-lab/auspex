@@ -1550,6 +1550,10 @@ pub fn App() -> Element {
                 let script = r#"
                     return JSON.stringify({
                       innerHeight: window.innerHeight,
+                      innerWidth: window.innerWidth,
+                      dpr: window.devicePixelRatio,
+                      docH: document.documentElement.clientHeight,
+                      bodyH: Math.round(document.body.getBoundingClientRect().height),
                       boxes: [
                         '.debug-shell-main',
                         '.shell',
@@ -1577,31 +1581,25 @@ pub fn App() -> Element {
                       })
                     })
                 "#;
-                // Give the webview a moment to paint before measuring.
+                // Give the webview a moment to paint, then re-measure every second
+                // so the overlay reflects live viewport state (e.g. after resize).
                 tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
-                match document::eval(script).await {
-                    Ok(reply) => match reply.as_str() {
-                        Some(raw) => match parse_layout_debug_snapshot(raw) {
-                            Some(snapshot) => {
-                                eprintln!("=== LAYOUT DEBUG ===");
-                                eprintln!("  innerHeight: {}", snapshot.inner_height);
-                                for item in &snapshot.boxes {
-                                    eprintln!(
-                                        "  {} → top={} left={} w={} h={}",
-                                        item.selector,
-                                        item.top,
-                                        item.left,
-                                        item.width,
-                                        item.height
-                                    );
+                loop {
+                    match document::eval(script).await {
+                        Ok(reply) => match reply.as_str() {
+                            Some(raw) => match parse_layout_debug_snapshot(raw) {
+                                Some(snapshot) => {
+                                    layout_debug_snapshot.set(Some(snapshot));
                                 }
-                                layout_debug_snapshot.set(Some(snapshot));
+                                None => eprintln!("LAYOUT DEBUG: parse failed for: {raw}"),
+                            },
+                            None => {
+                                eprintln!("LAYOUT DEBUG: eval reply not a string: {reply:?}")
                             }
-                            None => eprintln!("LAYOUT DEBUG: parse failed for: {raw}"),
                         },
-                        None => eprintln!("LAYOUT DEBUG: eval reply not a string: {reply:?}"),
-                    },
-                    Err(err) => eprintln!("LAYOUT DEBUG: eval error: {err:?}"),
+                        Err(err) => eprintln!("LAYOUT DEBUG: eval error: {err:?}"),
+                    }
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 }
             });
         });
