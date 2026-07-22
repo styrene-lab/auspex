@@ -1548,21 +1548,21 @@ pub fn App() -> Element {
         use_effect(move || {
             spawn(async move {
                 let script = r#"
-                    JSON.stringify({
+                    return JSON.stringify({
                       innerHeight: window.innerHeight,
                       boxes: [
                         '.debug-shell-main',
-                        '.debug-shell-center-host',
-                        '.cockpit-cop-stage',
-                        '.cockpit-cop-bay',
-                        '.cockpit-focus-host',
-                        '.focus-host-shell',
-                        '.focus-host-body',
-                        '.cockpit-cop-body',
-                        '.cockpit-cop-focus',
-                        '.transcript',
-                        '.bubble-user',
-                        '.turn-card'
+                        '.shell',
+                        '.assistant-stage',
+                        '.assistant-workspace',
+                        '.omegon-console-main',
+                        '.agent-console-grid',
+                        '.agent-console-panel',
+                        '.agent-config-form',
+                        '.agent-page-sections-live',
+                        '.agent-page-section-chat',
+                        '.agent-embedded-chat',
+                        '.agent-embedded-composer'
                       ].map((selector) => {
                         const el = document.querySelector(selector);
                         if (!el) return { selector, top: -1, left: -1, width: -1, height: -1 };
@@ -1577,19 +1577,31 @@ pub fn App() -> Element {
                       })
                     })
                 "#;
-                if let Ok(reply) = document::eval(script).await
-                    && let Some(raw) = reply.as_str()
-                    && let Some(snapshot) = parse_layout_debug_snapshot(raw)
-                {
-                    eprintln!("=== LAYOUT DEBUG ===");
-                    eprintln!("  innerHeight: {}", snapshot.inner_height);
-                    for item in &snapshot.boxes {
-                        eprintln!(
-                            "  {} → left={} w={} h={}",
-                            item.selector, item.left, item.width, item.height
-                        );
-                    }
-                    layout_debug_snapshot.set(Some(snapshot));
+                // Give the webview a moment to paint before measuring.
+                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                match document::eval(script).await {
+                    Ok(reply) => match reply.as_str() {
+                        Some(raw) => match parse_layout_debug_snapshot(raw) {
+                            Some(snapshot) => {
+                                eprintln!("=== LAYOUT DEBUG ===");
+                                eprintln!("  innerHeight: {}", snapshot.inner_height);
+                                for item in &snapshot.boxes {
+                                    eprintln!(
+                                        "  {} → top={} left={} w={} h={}",
+                                        item.selector,
+                                        item.top,
+                                        item.left,
+                                        item.width,
+                                        item.height
+                                    );
+                                }
+                                layout_debug_snapshot.set(Some(snapshot));
+                            }
+                            None => eprintln!("LAYOUT DEBUG: parse failed for: {raw}"),
+                        },
+                        None => eprintln!("LAYOUT DEBUG: eval reply not a string: {reply:?}"),
+                    },
+                    Err(err) => eprintln!("LAYOUT DEBUG: eval error: {err:?}"),
                 }
             });
         });
