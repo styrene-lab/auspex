@@ -5334,10 +5334,6 @@ body {
   white-space: nowrap;
 }
 
-
-
-
-
 .assistant-section-title span,
 .assistant-card-heading span,
 .assistant-card-meta,
@@ -5461,28 +5457,6 @@ body {
 .shell-assistant-focus .assistant-shell-single {
   width: min(100vw - 1.5rem, 1440px);
   margin: 0.75rem auto;
-}
-
-.shell-assistant-focus .assistant-stage {
-  min-height: calc(100vh - 1.5rem);
-  overflow: hidden;
-  border: 1px solid rgba(42, 180, 200, 0.22);
-  border-radius: 18px;
-  background: rgba(6, 10, 17, 0.96);
-}
-
-.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav {
-  margin: 0;
-  padding: 0.7rem;
-  border: 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.12);
-  border-radius: 0;
-  background: rgba(6, 10, 17, 0.98);
-}
-
-.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav .tab {
-  min-height: 2.45rem;
-  padding: 0 1rem;
 }
 
 .shell-assistant-focus .assistant-endpoint-panel,
@@ -5723,10 +5697,6 @@ body {
   grid-template-columns: minmax(18rem, 0.75fr) minmax(24rem, 1.25fr);
 }
 
-.agent-config-form {
-  gap: 0.75rem;
-}
-
 .agent-config-field {
   display: grid;
   gap: 0.35rem;
@@ -5757,42 +5727,6 @@ body {
 .shell-assistant-focus .assistant-shell-single {
   width: 100vw;
   margin: 0;
-}
-
-.shell-assistant-focus .assistant-stage {
-  min-height: 100vh;
-  border: 0;
-  border-radius: 0;
-  background: #020406;
-}
-
-.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav {
-  height: 3.15rem;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 2.5rem;
-  padding: 0;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.14);
-  background: #030507;
-}
-
-.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav .tab {
-  min-height: 2rem;
-  border: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-  padding: 0 0.25rem;
-  color: rgba(226, 232, 240, 0.62);
-  font: 900 0.72rem/1 var(--font-mono);
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-.shell-assistant-focus .assistant-stage > .cockpit-workspace-nav .tab-active {
-  color: var(--text-primary);
-  border-bottom: 2px solid rgba(226, 232, 240, 0.84);
 }
 
 .assistant-workspace,
@@ -5850,12 +5784,6 @@ body {
   font: 900 0.72rem/1 var(--font-mono);
   letter-spacing: 0.14em;
   text-transform: uppercase;
-}
-
-.assistant-main-grid,
-.agent-config-grid {
-  grid-template-columns: minmax(20rem, 0.82fr) minmax(24rem, 1.18fr);
-  gap: 0.7rem;
 }
 
 .assistant-roster-panel,
@@ -6005,13 +5933,6 @@ body {
   font-size: 0.82rem;
 }
 
-.assistant-main-grid,
-.agent-config-grid {
-  min-height: 0;
-  height: calc(100vh - 8.8rem);
-  grid-template-columns: minmax(18rem, 0.72fr) minmax(26rem, 1.28fr);
-}
-
 .assistant-roster-panel,
 .assistant-detail-panel {
   min-height: 0;
@@ -6042,10 +5963,6 @@ body {
   line-height: 1.25;
 }
 
-.agent-config-form {
-  gap: 0.45rem;
-}
-
 .agent-config-field {
   gap: 0.2rem;
 }
@@ -6058,14 +5975,6 @@ body {
 
 .assistant-chat-action {
   max-width: 16rem !important;
-}
-
-@media (max-width: 1100px) {
-  .assistant-main-grid,
-  .agent-config-grid {
-    height: auto;
-    grid-template-columns: 1fr;
-  }
 }
 
 .agent-dashboard-grid {
@@ -6280,27 +6189,6 @@ body {
   }
 }
 
-.agent-page-section-chat {
-  gap: 0.9rem;
-}
-
-.agent-embedded-chat {
-  display: flex;
-  flex-direction: column;
-  gap: 0.55rem;
-  min-height: 8rem;
-  max-height: 18rem;
-  overflow: auto;
-  padding: 0.9rem;
-  border: 1px solid rgba(42, 180, 200, 0.22);
-  border-radius: 1rem;
-  background: rgba(3, 10, 18, 0.42);
-}
-
-.agent-embedded-chat-empty {
-  justify-content: center;
-}
-
 .agent-embedded-empty {
   display: flex;
   flex-direction: column;
@@ -6311,21 +6199,6 @@ body {
 .agent-embedded-empty strong {
   color: var(--text-primary);
   font-size: 1rem;
-}
-
-.agent-embedded-composer {
-  border: 1px solid rgba(42, 180, 200, 0.20);
-  border-radius: 1rem;
-  background: rgba(6, 13, 24, 0.72);
-  padding: 0.8rem;
-}
-
-.agent-console-grid {
-  grid-template-columns: minmax(0, 1fr);
-}
-
-.agent-console-panel {
-  max-width: none;
 }
 
 .agent-dashboard-badges {
@@ -6378,21 +6251,6 @@ body {
   grid-column: 1 / -1;
 }
 
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-config-grid,
-.shell-assistant-focus .agent-console-grid {
-  display: block;
-  height: auto;
-  min-height: 0;
-}
-
-.shell-assistant-focus .assistant-detail-panel,
-.shell-assistant-focus .agent-console-panel {
-  height: auto;
-  min-height: 0;
-  overflow: visible;
-}
-
 .agent-control-grid {
   grid-template-columns: minmax(20rem, 1.45fr) repeat(4, minmax(9.5rem, 0.85fr));
   align-items: stretch;
@@ -6433,15 +6291,6 @@ body {
   grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
-.agent-embedded-chat {
-  min-height: 6rem;
-  max-height: 14rem;
-}
-
-.agent-embedded-composer .composer-input {
-  min-height: 5rem;
-}
-
 @media (max-width: 1400px) {
   .agent-control-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -6474,35 +6323,10 @@ body {
   background: var(--agent-bg);
 }
 
-.shell-assistant-focus .assistant-stage,
-.shell-assistant-focus .assistant-shell,
-.shell-assistant-focus .assistant-workspace {
-  background: var(--agent-bg) !important;
-}
-
 .shell-assistant-focus .assistant-workspace {
   gap: 0;
   padding: 0;
   color: var(--agent-text);
-}
-
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-console-grid {
-  display: block;
-  border: 1px solid var(--agent-border);
-  background: linear-gradient(180deg, rgba(8, 14, 24, 0.98), rgba(5, 9, 16, 0.98));
-  box-shadow: inset 3px 0 0 rgba(42, 180, 200, 0.82);
-}
-
-.shell-assistant-focus .agent-console-panel,
-.shell-assistant-focus .assistant-detail-panel,
-.shell-assistant-focus .agent-page-section,
-.shell-assistant-focus .agent-runtime-bar,
-.shell-assistant-focus .agent-page-section-chat {
-  border-radius: var(--agent-radius) !important;
-  border-color: var(--agent-border-dim) !important;
-  background: var(--agent-panel) !important;
-  box-shadow: none !important;
 }
 
 .shell-assistant-focus .agent-dashboard-titlebar {
@@ -6537,10 +6361,6 @@ body {
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-}
-
-.shell-assistant-focus .agent-dashboard-actions {
-  gap: 0.55rem;
 }
 
 .shell-assistant-focus .agent-dashboard-model,
@@ -6624,14 +6444,6 @@ body {
   font-weight: 850;
   letter-spacing: 0.13em;
   text-transform: uppercase;
-}
-
-.shell-assistant-focus .agent-page-sections,
-.shell-assistant-focus .agent-page-sections-live {
-  display: grid;
-  grid-template-rows: auto auto minmax(15rem, 1fr);
-  gap: 0.5rem;
-  padding: 0.55rem;
 }
 
 .shell-assistant-focus .agent-page-secondary-grid {
@@ -6726,43 +6538,6 @@ body {
   justify-self: stretch;
   align-self: end;
   margin: 0;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  display: grid;
-  grid-template-rows: auto minmax(6rem, 1fr) auto;
-  gap: 0.55rem;
-  padding: 0.75rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-composer {
-  border: 1px solid rgba(32, 70, 98, 0.86) !important;
-  border-radius: var(--agent-radius) !important;
-  background: rgba(4, 8, 14, 0.66) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  min-height: 7rem;
-  max-height: 16rem;
-  padding: 0.75rem;
-  color: var(--agent-muted);
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  padding: 0.55rem;
-}
-
-.shell-assistant-focus .agent-embedded-composer .chat-composer {
-  gap: 0.5rem;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input {
-  min-height: 3rem;
-  max-height: 5rem;
-  border-color: rgba(32, 70, 98, 0.95) !important;
-  background: rgba(2, 5, 10, 0.92) !important;
-  color: var(--agent-text) !important;
 }
 
 @media (max-width: 1350px) {
@@ -6999,21 +6774,6 @@ body {
     var(--agent-bg) !important;
 }
 
-.shell-assistant-focus .assistant-stage {
-  padding: 0.75rem;
-}
-
-.shell-assistant-focus .agent-console-grid {
-  border: 1px solid rgba(42, 180, 200, 0.24);
-  border-radius: 18px;
-  background:
-    linear-gradient(180deg, rgba(13, 24, 38, 0.9), rgba(6, 10, 18, 0.96));
-  box-shadow:
-    inset 0 1px 0 rgba(110, 202, 216, 0.10),
-    0 18px 60px rgba(0, 0, 0, 0.35);
-  overflow: hidden;
-}
-
 .shell-assistant-focus .agent-dashboard-titlebar {
   min-height: 3.35rem;
   padding: 0.7rem 0.95rem;
@@ -7065,18 +6825,6 @@ body {
   letter-spacing: -0.03em;
 }
 
-.shell-assistant-focus .agent-live-domain,
-.shell-assistant-focus .agent-telemetry-counter,
-.shell-assistant-focus .agent-telemetry-context,
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-composer {
-  border: 1px solid rgba(45, 78, 108, 0.48) !important;
-  border-radius: 12px !important;
-  background:
-    linear-gradient(180deg, rgba(11, 20, 32, 0.86), rgba(4, 8, 15, 0.72)) !important;
-  box-shadow: inset 0 1px 0 rgba(110, 202, 216, 0.05) !important;
-}
-
 .shell-assistant-focus .agent-live-domain-label,
 .shell-assistant-focus .agent-telemetry-header em,
 .shell-assistant-focus .agent-live-kv span,
@@ -7096,13 +6844,6 @@ body {
 .shell-assistant-focus .agent-telemetry-counter strong {
   color: var(--agent-accent);
   text-shadow: 0 0 18px rgba(42, 180, 200, 0.20);
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  border: 1px solid rgba(42, 180, 200, 0.22) !important;
-  border-radius: 16px !important;
-  background: rgba(9, 16, 27, 0.74) !important;
-  margin: 0.25rem 0.3rem 0.45rem;
 }
 
 .shell-assistant-focus .agent-page-section-heading h4 {
@@ -7136,17 +6877,9 @@ body {
   box-shadow: 0 0 0 2px rgba(42, 180, 200, 0.12), inset 0 1px 0 rgba(255,255,255,0.04);
 }
 
-.shell-assistant-focus .agent-embedded-chat {
-  color: #c9d5e1;
-}
-
 .shell-assistant-focus .agent-history-line,
 .shell-assistant-focus .agent-embedded-empty span {
   color: rgba(201, 213, 225, 0.82);
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  background: rgba(5, 10, 18, 0.78) !important;
 }
 
 .shell-assistant-focus .composer-submit {
@@ -7159,32 +6892,11 @@ body {
   --agent-radius: 4px;
 }
 
-.shell-assistant-focus .agent-console-grid {
-  border-radius: 6px;
-  box-shadow:
-    inset 3px 0 0 rgba(42, 180, 200, 0.58),
-    inset 0 1px 0 rgba(110, 202, 216, 0.07),
-    0 12px 44px rgba(0, 0, 0, 0.28);
-}
-
 .shell-assistant-focus .agent-mini-action,
 .shell-assistant-focus .agent-apply-action,
 .shell-assistant-focus .assistant-chat-action,
 .shell-assistant-focus .composer-submit {
   border-radius: 3px !important;
-}
-
-.shell-assistant-focus .agent-live-domain,
-.shell-assistant-focus .agent-telemetry-counter,
-.shell-assistant-focus .agent-telemetry-context,
-.shell-assistant-focus .agent-page-section-chat,
-.shell-assistant-focus .agent-turn-envelope,
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-composer,
-.shell-assistant-focus .agent-config-field select,
-.shell-assistant-focus .agent-config-field input,
-.shell-assistant-focus .composer-input {
-  border-radius: 4px !important;
 }
 
 .shell-assistant-focus .agent-dashboard-model {
@@ -7255,11 +6967,6 @@ body {
   grid-template-columns: 7.2rem minmax(0, 1fr);
 }
 
-.shell-assistant-focus .agent-primary-titlecopy,
-.shell-assistant-focus .agent-dashboard-actions {
-  min-width: 0;
-}
-
 .shell-assistant-focus .agent-dashboard-model {
   max-width: none !important;
   overflow: visible !important;
@@ -7293,14 +7000,6 @@ body {
   .shell-assistant-focus .agent-live-board {
     grid-template-columns: 1fr !important;
   }
-}
-
-/* Primary chat transcript: structured turns, no plaintext transport noise. */
-.shell-assistant-focus .agent-embedded-chat {
-  min-height: 13rem;
-  max-height: 21rem;
-  padding: 0.85rem;
-  overflow: auto;
 }
 
 .shell-assistant-focus .agent-turn-list {
@@ -7388,42 +7087,7 @@ body,
   overflow: hidden !important;
 }
 
-.shell-assistant-focus .assistant-shell,
-.shell-assistant-focus .assistant-shell-single,
-.shell-assistant-focus .assistant-stage,
-.shell-assistant-focus .assistant-workspace,
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-console-panel,
-.shell-assistant-focus .assistant-detail-stack,
-.shell-assistant-focus .agent-config-form,
-.shell-assistant-focus .agent-page-sections,
-.shell-assistant-focus .agent-page-sections-live {
-  min-height: 0 !important;
-  max-height: none;
-}
-
-.shell-assistant-focus .assistant-shell,
-.shell-assistant-focus .assistant-shell-single,
-.shell-assistant-focus .assistant-stage {
-  height: 100%;
-}
-
 .shell-assistant-focus .assistant-workspace {
-  height: 100%;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-console-grid,
-.shell-assistant-focus .agent-console-panel {
-  height: 100%;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .assistant-detail-stack,
-.shell-assistant-focus .agent-config-form {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
   height: 100%;
   overflow: hidden !important;
 }
@@ -7435,15 +7099,6 @@ body,
 
 .shell-assistant-focus .agent-primary-titlecopy h3 {
   font-size: clamp(1rem, 1.3vw, 1.32rem);
-}
-
-.shell-assistant-focus .agent-page-sections,
-.shell-assistant-focus .agent-page-sections-live {
-  display: grid;
-  grid-template-rows: auto minmax(0, 1fr);
-  gap: 0.55rem;
-  overflow: hidden !important;
-  padding: 0.55rem 0.7rem 0.7rem;
 }
 
 .shell-assistant-focus .agent-live-panel-compact {
@@ -7473,15 +7128,6 @@ body,
   font-size: 1.05rem;
 }
 
-.shell-assistant-focus .agent-page-section-chat {
-  min-height: 0 !important;
-  overflow: hidden !important;
-  display: grid;
-  grid-template-rows: auto auto minmax(0, 1fr) auto;
-  gap: 0.45rem;
-  padding: 0.55rem 0.65rem !important;
-}
-
 .shell-assistant-focus .agent-turn-envelope {
   padding: 0.5rem 0.55rem !important;
 }
@@ -7497,13 +7143,6 @@ body,
   min-height: 2rem !important;
 }
 
-.shell-assistant-focus .agent-embedded-chat {
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow: auto !important;
-  padding: 0.62rem;
-}
-
 .shell-assistant-focus .agent-turn-list {
   gap: 0.45rem;
 }
@@ -7515,16 +7154,6 @@ body,
 .shell-assistant-focus .agent-turn-text {
   font-size: 0.82rem;
   line-height: 1.32;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  min-height: 0;
-  padding: 0.45rem;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input {
-  min-height: 4.2rem;
-  max-height: 7rem;
 }
 
 @media (max-height: 820px) {
@@ -7542,24 +7171,6 @@ body,
   .shell-assistant-focus .agent-live-kv strong {
     font-size: 0.68rem;
   }
-
-  .shell-assistant-focus .agent-embedded-composer .composer-input {
-    min-height: 3.2rem;
-    max-height: 4.8rem;
-  }
-}
-
-/* Visual noise reduction: use fewer hard boxes inside the chat surface. */
-.shell-assistant-focus .agent-page-section-chat {
-  border-color: rgba(42, 180, 200, 0.32) !important;
-  background: rgba(8, 14, 24, 0.72) !important;
-}
-
-.shell-assistant-focus .agent-turn-envelope,
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-composer {
-  border-color: transparent !important;
-  background: transparent !important;
 }
 
 .shell-assistant-focus .agent-turn-envelope {
@@ -7572,16 +7183,6 @@ body,
   border-color: rgba(32, 70, 98, 0.72) !important;
   background: rgba(4, 8, 14, 0.72) !important;
   box-shadow: none !important;
-}
-
-.shell-assistant-focus .agent-runtime-bar .agent-apply-action,
-.shell-assistant-focus .agent-embedded-composer .composer-send {
-  border-color: rgba(42, 180, 200, 0.55) !important;
-  background: rgba(15, 28, 44, 0.72) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  padding: 0.35rem 0 0.15rem;
 }
 
 .shell-assistant-focus .agent-turn-card {
@@ -7605,165 +7206,8 @@ body,
   background: rgba(4, 7, 12, 0.34);
 }
 
-.shell-assistant-focus .agent-embedded-composer {
-  padding: 0.35rem 0 0;
-  border-top: 1px solid rgba(26, 52, 72, 0.72) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input {
-  border-color: rgba(32, 70, 98, 0.78) !important;
-  background: rgba(2, 5, 10, 0.72) !important;
-  box-shadow: none !important;
-}
-
-/* Chat is the lower operating region, not a nested card. */
-.shell-assistant-focus .agent-page-section-chat {
-  border-width: 1px 0 0 !important;
-  border-color: rgba(42, 180, 200, 0.28) !important;
-  background: linear-gradient(180deg, rgba(8, 14, 24, 0.58), rgba(6, 10, 18, 0.38)) !important;
-  padding: 0.7rem 0.85rem 0.75rem !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
-  padding: 0 0.15rem 0.25rem;
-  margin-bottom: 0.15rem;
-}
-
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading h4 {
-  letter-spacing: 0.22em;
-}
-
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading span {
-  opacity: 0.78;
-}
-
 .shell-assistant-focus .agent-turn-envelope {
   border-bottom-color: rgba(26, 52, 72, 0.52) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  border-top-color: rgba(26, 52, 72, 0.52) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input {
-  border-color: rgba(42, 180, 200, 0.38) !important;
-  background: rgba(2, 5, 10, 0.58) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input:focus,
-.shell-assistant-focus .agent-embedded-composer .composer-input:focus-visible {
-  border-color: rgba(110, 202, 216, 0.72) !important;
-  box-shadow: 0 0 0 1px rgba(42, 180, 200, 0.18) !important;
-}
-
-/* IM-style composer: short single-line message box, send at the edge. */
-.shell-assistant-focus .agent-embedded-composer {
-  padding: 0.45rem 0 0;
-}
-
-.shell-assistant-focus .agent-embedded-composer .chat-composer {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  gap: 0.55rem;
-  align-items: center;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  height: 3rem !important;
-  min-height: 3rem !important;
-  max-height: 3rem !important;
-  resize: none;
-  padding: 0 1rem !important;
-  border-radius: 999px !important;
-  font-size: 0.98rem !important;
-  line-height: 3rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-actions {
-  display: flex;
-  align-items: center;
-  gap: 0.45rem;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  height: 3rem !important;
-  min-height: 3rem !important;
-  border-radius: 999px !important;
-  padding-inline: 1.15rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  min-height: 0 !important;
-}
-
-/* Chat polish correction: remove cartoon pill radii and separate lower chat field from page. */
-.shell-assistant-focus .agent-page-section-chat {
-  background:
-    radial-gradient(circle at 18% 18%, rgba(42, 180, 200, 0.07), transparent 28rem),
-    radial-gradient(circle at 82% 44%, rgba(110, 202, 216, 0.045), transparent 24rem),
-    linear-gradient(180deg, rgba(10, 18, 30, 0.82), rgba(5, 9, 16, 0.62)) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  background:
-    linear-gradient(135deg, rgba(6, 12, 21, 0.72), rgba(10, 17, 28, 0.38)),
-    repeating-linear-gradient(90deg, rgba(42, 180, 200, 0.025) 0 1px, transparent 1px 72px) !important;
-  border-top: 1px solid rgba(26, 52, 72, 0.34) !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.34) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im,
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  border-radius: 0.85rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  background:
-    linear-gradient(180deg, rgba(3, 7, 13, 0.92), rgba(8, 14, 23, 0.86)) !important;
-  border-color: rgba(42, 180, 200, 0.42) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  background: linear-gradient(180deg, rgba(18, 36, 52, 0.92), rgba(10, 23, 35, 0.92)) !important;
-}
-
-/* Chat-area affordance pass: make the lower surface read as an IM transcript. */
-.shell-assistant-focus .agent-page-section-chat {
-  position: relative;
-  border-top: 1px solid rgba(110, 202, 216, 0.32) !important;
-  background:
-    linear-gradient(180deg, rgba(7, 13, 23, 0.88), rgba(4, 8, 15, 0.76)) !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat::before {
-  content: "";
-  position: absolute;
-  inset: 3.25rem 0.85rem 4.25rem;
-  pointer-events: none;
-  border-radius: 1.15rem;
-  background:
-    radial-gradient(circle at 14% 18%, rgba(42, 180, 200, 0.10), transparent 18rem),
-    radial-gradient(circle at 84% 68%, rgba(96, 96, 192, 0.075), transparent 22rem),
-    rgba(3, 7, 13, 0.34);
-  border: 1px solid rgba(26, 52, 72, 0.34);
-}
-
-.shell-assistant-focus .agent-page-section-chat > * {
-  position: relative;
-  z-index: 1;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 0.7rem;
-  padding: 1rem 1.1rem !important;
-  background: transparent !important;
-  border: 0 !important;
 }
 
 .shell-assistant-focus .agent-turn-list {
@@ -7812,25 +7256,6 @@ body,
   line-height: 1.42;
 }
 
-.shell-assistant-focus .agent-embedded-composer {
-  margin-top: 0.25rem;
-  padding: 0.65rem 0.8rem !important;
-  border: 1px solid rgba(42, 180, 200, 0.25) !important;
-  border-radius: 1.1rem !important;
-  background: rgba(5, 10, 18, 0.64) !important;
-  backdrop-filter: blur(8px);
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  border-radius: 0.95rem !important;
-  background: rgba(1, 4, 9, 0.86) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  border-radius: 0.95rem !important;
-}
-
 /* Expanded chat mode for long transcripts and larger interaction affordances. */
 .shell-assistant-focus .agent-chat-heading-actions {
   display: flex;
@@ -7855,58 +7280,6 @@ body,
 .shell-assistant-focus .agent-chat-expand-button:hover {
   border-color: rgba(110, 202, 216, 0.82);
   background: rgba(18, 36, 52, 0.88);
-}
-
-.shell-assistant-focus .agent-chat-expanded {
-  position: fixed !important;
-  inset: 0 !important;
-  z-index: 2000;
-  display: grid !important;
-  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
-  width: auto !important;
-  height: 100vh !important;
-  margin: 0 !important;
-  padding: 1rem 1.15rem !important;
-  border: 1px solid rgba(42, 180, 200, 0.58) !important;
-  background:
-    radial-gradient(circle at 18% 16%, rgba(42, 180, 200, 0.10), transparent 34rem),
-    radial-gradient(circle at 84% 72%, rgba(96, 96, 192, 0.09), transparent 32rem),
-    linear-gradient(180deg, rgba(5, 10, 18, 0.98), rgba(2, 5, 10, 0.98)) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded::before {
-  inset: 4.25rem 1.15rem 6rem;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  min-height: 0 !important;
-  max-height: none !important;
-  padding: 1.1rem 1.25rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card {
-  max-width: min(62rem, 82%);
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
-  max-width: min(74rem, 92%);
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
-  padding: 0.85rem 1rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im {
-  height: 3.35rem !important;
-  min-height: 3.35rem !important;
-  max-height: 3.35rem !important;
-  line-height: 3.35rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
-  height: 3.35rem !important;
-  min-height: 3.35rem !important;
 }
 
 /* Sci-fi terminal slice: command strip, sync signal, prompt affordance. */
@@ -7971,369 +7344,10 @@ body,
   background: #607888;
 }
 
-.shell-assistant-focus .agent-embedded-chat {
-  background-image:
-    linear-gradient(rgba(255,255,255,0.018) 1px, transparent 1px),
-    radial-gradient(circle at 18% 16%, rgba(42, 180, 200, 0.055), transparent 22rem) !important;
-  background-size: 100% 1.65rem, auto !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im::placeholder {
-  color: rgba(149, 164, 180, 0.72);
-  font-family: var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
-}
-
 /* Hard-corner override: terminal geometry wins over inherited pill/card radii. */
 .shell-assistant-focus,
 .shell-assistant-focus *:not(.macos-window-control):not(.traffic-light) {
   border-radius: 0 !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im,
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel,
-.shell-assistant-focus .agent-chat-expand-button,
-.shell-assistant-focus .agent-mini-action,
-.shell-assistant-focus .agent-apply-action,
-.shell-assistant-focus select,
-.shell-assistant-focus input,
-.shell-assistant-focus button,
-.shell-assistant-focus textarea,
-.shell-assistant-focus .agent-turn-envelope,
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-composer,
-.shell-assistant-focus .agent-turn-card,
-.shell-assistant-focus .agent-page-section-chat,
-.shell-assistant-focus .agent-page-section,
-.shell-assistant-focus .agent-live-domain,
-.shell-assistant-focus .agent-console-panel,
-.shell-assistant-focus .assistant-main-grid {
-  border-radius: 0 !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .chat-composer {
-  border-radius: 0 !important;
-}
-
-/* Kill remaining inherited top radius on the chat panel/surface itself. */
-.agent-page-section-chat,
-.agent-page-section-chat::before,
-.agent-page-section-chat::after,
-.agent-page-section-chat > *,
-.agent-chat-expanded,
-.agent-chat-expanded::before,
-.agent-chat-expanded::after,
-.agent-turn-envelope,
-.agent-turn-envelope::before,
-.agent-turn-envelope::after,
-.agent-embedded-chat,
-.agent-embedded-chat::before,
-.agent-embedded-chat::after,
-.agent-embedded-composer,
-.agent-embedded-composer::before,
-.agent-embedded-composer::after {
-  border-radius: 0 !important;
-  border-top-left-radius: 0 !important;
-  border-top-right-radius: 0 !important;
-  clip-path: none !important;
-}
-
-/* Expanded chat: purpose-built full-screen console, not stretched page layout. */
-.shell-assistant-focus .agent-chat-expanded {
-  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
-  gap: 0 !important;
-  padding: 0 !important;
-  background:
-    linear-gradient(180deg, rgba(4, 9, 16, 1), rgba(2, 5, 10, 1)) !important;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
-  min-height: 3.25rem;
-  margin: 0 !important;
-  padding: 0.65rem 1rem !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.9);
-  background: rgba(8, 15, 25, 0.98);
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
-  min-height: 2.2rem;
-  padding: 0.45rem 1rem !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.72);
-  background: rgba(4, 8, 14, 0.98);
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
-  display: grid !important;
-  grid-template-columns: 12rem minmax(0, 1fr) auto;
-  align-items: end;
-  gap: 0.75rem;
-  min-height: 4.25rem !important;
-  padding: 0.55rem 1rem !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.72) !important;
-  background: rgba(7, 13, 22, 0.98) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading {
-  min-height: 0;
-  padding: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
-  display: grid !important;
-  grid-template-columns: minmax(14rem, 1.4fr) minmax(8rem, 0.8fr) minmax(8rem, 0.8fr) minmax(6rem, 0.55fr) minmax(8rem, 0.75fr);
-  gap: 0.55rem;
-  align-items: end;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
-  height: 2.25rem !important;
-  min-height: 2.25rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-apply-action {
-  justify-self: stretch;
-  margin: 0 !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  position: relative;
-  min-height: 0 !important;
-  max-height: none !important;
-  overflow: auto !important;
-  padding: 1rem 1.4rem !important;
-  background:
-    linear-gradient(rgba(42, 180, 200, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(42, 180, 200, 0.018) 1px, transparent 1px),
-    rgba(2, 5, 10, 0.98) !important;
-  background-size: 100% 3rem, 4rem 100%, auto;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-list {
-  min-height: 100%;
-  align-content: end;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
-  padding: 0.8rem 1rem !important;
-  border-top: 1px solid rgba(42, 180, 200, 0.38) !important;
-  background: rgba(6, 11, 18, 0.99) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
-  height: 3rem !important;
-  min-height: 3rem !important;
-  max-height: 3rem !important;
-  line-height: 3rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded::before,
-.shell-assistant-focus .agent-chat-expanded::after {
-  display: none !important;
-}
-
-@media (max-width: 1300px) {
-  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
-    grid-template-columns: 1fr;
-  }
-
-  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-}
-
-/* Expanded chat repair: make it read as chat first, controls as a compact toolbar. */
-.shell-assistant-focus .agent-chat-expanded {
-  grid-template-rows: 3.25rem 2rem 3.85rem minmax(0, 1fr) 4.5rem !important;
-  height: 100vh !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
-  grid-row: 1;
-  min-height: 0 !important;
-  height: 3.25rem;
-  padding: 0 1.15rem !important;
-  align-items: center;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
-  grid-row: 2;
-  min-height: 0 !important;
-  height: 2rem;
-  padding: 0 1.15rem !important;
-  align-items: center;
-  overflow: hidden;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
-  grid-row: 3;
-  grid-template-columns: 8rem minmax(0, 1fr) 4.8rem !important;
-  min-height: 0 !important;
-  height: 3.85rem !important;
-  padding: 0.35rem 1.15rem !important;
-  gap: 0.65rem !important;
-  align-items: center !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading h4 {
-  font-size: 0.72rem;
-  letter-spacing: 0.17em;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-page-section-heading span {
-  display: none;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope .agent-control-grid {
-  grid-template-columns: minmax(12rem, 1.35fr) minmax(7rem, 0.7fr) minmax(7rem, 0.7fr) minmax(5.5rem, 0.45fr) minmax(7rem, 0.6fr) !important;
-  gap: 0.45rem !important;
-  align-items: center !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field {
-  gap: 0.12rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field span {
-  font-size: 0.48rem !important;
-  line-height: 1;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
-  height: 1.9rem !important;
-  min-height: 1.9rem !important;
-  max-height: 1.9rem !important;
-  font-size: 0.68rem !important;
-  padding-top: 0 !important;
-  padding-bottom: 0 !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-apply-action {
-  width: 4.8rem;
-  padding-inline: 0.4rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  grid-row: 4;
-  padding: 1.15rem 1.3rem !important;
-  border-top: 1px solid rgba(26, 52, 72, 0.62) !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.62) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-list {
-  display: flex;
-  min-height: 100%;
-  flex-direction: column;
-  justify-content: flex-end;
-  gap: 0.65rem;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card {
-  max-width: min(52rem, 78%) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
-  align-self: center;
-  width: min(64rem, 82%);
-  max-width: min(64rem, 82%) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
-  grid-row: 5;
-  height: 4.5rem;
-  padding: 0.65rem 1.15rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .chat-composer {
-  height: 100%;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
-  height: 2.8rem !important;
-  min-height: 2.8rem !important;
-  max-height: 2.8rem !important;
-  line-height: 2.8rem !important;
-}
-
-@media (max-width: 1300px) {
-  .shell-assistant-focus .agent-chat-expanded {
-    grid-template-rows: 3.25rem 2rem auto minmax(0, 1fr) 4.5rem !important;
-  }
-
-  .shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
-    height: auto !important;
-    grid-template-columns: 1fr !important;
-  }
-}
-
-/* Expanded chat overflow trim: include borders/padding in viewport math and tighten bottom rail. */
-.shell-assistant-focus .agent-chat-expanded,
-.shell-assistant-focus .agent-chat-expanded * {
-  box-sizing: border-box;
-}
-
-.shell-assistant-focus .agent-chat-expanded {
-  height: 100dvh !important;
-  max-height: 100dvh !important;
-  grid-template-rows: 3rem 1.8rem 3.4rem minmax(0, 1fr) 4rem !important;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
-  height: 3rem !important;
-  min-height: 3rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-command-strip {
-  height: 1.8rem !important;
-  min-height: 1.8rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope {
-  height: 3.4rem !important;
-  min-height: 3.4rem !important;
-  padding-block: 0.25rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field select,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-config-field input,
-.shell-assistant-focus .agent-chat-expanded .agent-runtime-bar .agent-apply-action {
-  height: 1.75rem !important;
-  min-height: 1.75rem !important;
-  max-height: 1.75rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  min-height: 0 !important;
-  overflow-y: auto !important;
-  padding-block: 0.85rem !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer {
-  height: 4rem !important;
-  min-height: 4rem !important;
-  max-height: 4rem !important;
-  padding: 0.55rem 1rem !important;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-input-im,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer .composer-cancel {
-  height: 2.55rem !important;
-  min-height: 2.55rem !important;
-  max-height: 2.55rem !important;
-  line-height: 2.55rem !important;
 }
 
 /* Normalize chat expand control to a compact glyph action. */
@@ -8348,22 +7362,6 @@ body,
   font-size: 1.05rem !important;
   line-height: 1 !important;
   letter-spacing: 0 !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-chat-expand-button {
-  width: 2.6rem !important;
-  min-width: 2.6rem !important;
-  height: 2.35rem !important;
-  min-height: 2.35rem !important;
-  font-size: 1.15rem !important;
-}
-
-/* Sci-fi transcript polish: replace chat bubbles with terminal turn frames. */
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat,
-.shell-assistant-focus .agent-embedded-chat {
-  background:
-    linear-gradient(180deg, rgba(3, 7, 12, 0.98), rgba(4, 8, 14, 0.96)),
-    radial-gradient(circle at 12% 18%, rgba(42, 180, 200, 0.045), transparent 28rem) !important;
 }
 
 .shell-assistant-focus .agent-turn-list {
@@ -8459,32 +7457,9 @@ body,
   font-size: 0.82rem !important;
 }
 
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="operator"],
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="agent"] {
-  max-width: min(80rem, 84%) !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
-  width: auto !important;
-  max-width: none !important;
-}
-
 /* Transcript turn refinement: compact terminal rows, no oversized color slabs. */
 .shell-assistant-focus .agent-turn-list {
   gap: 0.42rem !important;
-}
-
-.shell-assistant-focus .agent-turn-card,
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card,
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="operator"],
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="agent"] {
-  width: fit-content !important;
-  max-width: min(72rem, 76vw) !important;
-  min-width: 0 !important;
-  padding: 0.28rem 0.55rem !important;
-  border: 0 !important;
-  background: rgba(8, 14, 22, 0.42) !important;
-  text-align: left !important;
 }
 
 .shell-assistant-focus .agent-turn-card[data-role="operator"] {
@@ -8497,16 +7472,6 @@ body,
   justify-self: start !important;
   border-left: 2px solid rgba(110, 202, 216, 0.68) !important;
   background: linear-gradient(90deg, rgba(12, 22, 34, 0.62), rgba(12, 22, 34, 0.14)) !important;
-}
-
-.shell-assistant-focus .agent-turn-card[data-role="system"],
-.shell-assistant-focus .agent-chat-expanded .agent-turn-card[data-role="system"] {
-  justify-self: center !important;
-  width: fit-content !important;
-  max-width: min(68rem, 74vw) !important;
-  padding: 0.28rem 0.6rem !important;
-  border: 1px dashed rgba(32, 70, 98, 0.55) !important;
-  background: rgba(7, 12, 20, 0.24) !important;
 }
 
 .shell-assistant-focus .agent-turn-card::before {
@@ -8539,32 +7504,6 @@ body,
   display: inline !important;
   font-size: 0.9rem !important;
   line-height: 1.32 !important;
-}
-
-/* Transcript-only scrolling: page and expanded shell stay fixed; message well scrolls. */
-.shell-assistant-focus .agent-chat-expanded {
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat,
-.shell-assistant-focus .agent-page-section-chat .agent-embedded-chat {
-  min-height: 0 !important;
-  overflow-y: auto !important;
-  overflow-x: hidden !important;
-  overscroll-behavior: contain;
-  scrollbar-gutter: stable;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-turn-list,
-.shell-assistant-focus .agent-page-section-chat .agent-turn-list {
-  min-height: min-content !important;
-}
-
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-composer,
-.shell-assistant-focus .agent-chat-expanded .agent-turn-envelope,
-.shell-assistant-focus .agent-chat-expanded .agent-command-strip,
-.shell-assistant-focus .agent-chat-expanded .agent-page-section-heading {
-  flex-shrink: 0 !important;
 }
 
 /* Add-agent drawer: explicit modal layer above console, no bleed-through. */
@@ -8903,11 +7842,6 @@ body,
   background: #050a12;
 }
 
-.shell-assistant-focus .assistant-detail-stack.agent-config-form {
-  grid-template-rows: auto minmax(0, 1fr) !important;
-  gap: 0 !important;
-}
-
 .shell-assistant-focus .agent-dashboard-titlebar {
   min-height: 4.25rem;
   padding: 0.7rem 1.1rem !important;
@@ -8961,10 +7895,6 @@ body,
   box-shadow: 0 0 0.6rem rgba(98, 212, 157, 0.42);
 }
 
-.shell-assistant-focus .agent-dashboard-actions {
-  gap: 0.4rem;
-}
-
 .shell-assistant-focus .agent-mini-action {
   min-height: 2.1rem;
   padding-inline: 0.75rem;
@@ -8973,31 +7903,6 @@ body,
 
 .shell-assistant-focus .agent-mini-action-primary {
   display: none;
-}
-
-.shell-assistant-focus .agent-context-disclosure {
-  border-bottom: 1px solid rgba(26, 52, 72, 0.58);
-  background: rgba(6, 12, 21, 0.8);
-}
-
-.shell-assistant-focus .agent-context-disclosure > summary,
-.shell-assistant-focus .agent-diagnostics-disclosure > summary {
-  list-style: none;
-  cursor: pointer;
-}
-
-.shell-assistant-focus .agent-context-disclosure > summary::-webkit-details-marker,
-.shell-assistant-focus .agent-diagnostics-disclosure > summary::-webkit-details-marker {
-  display: none;
-}
-
-.shell-assistant-focus .agent-context-disclosure > summary {
-  min-height: 2.65rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.45rem 1.1rem;
 }
 
 .shell-assistant-focus .agent-context-summary-copy {
@@ -9022,43 +7927,6 @@ body,
 
 .shell-assistant-focus .agent-context-summary-action::after {
   content: " +";
-}
-
-.shell-assistant-focus .agent-context-disclosure[open] .agent-context-summary-action::after {
-  content: " −";
-}
-
-.shell-assistant-focus .agent-context-disclosure .agent-live-panel {
-  margin: 0 1rem 0.8rem;
-}
-
-.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
-  display: block !important;
-  height: 100%;
-  padding: 0 !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  height: 100%;
-  display: grid !important;
-  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
-  gap: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  background: #050a12 !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat::before {
-  display: none !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
-  min-height: 3.7rem;
-  display: flex;
-  align-items: center;
-  margin: 0;
-  padding: 0.6rem 1.1rem !important;
-  border-bottom: 1px solid rgba(26, 52, 72, 0.5);
 }
 
 .shell-assistant-focus .agent-chat-target {
@@ -9104,58 +7972,6 @@ body,
   text-transform: none;
 }
 
-.shell-assistant-focus .agent-diagnostics-disclosure {
-  border-bottom: 1px solid rgba(26, 52, 72, 0.46);
-  background: rgba(5, 10, 18, 0.9);
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary {
-  min-height: 2.55rem;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 1rem;
-  padding: 0.45rem 1.1rem;
-  color: var(--agent-muted);
-  font-size: 0.72rem;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary span {
-  color: var(--agent-text);
-  font-weight: 700;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary strong {
-  min-width: 0;
-  color: var(--agent-muted);
-  font: 650 0.68rem/1.2 var(--font-sans, system-ui, sans-serif);
-  text-align: right;
-  overflow-wrap: anywhere;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip,
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
-  margin-inline: 1rem;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip {
-  padding-top: 0.55rem;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
-  margin-bottom: 0.75rem;
-}
-
-.shell-assistant-focus .agent-embedded-chat {
-  min-height: 0 !important;
-  height: auto !important;
-  justify-content: flex-start !important;
-  padding: clamp(1rem, 2.2vw, 2.25rem) max(1.1rem, calc((100% - 64rem) / 2)) !important;
-  background:
-    radial-gradient(circle at 50% 35%, rgba(42, 180, 200, 0.04), transparent 28rem),
-    #040911 !important;
-}
-
 .shell-assistant-focus .agent-turn-list {
   width: 100%;
   max-width: 64rem;
@@ -9188,34 +8004,6 @@ body,
   font-size: 0.86rem;
 }
 
-.shell-assistant-focus .agent-embedded-composer {
-  width: min(64rem, calc(100% - 2rem));
-  margin: 0 auto 0.85rem !important;
-  padding: 0.45rem !important;
-  border: 1px solid rgba(42, 180, 200, 0.28) !important;
-  border-radius: 0.7rem !important;
-  background: rgba(6, 12, 21, 0.96) !important;
-  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.28);
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  height: 3.15rem !important;
-  min-height: 3.15rem !important;
-  max-height: 3.15rem !important;
-  border: 0 !important;
-  border-radius: 0.45rem !important;
-  background: rgba(1, 4, 9, 0.72) !important;
-  font-family: var(--font-sans, system-ui, sans-serif) !important;
-  line-height: 3.15rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  border-radius: 0.45rem !important;
-  text-transform: none;
-  letter-spacing: 0.02em;
-}
-
 @media (max-width: 760px) {
   .shell-assistant-focus .agent-dashboard-titlebar {
     align-items: start;
@@ -9237,10 +8025,6 @@ body,
     gap: 0.35rem;
   }
 
-  .shell-assistant-focus .agent-embedded-chat {
-    padding: 1rem !important;
-  }
-
   .shell-assistant-focus .agent-turn-card {
     max-width: 92% !important;
   }
@@ -9251,33 +8035,6 @@ body,
    compete with the primary conversation. */
 .shell-assistant-focus {
   --chat-column: 56rem;
-}
-
-.shell-assistant-focus .assistant-workspace,
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-console-panel,
-.shell-assistant-focus .assistant-detail-stack.agent-config-form,
-.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
-  width: 100% !important;
-  height: 100% !important;
-  min-width: 0 !important;
-  min-height: 0 !important;
-  margin: 0 !important;
-  padding: 0 !important;
-  border: 0 !important;
-  border-radius: 0 !important;
-  box-shadow: none !important;
-}
-
-.shell-assistant-focus .assistant-main-grid,
-.shell-assistant-focus .agent-console-panel {
-  display: block !important;
-}
-
-.shell-assistant-focus .agent-console-panel {
-  position: relative;
-  overflow: hidden !important;
-  background: #050a12 !important;
 }
 
 .shell-assistant-focus .agent-dashboard-titlebar {
@@ -9319,10 +8076,6 @@ body,
   height: 0.42rem;
 }
 
-.shell-assistant-focus .agent-dashboard-actions {
-  margin-left: auto;
-}
-
 .shell-assistant-focus .agent-mini-action {
   min-height: 1.9rem !important;
   padding-inline: 0.65rem !important;
@@ -9330,26 +8083,6 @@ body,
   color: rgba(190, 207, 223, 0.8) !important;
   background: transparent !important;
   font-size: 0.58rem !important;
-}
-
-.shell-assistant-focus .assistant-detail-stack.agent-config-form {
-  display: block !important;
-}
-
-.shell-assistant-focus .agent-context-disclosure {
-  position: absolute;
-  z-index: 5;
-  top: 0.7rem;
-  right: 8.9rem;
-  width: auto;
-  border: 0 !important;
-  background: transparent !important;
-}
-
-.shell-assistant-focus .agent-context-disclosure > summary {
-  min-height: 1.9rem !important;
-  padding: 0 0.65rem !important;
-  border: 1px solid rgba(95, 184, 201, 0.22);
 }
 
 .shell-assistant-focus .agent-context-summary-copy strong,
@@ -9361,91 +8094,6 @@ body,
   color: rgba(190, 207, 223, 0.8) !important;
   font-size: 0.58rem !important;
   letter-spacing: 0.06em !important;
-}
-
-.shell-assistant-focus .agent-context-disclosure[open] {
-  width: min(62rem, calc(100vw - 3rem));
-  right: 1rem;
-  padding: 0.6rem;
-  border: 1px solid rgba(95, 184, 201, 0.24) !important;
-  background: #08111d !important;
-  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
-}
-
-.shell-assistant-focus .agent-context-disclosure[open] > summary {
-  width: max-content;
-  margin-left: auto;
-}
-
-.shell-assistant-focus .agent-context-disclosure .agent-live-panel {
-  margin: 0.6rem 0 0 !important;
-}
-
-.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
-  padding-top: 3.35rem !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  grid-template-rows: minmax(0, 1fr) auto !important;
-  background: #050a12 !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
-  display: none !important;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure {
-  position: absolute;
-  z-index: 3;
-  top: 4.15rem;
-  right: 1rem;
-  width: min(32rem, calc(100% - 2rem));
-  border: 0 !important;
-  background: transparent !important;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary {
-  min-height: 1.8rem !important;
-  justify-content: flex-end !important;
-  padding: 0 0.6rem !important;
-  color: rgba(126, 151, 174, 0.62) !important;
-  font-size: 0.62rem !important;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary span::before {
-  content: "Configure ";
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure > summary strong {
-  display: none;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure[open] {
-  padding: 0.65rem;
-  border: 1px solid rgba(95, 184, 201, 0.24) !important;
-  background: #08111d !important;
-  box-shadow: 0 1rem 3rem rgba(0, 0, 0, 0.55);
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure[open] > summary {
-  margin-bottom: 0.5rem;
-}
-
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-command-strip,
-.shell-assistant-focus .agent-diagnostics-disclosure .agent-turn-envelope {
-  margin-inline: 0 !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  grid-row: 1 !important;
-  min-height: 0 !important;
-  height: 100% !important;
-  padding: clamp(2rem, 6vh, 5rem) max(1rem, calc((100% - var(--chat-column)) / 2)) 1.5rem !important;
-  overflow-y: auto !important;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(67, 176, 198, 0.055), transparent 30rem),
-    #050a12 !important;
 }
 
 .shell-assistant-focus .agent-turn-list {
@@ -9486,43 +8134,10 @@ body,
   line-height: 1.55 !important;
 }
 
-.shell-assistant-focus .agent-embedded-composer {
-  grid-row: 2 !important;
-  width: min(var(--chat-column), calc(100% - 2rem)) !important;
-  margin: 0 auto 1rem !important;
-  padding: 0.35rem !important;
-  border-color: rgba(95, 184, 201, 0.3) !important;
-  background: rgba(8, 17, 29, 0.98) !important;
-  box-shadow: 0 0.8rem 2.2rem rgba(0, 0, 0, 0.38) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  height: 2.8rem !important;
-  min-height: 2.8rem !important;
-  max-height: 2.8rem !important;
-  line-height: 2.8rem !important;
-  font-size: 0.82rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  min-width: 4.2rem !important;
-  min-height: 2.8rem !important;
-}
-
 @media (max-width: 760px) {
-  .shell-assistant-focus .agent-primary-titlecopy p,
-  .shell-assistant-focus .agent-context-disclosure {
-    display: none;
-  }
 
   .shell-assistant-focus .agent-dashboard-titlebar {
     padding-inline: 0.8rem !important;
-  }
-
-  .shell-assistant-focus .agent-embedded-chat,
-  .shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-    padding: 3rem 1rem 1rem !important;
   }
 }
 
@@ -9530,35 +8145,6 @@ body,
    conversation workspace instead of a mostly empty canvas. */
 .shell-assistant-focus {
   --chat-column: 72rem;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  grid-template-rows: minmax(0, 1fr) auto !important;
-  background:
-    linear-gradient(90deg, rgba(49, 157, 178, 0.025) 1px, transparent 1px),
-    linear-gradient(rgba(49, 157, 178, 0.025) 1px, transparent 1px),
-    #07101b !important;
-  background-size: 3rem 3rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  display: flex !important;
-  flex-direction: column !important;
-  justify-content: flex-start !important;
-  padding: clamp(1.5rem, 4vh, 3rem) max(2rem, calc((100% - var(--chat-column)) / 2)) 1.25rem !important;
-  background:
-    radial-gradient(circle at 50% 72%, rgba(49, 157, 178, 0.1), transparent 34rem),
-    linear-gradient(180deg, rgba(8, 18, 30, 0.28), rgba(5, 11, 19, 0.72)) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat-empty::before {
-  content: "AUSPEX / PRIMARY CHANNEL";
-  width: min(100%, var(--chat-column));
-  margin: 0 auto 1.25rem;
-  color: rgba(103, 196, 214, 0.45);
-  font: 700 0.62rem/1 var(--font-mono, ui-monospace, monospace);
-  letter-spacing: 0.16em;
 }
 
 .shell-assistant-focus .agent-embedded-empty {
@@ -9613,49 +8199,6 @@ body,
   border-radius: 0 0.45rem 0.45rem 0 !important;
   background: rgba(10, 23, 37, 0.58) !important;
   text-align: left !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  width: min(var(--chat-column), calc(100% - 4rem)) !important;
-  margin: 0 auto 1.4rem !important;
-  padding: 0.5rem !important;
-  border: 1px solid rgba(91, 191, 210, 0.42) !important;
-  border-radius: 0.65rem !important;
-  background: rgba(8, 18, 30, 0.98) !important;
-  box-shadow: 0 0 0 1px rgba(40, 107, 124, 0.12), 0 1.25rem 3rem rgba(0, 0, 0, 0.4) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  height: 3.35rem !important;
-  min-height: 3.35rem !important;
-  max-height: 3.35rem !important;
-  padding-inline: 1rem !important;
-  line-height: 3.35rem !important;
-  font-size: 0.92rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer .composer-submit,
-.shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  min-width: 5.4rem !important;
-  min-height: 3.35rem !important;
-}
-
-/* Native primary-agent workspace: full-height composition and intentional empty state. */
-.shell-assistant-focus .agent-page-section-chat {
-  grid-template-rows: auto auto minmax(0, 1fr) auto !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  justify-content: stretch !important;
-  min-height: 0 !important;
-  padding: clamp(2rem, 5vh, 4.5rem) max(2rem, calc((100% - var(--chat-column)) / 2)) 2rem !important;
-  overflow-y: auto !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat-empty::before,
-.shell-assistant-focus .agent-embedded-chat-empty::after {
-  display: none !important;
 }
 
 .shell-assistant-focus .agent-empty-workspace {
@@ -9748,12 +8291,6 @@ body,
   font: 600 0.72rem/1.2 var(--font-mono);
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  position: sticky !important;
-  bottom: 1rem !important;
-  z-index: 3;
 }
 
 @media (max-width: 900px) {
@@ -9913,40 +8450,11 @@ body,
   outline: none;
 }
 
-.shell-assistant-focus .omegon-console-main {
-  min-width: 0;
-  min-height: 0;
-  overflow: hidden;
-}
-
-.shell-assistant-focus .omegon-console-main > .agent-console-grid {
-  height: 100%;
-  min-height: 0;
-  margin: 0;
-}
-
 @media (max-width: 1050px) {
   .shell-assistant-focus .assistant-workspace.omegon-console {
     grid-template-columns: 4.5rem minmax(0, 1fr);
   }
   .shell-assistant-focus .omegon-control-deck { display: none; }
-}
-
-/* Active populated conversation workspace. Keep this after the empty-state rules so
-   the live transcript—not only a zero-history branch—owns the viewport. */
-.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
-  min-height: 0 !important;
-  padding-top: 2.5rem !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  min-height: 0 !important;
-  grid-template-rows: minmax(0, 1fr) auto !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) {
-  justify-content: flex-start !important;
-  padding-top: clamp(1.5rem, 3vh, 2.5rem) !important;
 }
 
 .shell-assistant-focus .agent-conversation-masthead {
@@ -9991,43 +8499,6 @@ body,
   white-space: nowrap;
 }
 
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-list {
-  margin: 0 auto !important;
-  padding-bottom: 2rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card {
-  width: min(82%, 56rem) !important;
-  max-width: none !important;
-  padding: 1rem 1.15rem !important;
-  border: 1px solid rgba(63, 126, 145, 0.18) !important;
-  background: rgba(9, 21, 34, 0.88) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="operator"] {
-  align-self: flex-end !important;
-  border-color: rgba(91, 191, 210, 0.28) !important;
-  background: rgba(12, 35, 50, 0.9) !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="agent"] {
-  align-self: flex-start !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
-  width: min(94%, 64rem) !important;
-  align-self: center !important;
-  border-width: 0 0 0 2px !important;
-  border-color: rgba(83, 179, 197, 0.36) !important;
-  background: rgba(8, 18, 30, 0.5) !important;
-  text-align: left !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  position: static !important;
-  bottom: auto !important;
-}
-
 @media (max-width: 760px) {
   .shell-assistant-focus .agent-conversation-masthead {
     align-items: start;
@@ -10035,9 +8506,6 @@ body,
   }
   .shell-assistant-focus .agent-conversation-state {
     align-items: start;
-  }
-  .shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card {
-    width: 94% !important;
   }
 }
 
@@ -10064,12 +8532,6 @@ body,
   white-space: nowrap !important;
 }
 
-.shell-assistant-focus .agent-dashboard-actions {
-  flex: 0 0 auto !important;
-  display: flex !important;
-  gap: 0.4rem !important;
-}
-
 .shell-assistant-focus .agent-mini-action {
   width: auto !important;
   min-width: 0 !important;
@@ -10078,38 +8540,6 @@ body,
   border: 1px solid rgba(91, 191, 210, 0.24) !important;
   font-size: 0.62rem !important;
   letter-spacing: 0.08em !important;
-}
-
-.shell-assistant-focus .assistant-detail-stack.agent-config-form {
-  display: grid !important;
-  grid-template-rows: auto minmax(0, 1fr) !important;
-}
-
-.shell-assistant-focus .agent-context-disclosure,
-.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading,
-.shell-assistant-focus .agent-diagnostics-disclosure {
-  display: none !important;
-}
-
-.shell-assistant-focus .agent-page-sections.agent-page-sections-live {
-  height: auto !important;
-  min-height: 0 !important;
-  padding: 0 !important;
-}
-
-.shell-assistant-focus .agent-page-section-chat {
-  height: 100% !important;
-  min-height: 0 !important;
-  display: grid !important;
-  grid-template-rows: minmax(0, 1fr) auto !important;
-  overflow: hidden !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  min-height: 0 !important;
-  padding: 2rem max(1.5rem, calc((100% - 72rem) / 2)) !important;
-  overflow-y: auto !important;
 }
 
 .shell-assistant-focus .agent-conversation-masthead {
@@ -10128,24 +8558,6 @@ body,
 .shell-assistant-focus .agent-turn-list {
   width: 100% !important;
   max-width: 72rem !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card,
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
-  width: 100% !important;
-  max-width: 72rem !important;
-  margin: 0 0 0.75rem !important;
-  padding: 0.85rem 1rem !important;
-  border: 0 !important;
-  border-left: 2px solid rgba(91, 191, 210, 0.35) !important;
-  border-radius: 0 !important;
-  background: rgba(8, 18, 30, 0.42) !important;
-}
-
-.shell-assistant-focus .agent-embedded-composer {
-  position: relative !important;
-  width: min(72rem, calc(100% - 3rem)) !important;
-  margin: 0 auto 1rem !important;
 }
 
 /* Primary workspace final composition: dense application chrome, readable
@@ -10170,14 +8582,6 @@ body,
   border-radius: 0.35rem !important;
   box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.45);
   font-size: 0.74rem !important;
-}
-
-.shell-assistant-focus .agent-console-grid,
-.shell-assistant-focus .agent-console-panel,
-.shell-assistant-focus .assistant-detail-stack.agent-config-form {
-  min-width: 0 !important;
-  min-height: 0 !important;
-  height: 100% !important;
 }
 
 .shell-assistant-focus .agent-dashboard-titlebar {
@@ -10218,18 +8622,6 @@ body,
   box-shadow: 0 0 0.8rem rgba(98, 215, 160, 0.4);
 }
 
-.shell-assistant-focus .agent-page-section-chat {
-  background:
-    radial-gradient(circle at 50% 35%, rgba(24, 99, 119, 0.08), transparent 28rem),
-    #060b12 !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat,
-.shell-assistant-focus .agent-chat-expanded .agent-embedded-chat {
-  padding: 1.35rem max(1.25rem, calc((100% - 76rem) / 2)) 1rem !important;
-  background: transparent !important;
-}
-
 .shell-assistant-focus .agent-conversation-masthead {
   max-width: 76rem !important;
   margin-bottom: 1rem !important;
@@ -10249,22 +8641,6 @@ body,
   max-width: 76rem !important;
   gap: 0 !important;
   border-top: 1px solid rgba(63, 126, 145, 0.15);
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card,
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="system"] {
-  position: relative !important;
-  width: 100% !important;
-  max-width: none !important;
-  margin: 0 !important;
-  padding: 0.8rem 0.9rem 0.85rem 6.8rem !important;
-  border: 0 !important;
-  border-bottom: 1px solid rgba(63, 126, 145, 0.13) !important;
-  background: transparent !important;
-}
-
-.shell-assistant-focus .agent-embedded-chat:not(.agent-embedded-chat-empty) .agent-turn-card[data-role="operator"] {
-  background: rgba(17, 51, 68, 0.23) !important;
 }
 
 .shell-assistant-focus .agent-turn-meta {
@@ -10287,24 +8663,510 @@ body,
   line-height: 1.55 !important;
 }
 
-.shell-assistant-focus .agent-embedded-composer {
-  width: min(76rem, calc(100% - 2.5rem)) !important;
-  margin: 0.75rem auto 1rem !important;
-  padding: 0.35rem !important;
-  border-color: rgba(91, 191, 210, 0.5) !important;
-  background: #08111d !important;
-  box-shadow: 0 0 0 1px rgba(91, 191, 210, 0.08), 0 0.8rem 2rem rgba(0, 0, 0, 0.32) !important;
+/* ============================================================
+   OMEGON CONSOLE — AUTHORITATIVE LAYOUT (single source of truth)
+   Structure:
+     .assistant-stage > .omegon-console > .omegon-console-main
+       > .agent-console-grid > .agent-console-panel
+           > .agent-primary-titlebar          (fixed header row)
+           > .agent-config-form               (flex column, fills)
+               > .agent-context-disclosure    (collapsible, normal flow)
+               > .agent-page-sections-live    (fills remaining height)
+                   > .agent-page-section-chat (flex column)
+                       > .agent-page-section-heading
+                       > .agent-diagnostics-disclosure (normal flow)
+                       > .agent-embedded-chat          (THE scroll owner)
+                       > .agent-embedded-composer      (pinned bottom row)
+   One scroll owner: .agent-embedded-chat. Everything else flows.
+   No absolute positioning for operational chrome.
+   ============================================================ */
+
+.shell-assistant-focus .assistant-stage {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
+  padding: 0;
 }
 
+.shell-assistant-focus .assistant-workspace.omegon-console {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.shell-assistant-focus .omegon-console-main {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 0.75rem 1rem 1rem;
+}
+
+.shell-assistant-focus .assistant-main-grid.agent-console-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+.shell-assistant-focus .agent-console-panel {
+  position: static;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  border: 1px solid color-mix(in srgb, var(--console-line, #1c3a4a) 80%, transparent);
+  border-radius: 10px;
+  background:
+    linear-gradient(180deg, rgba(10, 22, 30, 0.85), rgba(6, 13, 18, 0.92));
+  overflow: hidden;
+}
+
+/* --- Header row: title left, actions right, one line, no overlap --- */
+.shell-assistant-focus .agent-primary-titlebar {
+  position: static;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-shrink: 0;
+  padding: 0.65rem 1rem;
+  border-bottom: 1px solid rgba(64, 160, 200, 0.18);
+  background: rgba(8, 18, 25, 0.6);
+}
+
+.shell-assistant-focus .agent-primary-titlecopy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-primary-titlecopy p {
+  margin: 0;
+  font-size: 0.75rem;
+  color: var(--console-dim, #6d8a99);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+
+.shell-assistant-focus .agent-connection-state {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: #34d399;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-connection-state::before {
+  content: "●";
+  margin-right: 0.35rem;
+}
+
+.shell-assistant-focus .agent-dashboard-actions {
+  position: static;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.shell-assistant-focus .agent-dashboard-actions .agent-mini-action {
+  position: static;
+  display: inline-flex;
+  align-items: center;
+  padding: 0.32rem 0.75rem;
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  color: var(--console-fg, #b8d4e0);
+  background: rgba(20, 40, 52, 0.55);
+  border: 1px solid rgba(64, 160, 200, 0.3);
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.shell-assistant-focus .agent-dashboard-actions .agent-mini-action:hover {
+  border-color: rgba(94, 210, 255, 0.6);
+  color: #dff3fc;
+}
+
+.shell-assistant-focus .agent-dashboard-actions .agent-mini-action-primary {
+  border-color: rgba(94, 210, 255, 0.55);
+  background: rgba(30, 70, 92, 0.55);
+}
+
+/* --- Body column --- */
+.shell-assistant-focus .agent-config-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  gap: 0;
+}
+
+/* --- Disclosures: normal flow, styled summary, never absolute --- */
+.shell-assistant-focus .agent-context-disclosure,
+.shell-assistant-focus .agent-diagnostics-disclosure {
+  position: static;
+  flex-shrink: 0;
+  margin: 0;
+  border-bottom: 1px solid rgba(64, 160, 200, 0.14);
+  background: rgba(9, 20, 27, 0.5);
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary,
+.shell-assistant-focus .agent-diagnostics-disclosure > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.45rem 1rem;
+  font-size: 0.72rem;
+  color: var(--console-dim, #6d8a99);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary::-webkit-details-marker,
+.shell-assistant-focus .agent-diagnostics-disclosure > summary::-webkit-details-marker {
+  display: none;
+}
+
+.shell-assistant-focus .agent-context-disclosure > summary::after,
+.shell-assistant-focus .agent-diagnostics-disclosure > summary::after {
+  content: "▸";
+  color: rgba(94, 210, 255, 0.6);
+  transition: transform 120ms ease;
+}
+
+.shell-assistant-focus .agent-context-disclosure[open] > summary::after,
+.shell-assistant-focus .agent-diagnostics-disclosure[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+.shell-assistant-focus .agent-context-disclosure summary strong,
+.shell-assistant-focus .agent-diagnostics-disclosure summary strong {
+  color: var(--console-fg, #b8d4e0);
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shell-assistant-focus .agent-context-disclosure > div,
+.shell-assistant-focus .agent-diagnostics-disclosure > div {
+  padding: 0.5rem 1rem 0.9rem;
+  max-height: 45vh;
+  overflow-y: auto;
+}
+
+.shell-assistant-focus .agent-context-summary-copy {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  min-width: 0;
+}
+
+.shell-assistant-focus .agent-context-summary-action {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(94, 210, 255, 0.75);
+  white-space: nowrap;
+}
+
+/* --- Live sections wrapper fills the rest --- */
+.shell-assistant-focus .agent-page-sections-live {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell-assistant-focus .agent-page-section-chat {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.shell-assistant-focus .agent-page-section-chat > .agent-page-section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  flex-shrink: 0;
+  padding: 0.55rem 1rem;
+  border-bottom: 1px solid rgba(64, 160, 200, 0.14);
+}
+
+/* --- Transcript: the ONE scroll owner --- */
+.shell-assistant-focus .agent-embedded-chat {
+  position: static;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 0.9rem 1rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  overscroll-behavior: contain;
+}
+
+.shell-assistant-focus .agent-embedded-chat-empty {
+  align-items: center;
+  justify-content: center;
+}
+
+.shell-assistant-focus .agent-turn-list {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  min-height: 0;
+}
+
+.shell-assistant-focus .agent-turn-card {
+  border: 1px solid rgba(64, 160, 200, 0.14);
+  border-left: 2px solid rgba(94, 210, 255, 0.35);
+  border-radius: 6px;
+  padding: 0.55rem 0.8rem;
+  background: rgba(12, 26, 35, 0.55);
+  max-width: 72ch;
+}
+
+.shell-assistant-focus .agent-turn-card[data-role="user"] {
+  border-left-color: rgba(52, 211, 153, 0.5);
+  align-self: flex-end;
+}
+
+.shell-assistant-focus .agent-turn-meta {
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  margin-bottom: 0.25rem;
+}
+
+.shell-assistant-focus .agent-turn-role {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: rgba(94, 210, 255, 0.8);
+}
+
+.shell-assistant-focus .agent-turn-channel {
+  font-size: 0.62rem;
+  color: var(--console-dim, #6d8a99);
+  overflow-wrap: anywhere;
+}
+
+.shell-assistant-focus .agent-turn-text {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--console-fg, #c7dde8);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+/* --- Composer: pinned bottom row in normal flow --- */
+.shell-assistant-focus .agent-embedded-composer {
+  position: static;
+  flex-shrink: 0;
+  display: flex;
+  align-items: flex-end;
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0.65rem 1rem;
+  border-top: 1px solid rgba(64, 160, 200, 0.22);
+  background: rgba(8, 18, 25, 0.75);
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input,
 .shell-assistant-focus .agent-embedded-composer .composer-input-im {
-  height: 2.75rem !important;
-  min-height: 2.75rem !important;
-  max-height: 8rem !important;
-  line-height: 1.4 !important;
+  flex: 1;
+  min-width: 0;
+  min-height: 2.4rem;
+  max-height: 9rem;
+  resize: none;
+  padding: 0.5rem 0.7rem;
+  font-size: 0.85rem;
+  line-height: 1.45;
+  color: var(--console-fg, #c7dde8);
+  background: rgba(14, 30, 40, 0.7);
+  border: 1px solid rgba(64, 160, 200, 0.3);
+  border-radius: 6px;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-input:focus,
+.shell-assistant-focus .agent-embedded-composer .composer-input-im:focus {
+  outline: none;
+  border-color: rgba(94, 210, 255, 0.6);
 }
 
 .shell-assistant-focus .agent-embedded-composer .composer-submit,
 .shell-assistant-focus .agent-embedded-composer .composer-cancel {
-  min-width: 4.8rem !important;
-  min-height: 2.75rem !important;
+  flex-shrink: 0;
+  padding: 0.5rem 1rem;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  border-radius: 5px;
+  border: 1px solid rgba(94, 210, 255, 0.5);
+  background: rgba(30, 70, 92, 0.6);
+  color: #dff3fc;
+  cursor: pointer;
+}
+
+.shell-assistant-focus .agent-embedded-composer .composer-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* Expanded chat mode keeps identical containment; it only hides siblings */
+.shell-assistant-focus .agent-chat-expanded {
+  flex: 1;
+  min-height: 0;
+}
+
+/* --- Empty conversation state (previously completely unstyled) --- */
+.shell-assistant-focus .agent-conversation-masthead {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: center;
+  text-align: center;
+}
+
+.shell-assistant-focus .agent-empty-kicker {
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  color: rgba(94, 210, 255, 0.65);
+}
+
+.shell-assistant-focus .agent-conversation-masthead h4 {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: var(--console-fg, #c7dde8);
+}
+
+.shell-assistant-focus .agent-conversation-state {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.45rem;
+  font-size: 0.72rem;
+  color: var(--console-dim, #6d8a99);
+}
+
+.shell-assistant-focus .agent-conversation-state strong {
+  color: rgba(94, 210, 255, 0.85);
+  font-weight: 500;
+}
+
+.shell-assistant-focus .agent-empty-workspace {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1.4rem;
+  max-width: 40rem;
+  margin: auto;
+  padding: 2rem 1rem;
+}
+
+.shell-assistant-focus .agent-empty-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  align-items: center;
+  text-align: center;
+}
+
+.shell-assistant-focus .agent-empty-intro p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.55;
+  color: var(--console-dim, #7d9aa9);
+}
+
+.shell-assistant-focus .agent-empty-capabilities {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.7rem;
+  width: 100%;
+}
+
+.shell-assistant-focus .agent-empty-capabilities article {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  padding: 0.8rem;
+  border: 1px solid rgba(64, 160, 200, 0.16);
+  border-radius: 6px;
+  background: rgba(12, 26, 35, 0.45);
+}
+
+.shell-assistant-focus .agent-empty-capabilities article span {
+  font-size: 0.6rem;
+  letter-spacing: 0.16em;
+  color: rgba(94, 210, 255, 0.5);
+}
+
+.shell-assistant-focus .agent-empty-capabilities article strong {
+  font-size: 0.8rem;
+  color: var(--console-fg, #c7dde8);
+}
+
+.shell-assistant-focus .agent-empty-capabilities article p {
+  margin: 0;
+  font-size: 0.72rem;
+  line-height: 1.45;
+  color: var(--console-dim, #6d8a99);
+}
+
+.shell-assistant-focus .agent-empty-status {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+  justify-content: center;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid rgba(64, 160, 200, 0.14);
+  border-radius: 999px;
+  background: rgba(9, 20, 27, 0.55);
+  font-size: 0.68rem;
+}
+
+.shell-assistant-focus .agent-empty-status span {
+  letter-spacing: 0.14em;
+  color: rgba(94, 210, 255, 0.5);
+}
+
+.shell-assistant-focus .agent-empty-status strong {
+  color: var(--console-fg, #c7dde8);
+  font-weight: 500;
+  margin-right: 0.4rem;
+}
+
+@media (max-width: 900px) {
+  .shell-assistant-focus .agent-empty-capabilities {
+    grid-template-columns: 1fr;
+  }
 }
