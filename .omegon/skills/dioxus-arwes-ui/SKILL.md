@@ -53,6 +53,27 @@ If any of those four points are unknown, scout before editing.
 - Keep conditional rendering structurally stable where possible. Avoid layout jumps from swapping entire containers when a small status region would suffice.
 - Treat missing backend fields as a state to render intentionally, not as a reason to unwrap or silently omit critical affordances.
 
+### App-scope state (Flynt-verified idioms)
+
+Reference implementation: `flynt/crates/flynt-app/src/app.rs`.
+
+- Cross-cutting concerns (theme, operator settings, font size, shared process handles) are provided once at app scope with `use_context_provider(|| Signal::new(...))` and consumed in leaves with `use_context::<Signal<T>>()` (flynt app.rs:57–66, 593). Do not thread them through props, and do not re-provide them mid-tree.
+- Newtype context keys (`ThemeName(String)`) instead of providing bare `Signal<String>` — bare primitive contexts collide silently.
+- Global keyboard shortcuts live on the root shell div (`tabindex: "0"`, `onkeydown`), not on document listeners scattered through components (flynt app.rs:684+).
+- Head injection goes through `document::Style` / `document::Link` / `document::Script`; bundled assets through the `asset!` macro; compile-time data through `include_str!`. Pick by lifecycle: `asset!` for files the bundler should fingerprint, `include_str!` for data parsed at startup.
+- FOUC guard: hide body via a tiny `document::Style` rule until the theme is applied, then flip a `ready` class (flynt app.rs:598).
+
+## Theming and design tokens (tweak.cn model)
+
+The styrene ecosystem standard (omegon/styrene-rs/flynt) is tweak.cn/shadcn-style theming: a theme is a **flat map of CSS custom properties**, nothing more. Flynt's implementation (`flynt-app/src/theme.rs`) is the reference:
+
+- **Token vocabulary**: `--background`, `--foreground`, `--card`, `--card-foreground`, `--popover`, `--primary`, `--primary-foreground`, `--secondary`, `--muted`, `--muted-foreground`, `--accent`, `--destructive`, `--border`, `--input`, `--ring`, `--radius`. Prefer these names for anything new so themes port across apps.
+- **Application mechanism**: serialize the active theme's vars to one inline `style` string and set it on the root shell element together with `data-theme="{id}"` (flynt app.rs:682). The CSS cascade does all the work — no per-component theme plumbing, no JS, no runtime stylesheet rewriting.
+- **Bundled presets**: `include_str!` a vendored presets JSON (`assets/vendor/tweakcn-presets.json`), id → `{name, description, vars}`.
+- **Imports**: accept exported tweak.cn JSON, a builtin slug, or a public `/r/themes/{id}.json` URL. Sanitize var names on ingest (strip/validate `--` prefix, reject non-alphanumeric) and complete missing tokens from a builtin fallback (`complete_vars`). Persist imported themes in operator settings; builtin ids win collisions and imports get a `custom-` prefix.
+- **The discipline that makes it work**: stylesheet rules consume `var(--token)` — a hardcoded color literal in a component rule block is a defect unless it is genuinely theme-invariant (pure black scrim, brand mark). Themes can only restyle what flows through tokens.
+- Auspex-specific: main.css already has `--text-*`, `--surface-*`, `--border-*`, `--accent-*`, `--agent-*` layers. New rules must use them. Do not add new raw `#hex`/`rgba()` values to component rules; if a needed token is missing, add the token to the theme block first, then consume it.
+
 ## Arwes/theme rules
 
 - Use Arwes/theme tokens and existing primitives first. Do not fight the theme with ad-hoc hex values or one-off shadows.
