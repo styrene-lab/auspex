@@ -1,13 +1,40 @@
 :root {
   font-family: "Inter", ui-sans-serif, system-ui, sans-serif;
-  background: #0b0f14;
-  color: #e6edf3;
+  background: var(--background);
+  color: var(--foreground);
 
-  --bg-app: #0b0f14;
+  /* ── Layer 0: theme tokens (tweak.cn/shadcn vocabulary). ──────────────
+     The ONLY layer a theme import replaces. Everything below derives from
+     these or is explicitly theme-invariant. Same contract as flynt. */
+  --background: #0b0f14;
+  --foreground: #e6edf3;
+  --card: #11161d;
+  --card-foreground: #e6edf3;
+  --popover: #161b22;
+  --popover-foreground: #e6edf3;
+  --primary: #388bfd;
+  --primary-foreground: #ffffff;
+  --secondary: #161b22;
+  --secondary-foreground: #c9d1d9;
+  --muted: #21262d;
+  --muted-foreground: #8b949e;
+  --accent: #6ecad8;
+  --accent-foreground: #050913;
+  --destructive: #f85149;
+  --destructive-foreground: #fafafa;
+  --border: #30363d;
+  --input: #30363d;
+  --ring: #388bfd;
+  --radius: 8px;
+
+  /* ── Layer 1: semantic aliases. Derive from Layer 0 where possible;
+     specialized values must stay theme-plausible. Component rules (Layer 2)
+     consume only these or Layer 0 — never raw literals. ─────────────── */
+  --bg-app: var(--background);
   --bg-shell: #0c1016;
   --bg-rail: #0a0e14;
-  --surface-1: #11161d;
-  --surface-2: #161b22;
+  --surface-1: var(--card);
+  --surface-2: var(--popover);
   --surface-panel-gradient: linear-gradient(180deg, var(--surface-1) 0%, #0f141b 100%);
   --surface-control-hover: #0f1622;
   --surface-control-active: #0f1f16;
@@ -26,9 +53,9 @@
   --surface-text: #0d131b;
   --surface-tool: #0d141d;
 
-  --text-primary: #e6edf3;
-  --text-secondary: #c9d1d9;
-  --text-muted: #8b949e;
+  --text-primary: var(--foreground);
+  --text-secondary: var(--secondary-foreground);
+  --text-muted: var(--muted-foreground);
   --text-dim: #7d8793;
   --text-subtle: #596574;
   --text-placeholder: #484f58;
@@ -45,7 +72,7 @@
   --shadow-well: inset 0 2px 6px rgba(0, 0, 0, 0.28), inset 0 1px 0 rgba(255, 255, 255, 0.03);
 
   --border-subtle: #1b2129;
-  --border-default: #30363d;
+  --border-default: var(--border);
   --border-strong: #484f58;
   --border-muted: #21262d;
   --border-dashed: #3a424c;
@@ -64,15 +91,15 @@
   --border-purple-strong: #8957e5;
   --border-amber: #9e6a03;
 
-  --accent-primary: #388bfd;
+  --accent-primary: var(--primary);
   --accent-info: #58a6ff;
   --accent-success: #56d364;
   --accent-warn: #d29922;
-  --accent-danger: #f85149;
+  --accent-danger: var(--destructive);
   --accent-orange: #ffa657;
 
   --radius-sm: 6px;
-  --radius-md: 8px;
+  --radius-md: var(--radius);
   --radius-lg: 10px;
   --radius-xl: 8px;
   --radius-2xl: 10px;
@@ -6346,17 +6373,9 @@ body,
   }
 }
 
-/* Unified agent console visual language pass. */
+/* Unified agent console visual language pass.
+   Console tokens (--agent-*) are defined ONCE in the "visual polish" block below. */
 .shell-assistant-focus {
-  --agent-bg: #060a12;
-  --agent-panel: rgba(10, 17, 28, 0.92);
-  --agent-panel-2: rgba(14, 24, 38, 0.72);
-  --agent-border: rgba(42, 180, 200, 0.42);
-  --agent-border-dim: rgba(26, 52, 72, 0.74);
-  --agent-text: #e6eef7;
-  --agent-muted: #95a4b4;
-  --agent-accent: #6ecad8;
-  --agent-control-h: 2.25rem;
   --agent-radius: 0;
   background: var(--agent-bg);
 }
@@ -6795,7 +6814,8 @@ body,
   }
 }
 
-/* Visual polish: reduce wireframe harshness and restore console hierarchy. */
+/* Visual polish: reduce wireframe harshness and restore console hierarchy.
+   Single authoritative definition of the console token layer (--agent-*). */
 .shell-assistant-focus {
   --agent-bg: #050913;
   --agent-panel: rgba(9, 16, 27, 0.78);
@@ -6804,7 +6824,9 @@ body,
   --agent-border-dim: rgba(45, 78, 108, 0.5);
   --agent-text: #e7eef8;
   --agent-muted: #8fa0b2;
-  --agent-accent: #76d8e6;
+  --agent-accent: var(--accent);
+  --agent-accent-soft: rgba(42, 180, 200, 0.14);
+  --agent-control-h: 2.25rem;
   --agent-radius: 14px;
   background:
     radial-gradient(circle at 12% -10%, rgba(42, 180, 200, 0.12), transparent 28rem),
@@ -8331,7 +8353,7 @@ body,
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden !important;
-  background: #050b13;
+  background: var(--agent-bg);
 }
 
 .shell-assistant-focus .omegon-command-rail {
@@ -8342,8 +8364,8 @@ body,
   align-items: stretch;
   gap: 0.35rem;
   padding: 1rem 0.6rem;
-  border-right: 1px solid rgba(62, 150, 170, 0.24);
-  background: #07111c;
+  border-right: 1px solid var(--agent-border-dim);
+  background: var(--agent-panel);
 }
 
 .shell-assistant-focus .omegon-command-brand {
@@ -8351,12 +8373,12 @@ body,
   justify-items: center;
   gap: 0.12rem;
   margin-bottom: 1rem;
-  color: #dbeafe;
+  color: var(--agent-text);
   font-family: var(--font-mono);
 }
 
 .shell-assistant-focus .omegon-command-brand > span {
-  color: #64d4e8;
+  color: var(--agent-accent);
   font-size: 1.45rem;
 }
 
@@ -8366,7 +8388,7 @@ body,
 }
 
 .shell-assistant-focus .omegon-command-brand small {
-  color: #60788d;
+  color: var(--agent-muted);
   font-size: 0.52rem;
   letter-spacing: 0.15em;
 }
@@ -8378,7 +8400,7 @@ body,
   padding: 0.45rem 0.2rem;
   border: 1px solid transparent;
   border-radius: 0.45rem;
-  color: #71869a;
+  color: var(--agent-muted);
   background: transparent;
   font: 700 0.58rem/1.2 var(--font-mono);
   letter-spacing: 0.06em;
@@ -8386,16 +8408,16 @@ body,
 }
 
 .shell-assistant-focus .omegon-rail-button:hover {
-  border-color: rgba(86, 186, 207, 0.22);
-  color: #b9d6df;
-  background: rgba(39, 105, 121, 0.12);
+  border-color: var(--agent-border);
+  color: var(--agent-text);
+  background: var(--agent-accent-soft);
 }
 
 .shell-assistant-focus .omegon-rail-button-active {
-  border-color: rgba(94, 202, 222, 0.38);
-  color: #75d9eb;
-  background: rgba(36, 118, 139, 0.2);
-  box-shadow: inset 2px 0 #67d3e6;
+  border-color: var(--agent-border);
+  color: var(--agent-accent);
+  background: var(--agent-accent-soft);
+  box-shadow: inset 2px 0 var(--agent-accent);
 }
 
 .shell-assistant-focus .omegon-rail-spacer { flex: 1; }
@@ -8407,8 +8429,8 @@ body,
   min-width: 0;
   margin-top: 0.5rem;
   padding: 0.45rem 0.15rem 0;
-  border-top: 1px solid rgba(62, 150, 170, 0.18);
-  color: #4d6478;
+  border-top: 1px solid var(--agent-border-dim);
+  color: var(--agent-muted);
   font: 600 0.52rem/1.35 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
   letter-spacing: 0.03em;
 }
@@ -8424,8 +8446,8 @@ body,
   min-height: 0;
   padding: 1.2rem 1rem;
   overflow-y: auto;
-  border-right: 1px solid rgba(62, 150, 170, 0.2);
-  background: linear-gradient(180deg, #091521, #07101a);
+  border-right: 1px solid var(--agent-border-dim);
+  background: var(--agent-panel-2);
 }
 
 .shell-assistant-focus .omegon-control-deck > header {
@@ -8435,17 +8457,17 @@ body,
   gap: 0.8rem;
   margin-bottom: 1.4rem;
   padding-bottom: 0.8rem;
-  border-bottom: 1px solid rgba(80, 154, 171, 0.2);
+  border-bottom: 1px solid var(--agent-border-dim);
 }
 
 .shell-assistant-focus .omegon-control-deck > header span {
-  color: #547287;
+  color: var(--agent-muted);
   font: 700 0.58rem/1 var(--font-mono);
   letter-spacing: 0.15em;
 }
 
 .shell-assistant-focus .omegon-control-deck > header strong {
-  color: #c9e5ec;
+  color: var(--agent-text);
   font: 700 0.75rem/1 var(--font-mono);
 }
 
@@ -8457,7 +8479,7 @@ body,
 
 .shell-assistant-focus .omegon-deck-group h4 {
   margin: 0 0 0.45rem;
-  color: #7892a6;
+  color: var(--agent-muted);
   font: 700 0.64rem/1.2 var(--font-mono);
   letter-spacing: 0.1em;
   text-transform: uppercase;
@@ -8468,7 +8490,7 @@ body,
   padding: 0 0.75rem;
   border: 1px solid transparent;
   border-radius: 0.35rem;
-  color: #9eafbf;
+  color: var(--agent-muted);
   background: transparent;
   font: 600 0.72rem/1.2 var(--font-mono);
   text-align: left;
@@ -8476,9 +8498,9 @@ body,
 
 .shell-assistant-focus .omegon-deck-group button:hover,
 .shell-assistant-focus .omegon-deck-group button:focus-visible {
-  border-color: rgba(78, 176, 197, 0.28);
-  color: #d9edf1;
-  background: rgba(31, 94, 110, 0.16);
+  border-color: var(--agent-border);
+  color: var(--agent-text);
+  background: var(--agent-accent-soft);
   outline: none;
 }
 
@@ -8497,8 +8519,8 @@ body,
   align-items: end;
   justify-content: space-between;
   gap: 1.5rem;
-  border-left: 2px solid rgba(91, 191, 210, 0.72);
-  border-bottom: 1px solid rgba(63, 126, 145, 0.2);
+  border-left: 2px solid var(--agent-accent);
+  border-bottom: 1px solid var(--agent-border-dim);
 }
 
 .shell-assistant-focus .agent-conversation-masthead h4 {
@@ -8519,7 +8541,7 @@ body,
 }
 
 .shell-assistant-focus .agent-conversation-state span {
-  color: #69c9db;
+  color: var(--agent-accent);
   text-transform: uppercase;
   letter-spacing: 0.12em;
 }
@@ -8569,7 +8591,7 @@ body,
   min-width: 0 !important;
   height: 2rem !important;
   padding: 0 0.75rem !important;
-  border: 1px solid rgba(91, 191, 210, 0.24) !important;
+  border: 1px solid var(--agent-border) !important;
   font-size: 0.62rem !important;
   letter-spacing: 0.08em !important;
 }
@@ -8597,7 +8619,7 @@ body,
    floating inside a featureless full-window panel. */
 .shell-assistant-focus .assistant-workspace {
   padding: 0 !important;
-  background: #060b12 !important;
+  background: var(--agent-bg) !important;
 }
 
 .shell-assistant-focus .console-note-row {
@@ -8620,8 +8642,8 @@ body,
   height: 3.25rem !important;
   min-height: 3.25rem !important;
   padding: 0 max(1rem, calc((100% - 76rem) / 2)) !important;
-  border-bottom: 1px solid rgba(91, 191, 210, 0.22) !important;
-  background: rgba(7, 14, 23, 0.98) !important;
+  border-bottom: 1px solid var(--agent-border) !important;
+  background: var(--agent-panel) !important;
 }
 
 .shell-assistant-focus .agent-primary-titlecopy {
@@ -8638,7 +8660,7 @@ body,
 
 .shell-assistant-focus .agent-primary-titlecopy p {
   margin: 0 !important;
-  color: rgba(119, 141, 162, 0.72) !important;
+  color: var(--agent-muted) !important;
   font: 600 0.67rem/1 var(--font-mono) !important;
 }
 
@@ -8649,9 +8671,9 @@ body,
   padding: 0 !important;
   overflow: hidden !important;
   border-radius: 50% !important;
-  background: #62d7a0 !important;
+  background: var(--accent-success) !important;
   color: transparent !important;
-  box-shadow: 0 0 0.8rem rgba(98, 215, 160, 0.4);
+  box-shadow: 0 0 0.8rem var(--border-success-strong);
 }
 
 .shell-assistant-focus .agent-conversation-masthead {
@@ -8672,7 +8694,7 @@ body,
 .shell-assistant-focus .agent-turn-list {
   max-width: 76rem !important;
   gap: 0 !important;
-  border-top: 1px solid rgba(63, 126, 145, 0.15);
+  border-top: 1px solid var(--agent-border-dim);
 }
 
 .shell-assistant-focus .agent-turn-role {
@@ -8851,7 +8873,7 @@ body,
 .shell-assistant-focus .agent-primary-titlecopy p {
   margin: 0;
   font-size: 0.75rem;
-  color: var(--console-dim, #6d8a99);
+  color: var(--console-dim, var(--agent-muted));
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -8888,16 +8910,16 @@ body,
   letter-spacing: 0.1em;
   text-transform: uppercase;
   white-space: nowrap;
-  color: var(--console-fg, #b8d4e0);
+  color: var(--console-fg, var(--agent-text));
   background: rgba(20, 40, 52, 0.55);
-  border: 1px solid rgba(64, 160, 200, 0.3);
+  border: 1px solid var(--agent-border);
   border-radius: 4px;
   cursor: pointer;
 }
 
 .shell-assistant-focus .agent-dashboard-actions .agent-mini-action:hover {
-  border-color: rgba(94, 210, 255, 0.6);
-  color: #dff3fc;
+  border-color: var(--agent-accent);
+  color: var(--agent-text);
 }
 
 .shell-assistant-focus .agent-dashboard-actions .agent-mini-action-primary {
@@ -8920,7 +8942,7 @@ body,
   position: static;
   flex-shrink: 0;
   margin: 0;
-  border-bottom: 1px solid rgba(64, 160, 200, 0.14);
+  border-bottom: 1px solid var(--agent-accent-soft);
   background: rgba(9, 20, 27, 0.5);
 }
 
@@ -8932,7 +8954,7 @@ body,
   gap: 0.75rem;
   padding: 0.45rem 1rem;
   font-size: 0.72rem;
-  color: var(--console-dim, #6d8a99);
+  color: var(--console-dim, var(--agent-muted));
   cursor: pointer;
   list-style: none;
   user-select: none;
@@ -8946,7 +8968,7 @@ body,
 .shell-assistant-focus .agent-context-disclosure > summary::after,
 .shell-assistant-focus .agent-diagnostics-disclosure > summary::after {
   content: "\25B8";
-  color: rgba(94, 210, 255, 0.6);
+  color: var(--agent-accent);
   transition: transform 120ms ease;
 }
 
@@ -8957,7 +8979,7 @@ body,
 
 .shell-assistant-focus .agent-context-disclosure summary strong,
 .shell-assistant-focus .agent-diagnostics-disclosure summary strong {
-  color: var(--console-fg, #b8d4e0);
+  color: var(--console-fg, var(--agent-text));
   font-weight: 500;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -9008,7 +9030,7 @@ body,
   gap: 0.75rem;
   flex-shrink: 0;
   padding: 0.55rem 1rem;
-  border-bottom: 1px solid rgba(64, 160, 200, 0.14);
+  border-bottom: 1px solid var(--agent-accent-soft);
 }
 
 /* --- Transcript: the ONE scroll owner --- */
@@ -9037,7 +9059,7 @@ body,
 }
 
 .shell-assistant-focus .agent-turn-card {
-  border: 1px solid rgba(64, 160, 200, 0.14);
+  border: 1px solid var(--agent-accent-soft);
   border-left: 2px solid rgba(94, 210, 255, 0.35);
   border-radius: 6px;
   padding: 0.55rem 0.8rem;
@@ -9066,7 +9088,7 @@ body,
 
 .shell-assistant-focus .agent-turn-channel {
   font-size: 0.62rem;
-  color: var(--console-dim, #6d8a99);
+  color: var(--console-dim, var(--agent-muted));
   overflow-wrap: anywhere;
 }
 
@@ -9074,7 +9096,7 @@ body,
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.5;
-  color: var(--console-fg, #c7dde8);
+  color: var(--console-fg, var(--agent-text));
   overflow-wrap: anywhere;
   white-space: pre-wrap;
 }
@@ -9103,16 +9125,16 @@ body,
   padding: 0.5rem 0.7rem;
   font-size: 0.85rem;
   line-height: 1.45;
-  color: var(--console-fg, #c7dde8);
+  color: var(--console-fg, var(--agent-text));
   background: rgba(14, 30, 40, 0.7);
-  border: 1px solid rgba(64, 160, 200, 0.3);
+  border: 1px solid var(--agent-border);
   border-radius: 6px;
 }
 
 .shell-assistant-focus .agent-embedded-composer .composer-input:focus,
 .shell-assistant-focus .agent-embedded-composer .composer-input-im:focus {
   outline: none;
-  border-color: rgba(94, 210, 255, 0.6);
+  border-color: var(--agent-accent);
 }
 
 .shell-assistant-focus .agent-embedded-composer .composer-submit,
@@ -9123,9 +9145,9 @@ body,
   text-transform: uppercase;
   letter-spacing: 0.1em;
   border-radius: 5px;
-  border: 1px solid rgba(94, 210, 255, 0.5);
+  border: 1px solid var(--agent-accent);
   background: rgba(30, 70, 92, 0.6);
-  color: #dff3fc;
+  color: var(--agent-text);
   cursor: pointer;
 }
 
@@ -9160,7 +9182,7 @@ body,
   margin: 0;
   font-size: 1.05rem;
   font-weight: 600;
-  color: var(--console-fg, #c7dde8);
+  color: var(--console-fg, var(--agent-text));
 }
 
 .shell-assistant-focus .agent-conversation-state {
@@ -9168,7 +9190,7 @@ body,
   align-items: baseline;
   gap: 0.45rem;
   font-size: 0.72rem;
-  color: var(--console-dim, #6d8a99);
+  color: var(--console-dim, var(--agent-muted));
 }
 
 .shell-assistant-focus .agent-conversation-state strong {
@@ -9221,19 +9243,19 @@ body,
 .shell-assistant-focus .agent-empty-capabilities article span {
   font-size: 0.6rem;
   letter-spacing: 0.16em;
-  color: rgba(94, 210, 255, 0.5);
+  color: var(--agent-accent);
 }
 
 .shell-assistant-focus .agent-empty-capabilities article strong {
   font-size: 0.8rem;
-  color: var(--console-fg, #c7dde8);
+  color: var(--console-fg, var(--agent-text));
 }
 
 .shell-assistant-focus .agent-empty-capabilities article p {
   margin: 0;
   font-size: 0.72rem;
   line-height: 1.45;
-  color: var(--console-dim, #6d8a99);
+  color: var(--console-dim, var(--agent-muted));
 }
 
 .shell-assistant-focus .agent-empty-status {
@@ -9243,7 +9265,7 @@ body,
   flex-wrap: wrap;
   justify-content: center;
   padding: 0.5rem 0.9rem;
-  border: 1px solid rgba(64, 160, 200, 0.14);
+  border: 1px solid var(--agent-accent-soft);
   border-radius: 999px;
   background: rgba(9, 20, 27, 0.55);
   font-size: 0.68rem;
@@ -9251,11 +9273,11 @@ body,
 
 .shell-assistant-focus .agent-empty-status span {
   letter-spacing: 0.14em;
-  color: rgba(94, 210, 255, 0.5);
+  color: var(--agent-accent);
 }
 
 .shell-assistant-focus .agent-empty-status strong {
-  color: var(--console-fg, #c7dde8);
+  color: var(--console-fg, var(--agent-text));
   font-weight: 500;
   margin-right: 0.4rem;
 }
