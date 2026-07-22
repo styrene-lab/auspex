@@ -1712,6 +1712,7 @@ body,
 }
 
 .composer {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 0.55rem;
@@ -1871,6 +1872,23 @@ body,
 
 .composer-blocked-action:hover {
   background: linear-gradient(180deg, rgba(84, 51, 19, 0.98), rgba(57, 35, 14, 0.98));
+}
+
+.composer-toast-layer {
+  position: absolute;
+  bottom: calc(100% + 0.55rem);
+  left: 0;
+  right: 0;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 30;
+}
+
+.composer-toast-layer .composer-ready-notice {
+  pointer-events: auto;
+  max-width: 34rem;
+  box-shadow: var(--shadow-lift-1), 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 .composer-ready-notice {
@@ -5603,6 +5621,7 @@ body,
 }
 
 .chat-composer {
+  position: relative;
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;
   align-items: end;
@@ -5638,9 +5657,20 @@ body,
   display: none;
 }
 
-.chat-composer .composer-ready-notice,
 .chat-composer .composer-blocked-callout {
   grid-column: 1 / -1;
+}
+
+/* Toast layer: floats above the composer, out of document flow.
+   Never resizes the composer, never overlaps the header, never blocks input. */
+.chat-composer .composer-ready-notice {
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  bottom: calc(100% + 0.5rem);
+  z-index: 30;
+  pointer-events: none;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.45);
 }
 
 @media (max-width: 760px) {
