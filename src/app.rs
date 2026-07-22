@@ -22,6 +22,14 @@ use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = false;
+
+/// Build provenance stamped by build.rs — rendered in the command rail so a
+/// stale binary or stale process is visually obvious (see 2026-07-22 layout
+/// debugging incident: three stacked failures hidden by unknown provenance).
+const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
+const BUILD_GIT_SHA: &str = env!("AUSPEX_GIT_SHA");
+const BUILD_GIT_DIRTY: &str = env!("AUSPEX_GIT_DIRTY");
+const BUILD_TIME: &str = env!("AUSPEX_BUILD_TIME");
 const SHELL_BLOCKOUT_MODE: bool = false;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
@@ -4915,6 +4923,12 @@ fn render_assistant_workspace(
         });
     }
     let history = transcript_chat_history(_transcript, messages);
+    // Pending-turn indicator: captures history length at dispatch; the pending
+    // card renders until history grows past it (agent response arrived).
+    let turn_pending_len = use_signal(|| None::<usize>);
+    let turn_pending = matches!(*turn_pending_len.read(), Some(len) if history.len() <= len);
+    let history_len = history.len();
+    let mut turn_pending_len = turn_pending_len;
     let agent_templates = agent_template_models();
     let context_label = session_context_label(session);
     let agent_workspace_label = session_workspace_label(session);
@@ -4966,6 +4980,12 @@ fn render_assistant_workspace(
                 }
                 div { class: "omegon-rail-spacer" }
                 button { class: "omegon-rail-button", r#type: "button", onclick: move |_| settings_open.set(true), span { "Settings" } }
+                div { class: "omegon-rail-provenance", title: "Build provenance — verify capture evidence against this",
+                    span { "v{BUILD_VERSION}" }
+                    span { "{BUILD_GIT_SHA}{BUILD_GIT_DIRTY}" }
+                    span { "{BUILD_TIME}" }
+                    span { "pid {std::process::id()}" }
+                }
             }
             aside { class: "omegon-control-deck",
                 header {
@@ -5036,10 +5056,12 @@ fn render_assistant_workspace(
                 }
             }
             div { class: "omegon-console-main",
-            if let Some(error) = snapshot.error.as_deref() {
-                p { class: "deploy-error", "{error}" }
-            } else if let Some(message) = snapshot.message.as_deref() {
-                p { class: "deploy-message", "{message}" }
+            div { class: "console-note-row",
+                if let Some(error) = snapshot.error.as_deref() {
+                    p { class: "deploy-error", "{error}" }
+                } else if let Some(message) = snapshot.message.as_deref() {
+                    p { class: "deploy-message", "{message}" }
+                }
             }
 
             div { class: "assistant-main-grid agent-console-grid",
@@ -5533,6 +5555,19 @@ fn render_assistant_workspace(
                                                     p { class: "agent-turn-text", "{turn.text}" }
                                                 }
                                             }
+                                            if turn_pending {
+                                                article { class: "agent-turn-card agent-turn-pending", "data-role": "agent",
+                                                    div { class: "agent-turn-meta",
+                                                        span { class: "agent-turn-role", "AGENT" }
+                                                        span { class: "agent-turn-channel", "working" }
+                                                    }
+                                                    p { class: "agent-turn-text agent-turn-pending-dots",
+                                                        span { "." }
+                                                        span { "." }
+                                                        span { "." }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -5611,6 +5646,7 @@ fn render_assistant_workspace(
                                                 if let Some(instance_id) = focused {
                                                     let result = controller.read().dispatch_to_instance(&instance_id, &command);
                                                     if result.is_ok() {
+                                                        turn_pending_len.set(Some(history_len));
                                                         let mut current = state.write();
                                                         current.error = None;
                                                         current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
@@ -5621,6 +5657,7 @@ fn render_assistant_workspace(
                                                 if let Some(transport) = transport {
                                                     match dispatch_targeted_command(&transport, stream.as_ref(), &command) {
                                                         Ok(()) => {
+                                                            turn_pending_len.set(Some(history_len));
                                                             let mut current = state.write();
                                                             current.error = None;
                                                             current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
@@ -5642,6 +5679,7 @@ fn render_assistant_workspace(
                                             {
                                                 if let Some(stream) = stream {
                                                     dispatch_targeted_command(&stream, &command);
+                                                    turn_pending_len.set(Some(history_len));
                                                     let mut current = state.write();
                                                     current.error = None;
                                                     current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());

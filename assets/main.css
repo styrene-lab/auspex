@@ -8571,20 +8571,20 @@ body,
   background: #060b12 !important;
 }
 
+.shell-assistant-focus .console-note-row {
+  flex: none;
+  display: flex;
+  align-items: center;
+  min-height: 2rem;
+}
+
 .shell-assistant-focus .deploy-message,
 .shell-assistant-focus .deploy-error {
-  position: fixed !important;
-  top: 0.75rem !important;
-  left: 50% !important;
-  z-index: 20 !important;
-  width: auto !important;
-  max-width: min(46rem, calc(100vw - 3rem)) !important;
-  margin: 0 !important;
-  padding: 0.55rem 0.8rem !important;
-  transform: translateX(-50%);
-  border-radius: 0.35rem !important;
-  box-shadow: 0 0.75rem 2rem rgba(0, 0, 0, 0.45);
-  font-size: 0.74rem !important;
+  width: 100%;
+  margin: 0;
+  padding: 0.35rem 0.65rem;
+  border-radius: 0.35rem;
+  font-size: 0.74rem;
 }
 
 .shell-assistant-focus .agent-dashboard-titlebar {
