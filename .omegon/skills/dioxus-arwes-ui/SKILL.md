@@ -93,6 +93,15 @@ This is where we keep tripping. Apply these before touching visuals:
 - Permission/approval cards must carry stable backend identifiers such as `request_id`; labels are not identifiers.
 - Display transport state visibly when backend state is central to the task: connected, connecting, stale, error, mock/fallback.
 
+## Class coverage and CSS authority rules
+
+These exist because we shipped an unstyled provenance block (giant wrapped version text) and a button with three conflicting rule blocks (glyph geometry forced onto a text label).
+
+- **No unstyled operational classes.** Every class name emitted from RSX must have a corresponding CSS rule. Before declaring a new component done, grep the stylesheet for each class you introduced. An element with no rule inherits body-scale typography — inside a narrow rail or strip this renders as giant wrapped text. If an element is intentionally unstyled, say so in a comment next to the RSX.
+- **One authoritative rule block per component class.** When restyling an existing class, edit its original rule block in place. Never append a later "override" block further down the stylesheet — especially not one using `!important` to win. Three definitions of the same selector at different line numbers is a bug even when the cascade currently resolves the way you want. Grep for the class first: `grep -n "class-name" assets/main.css`. If multiple blocks exist, consolidate before changing anything.
+- **Glyph buttons and text buttons are different components.** Fixed-width square geometry (`width: 2.35rem; place-items: center`) is only valid for single-glyph buttons (×, ⤢, ⚙). A button whose label is a word ("Focus", "Refresh") must size from its content: `padding-inline` + `min-height`, never fixed width. If a button can hold either, split the class or use a modifier.
+- **Metadata/provenance text has a standard treatment.** Build stamps, versions, pids, timestamps, hashes: mono font, `0.5–0.6rem`, muted color, explicit wrap policy (`overflow-wrap: anywhere` for hashes/versions in narrow columns), no text-transform. Never let these inherit heading or body scale.
+
 ## Testing and validation
 
 For non-trivial UI work, include at least one of:
@@ -121,6 +130,9 @@ For web/frontend packages, use the project scripts if present rather than invent
 - [ ] Top/status/action bars do not overlap scroll bodies.
 - [ ] Theme tokens are used instead of ad-hoc colors.
 - [ ] Tests or fixtures cover the contract/state touched.
+- [ ] Every class emitted in RSX has a CSS rule (grep the stylesheet).
+- [ ] No selector is defined in more than one rule block.
+- [ ] Text-labeled buttons size from content; only glyph buttons get fixed square geometry.
 - [ ] Validation command was run or the reason it could not run is stated.
 
 ## Anti-patterns to reject

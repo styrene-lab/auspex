@@ -7388,19 +7388,7 @@ body,
   border-radius: 0 !important;
 }
 
-/* Normalize chat expand control to a compact glyph action. */
-.shell-assistant-focus .agent-chat-expand-button {
-  width: 2.35rem !important;
-  min-width: 2.35rem !important;
-  height: 2.1rem !important;
-  min-height: 2.1rem !important;
-  padding: 0 !important;
-  display: inline-grid !important;
-  place-items: center !important;
-  font-size: 1.05rem !important;
-  line-height: 1 !important;
-  letter-spacing: 0 !important;
-}
+/* agent-chat-expand-button: single authoritative rule lives at the header-actions block above. */
 
 .shell-assistant-focus .agent-turn-list {
   align-content: end;
@@ -7995,13 +7983,6 @@ body,
   text-transform: none !important;
 }
 
-.shell-assistant-focus .agent-chat-expand-button {
-  min-height: 2rem;
-  padding-inline: 0.75rem;
-  letter-spacing: 0.04em;
-  text-transform: none;
-}
-
 .shell-assistant-focus .agent-turn-list {
   width: 100%;
   max-width: 64rem;
@@ -8418,6 +8399,24 @@ body,
 }
 
 .shell-assistant-focus .omegon-rail-spacer { flex: 1; }
+
+/* Build provenance stamp at rail foot: tiny mono metadata, never body scale. */
+.shell-assistant-focus .omegon-rail-provenance {
+  display: grid;
+  gap: 0.14rem;
+  min-width: 0;
+  margin-top: 0.5rem;
+  padding: 0.45rem 0.15rem 0;
+  border-top: 1px solid rgba(62, 150, 170, 0.18);
+  color: #4d6478;
+  font: 600 0.52rem/1.35 var(--font-mono, ui-monospace, SFMono-Regular, Menlo, monospace);
+  letter-spacing: 0.03em;
+}
+
+.shell-assistant-focus .omegon-rail-provenance span {
+  display: block;
+  overflow-wrap: anywhere;
+}
 
 .shell-assistant-focus .omegon-control-deck {
   display: block !important;
