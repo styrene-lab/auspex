@@ -11,7 +11,7 @@ use uuid::Uuid;
 
 macro_rules! uuid_id {
     ($name:ident) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
         #[serde(transparent)]
         pub struct $name(Uuid);
 
@@ -120,6 +120,7 @@ impl ManagedRunRequest {
     }
 
     pub fn directive(&self) -> &str { &self.directive }
+    pub fn supervisor_deadline_seconds(&self) -> u64 { self.supervisor_deadline_seconds }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
