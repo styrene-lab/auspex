@@ -42,6 +42,7 @@ thiserror = "2"
 futures-util = "0.3"
 tungstenite = { version = "0.28", default-features = false }
 rmp-serde = "1"
+uuid = { version = "1", features = ["serde", "v4", "js"] }
 omegon-traits = "0.20"
 styrene-policy = { path = "../../worktrees/styrene-rs-policy/crates/libs/styrene-policy", features = ["config"] }
 

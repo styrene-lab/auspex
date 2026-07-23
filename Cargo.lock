@@ -376,6 +376,7 @@ dependencies = [
  "toml",
  "tungstenite 0.28.0",
  "url",
+ "uuid",
  "wasm-bindgen",
  "wasm-bindgen-futures",
  "web-sys",
