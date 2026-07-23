@@ -5,12 +5,11 @@ use serde_json::Value;
 use crate::managed_agent_supervisor::{
     DelegateCancelRequest, DelegateCancelResponse, DelegateDispatchRequest,
     DelegateDispatchResponse, DelegateObservationResponse, DelegateTaskRequest,
-    SupervisorContractError, METHOD_DELEGATE_DISPATCH,
-    METHOD_DELEGATE_GET,
+    SupervisorContractError,
 };
 use crate::managed_agents::{
     ManagedAgentRun, ManagedAgentValidationError, ManagedRunId, ManagedRunRequest,
-    ManagedRunState, ManagedRunTransitionError, SupervisorEvent, WorkerId,
+    ManagedRunTransitionError, SupervisorEvent, WorkerId,
 };
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 
@@ -66,11 +65,11 @@ impl ManagedAgentSupervisorRuntime {
         target: CommandTarget,
         now_unix_ms: u64,
     ) -> Result<(ManagedRunId, TargetedCommand), SupervisorRuntimeError> {
-        let run = ManagedAgentRun::new(worker_id.clone(), parent_session_id, parent_turn_id, request)?;
+        let run = ManagedAgentRun::new(worker_id, parent_session_id, parent_turn_id, request)?;
         let run_id = run.run_id();
         if self.runs.contains_key(&run_id) { return Err(SupervisorRuntimeError::DuplicateRun); }
         let deadline_at_unix_ms = now_unix_ms.saturating_add(run.request().supervisor_deadline_seconds().saturating_mul(1000));
-        let command = DelegateDispatchRequest::new(run_id, worker_id.clone(), run.request().clone()).command(target.clone())?;
+        let command = DelegateDispatchRequest::new(run_id, worker_id, run.request().clone()).command(target.clone())?;
         self.runs.insert(run_id, RuntimeEntry {
             run,
             target,
