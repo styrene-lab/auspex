@@ -230,6 +230,17 @@ impl ManagedRunState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct OmegonEffectivePolicy {
+    pub worker_profile: WorkerProfile,
+    pub max_turns: u32,
+    pub wall_timeout_seconds: u64,
+    pub idle_timeout_seconds: u64,
+    pub enabled_tools: Vec<String>,
+    pub model: Option<String>,
+    pub thinking_level: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct OmegonDelegateObservation {
     pub task_id: OmegonTaskId,
     pub label: Option<String>,
