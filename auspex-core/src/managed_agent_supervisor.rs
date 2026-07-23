@@ -77,6 +77,14 @@ pub struct DelegateCancelResponse {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct SupervisorErrorResponse {
+    pub schema_version: u32,
+    pub managed_run_id: ManagedRunId,
+    pub worker_id: WorkerId,
+    pub rejection: SupervisorRejection,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SupervisorRejection {
     pub code: String,
     pub safe_message: String,
@@ -290,5 +298,59 @@ mod tests {
             schema_version: 99, managed_run_id: run.clone(), worker_id: worker.clone(), task_id: task.clone(), result: String::new(),
         };
         assert_eq!(response.validate_for(&run, &worker, &task, 10), Err(SupervisorContractError::UnsupportedSchema { received: 99 }));
+    }
+
+    #[test]
+    fn deserializes_exact_omegon_golden_fixtures() {
+        for fixture in [
+            include_str!("../tests/fixtures/managed_agent/01-running.json"),
+            include_str!("../tests/fixtures/managed_agent/02-completed-success.json"),
+            include_str!("../tests/fixtures/managed_agent/03-completed-unsuccessful.json"),
+            include_str!("../tests/fixtures/managed_agent/04-typed-failure.json"),
+            include_str!("../tests/fixtures/managed_agent/05-cancel-acknowledged.json"),
+            include_str!("../tests/fixtures/managed_agent/06-cancel-confirmed.json"),
+        ] {
+            let response: DelegateObservationResponse = serde_json::from_str(fixture).unwrap();
+            response
+                .validate_for(
+                    &response.managed_run_id.clone(),
+                    &response.worker_id.clone(),
+                    &response.observation.task_id.clone(),
+                )
+                .unwrap();
+        }
+
+        let dispatch: DelegateDispatchResponse = serde_json::from_str(include_str!(
+            "../tests/fixtures/managed_agent/07-dispatch-accepted.json"
+        ))
+        .unwrap();
+        dispatch
+            .validate_for(&dispatch.managed_run_id.clone(), &dispatch.worker_id.clone())
+            .unwrap();
+
+        let result: DelegateResultResponse = serde_json::from_str(include_str!(
+            "../tests/fixtures/managed_agent/08-result.json"
+        ))
+        .unwrap();
+        result
+            .validate_for(
+                &result.managed_run_id.clone(),
+                &result.worker_id.clone(),
+                &result.task_id.clone(),
+                1024,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn deserializes_omegon_rejection_fixtures() {
+        for fixture in [
+            include_str!("../tests/fixtures/managed_agent/09-unknown-task.json"),
+            include_str!("../tests/fixtures/managed_agent/10-unsupported-schema.json"),
+        ] {
+            let rejection: SupervisorErrorResponse = serde_json::from_str(fixture).unwrap();
+            assert!(!rejection.rejection.code.is_empty());
+            assert!(!rejection.rejection.safe_message.is_empty());
+        }
     }
 }

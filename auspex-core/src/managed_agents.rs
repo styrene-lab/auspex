@@ -188,10 +188,10 @@ impl ManagedAgentRun {
             OmegonDelegateStatus::Running => ManagedRunState::Running,
             OmegonDelegateStatus::Completed { success: true } => {
                 let result = observation.result.clone().ok_or(ManagedRunTransitionError::ResultRequired)?;
-                ManagedRunState::Completed { result }
+                ManagedRunState::Completed { result: normalize_raw_result(&result) }
             }
             OmegonDelegateStatus::Completed { success: false } => ManagedRunState::Failed {
-                failure: ManagedRunFailure::reported("delegate_completed_unsuccessfully", observation.result.clone()),
+                failure: ManagedRunFailure::reported("delegate_completed_unsuccessfully", observation.result.clone().map(|result| normalize_raw_result(&result))),
             },
             OmegonDelegateStatus::Failed { failure_kind, safe_message } => ManagedRunState::Failed {
                 failure: ManagedRunFailure { code: failure_kind.code().to_string(), safe_message: safe_message.clone() },
@@ -248,7 +248,7 @@ pub struct OmegonDelegateObservation {
     pub agent_name: Option<String>,
     pub task_description: String,
     pub status: OmegonDelegateStatus,
-    pub result: Option<ManagedRunResult>,
+    pub result: Option<String>,
     pub result_viewed: bool,
     pub started_at_unix_ms: u64,
     pub completed_at_unix_ms: Option<u64>,
@@ -300,6 +300,10 @@ pub struct ManagedRunResult {
     pub questions: Vec<String>,
 }
 
+fn normalize_raw_result(result: &str) -> ManagedRunResult {
+    ManagedRunResult { summary: result.to_string(), ..ManagedRunResult::default() }
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedRunFailure { pub code: String, pub safe_message: String }
 impl ManagedRunFailure {
@@ -340,6 +344,7 @@ mod tests {
     }
     fn run() -> ManagedAgentRun { ManagedAgentRun::new(WorkerId::new(), "session-1", "turn-1", request()).unwrap() }
     fn observation(task_id: &str, status: OmegonDelegateStatus, result: Option<ManagedRunResult>) -> OmegonDelegateObservation {
+        let result = result.map(|result| result.summary);
         OmegonDelegateObservation {
             task_id: OmegonTaskId::parse(task_id).unwrap(), label: Some("scout/backend".into()), agent_name: Some("scout".into()),
             task_description: "Inspect backend".into(), status, result, result_viewed: false,
