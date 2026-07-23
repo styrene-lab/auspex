@@ -205,6 +205,7 @@ pub struct AppController {
     session: SessionSource,
     #[cfg(not(target_arch = "wasm32"))]
     instance_sessions: crate::instance_session::InstanceSessionMap,
+    managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
@@ -228,6 +229,7 @@ impl Default for AppController {
             session: SessionSource::default(),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -271,6 +273,7 @@ impl AppController {
             session: SessionSource::Remote(Box::new(session)),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -702,13 +705,26 @@ impl AppController {
     /// Increments unread counts for non-focused instances that had events.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn drain_all_instance_sessions(&mut self) -> bool {
-        let active_ids = self.instance_sessions.drain_all_with_ids();
+        let (active_ids, control_responses) = self.instance_sessions.drain_all_with_control_responses();
+        for (instance_id, response) in control_responses {
+            if let Err(error) = self.managed_agents.apply_response_json(&response) {
+                eprintln!("auspex: instance {instance_id}: rejected managed-agent response: {error:?}");
+            }
+        }
         for id in &active_ids {
             if self.focused_instance_id.as_deref() != Some(id.as_str()) {
                 *self.unread_counts.entry(id.clone()).or_insert(0) += 1;
             }
         }
         !active_ids.is_empty()
+    }
+
+    pub fn managed_agent_runtime(&self) -> &crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+        &self.managed_agents
+    }
+
+    pub fn managed_agent_runtime_mut(&mut self) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+        &mut self.managed_agents
     }
 
     /// Send a command to a specific instance's WebSocket.

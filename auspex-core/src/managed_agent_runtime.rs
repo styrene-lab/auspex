@@ -13,13 +13,13 @@ use crate::managed_agents::{
 };
 use crate::runtime_types::{CommandTarget, TargetedCommand};
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagedAgentSupervisorRuntime {
     runs: BTreeMap<ManagedRunId, RuntimeEntry>,
     max_result_bytes: usize,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct RuntimeEntry {
     run: ManagedAgentRun,
     target: CommandTarget,
@@ -161,6 +161,8 @@ impl ManagedAgentSupervisorRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::managed_agent_supervisor::{METHOD_DELEGATE_DISPATCH, METHOD_DELEGATE_GET};
+    use crate::managed_agents::ManagedRunState;
     use crate::managed_agents::{WorkerProfile, OmegonTaskId};
     use std::collections::BTreeSet;
 
