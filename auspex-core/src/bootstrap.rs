@@ -2102,7 +2102,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.26.99".into());
+            .omegon_version = Some("0.29.0".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning
