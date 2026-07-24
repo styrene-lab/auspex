@@ -110,7 +110,8 @@ impl InstanceSession {
                 .and_then(|value| value.get("type").and_then(serde_json::Value::as_str).map(str::to_owned))
                 .is_some_and(|kind| matches!(kind.as_str(),
                     "delegate_dispatch_result" | "delegate_get_result" |
-                    "delegate_result_result" | "delegate_cancel_result"));
+                    "delegate_result_result" | "delegate_cancel_result" |
+                    "control_command_receipt"));
             if is_managed_agent_response {
                 control_responses.push(event_json.clone());
                 continue;

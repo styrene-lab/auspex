@@ -19,6 +19,7 @@ use crate::runtime_types::{CommandTarget, ManagedCommandId, TargetedCommand};
 pub struct ManagedAgentSupervisorRuntime {
     runs: BTreeMap<ManagedRunId, RuntimeEntry>,
     commands: BTreeMap<ManagedCommandId, PendingManagedCommand>,
+    command_runs: BTreeMap<ManagedCommandId, ManagedRunId>,
     max_result_bytes: usize,
 }
 
@@ -74,7 +75,7 @@ impl From<ManagedAgentValidationError> for SupervisorRuntimeError {
 
 impl ManagedAgentSupervisorRuntime {
     pub fn new(max_result_bytes: usize) -> Self {
-        Self { runs: BTreeMap::new(), commands: BTreeMap::new(), max_result_bytes }
+        Self { runs: BTreeMap::new(), commands: BTreeMap::new(), command_runs: BTreeMap::new(), max_result_bytes }
     }
 
     pub fn dispatch(
@@ -101,6 +102,7 @@ impl ManagedAgentSupervisorRuntime {
             events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
         });
         let command_id = command.managed_command_id().ok_or(SupervisorRuntimeError::MissingCommandId)?;
+        self.command_runs.insert(command_id, run_id);
         self.commands.insert(command_id, PendingManagedCommand {
             command: command.clone(),
             state: ManagedCommandDeliveryState::Pending,
@@ -154,6 +156,10 @@ impl ManagedAgentSupervisorRuntime {
                 None
             }
         }).collect()
+    }
+
+    pub fn command_run_id(&self, command_id: ManagedCommandId) -> Option<ManagedRunId> {
+        self.command_runs.get(&command_id).copied()
     }
 
     pub fn command_delivery_state(&self, command_id: ManagedCommandId) -> Option<&ManagedCommandDeliveryState> {

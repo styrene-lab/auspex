@@ -728,7 +728,23 @@ impl AppController {
             }
         }
         for (instance_id, response) in control_responses {
-            let response_run_id = serde_json::from_str::<serde_json::Value>(&response).ok()
+            let parsed = serde_json::from_str::<serde_json::Value>(&response).ok();
+            if parsed.as_ref().and_then(|value| value.get("type")).and_then(serde_json::Value::as_str) == Some("control_command_receipt") {
+                let command_id = parsed.as_ref().and_then(|value| value.get("command_id")).cloned()
+                    .and_then(|value| serde_json::from_value::<crate::runtime_types::ManagedCommandId>(value).ok());
+                let routed_instance = command_id
+                    .and_then(|id| self.managed_agents.command_run_id(id))
+                    .and_then(|run_id| self.managed_agent_instances.get(&run_id));
+                if routed_instance != Some(&instance_id) {
+                    eprintln!("auspex: instance {instance_id}: rejected cross-instance command receipt");
+                    continue;
+                }
+                if let Err(error) = self.managed_agents.apply_receipt_json(&response) {
+                    eprintln!("auspex: instance {instance_id}: rejected command receipt: {error:?}");
+                }
+                continue;
+            }
+            let response_run_id = parsed
                 .and_then(|value| value.get("managed_run_id").cloned())
                 .and_then(|value| serde_json::from_value::<crate::managed_agents::ManagedRunId>(value).ok());
             if response_run_id.and_then(|run_id| self.managed_agent_instances.get(&run_id)) != Some(&instance_id) {
@@ -824,6 +840,18 @@ impl AppController {
                     crate::managed_agents::ManagedRunTransitionError::DispatchNotAccepted,
                 )) => {}
                 Err(error) => errors.push(format!("run {run_id}: {error:?}")),
+            }
+        }
+        let replay_commands = self.managed_agents.replay_due_commands(std::time::Duration::from_secs(3));
+        for command in replay_commands {
+            let Some(command_id) = command.managed_command_id() else { continue };
+            let Some(run_id) = self.managed_agents.command_run_id(command_id) else { continue };
+            let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
+                errors.push(format!("command {command_id} has no target instance"));
+                continue;
+            };
+            if let Err(error) = self.dispatch_to_instance(&instance_id, &command) {
+                errors.push(error);
             }
         }
         errors
