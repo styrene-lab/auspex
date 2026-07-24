@@ -206,6 +206,7 @@ pub struct AppController {
     #[cfg(not(target_arch = "wasm32"))]
     instance_sessions: crate::instance_session::InstanceSessionMap,
     managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime,
+    managed_agent_instances: std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
@@ -230,6 +231,7 @@ impl Default for AppController {
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
             managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
+            managed_agent_instances: std::collections::BTreeMap::new(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -274,6 +276,7 @@ impl AppController {
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
             managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
+            managed_agent_instances: std::collections::BTreeMap::new(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -725,6 +728,71 @@ impl AppController {
 
     pub fn managed_agent_runtime_mut(&mut self) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
         &mut self.managed_agents
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn dispatch_managed_agent(
+        &mut self,
+        instance_id: &str,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        target: CommandTarget,
+        now_unix_ms: u64,
+    ) -> Result<crate::managed_agents::ManagedRunId, String> {
+        if !self.instance_sessions.is_connected(instance_id) {
+            return Err(format!("no session for instance {instance_id}"));
+        }
+        let (run_id, command) = self.managed_agents
+            .dispatch(worker_id, parent.0, parent.1, request, target, now_unix_ms)
+            .map_err(|error| format!("managed-agent dispatch rejected: {error:?}"))?;
+        if let Err(error) = self.dispatch_to_instance(instance_id, &command) {
+            self.managed_agents.remove_run(run_id);
+            return Err(error);
+        }
+        self.managed_agent_instances.insert(run_id, instance_id.to_string());
+        Ok(run_id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn cancel_managed_agent(
+        &mut self,
+        instance_id: &str,
+        run_id: crate::managed_agents::ManagedRunId,
+        reason: Option<String>,
+    ) -> Result<(), String> {
+        let command = self.managed_agents.cancel_command(run_id, reason)
+            .map_err(|error| format!("managed-agent cancellation rejected: {error:?}"))?;
+        self.dispatch_to_instance(instance_id, &command)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn tick_managed_agents(&mut self, now_unix_ms: u64) -> Vec<String> {
+        let mut errors = Vec::new();
+        let expired: std::collections::HashSet<_> = self.managed_agents.expired_runs(now_unix_ms).into_iter().collect();
+        for run_id in self.managed_agents.active_run_ids() {
+            let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
+                errors.push(format!("run {run_id} has no target instance"));
+                continue;
+            };
+            let command = if expired.contains(&run_id) {
+                self.managed_agents.cancel_command(run_id, Some("supervisor deadline exceeded".into()))
+            } else {
+                self.managed_agents.poll_command(run_id)
+            };
+            match command {
+                Ok(command) => {
+                    if let Err(error) = self.dispatch_to_instance(&instance_id, &command) {
+                        errors.push(error);
+                    }
+                }
+                Err(crate::managed_agent_runtime::SupervisorRuntimeError::Domain(
+                    crate::managed_agents::ManagedRunTransitionError::DispatchNotAccepted,
+                )) => {}
+                Err(error) => errors.push(format!("run {run_id}: {error:?}")),
+            }
+        }
+        errors
     }
 
     /// Send a command to a specific instance's WebSocket.

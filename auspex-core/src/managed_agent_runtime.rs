@@ -146,6 +146,14 @@ impl ManagedAgentSupervisorRuntime {
         }
     }
 
+    pub fn remove_run(&mut self, run_id: ManagedRunId) -> Option<ManagedAgentRun> {
+        self.runs.remove(&run_id).map(|entry| entry.run)
+    }
+
+    pub fn active_run_ids(&self) -> Vec<ManagedRunId> {
+        self.runs.iter().filter_map(|(run_id, entry)| (!entry.run.state().is_terminal()).then_some(*run_id)).collect()
+    }
+
     pub fn expired_runs(&self, now_unix_ms: u64) -> Vec<ManagedRunId> {
         self.runs.iter().filter_map(|(run_id, entry)| {
             (!entry.run.state().is_terminal() && now_unix_ms >= entry.deadline_at_unix_ms).then_some(*run_id)
