@@ -1297,6 +1297,16 @@ pub fn App() -> Element {
                     // Reconcile container agents every ~15s (100 ticks × 150ms).
                     // Collect remote probe targets on the same cadence, offset by 50 ticks.
                     container_reconcile_tick += 1;
+                    // Supervision cadence: ~600ms (4 × 150ms), bounded independently
+                    // from the slower container reconciliation/probe schedules.
+                    if container_reconcile_tick.is_multiple_of(4) {
+                        let now_unix_ms = std::time::SystemTime::now()
+                            .duration_since(std::time::UNIX_EPOCH)
+                            .map(|duration| duration.as_millis() as u64)
+                            .unwrap_or(0);
+                        let errors = ctrl.tick_managed_agents(now_unix_ms);
+                        ctrl.record_managed_agent_scheduler_errors(&errors);
+                    }
                     if container_reconcile_tick.is_multiple_of(100) {
                         ctrl.reconcile_container_agents();
                     }
@@ -1381,6 +1391,12 @@ pub fn App() -> Element {
                                         ));
                                         settings_open.set(false);
                                         workspace.set(Workspace::Assistants);
+                                        let mut notice = composer_ready_notice;
+                                        spawn(async move {
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            tokio::time::sleep(std::time::Duration::from_secs(6)).await;
+                                            notice.set(None);
+                                        });
                                     }
                                 }
                             }
@@ -6922,7 +6938,9 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                 on_submit.call(());
             },
             if let Some(message) = composer_ready_notice {
-                div { class: "composer-ready-notice", "{message}" }
+                div { class: "composer-toast-layer", role: "status",
+                    div { class: "composer-ready-notice", "{message}" }
+                }
             }
             if let Some(blocked) = provider_blocked_composer {
                 div { class: "composer-blocked-callout",

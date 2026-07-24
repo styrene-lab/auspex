@@ -207,6 +207,7 @@ pub struct AppController {
     instance_sessions: crate::instance_session::InstanceSessionMap,
     managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime,
     managed_agent_instances: std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
+    managed_agent_audit_sequence: u64,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
@@ -232,6 +233,7 @@ impl Default for AppController {
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
             managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
             managed_agent_instances: std::collections::BTreeMap::new(),
+            managed_agent_audit_sequence: 0,
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -277,6 +279,7 @@ impl AppController {
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
             managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
             managed_agent_instances: std::collections::BTreeMap::new(),
+            managed_agent_audit_sequence: 0,
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -808,6 +811,23 @@ impl AppController {
             }
         }
         errors
+    }
+
+    pub fn record_managed_agent_scheduler_errors(&mut self, errors: &[String]) {
+        if errors.is_empty() {
+            return;
+        }
+        let session_key = self.session_audit_key();
+        for error in errors {
+            self.managed_agent_audit_sequence += 1;
+            let entry = crate::audit_timeline::AuditEntry::telemetry(
+                &session_key,
+                &format!("managed-agent-scheduler-{}", self.managed_agent_audit_sequence),
+                "Managed agent · Scheduler error",
+                error,
+            );
+            let _ = self.audit_timeline.append_entry(entry);
+        }
     }
 
     /// Send a command to a specific instance's WebSocket.
