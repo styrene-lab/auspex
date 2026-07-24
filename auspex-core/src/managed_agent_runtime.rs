@@ -4,8 +4,8 @@ use serde_json::Value;
 
 use crate::managed_agent_supervisor::{
     DelegateCancelRequest, DelegateCancelResponse, DelegateDispatchRequest,
-    DelegateDispatchResponse, DelegateObservationResponse, DelegateTaskRequest,
-    SupervisorContractError,
+    DelegateDispatchResponse, DelegateObservationResponse, DelegateResultResponse,
+    DelegateTaskRequest, SupervisorContractError,
 };
 use crate::managed_agents::{
     ManagedAgentRun, ManagedAgentValidationError, ManagedRunId, ManagedRunRequest,
@@ -131,6 +131,13 @@ impl ManagedAgentSupervisorRuntime {
                 let response: DelegateCancelResponse = serde_json::from_value(value).map_err(|error| SupervisorRuntimeError::InvalidJson(error.to_string()))?;
                 let expected = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?.clone();
                 response.validate_for(&run_id, &entry.run.worker_id(), &expected)?;
+                entry.run.apply_cancellation_response(response.acknowledged, response.termination_confirmed, response.reason)?;
+            }
+            "delegate_result_result" => {
+                let response: DelegateResultResponse = serde_json::from_value(value).map_err(|error| SupervisorRuntimeError::InvalidJson(error.to_string()))?;
+                let expected = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?.clone();
+                response.validate_for(&run_id, &entry.run.worker_id(), &expected, self.max_result_bytes)?;
+                entry.run.complete_from_result(response.result)?;
             }
             other => return Err(SupervisorRuntimeError::UnexpectedResponseType(other.to_string())),
         }
@@ -148,6 +155,12 @@ impl ManagedAgentSupervisorRuntime {
 
     pub fn remove_run(&mut self, run_id: ManagedRunId) -> Option<ManagedAgentRun> {
         self.runs.remove(&run_id).map(|entry| entry.run)
+    }
+
+    pub fn pollable_run_ids(&self) -> Vec<ManagedRunId> {
+        self.runs.iter().filter_map(|(run_id, entry)|
+            matches!(entry.run.state(), crate::managed_agents::ManagedRunState::Running).then_some(*run_id)
+        ).collect()
     }
 
     pub fn active_run_ids(&self) -> Vec<ManagedRunId> {

@@ -728,6 +728,13 @@ impl AppController {
             }
         }
         for (instance_id, response) in control_responses {
+            let response_run_id = serde_json::from_str::<serde_json::Value>(&response).ok()
+                .and_then(|value| value.get("managed_run_id").cloned())
+                .and_then(|value| serde_json::from_value::<crate::managed_agents::ManagedRunId>(value).ok());
+            if response_run_id.and_then(|run_id| self.managed_agent_instances.get(&run_id)) != Some(&instance_id) {
+                eprintln!("auspex: instance {instance_id}: rejected cross-instance managed-agent response");
+                continue;
+            }
             if let Err(error) = self.managed_agents.apply_response_json(&response) {
                 eprintln!("auspex: instance {instance_id}: rejected managed-agent response: {error:?}");
             }
@@ -779,6 +786,11 @@ impl AppController {
         run_id: crate::managed_agents::ManagedRunId,
         reason: Option<String>,
     ) -> Result<(), String> {
+        let expected_instance = self.managed_agent_instances.get(&run_id)
+            .ok_or_else(|| format!("run {run_id} has no target instance"))?;
+        if expected_instance != instance_id {
+            return Err(format!("run {run_id} belongs to instance {expected_instance}, not {instance_id}"));
+        }
         let command = self.managed_agents.cancel_command(run_id, reason)
             .map_err(|error| format!("managed-agent cancellation rejected: {error:?}"))?;
         self.dispatch_to_instance(instance_id, &command)
@@ -789,6 +801,10 @@ impl AppController {
         let mut errors = Vec::new();
         let expired: std::collections::HashSet<_> = self.managed_agents.expired_runs(now_unix_ms).into_iter().collect();
         for run_id in self.managed_agents.active_run_ids() {
+            let state = self.managed_agents.run(run_id).map(|run| run.state().clone());
+            if matches!(state, Some(crate::managed_agents::ManagedRunState::Disconnected { .. } | crate::managed_agents::ManagedRunState::Cancelling { .. })) {
+                continue;
+            }
             let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
                 errors.push(format!("run {run_id} has no target instance"));
                 continue;

@@ -205,6 +205,31 @@ impl ManagedAgentRun {
         Ok(())
     }
 
+    pub fn apply_cancellation_response(
+        &mut self,
+        acknowledged: bool,
+        termination_confirmed: bool,
+        reason: Option<String>,
+    ) -> Result<(), ManagedRunTransitionError> {
+        if !matches!(self.state, ManagedRunState::Cancelling { .. }) {
+            return Err(ManagedRunTransitionError::InvalidState);
+        }
+        if termination_confirmed {
+            self.state = ManagedRunState::Cancelled { reason, termination_confirmed: true };
+        } else if !acknowledged {
+            return Err(ManagedRunTransitionError::InvalidState);
+        }
+        Ok(())
+    }
+
+    pub fn complete_from_result(&mut self, result: String) -> Result<(), ManagedRunTransitionError> {
+        if self.state.is_terminal() && !matches!(self.state, ManagedRunState::Completed { .. }) {
+            return Err(ManagedRunTransitionError::TerminalRun);
+        }
+        self.state = ManagedRunState::Completed { result: normalize_raw_result(&result) };
+        Ok(())
+    }
+
     pub fn mark_reconnected(&mut self) -> Result<(), ManagedRunTransitionError> {
         match &self.state {
             ManagedRunState::Disconnected { .. } => {

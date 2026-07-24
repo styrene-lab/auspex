@@ -95,14 +95,15 @@ impl InstanceSession {
 
         for event_json in &events {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(event_json)
-                && value.get("type").and_then(serde_json::Value::as_str) == Some("system_notification")
-                && let Some(message) = value.get("message").and_then(serde_json::Value::as_str)
+                && value.get("type").and_then(serde_json::Value::as_str) == Some("auspex_transport_state")
+                && let Some(state) = value.get("state").and_then(serde_json::Value::as_str)
             {
-                if message.starts_with("Connected to Omegon event stream") {
-                    transport_events.push(SessionTransportEvent::Connected);
-                } else if message.contains("Will reconnect") || message.starts_with("Could not connect") {
-                    transport_events.push(SessionTransportEvent::Disconnected);
+                match state {
+                    "connected" => transport_events.push(SessionTransportEvent::Connected),
+                    "disconnected" => transport_events.push(SessionTransportEvent::Disconnected),
+                    _ => {}
                 }
+                continue;
             }
             let is_managed_agent_response = serde_json::from_str::<serde_json::Value>(event_json)
                 .ok()
