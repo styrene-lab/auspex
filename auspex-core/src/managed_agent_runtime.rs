@@ -1,4 +1,5 @@
 use std::collections::BTreeMap;
+use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
@@ -24,7 +25,8 @@ struct RuntimeEntry {
     run: ManagedAgentRun,
     target: CommandTarget,
     dispatched_at_unix_ms: u64,
-    deadline_at_unix_ms: u64,
+    dispatched_at: Instant,
+    deadline_at: Instant,
     events: Vec<SupervisorEvent>,
 }
 
@@ -68,13 +70,15 @@ impl ManagedAgentSupervisorRuntime {
         let run = ManagedAgentRun::new(worker_id, parent_session_id, parent_turn_id, request)?;
         let run_id = run.run_id();
         if self.runs.contains_key(&run_id) { return Err(SupervisorRuntimeError::DuplicateRun); }
-        let deadline_at_unix_ms = now_unix_ms.saturating_add(run.request().supervisor_deadline_seconds().saturating_mul(1000));
+        let now = Instant::now();
+        let deadline_at = now.checked_add(Duration::from_secs(run.request().supervisor_deadline_seconds())).unwrap_or(now);
         let command = DelegateDispatchRequest::new(run_id, worker_id, run.request().clone()).command(target.clone())?;
         self.runs.insert(run_id, RuntimeEntry {
             run,
             target,
             dispatched_at_unix_ms: now_unix_ms,
-            deadline_at_unix_ms,
+            dispatched_at: now,
+            deadline_at,
             events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
         });
         Ok((run_id, command))
@@ -176,11 +180,11 @@ impl ManagedAgentSupervisorRuntime {
         }
     }
 
-    pub fn expire_dispatches(&mut self, now_unix_ms: u64, timeout_ms: u64) -> Vec<ManagedRunId> {
+    fn expire_dispatches_at(&mut self, now: Instant, timeout: Duration) -> Vec<ManagedRunId> {
         let mut expired = Vec::new();
         for entry in self.runs.values_mut() {
             if matches!(entry.run.state(), crate::managed_agents::ManagedRunState::Dispatching)
-                && now_unix_ms.saturating_sub(entry.dispatched_at_unix_ms) >= timeout_ms
+                && now.duration_since(entry.dispatched_at) >= timeout
                 && entry.run.mark_dispatch_timed_out().is_ok()
             {
                 expired.push(entry.run.run_id());
@@ -189,10 +193,18 @@ impl ManagedAgentSupervisorRuntime {
         expired
     }
 
-    pub fn expired_runs(&self, now_unix_ms: u64) -> Vec<ManagedRunId> {
+    pub fn expire_dispatches(&mut self, timeout: Duration) -> Vec<ManagedRunId> {
+        self.expire_dispatches_at(Instant::now(), timeout)
+    }
+
+    fn expired_runs_at(&self, now: Instant) -> Vec<ManagedRunId> {
         self.runs.iter().filter_map(|(run_id, entry)| {
-            (!entry.run.state().is_terminal() && now_unix_ms >= entry.deadline_at_unix_ms).then_some(*run_id)
+            (!entry.run.state().is_terminal() && now >= entry.deadline_at).then_some(*run_id)
         }).collect()
+    }
+
+    pub fn expired_runs(&self) -> Vec<ManagedRunId> {
+        self.expired_runs_at(Instant::now())
     }
 
     pub fn run(&self, run_id: ManagedRunId) -> Option<&ManagedAgentRun> { self.runs.get(&run_id).map(|entry| &entry.run) }
@@ -241,8 +253,9 @@ mod tests {
             "task_id": "delegate_1", "effective_policy": null, "rejection": null
         });
         assert!(matches!(runtime.apply_response_json(&response.to_string()), Err(SupervisorRuntimeError::Contract(SupervisorContractError::IdentityMismatch))));
-        assert!(runtime.expired_runs(30_999).is_empty());
-        assert_eq!(runtime.expired_runs(31_000), vec![run_id]);
+        let start = runtime.runs.get(&run_id).unwrap().dispatched_at;
+        assert!(runtime.expired_runs_at(start + Duration::from_millis(29_999)).is_empty());
+        assert_eq!(runtime.expired_runs_at(start + Duration::from_secs(30)), vec![run_id]);
     }
 
     #[test]
@@ -282,9 +295,10 @@ mod tests {
     fn dispatch_acceptance_timeout_is_terminal_and_idempotent() {
         let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
         let (run_id, _) = runtime.dispatch(WorkerId::new(), "session", "turn", request(), target(), 1_000).unwrap();
-        assert!(runtime.expire_dispatches(15_999, 15_000).is_empty());
-        assert_eq!(runtime.expire_dispatches(16_000, 15_000), vec![run_id]);
-        assert!(runtime.expire_dispatches(20_000, 15_000).is_empty());
+        let start = runtime.runs.get(&run_id).unwrap().dispatched_at;
+        assert!(runtime.expire_dispatches_at(start + Duration::from_millis(14_999), Duration::from_secs(15)).is_empty());
+        assert_eq!(runtime.expire_dispatches_at(start + Duration::from_secs(15), Duration::from_secs(15)), vec![run_id]);
+        assert!(runtime.expire_dispatches_at(start + Duration::from_secs(20), Duration::from_secs(15)).is_empty());
         assert!(matches!(runtime.run(run_id).unwrap().state(), ManagedRunState::DispatchTimedOut));
     }
 

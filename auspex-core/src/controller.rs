@@ -793,13 +793,13 @@ impl AppController {
     }
 
     #[cfg(not(target_arch = "wasm32"))]
-    pub fn tick_managed_agents(&mut self, now_unix_ms: u64) -> Vec<String> {
+    pub fn tick_managed_agents(&mut self) -> Vec<String> {
         let mut errors = Vec::new();
-        let dispatch_timeouts = self.managed_agents.expire_dispatches(now_unix_ms, 15_000);
+        let dispatch_timeouts = self.managed_agents.expire_dispatches(std::time::Duration::from_secs(15));
         for run_id in dispatch_timeouts {
             errors.push(format!("run {run_id}: dispatch acceptance timed out"));
         }
-        let expired: std::collections::HashSet<_> = self.managed_agents.expired_runs(now_unix_ms).into_iter().collect();
+        let expired: std::collections::HashSet<_> = self.managed_agents.expired_runs().into_iter().collect();
         for run_id in self.managed_agents.active_run_ids() {
             let state = self.managed_agents.run(run_id).map(|run| run.state().clone());
             if matches!(state, Some(crate::managed_agents::ManagedRunState::Disconnected { .. } | crate::managed_agents::ManagedRunState::Cancelling { .. })) {

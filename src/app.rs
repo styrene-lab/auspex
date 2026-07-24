@@ -1300,11 +1300,7 @@ pub fn App() -> Element {
                     // Supervision cadence: ~600ms (4 × 150ms), bounded independently
                     // from the slower container reconciliation/probe schedules.
                     if container_reconcile_tick.is_multiple_of(4) {
-                        let now_unix_ms = std::time::SystemTime::now()
-                            .duration_since(std::time::UNIX_EPOCH)
-                            .map(|duration| duration.as_millis() as u64)
-                            .unwrap_or(0);
-                        let errors = ctrl.tick_managed_agents(now_unix_ms);
+                        let errors = ctrl.tick_managed_agents();
                         ctrl.record_managed_agent_scheduler_errors(&errors);
                     }
                     if container_reconcile_tick.is_multiple_of(100) {
