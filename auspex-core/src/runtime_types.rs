@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::secret_grants::SecretGrantPrincipal;
 
@@ -34,9 +35,26 @@ pub enum OperatorCommand {
         model: Option<String>,
     },
     ControlMethod {
+        command_id: ManagedCommandId,
         method: String,
         payload: serde_json::Value,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ManagedCommandId(Uuid);
+
+impl ManagedCommandId {
+    pub fn new() -> Self { Self(Uuid::new_v4()) }
+}
+
+impl Default for ManagedCommandId {
+    fn default() -> Self { Self::new() }
+}
+
+impl std::fmt::Display for ManagedCommandId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(formatter) }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,6 +115,7 @@ impl TargetedCommand {
         Self {
             target,
             command: OperatorCommand::ControlMethod {
+                command_id: ManagedCommandId::new(),
                 method: method.into(),
                 payload,
             },
@@ -128,7 +147,7 @@ impl TargetedCommand {
                 "model": model,
             })
             .to_string(),
-            OperatorCommand::ControlMethod { method, payload } => {
+            OperatorCommand::ControlMethod { method, payload, .. } => {
                 let mut command = payload.clone();
                 if let serde_json::Value::Object(ref mut map) = command {
                     map.insert(

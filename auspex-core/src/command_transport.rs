@@ -93,7 +93,7 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        crate::runtime_types::OperatorCommand::ControlMethod { method, payload } => {
+        crate::runtime_types::OperatorCommand::ControlMethod { method, payload, .. } => {
             let client = client.clone();
             let method = method.clone();
             let payload = payload.clone();
