@@ -205,6 +205,14 @@ impl ManagedAgentRun {
         Ok(())
     }
 
+    pub fn mark_dispatch_timed_out(&mut self) -> Result<(), ManagedRunTransitionError> {
+        if !matches!(self.state, ManagedRunState::Dispatching) {
+            return Err(ManagedRunTransitionError::InvalidState);
+        }
+        self.state = ManagedRunState::DispatchTimedOut;
+        Ok(())
+    }
+
     pub fn apply_cancellation_response(
         &mut self,
         acknowledged: bool,
@@ -252,6 +260,7 @@ impl ManagedAgentRun {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum ManagedRunState {
     Dispatching,
+    DispatchTimedOut,
     Running,
     Cancelling { reason: Option<String> },
     Completed { result: ManagedRunResult },
@@ -262,7 +271,7 @@ pub enum ManagedRunState {
 
 impl ManagedRunState {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::Completed { .. } | Self::Failed { .. } | Self::Cancelled { termination_confirmed: true, .. })
+        matches!(self, Self::DispatchTimedOut | Self::Completed { .. } | Self::Failed { .. } | Self::Cancelled { termination_confirmed: true, .. })
     }
 }
 

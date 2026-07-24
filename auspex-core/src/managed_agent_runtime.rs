@@ -176,6 +176,19 @@ impl ManagedAgentSupervisorRuntime {
         }
     }
 
+    pub fn expire_dispatches(&mut self, now_unix_ms: u64, timeout_ms: u64) -> Vec<ManagedRunId> {
+        let mut expired = Vec::new();
+        for entry in self.runs.values_mut() {
+            if matches!(entry.run.state(), crate::managed_agents::ManagedRunState::Dispatching)
+                && now_unix_ms.saturating_sub(entry.dispatched_at_unix_ms) >= timeout_ms
+                && entry.run.mark_dispatch_timed_out().is_ok()
+            {
+                expired.push(entry.run.run_id());
+            }
+        }
+        expired
+    }
+
     pub fn expired_runs(&self, now_unix_ms: u64) -> Vec<ManagedRunId> {
         self.runs.iter().filter_map(|(run_id, entry)| {
             (!entry.run.state().is_terminal() && now_unix_ms >= entry.deadline_at_unix_ms).then_some(*run_id)
@@ -230,6 +243,49 @@ mod tests {
         assert!(matches!(runtime.apply_response_json(&response.to_string()), Err(SupervisorRuntimeError::Contract(SupervisorContractError::IdentityMismatch))));
         assert!(runtime.expired_runs(30_999).is_empty());
         assert_eq!(runtime.expired_runs(31_000), vec![run_id]);
+    }
+
+    #[test]
+    fn result_and_cancellation_responses_drive_terminal_state() {
+        let worker = WorkerId::new();
+        let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
+        let (run_id, _) = runtime.dispatch(worker, "session", "turn", request(), target(), 0).unwrap();
+        runtime.apply_response_json(&serde_json::json!({
+            "type": "delegate_dispatch_result", "schema_version": 1,
+            "managed_run_id": run_id, "worker_id": worker, "accepted": true,
+            "task_id": "delegate_1", "effective_policy": null, "rejection": null
+        }).to_string()).unwrap();
+        runtime.apply_response_json(&serde_json::json!({
+            "type": "delegate_result_result", "schema_version": 1,
+            "managed_run_id": run_id, "worker_id": worker,
+            "task_id": "delegate_1", "result": "done"
+        }).to_string()).unwrap();
+        assert!(matches!(runtime.run(run_id).unwrap().state(), ManagedRunState::Completed { .. }));
+
+        let (cancel_id, _) = runtime.dispatch(worker, "session", "turn", request(), target(), 0).unwrap();
+        runtime.apply_response_json(&serde_json::json!({
+            "type": "delegate_dispatch_result", "schema_version": 1,
+            "managed_run_id": cancel_id, "worker_id": worker, "accepted": true,
+            "task_id": "delegate_2", "effective_policy": null, "rejection": null
+        }).to_string()).unwrap();
+        runtime.cancel_command(cancel_id, Some("stop".into())).unwrap();
+        runtime.apply_response_json(&serde_json::json!({
+            "type": "delegate_cancel_result", "schema_version": 1,
+            "managed_run_id": cancel_id, "worker_id": worker,
+            "task_id": "delegate_2", "acknowledged": true,
+            "termination_confirmed": true, "reason": "stop"
+        }).to_string()).unwrap();
+        assert!(matches!(runtime.run(cancel_id).unwrap().state(), ManagedRunState::Cancelled { termination_confirmed: true, .. }));
+    }
+
+    #[test]
+    fn dispatch_acceptance_timeout_is_terminal_and_idempotent() {
+        let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
+        let (run_id, _) = runtime.dispatch(WorkerId::new(), "session", "turn", request(), target(), 1_000).unwrap();
+        assert!(runtime.expire_dispatches(15_999, 15_000).is_empty());
+        assert_eq!(runtime.expire_dispatches(16_000, 15_000), vec![run_id]);
+        assert!(runtime.expire_dispatches(20_000, 15_000).is_empty());
+        assert!(matches!(runtime.run(run_id).unwrap().state(), ManagedRunState::DispatchTimedOut));
     }
 
     #[test]
