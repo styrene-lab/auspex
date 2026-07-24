@@ -13,6 +13,23 @@ pub const METHOD_DELEGATE_RESULT: &str = "delegate_result";
 pub const METHOD_DELEGATE_CANCEL: &str = "delegate_cancel";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ControlCommandReceiptStatus {
+    Accepted,
+    Duplicate,
+    Rejected,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ControlCommandReceipt {
+    pub schema_version: u32,
+    pub command_id: crate::runtime_types::ManagedCommandId,
+    pub receipt_status: ControlCommandReceiptStatus,
+    pub received_at_unix_ms: u64,
+    pub rejection: Option<SupervisorRejection>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct DelegateDispatchRequest {
     pub schema_version: u32,
     pub managed_run_id: ManagedRunId,

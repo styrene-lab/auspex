@@ -6,18 +6,35 @@ use serde_json::Value;
 use crate::managed_agent_supervisor::{
     DelegateCancelRequest, DelegateCancelResponse, DelegateDispatchRequest,
     DelegateDispatchResponse, DelegateObservationResponse, DelegateResultResponse,
-    DelegateTaskRequest, SupervisorContractError,
+    DelegateTaskRequest, SupervisorContractError, ControlCommandReceipt,
+    ControlCommandReceiptStatus,
 };
 use crate::managed_agents::{
     ManagedAgentRun, ManagedAgentValidationError, ManagedRunId, ManagedRunRequest,
     ManagedRunTransitionError, SupervisorEvent, WorkerId,
 };
-use crate::runtime_types::{CommandTarget, TargetedCommand};
+use crate::runtime_types::{CommandTarget, ManagedCommandId, TargetedCommand};
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ManagedAgentSupervisorRuntime {
     runs: BTreeMap<ManagedRunId, RuntimeEntry>,
+    commands: BTreeMap<ManagedCommandId, PendingManagedCommand>,
     max_result_bytes: usize,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct PendingManagedCommand {
+    command: TargetedCommand,
+    state: ManagedCommandDeliveryState,
+    last_sent_at: Instant,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ManagedCommandDeliveryState {
+    Pending,
+    Accepted,
+    Duplicate,
+    Rejected { code: String },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -33,6 +50,8 @@ struct RuntimeEntry {
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum SupervisorRuntimeError {
     UnknownRun,
+    UnknownCommand,
+    MissingCommandId,
     DuplicateRun,
     UnexpectedResponseType(String),
     ResponseRejected { code: String, safe_message: String },
@@ -55,7 +74,7 @@ impl From<ManagedAgentValidationError> for SupervisorRuntimeError {
 
 impl ManagedAgentSupervisorRuntime {
     pub fn new(max_result_bytes: usize) -> Self {
-        Self { runs: BTreeMap::new(), max_result_bytes }
+        Self { runs: BTreeMap::new(), commands: BTreeMap::new(), max_result_bytes }
     }
 
     pub fn dispatch(
@@ -81,6 +100,12 @@ impl ManagedAgentSupervisorRuntime {
             deadline_at,
             events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
         });
+        let command_id = command.managed_command_id().ok_or(SupervisorRuntimeError::MissingCommandId)?;
+        self.commands.insert(command_id, PendingManagedCommand {
+            command: command.clone(),
+            state: ManagedCommandDeliveryState::Pending,
+            last_sent_at: Instant::now(),
+        });
         Ok((run_id, command))
     }
 
@@ -100,6 +125,39 @@ impl ManagedAgentSupervisorRuntime {
         entry.run.request_cancellation(reason.clone())?;
         entry.events.push(SupervisorEvent::CancellationRequested { run_id, reason: reason.clone() });
         Ok(DelegateCancelRequest::new(run_id, entry.run.worker_id(), task_id, reason)?.command(entry.target.clone())?)
+    }
+
+    pub fn apply_receipt_json(&mut self, json: &str) -> Result<ManagedCommandId, SupervisorRuntimeError> {
+        let receipt: ControlCommandReceipt = serde_json::from_str(json)
+            .map_err(|error| SupervisorRuntimeError::InvalidJson(error.to_string()))?;
+        if receipt.schema_version != 1 {
+            return Err(SupervisorRuntimeError::Contract(SupervisorContractError::UnsupportedSchema { received: receipt.schema_version }));
+        }
+        let pending = self.commands.get_mut(&receipt.command_id).ok_or(SupervisorRuntimeError::UnknownCommand)?;
+        pending.state = match receipt.receipt_status {
+            ControlCommandReceiptStatus::Accepted => ManagedCommandDeliveryState::Accepted,
+            ControlCommandReceiptStatus::Duplicate => ManagedCommandDeliveryState::Duplicate,
+            ControlCommandReceiptStatus::Rejected => ManagedCommandDeliveryState::Rejected {
+                code: receipt.rejection.as_ref().map(|rejection| rejection.code.clone()).unwrap_or_else(|| "rejected".into()),
+            },
+        };
+        Ok(receipt.command_id)
+    }
+
+    pub fn replay_due_commands(&mut self, receipt_timeout: Duration) -> Vec<TargetedCommand> {
+        let now = Instant::now();
+        self.commands.values_mut().filter_map(|pending| {
+            if pending.state == ManagedCommandDeliveryState::Pending && now.duration_since(pending.last_sent_at) >= receipt_timeout {
+                pending.last_sent_at = now;
+                Some(pending.command.clone())
+            } else {
+                None
+            }
+        }).collect()
+    }
+
+    pub fn command_delivery_state(&self, command_id: ManagedCommandId) -> Option<&ManagedCommandDeliveryState> {
+        self.commands.get(&command_id).map(|pending| &pending.state)
     }
 
     pub fn apply_response_json(&mut self, raw: &str) -> Result<ManagedRunId, SupervisorRuntimeError> {

@@ -122,6 +122,13 @@ impl TargetedCommand {
         }
     }
 
+    pub fn managed_command_id(&self) -> Option<ManagedCommandId> {
+        match self.command {
+            OperatorCommand::ControlMethod { command_id, .. } => Some(command_id),
+            _ => None,
+        }
+    }
+
     pub fn web_command_json(&self) -> String {
         match &self.command {
             OperatorCommand::PromptSubmit { text } => serde_json::json!({
