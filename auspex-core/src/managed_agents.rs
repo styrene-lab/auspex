@@ -205,6 +205,17 @@ impl ManagedAgentRun {
         Ok(())
     }
 
+    pub fn mark_reconnected(&mut self) -> Result<(), ManagedRunTransitionError> {
+        match &self.state {
+            ManagedRunState::Disconnected { .. } => {
+                self.state = ManagedRunState::Running;
+                Ok(())
+            }
+            state if state.is_terminal() => Err(ManagedRunTransitionError::TerminalRun),
+            _ => Ok(()),
+        }
+    }
+
     pub fn mark_disconnected(&mut self) -> Result<(), ManagedRunTransitionError> {
         if self.state.is_terminal() { return Err(ManagedRunTransitionError::TerminalRun); }
         self.state = ManagedRunState::Disconnected { last_observation: self.latest_observation.clone() };

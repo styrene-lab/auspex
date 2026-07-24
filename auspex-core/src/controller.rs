@@ -708,7 +708,22 @@ impl AppController {
     /// Increments unread counts for non-focused instances that had events.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn drain_all_instance_sessions(&mut self) -> bool {
-        let (active_ids, control_responses) = self.instance_sessions.drain_all_with_control_responses();
+        let drained = self.instance_sessions.drain_all_with_control_responses();
+        let active_ids = drained.active_instance_ids;
+        let control_responses = drained.control_responses;
+        let transport_events = drained.transport_events;
+        for (instance_id, event) in transport_events {
+            let worker_ids: Vec<_> = self.managed_agent_instances.iter()
+                .filter(|(_, target)| *target == &instance_id)
+                .filter_map(|(run_id, _)| self.managed_agents.run(*run_id).map(|run| run.worker_id()))
+                .collect();
+            for worker_id in worker_ids {
+                match event {
+                    crate::instance_session::SessionTransportEvent::Connected => self.managed_agents.mark_worker_reconnected(worker_id),
+                    crate::instance_session::SessionTransportEvent::Disconnected => self.managed_agents.mark_worker_disconnected(worker_id),
+                }
+            }
+        }
         for (instance_id, response) in control_responses {
             if let Err(error) = self.managed_agents.apply_response_json(&response) {
                 eprintln!("auspex: instance {instance_id}: rejected managed-agent response: {error:?}");
