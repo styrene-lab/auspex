@@ -154,12 +154,16 @@ impl TargetedCommand {
                 "model": model,
             })
             .to_string(),
-            OperatorCommand::ControlMethod { method, payload, .. } => {
+            OperatorCommand::ControlMethod { command_id, method, payload } => {
                 let mut command = payload.clone();
                 if let serde_json::Value::Object(ref mut map) = command {
                     map.insert(
                         "type".to_string(),
                         serde_json::Value::String(method.clone()),
+                    );
+                    map.insert(
+                        "command_id".to_string(),
+                        serde_json::to_value(command_id).expect("command id serializes"),
                     );
                 }
                 command.to_string()
@@ -839,6 +843,20 @@ mod tests {
             command.transport_json().unwrap(),
             r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"dispatcher_switch","request_id":"dispatcher-switch-1","profile":"supervisor-heavy","model":"openai:gpt-4.1"}}"#
         );
+    }
+
+    #[test]
+    fn control_method_web_command_carries_id_in_omegon_native_shape() {
+        let command = TargetedCommand::control_method(
+            CommandTarget { session_key: "remote:s".into(), dispatcher_instance_id: Some("w".into()) },
+            "delegate_get",
+            serde_json::json!({"schema_version": 1}),
+        );
+        let id = command.managed_command_id().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&command.web_command_json()).unwrap();
+        assert_eq!(value["type"], "delegate_get");
+        assert_eq!(value["command_id"], id.to_string());
+        assert_eq!(value["schema_version"], 1);
     }
 
     #[test]
