@@ -78,6 +78,21 @@ impl ManagedAgentSupervisorRuntime {
         Self { runs: BTreeMap::new(), commands: BTreeMap::new(), command_runs: BTreeMap::new(), max_result_bytes }
     }
 
+    fn register_command(
+        &mut self,
+        run_id: ManagedRunId,
+        command: TargetedCommand,
+    ) -> Result<TargetedCommand, SupervisorRuntimeError> {
+        let command_id = command.managed_command_id().ok_or(SupervisorRuntimeError::MissingCommandId)?;
+        self.command_runs.insert(command_id, run_id);
+        self.commands.insert(command_id, PendingManagedCommand {
+            command: command.clone(),
+            state: ManagedCommandDeliveryState::Pending,
+            last_sent_at: Instant::now(),
+        });
+        Ok(command)
+    }
+
     pub fn dispatch(
         &mut self,
         worker_id: WorkerId,
@@ -101,20 +116,15 @@ impl ManagedAgentSupervisorRuntime {
             deadline_at,
             events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
         });
-        let command_id = command.managed_command_id().ok_or(SupervisorRuntimeError::MissingCommandId)?;
-        self.command_runs.insert(command_id, run_id);
-        self.commands.insert(command_id, PendingManagedCommand {
-            command: command.clone(),
-            state: ManagedCommandDeliveryState::Pending,
-            last_sent_at: Instant::now(),
-        });
+        let command = self.register_command(run_id, command)?;
         Ok((run_id, command))
     }
 
-    pub fn poll_command(&self, run_id: ManagedRunId) -> Result<TargetedCommand, SupervisorRuntimeError> {
+    pub fn poll_command(&mut self, run_id: ManagedRunId) -> Result<TargetedCommand, SupervisorRuntimeError> {
         let entry = self.runs.get(&run_id).ok_or(SupervisorRuntimeError::UnknownRun)?;
-        let task_id = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?;
-        Ok(DelegateTaskRequest::new(run_id, entry.run.worker_id(), task_id.clone()).get_command(entry.target.clone())?)
+        let task_id = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?.clone();
+        let command = DelegateTaskRequest::new(run_id, entry.run.worker_id(), task_id).get_command(entry.target.clone())?;
+        self.register_command(run_id, command)
     }
 
     pub fn cancel_command(
@@ -126,7 +136,8 @@ impl ManagedAgentSupervisorRuntime {
         let task_id = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?.clone();
         entry.run.request_cancellation(reason.clone())?;
         entry.events.push(SupervisorEvent::CancellationRequested { run_id, reason: reason.clone() });
-        Ok(DelegateCancelRequest::new(run_id, entry.run.worker_id(), task_id, reason)?.command(entry.target.clone())?)
+        let command = DelegateCancelRequest::new(run_id, entry.run.worker_id(), task_id, reason)?.command(entry.target.clone())?;
+        self.register_command(run_id, command)
     }
 
     pub fn apply_receipt_json(&mut self, json: &str) -> Result<ManagedCommandId, SupervisorRuntimeError> {
