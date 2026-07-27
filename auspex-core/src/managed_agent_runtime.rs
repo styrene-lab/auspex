@@ -26,8 +26,16 @@ pub struct ManagedAgentSupervisorRuntime {
 #[derive(Clone, Debug, PartialEq, Eq)]
 struct PendingManagedCommand {
     command: TargetedCommand,
+    kind: ManagedCommandKind,
     state: ManagedCommandDeliveryState,
     last_sent_at: Instant,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ManagedCommandKind {
+    Dispatch,
+    Poll,
+    Cancel,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -54,6 +62,7 @@ pub enum SupervisorRuntimeError {
     UnknownCommand,
     MissingCommandId,
     DuplicateRun,
+    CommandAlreadyPending,
     UnexpectedResponseType(String),
     ResponseRejected { code: String, safe_message: String },
     Contract(SupervisorContractError),
@@ -81,12 +90,14 @@ impl ManagedAgentSupervisorRuntime {
     fn register_command(
         &mut self,
         run_id: ManagedRunId,
+        kind: ManagedCommandKind,
         command: TargetedCommand,
     ) -> Result<TargetedCommand, SupervisorRuntimeError> {
         let command_id = command.managed_command_id().ok_or(SupervisorRuntimeError::MissingCommandId)?;
         self.command_runs.insert(command_id, run_id);
         self.commands.insert(command_id, PendingManagedCommand {
             command: command.clone(),
+            kind,
             state: ManagedCommandDeliveryState::Pending,
             last_sent_at: Instant::now(),
         });
@@ -116,15 +127,22 @@ impl ManagedAgentSupervisorRuntime {
             deadline_at,
             events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
         });
-        let command = self.register_command(run_id, command)?;
+        let command = self.register_command(run_id, ManagedCommandKind::Dispatch, command)?;
         Ok((run_id, command))
     }
 
     pub fn poll_command(&mut self, run_id: ManagedRunId) -> Result<TargetedCommand, SupervisorRuntimeError> {
+        if self.commands.iter().any(|(command_id, pending)| {
+            self.command_runs.get(command_id) == Some(&run_id)
+                && pending.kind == ManagedCommandKind::Poll
+                && pending.state == ManagedCommandDeliveryState::Pending
+        }) {
+            return Err(SupervisorRuntimeError::CommandAlreadyPending);
+        }
         let entry = self.runs.get(&run_id).ok_or(SupervisorRuntimeError::UnknownRun)?;
         let task_id = entry.run.omegon_task_id().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?.clone();
         let command = DelegateTaskRequest::new(run_id, entry.run.worker_id(), task_id).get_command(entry.target.clone())?;
-        self.register_command(run_id, command)
+        self.register_command(run_id, ManagedCommandKind::Poll, command)
     }
 
     pub fn cancel_command(
@@ -137,7 +155,7 @@ impl ManagedAgentSupervisorRuntime {
         entry.run.request_cancellation(reason.clone())?;
         entry.events.push(SupervisorEvent::CancellationRequested { run_id, reason: reason.clone() });
         let command = DelegateCancelRequest::new(run_id, entry.run.worker_id(), task_id, reason)?.command(entry.target.clone())?;
-        self.register_command(run_id, command)
+        self.register_command(run_id, ManagedCommandKind::Cancel, command)
     }
 
     pub fn apply_receipt_json(&mut self, json: &str) -> Result<ManagedCommandId, SupervisorRuntimeError> {
