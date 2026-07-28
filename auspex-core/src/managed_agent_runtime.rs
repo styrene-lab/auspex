@@ -120,7 +120,7 @@ impl ManagedAgentSupervisorRuntime {
         Ok(command)
     }
 
-    pub fn dispatch(
+    pub fn prepare_run(
         &mut self,
         worker_id: WorkerId,
         parent_session_id: impl Into<String>,
@@ -128,7 +128,7 @@ impl ManagedAgentSupervisorRuntime {
         request: ManagedRunRequest,
         target: CommandTarget,
         now_unix_ms: u64,
-    ) -> Result<(ManagedRunId, TargetedCommand), SupervisorRuntimeError> {
+    ) -> Result<ManagedRunId, SupervisorRuntimeError> {
         let run = ManagedAgentRun::new(worker_id, parent_session_id, parent_turn_id, request)?;
         let run_id = run.run_id();
         if self.runs.contains_key(&run_id) {
@@ -140,8 +140,6 @@ impl ManagedAgentSupervisorRuntime {
                 run.request().supervisor_deadline_seconds(),
             ))
             .unwrap_or(now);
-        let command = DelegateDispatchRequest::new(run_id, worker_id, run.request().clone())
-            .command(target.clone())?;
         self.runs.insert(
             run_id,
             RuntimeEntry {
@@ -153,6 +151,34 @@ impl ManagedAgentSupervisorRuntime {
                 events: vec![SupervisorEvent::DispatchRequested { run_id, worker_id }],
             },
         );
+        Ok(run_id)
+    }
+
+    pub fn dispatch(
+        &mut self,
+        worker_id: WorkerId,
+        parent_session_id: impl Into<String>,
+        parent_turn_id: impl Into<String>,
+        request: ManagedRunRequest,
+        target: CommandTarget,
+        now_unix_ms: u64,
+    ) -> Result<(ManagedRunId, TargetedCommand), SupervisorRuntimeError> {
+        let run_id = self.prepare_run(
+            worker_id,
+            parent_session_id,
+            parent_turn_id,
+            request,
+            target.clone(),
+            now_unix_ms,
+        )?;
+        let request = self
+            .runs
+            .get(&run_id)
+            .expect("prepared run exists")
+            .run
+            .request()
+            .clone();
+        let command = DelegateDispatchRequest::new(run_id, worker_id, request).command(target)?;
         let command = self.register_command(run_id, ManagedCommandKind::Dispatch, command)?;
         Ok((run_id, command))
     }
@@ -657,6 +683,17 @@ mod tests {
                 ..
             }
         ));
+    }
+
+    #[test]
+    fn prepared_mqtt_run_has_no_control_commands() {
+        let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
+        let run_id = runtime
+            .prepare_run(WorkerId::new(), "session", "turn", request(), target(), 42)
+            .unwrap();
+        assert!(runtime.run(run_id).is_some());
+        assert!(runtime.commands.is_empty());
+        assert!(runtime.command_runs.is_empty());
     }
 
     #[test]

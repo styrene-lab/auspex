@@ -206,7 +206,8 @@ pub struct AppController {
     #[cfg(not(target_arch = "wasm32"))]
     instance_sessions: crate::instance_session::InstanceSessionMap,
     managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime,
-    managed_agent_instances: std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
+    managed_agent_instances:
+        std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
     managed_agent_audit_sequence: u64,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
@@ -231,7 +232,9 @@ impl Default for AppController {
             session: SessionSource::default(),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
-            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(
+                1024 * 1024,
+            ),
             managed_agent_instances: std::collections::BTreeMap::new(),
             managed_agent_audit_sequence: 0,
             focused_instance_id: None,
@@ -277,7 +280,9 @@ impl AppController {
             session: SessionSource::Remote(Box::new(session)),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
-            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(1024 * 1024),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(
+                1024 * 1024,
+            ),
             managed_agent_instances: std::collections::BTreeMap::new(),
             managed_agent_audit_sequence: 0,
             focused_instance_id: None,
@@ -716,43 +721,73 @@ impl AppController {
         let control_responses = drained.control_responses;
         let transport_events = drained.transport_events;
         for (instance_id, event) in transport_events {
-            let worker_ids: Vec<_> = self.managed_agent_instances.iter()
+            let worker_ids: Vec<_> = self
+                .managed_agent_instances
+                .iter()
                 .filter(|(_, target)| *target == &instance_id)
-                .filter_map(|(run_id, _)| self.managed_agents.run(*run_id).map(|run| run.worker_id()))
+                .filter_map(|(run_id, _)| {
+                    self.managed_agents.run(*run_id).map(|run| run.worker_id())
+                })
                 .collect();
             for worker_id in worker_ids {
                 match event {
-                    crate::instance_session::SessionTransportEvent::Connected => self.managed_agents.mark_worker_reconnected(worker_id),
-                    crate::instance_session::SessionTransportEvent::Disconnected => self.managed_agents.mark_worker_disconnected(worker_id),
+                    crate::instance_session::SessionTransportEvent::Connected => {
+                        self.managed_agents.mark_worker_reconnected(worker_id)
+                    }
+                    crate::instance_session::SessionTransportEvent::Disconnected => {
+                        self.managed_agents.mark_worker_disconnected(worker_id)
+                    }
                 }
             }
         }
         for (instance_id, response) in control_responses {
             let parsed = serde_json::from_str::<serde_json::Value>(&response).ok();
-            if parsed.as_ref().and_then(|value| value.get("type")).and_then(serde_json::Value::as_str) == Some("control_command_receipt") {
-                let command_id = parsed.as_ref().and_then(|value| value.get("command_id")).cloned()
-                    .and_then(|value| serde_json::from_value::<crate::runtime_types::ManagedCommandId>(value).ok());
+            if parsed
+                .as_ref()
+                .and_then(|value| value.get("type"))
+                .and_then(serde_json::Value::as_str)
+                == Some("control_command_receipt")
+            {
+                let command_id = parsed
+                    .as_ref()
+                    .and_then(|value| value.get("command_id"))
+                    .cloned()
+                    .and_then(|value| {
+                        serde_json::from_value::<crate::runtime_types::ManagedCommandId>(value).ok()
+                    });
                 let routed_instance = command_id
                     .and_then(|id| self.managed_agents.command_run_id(id))
                     .and_then(|run_id| self.managed_agent_instances.get(&run_id));
                 if routed_instance != Some(&instance_id) {
-                    eprintln!("auspex: instance {instance_id}: rejected cross-instance command receipt");
+                    eprintln!(
+                        "auspex: instance {instance_id}: rejected cross-instance command receipt"
+                    );
                     continue;
                 }
                 if let Err(error) = self.managed_agents.apply_receipt_json(&response) {
-                    eprintln!("auspex: instance {instance_id}: rejected command receipt: {error:?}");
+                    eprintln!(
+                        "auspex: instance {instance_id}: rejected command receipt: {error:?}"
+                    );
                 }
                 continue;
             }
             let response_run_id = parsed
                 .and_then(|value| value.get("managed_run_id").cloned())
-                .and_then(|value| serde_json::from_value::<crate::managed_agents::ManagedRunId>(value).ok());
-            if response_run_id.and_then(|run_id| self.managed_agent_instances.get(&run_id)) != Some(&instance_id) {
-                eprintln!("auspex: instance {instance_id}: rejected cross-instance managed-agent response");
+                .and_then(|value| {
+                    serde_json::from_value::<crate::managed_agents::ManagedRunId>(value).ok()
+                });
+            if response_run_id.and_then(|run_id| self.managed_agent_instances.get(&run_id))
+                != Some(&instance_id)
+            {
+                eprintln!(
+                    "auspex: instance {instance_id}: rejected cross-instance managed-agent response"
+                );
                 continue;
             }
             if let Err(error) = self.managed_agents.apply_response_json(&response) {
-                eprintln!("auspex: instance {instance_id}: rejected managed-agent response: {error:?}");
+                eprintln!(
+                    "auspex: instance {instance_id}: rejected managed-agent response: {error:?}"
+                );
             }
         }
         for id in &active_ids {
@@ -763,12 +798,36 @@ impl AppController {
         !active_ids.is_empty()
     }
 
-    pub fn managed_agent_runtime(&self) -> &crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+    pub fn managed_agent_runtime(
+        &self,
+    ) -> &crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
         &self.managed_agents
     }
 
-    pub fn managed_agent_runtime_mut(&mut self) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+    pub fn managed_agent_runtime_mut(
+        &mut self,
+    ) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
         &mut self.managed_agents
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn prepare_mqtt_managed_agent(
+        &mut self,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        now_unix_ms: u64,
+    ) -> Result<crate::managed_agents::ManagedRunId, String> {
+        self.managed_agents
+            .prepare_run(
+                worker_id,
+                parent.0,
+                parent.1,
+                request,
+                CommandTarget::default(),
+                now_unix_ms,
+            )
+            .map_err(|error| format!("managed-agent MQTT preparation rejected: {error:?}"))
     }
 
     #[cfg(not(target_arch = "wasm32"))]
@@ -784,14 +843,16 @@ impl AppController {
         if !self.instance_sessions.is_connected(instance_id) {
             return Err(format!("no session for instance {instance_id}"));
         }
-        let (run_id, command) = self.managed_agents
+        let (run_id, command) = self
+            .managed_agents
             .dispatch(worker_id, parent.0, parent.1, request, target, now_unix_ms)
             .map_err(|error| format!("managed-agent dispatch rejected: {error:?}"))?;
         if let Err(error) = self.dispatch_to_instance(instance_id, &command) {
             self.managed_agents.remove_run(run_id);
             return Err(error);
         }
-        self.managed_agent_instances.insert(run_id, instance_id.to_string());
+        self.managed_agent_instances
+            .insert(run_id, instance_id.to_string());
         Ok(run_id)
     }
 
@@ -801,24 +862,43 @@ impl AppController {
         run_id: crate::managed_agents::ManagedRunId,
         reason: Option<String>,
     ) -> Result<(), String> {
-        let instance_id = self.managed_agent_instances.get(&run_id).cloned()
+        let instance_id = self
+            .managed_agent_instances
+            .get(&run_id)
+            .cloned()
             .ok_or_else(|| format!("run {run_id} has no target instance"))?;
-        let command = self.managed_agents.cancel_command(run_id, reason)
+        let command = self
+            .managed_agents
+            .cancel_command(run_id, reason)
             .map_err(|error| format!("managed-agent cancellation rejected: {error:?}"))?;
         self.dispatch_to_instance(&instance_id, &command)
     }
 
+    /// WebSocket-owned runs only. MQTT-owned runs are deliberately absent from
+    /// `managed_agent_instances`, so they never enter control polling/replay.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn tick_managed_agents(&mut self) -> Vec<String> {
         let mut errors = Vec::new();
-        let dispatch_timeouts = self.managed_agents.expire_dispatches(std::time::Duration::from_secs(15));
+        let dispatch_timeouts = self
+            .managed_agents
+            .expire_dispatches(std::time::Duration::from_secs(15));
         for run_id in dispatch_timeouts {
             errors.push(format!("run {run_id}: dispatch acceptance timed out"));
         }
-        let expired: std::collections::HashSet<_> = self.managed_agents.expired_runs().into_iter().collect();
+        let expired: std::collections::HashSet<_> =
+            self.managed_agents.expired_runs().into_iter().collect();
         for run_id in self.managed_agents.active_run_ids() {
-            let state = self.managed_agents.run(run_id).map(|run| run.state().clone());
-            if matches!(state, Some(crate::managed_agents::ManagedRunState::Disconnected { .. } | crate::managed_agents::ManagedRunState::Cancelling { .. })) {
+            let state = self
+                .managed_agents
+                .run(run_id)
+                .map(|run| run.state().clone());
+            if matches!(
+                state,
+                Some(
+                    crate::managed_agents::ManagedRunState::Disconnected { .. }
+                        | crate::managed_agents::ManagedRunState::Cancelling { .. }
+                )
+            ) {
                 continue;
             }
             let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
@@ -826,7 +906,8 @@ impl AppController {
                 continue;
             };
             let command = if expired.contains(&run_id) {
-                self.managed_agents.cancel_command(run_id, Some("supervisor deadline exceeded".into()))
+                self.managed_agents
+                    .cancel_command(run_id, Some("supervisor deadline exceeded".into()))
             } else {
                 self.managed_agents.poll_command(run_id)
             };
@@ -842,10 +923,16 @@ impl AppController {
                 Err(error) => errors.push(format!("run {run_id}: {error:?}")),
             }
         }
-        let replay_commands = self.managed_agents.replay_due_commands(std::time::Duration::from_secs(3));
+        let replay_commands = self
+            .managed_agents
+            .replay_due_commands(std::time::Duration::from_secs(3));
         for command in replay_commands {
-            let Some(command_id) = command.managed_command_id() else { continue };
-            let Some(run_id) = self.managed_agents.command_run_id(command_id) else { continue };
+            let Some(command_id) = command.managed_command_id() else {
+                continue;
+            };
+            let Some(run_id) = self.managed_agents.command_run_id(command_id) else {
+                continue;
+            };
             let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
                 errors.push(format!("command {command_id} has no target instance"));
                 continue;
@@ -866,7 +953,10 @@ impl AppController {
             self.managed_agent_audit_sequence += 1;
             let entry = crate::audit_timeline::AuditEntry::telemetry(
                 &session_key,
-                &format!("managed-agent-scheduler-{}", self.managed_agent_audit_sequence),
+                &format!(
+                    "managed-agent-scheduler-{}",
+                    self.managed_agent_audit_sequence
+                ),
                 "Managed agent · Scheduler error",
                 error,
             );
