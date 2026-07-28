@@ -11,22 +11,34 @@ use uuid::Uuid;
 
 macro_rules! uuid_id {
     ($name:ident) => {
-        #[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+        #[derive(
+            Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+        )]
         #[serde(transparent)]
         pub struct $name(Uuid);
 
         impl $name {
-            pub fn new() -> Self { Self(Uuid::new_v4()) }
-            pub fn from_uuid(value: Uuid) -> Self { Self(value) }
-            pub fn as_uuid(self) -> Uuid { self.0 }
+            pub fn new() -> Self {
+                Self(Uuid::new_v4())
+            }
+            pub fn from_uuid(value: Uuid) -> Self {
+                Self(value)
+            }
+            pub fn as_uuid(self) -> Uuid {
+                self.0
+            }
         }
 
         impl Default for $name {
-            fn default() -> Self { Self::new() }
+            fn default() -> Self {
+                Self::new()
+            }
         }
 
         impl fmt::Display for $name {
-            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { self.0.fmt(f) }
+            fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                self.0.fmt(f)
+            }
         }
     };
 }
@@ -49,7 +61,9 @@ impl OmegonTaskId {
         }
     }
 
-    pub fn as_str(&self) -> &str { &self.0 }
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -119,13 +133,21 @@ impl ManagedRunRequest {
         })
     }
 
-    pub fn directive(&self) -> &str { &self.directive }
-    pub fn supervisor_deadline_seconds(&self) -> u64 { self.supervisor_deadline_seconds }
+    pub fn directive(&self) -> &str {
+        &self.directive
+    }
+    pub fn supervisor_deadline_seconds(&self) -> u64 {
+        self.supervisor_deadline_seconds
+    }
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum WorkerProfile { Scout, Patch, Verify }
+pub enum WorkerProfile {
+    Scout,
+    Patch,
+    Verify,
+}
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedAgentRun {
@@ -148,24 +170,47 @@ impl ManagedAgentRun {
     ) -> Result<Self, ManagedAgentValidationError> {
         let parent_session_id = parent_session_id.into();
         let parent_turn_id = parent_turn_id.into();
-        if parent_session_id.trim().is_empty() { return Err(ManagedAgentValidationError::EmptyParentSessionId); }
-        if parent_turn_id.trim().is_empty() { return Err(ManagedAgentValidationError::EmptyParentTurnId); }
+        if parent_session_id.trim().is_empty() {
+            return Err(ManagedAgentValidationError::EmptyParentSessionId);
+        }
+        if parent_turn_id.trim().is_empty() {
+            return Err(ManagedAgentValidationError::EmptyParentTurnId);
+        }
         Ok(Self {
-            run_id: ManagedRunId::new(), worker_id,
-            parent_session_id, parent_turn_id, request,
-            omegon_task_id: None, state: ManagedRunState::Dispatching,
+            run_id: ManagedRunId::new(),
+            worker_id,
+            parent_session_id,
+            parent_turn_id,
+            request,
+            omegon_task_id: None,
+            state: ManagedRunState::Dispatching,
             latest_observation: None,
         })
     }
 
-    pub fn run_id(&self) -> ManagedRunId { self.run_id }
-    pub fn worker_id(&self) -> WorkerId { self.worker_id }
-    pub fn request(&self) -> &ManagedRunRequest { &self.request }
-    pub fn state(&self) -> &ManagedRunState { &self.state }
-    pub fn omegon_task_id(&self) -> Option<&OmegonTaskId> { self.omegon_task_id.as_ref() }
-    pub fn latest_observation(&self) -> Option<&OmegonDelegateObservation> { self.latest_observation.as_ref() }
+    pub fn run_id(&self) -> ManagedRunId {
+        self.run_id
+    }
+    pub fn worker_id(&self) -> WorkerId {
+        self.worker_id
+    }
+    pub fn request(&self) -> &ManagedRunRequest {
+        &self.request
+    }
+    pub fn state(&self) -> &ManagedRunState {
+        &self.state
+    }
+    pub fn omegon_task_id(&self) -> Option<&OmegonTaskId> {
+        self.omegon_task_id.as_ref()
+    }
+    pub fn latest_observation(&self) -> Option<&OmegonDelegateObservation> {
+        self.latest_observation.as_ref()
+    }
 
-    pub fn accept_dispatch(&mut self, task_id: OmegonTaskId) -> Result<(), ManagedRunTransitionError> {
+    pub fn accept_dispatch(
+        &mut self,
+        task_id: OmegonTaskId,
+    ) -> Result<(), ManagedRunTransitionError> {
         if !matches!(self.state, ManagedRunState::Dispatching) {
             return Err(ManagedRunTransitionError::InvalidState);
         }
@@ -174,31 +219,66 @@ impl ManagedAgentRun {
         Ok(())
     }
 
-    pub fn request_cancellation(&mut self, reason: Option<String>) -> Result<(), ManagedRunTransitionError> {
-        if !matches!(self.state, ManagedRunState::Running | ManagedRunState::Disconnected { .. }) {
+    pub fn request_cancellation(
+        &mut self,
+        reason: Option<String>,
+    ) -> Result<(), ManagedRunTransitionError> {
+        if !matches!(
+            self.state,
+            ManagedRunState::Running | ManagedRunState::Disconnected { .. }
+        ) {
             return Err(ManagedRunTransitionError::InvalidState);
         }
         self.state = ManagedRunState::Cancelling { reason };
         Ok(())
     }
 
-    pub fn apply_observation(&mut self, observation: OmegonDelegateObservation) -> Result<(), ManagedRunTransitionError> {
-        let expected = self.omegon_task_id.as_ref().ok_or(ManagedRunTransitionError::DispatchNotAccepted)?;
-        if expected != &observation.task_id { return Err(ManagedRunTransitionError::TaskIdentityMismatch); }
+    pub fn apply_observation(
+        &mut self,
+        observation: OmegonDelegateObservation,
+    ) -> Result<(), ManagedRunTransitionError> {
+        let expected = self
+            .omegon_task_id
+            .as_ref()
+            .ok_or(ManagedRunTransitionError::DispatchNotAccepted)?;
+        if expected != &observation.task_id {
+            return Err(ManagedRunTransitionError::TaskIdentityMismatch);
+        }
         self.state = match &observation.status {
             OmegonDelegateStatus::Running => ManagedRunState::Running,
             OmegonDelegateStatus::Completed { success: true } => {
-                let result = observation.result.clone().ok_or(ManagedRunTransitionError::ResultRequired)?;
-                ManagedRunState::Completed { result: normalize_raw_result(&result) }
+                let result = observation
+                    .result
+                    .clone()
+                    .ok_or(ManagedRunTransitionError::ResultRequired)?;
+                ManagedRunState::Completed {
+                    result: normalize_raw_result(&result),
+                }
             }
             OmegonDelegateStatus::Completed { success: false } => ManagedRunState::Failed {
-                failure: ManagedRunFailure::reported("delegate_completed_unsuccessfully", observation.result.clone().map(|result| normalize_raw_result(&result))),
+                failure: ManagedRunFailure::reported(
+                    "delegate_completed_unsuccessfully",
+                    observation
+                        .result
+                        .clone()
+                        .map(|result| normalize_raw_result(&result)),
+                ),
             },
-            OmegonDelegateStatus::Failed { failure_kind, safe_message } => ManagedRunState::Failed {
-                failure: ManagedRunFailure { code: failure_kind.code().to_string(), safe_message: safe_message.clone() },
+            OmegonDelegateStatus::Failed {
+                failure_kind,
+                safe_message,
+            } => ManagedRunState::Failed {
+                failure: ManagedRunFailure {
+                    code: failure_kind.code().to_string(),
+                    safe_message: safe_message.clone(),
+                },
             },
-            OmegonDelegateStatus::Cancelled { reason, termination_confirmed } => ManagedRunState::Cancelled {
-                reason: reason.clone(), termination_confirmed: *termination_confirmed,
+            OmegonDelegateStatus::Cancelled {
+                reason,
+                termination_confirmed,
+            } => ManagedRunState::Cancelled {
+                reason: reason.clone(),
+                termination_confirmed: *termination_confirmed,
             },
         };
         self.latest_observation = Some(observation);
@@ -223,18 +303,77 @@ impl ManagedAgentRun {
             return Err(ManagedRunTransitionError::InvalidState);
         }
         if termination_confirmed {
-            self.state = ManagedRunState::Cancelled { reason, termination_confirmed: true };
+            self.state = ManagedRunState::Cancelled {
+                reason,
+                termination_confirmed: true,
+            };
         } else if !acknowledged {
             return Err(ManagedRunTransitionError::InvalidState);
         }
         Ok(())
     }
 
-    pub fn complete_from_result(&mut self, result: String) -> Result<(), ManagedRunTransitionError> {
+    pub fn complete_from_result(
+        &mut self,
+        result: String,
+    ) -> Result<(), ManagedRunTransitionError> {
         if self.state.is_terminal() && !matches!(self.state, ManagedRunState::Completed { .. }) {
             return Err(ManagedRunTransitionError::TerminalRun);
         }
-        self.state = ManagedRunState::Completed { result: normalize_raw_result(&result) };
+        self.state = ManagedRunState::Completed {
+            result: normalize_raw_result(&result),
+        };
+        Ok(())
+    }
+
+    pub fn fail(
+        &mut self,
+        code: impl Into<String>,
+        safe_message: impl Into<String>,
+    ) -> Result<(), ManagedRunTransitionError> {
+        if self.state.is_terminal() {
+            return Err(ManagedRunTransitionError::TerminalRun);
+        }
+        self.state = ManagedRunState::Failed {
+            failure: ManagedRunFailure {
+                code: code.into(),
+                safe_message: safe_message.into(),
+            },
+        };
+        Ok(())
+    }
+
+    pub fn mark_cancellation_accepted(
+        &mut self,
+        reason: Option<String>,
+    ) -> Result<(), ManagedRunTransitionError> {
+        match &mut self.state {
+            ManagedRunState::Running | ManagedRunState::Disconnected { .. } => {
+                self.state = ManagedRunState::Cancelling { reason };
+                Ok(())
+            }
+            ManagedRunState::Cancelling { reason: current } => {
+                if reason.is_some() {
+                    *current = reason;
+                }
+                Ok(())
+            }
+            state if state.is_terminal() => Err(ManagedRunTransitionError::TerminalRun),
+            _ => Err(ManagedRunTransitionError::InvalidState),
+        }
+    }
+
+    pub fn confirm_termination(
+        &mut self,
+        reason: Option<String>,
+    ) -> Result<(), ManagedRunTransitionError> {
+        if self.state.is_terminal() {
+            return Err(ManagedRunTransitionError::TerminalRun);
+        }
+        self.state = ManagedRunState::Cancelled {
+            reason,
+            termination_confirmed: true,
+        };
         Ok(())
     }
 
@@ -250,8 +389,12 @@ impl ManagedAgentRun {
     }
 
     pub fn mark_disconnected(&mut self) -> Result<(), ManagedRunTransitionError> {
-        if self.state.is_terminal() { return Err(ManagedRunTransitionError::TerminalRun); }
-        self.state = ManagedRunState::Disconnected { last_observation: self.latest_observation.clone() };
+        if self.state.is_terminal() {
+            return Err(ManagedRunTransitionError::TerminalRun);
+        }
+        self.state = ManagedRunState::Disconnected {
+            last_observation: self.latest_observation.clone(),
+        };
         Ok(())
     }
 }
@@ -262,16 +405,36 @@ pub enum ManagedRunState {
     Dispatching,
     DispatchTimedOut,
     Running,
-    Cancelling { reason: Option<String> },
-    Completed { result: ManagedRunResult },
-    Failed { failure: ManagedRunFailure },
-    Cancelled { reason: Option<String>, termination_confirmed: bool },
-    Disconnected { last_observation: Option<OmegonDelegateObservation> },
+    Cancelling {
+        reason: Option<String>,
+    },
+    Completed {
+        result: ManagedRunResult,
+    },
+    Failed {
+        failure: ManagedRunFailure,
+    },
+    Cancelled {
+        reason: Option<String>,
+        termination_confirmed: bool,
+    },
+    Disconnected {
+        last_observation: Option<OmegonDelegateObservation>,
+    },
 }
 
 impl ManagedRunState {
     pub fn is_terminal(&self) -> bool {
-        matches!(self, Self::DispatchTimedOut | Self::Completed { .. } | Self::Failed { .. } | Self::Cancelled { termination_confirmed: true, .. })
+        matches!(
+            self,
+            Self::DispatchTimedOut
+                | Self::Completed { .. }
+                | Self::Failed { .. }
+                | Self::Cancelled {
+                    termination_confirmed: true,
+                    ..
+                }
+        )
     }
 }
 
@@ -308,14 +471,28 @@ pub struct OmegonDelegateObservation {
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum OmegonDelegateStatus {
     Running,
-    Completed { success: bool },
-    Failed { failure_kind: OmegonFailureKind, safe_message: String },
-    Cancelled { reason: Option<String>, termination_confirmed: bool },
+    Completed {
+        success: bool,
+    },
+    Failed {
+        failure_kind: OmegonFailureKind,
+        safe_message: String,
+    },
+    Cancelled {
+        reason: Option<String>,
+        termination_confirmed: bool,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub enum OmegonFailureKind { MissingLocalModel, MissingCredential, ProviderStartup, WorkspaceStartup, Unknown }
+pub enum OmegonFailureKind {
+    MissingLocalModel,
+    MissingCredential,
+    ProviderStartup,
+    WorkspaceStartup,
+    Unknown,
+}
 
 impl OmegonFailureKind {
     fn code(self) -> &'static str {
@@ -330,11 +507,21 @@ impl OmegonFailureKind {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ToolActivityObservation { pub tool: String, pub args_summary: Option<String> }
+pub struct ToolActivityObservation {
+    pub tool: String,
+    pub args_summary: Option<String>,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ChecklistItemObservation { pub label: String, pub done: bool }
+pub struct ChecklistItemObservation {
+    pub label: String,
+    pub done: bool,
+}
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct RouteObservation { pub model: Option<String>, pub provider: Option<String>, pub fallback_used: bool }
+pub struct RouteObservation {
+    pub model: Option<String>,
+    pub provider: Option<String>,
+    pub fallback_used: bool,
+}
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ManagedRunResult {
@@ -347,14 +534,25 @@ pub struct ManagedRunResult {
 }
 
 fn normalize_raw_result(result: &str) -> ManagedRunResult {
-    ManagedRunResult { summary: result.to_string(), ..ManagedRunResult::default() }
+    ManagedRunResult {
+        summary: result.to_string(),
+        ..ManagedRunResult::default()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
-pub struct ManagedRunFailure { pub code: String, pub safe_message: String }
+pub struct ManagedRunFailure {
+    pub code: String,
+    pub safe_message: String,
+}
 impl ManagedRunFailure {
     fn reported(code: &str, result: Option<ManagedRunResult>) -> Self {
-        Self { code: code.into(), safe_message: result.map(|r| r.summary).unwrap_or_else(|| "Delegate reported unsuccessful completion".into()) }
+        Self {
+            code: code.into(),
+            safe_message: result
+                .map(|r| r.summary)
+                .unwrap_or_else(|| "Delegate reported unsuccessful completion".into()),
+        }
     }
 }
 
@@ -363,22 +561,49 @@ impl ManagedRunFailure {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum SupervisorEvent {
-    DispatchRequested { run_id: ManagedRunId, worker_id: WorkerId },
-    DispatchAccepted { run_id: ManagedRunId, task_id: OmegonTaskId },
-    DispatchRejected { run_id: ManagedRunId, reason: String },
-    CancellationRequested { run_id: ManagedRunId, reason: Option<String> },
-    WorkerDisconnected { run_id: ManagedRunId },
-    WorkerReconnected { run_id: ManagedRunId },
-    ResultFetched { run_id: ManagedRunId, task_id: OmegonTaskId },
+    DispatchRequested {
+        run_id: ManagedRunId,
+        worker_id: WorkerId,
+    },
+    DispatchAccepted {
+        run_id: ManagedRunId,
+        task_id: OmegonTaskId,
+    },
+    DispatchRejected {
+        run_id: ManagedRunId,
+        reason: String,
+    },
+    CancellationRequested {
+        run_id: ManagedRunId,
+        reason: Option<String>,
+    },
+    WorkerDisconnected {
+        run_id: ManagedRunId,
+    },
+    WorkerReconnected {
+        run_id: ManagedRunId,
+    },
+    ResultFetched {
+        run_id: ManagedRunId,
+        task_id: OmegonTaskId,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ManagedAgentValidationError {
-    EmptyOmegonTaskId, EmptyDirective, ZeroSupervisorDeadline, EmptyParentSessionId, EmptyParentTurnId,
+    EmptyOmegonTaskId,
+    EmptyDirective,
+    ZeroSupervisorDeadline,
+    EmptyParentSessionId,
+    EmptyParentTurnId,
 }
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum ManagedRunTransitionError {
-    InvalidState, TerminalRun, DispatchNotAccepted, TaskIdentityMismatch, ResultRequired,
+    InvalidState,
+    TerminalRun,
+    DispatchNotAccepted,
+    TaskIdentityMismatch,
+    ResultRequired,
 }
 
 #[cfg(test)]
@@ -386,33 +611,72 @@ mod tests {
     use super::*;
 
     fn request() -> ManagedRunRequest {
-        ManagedRunRequest::new("inspect delegate lifecycle", WorkerProfile::Scout, BTreeSet::from(["src".into()]), 600).unwrap()
+        ManagedRunRequest::new(
+            "inspect delegate lifecycle",
+            WorkerProfile::Scout,
+            BTreeSet::from(["src".into()]),
+            600,
+        )
+        .unwrap()
     }
-    fn run() -> ManagedAgentRun { ManagedAgentRun::new(WorkerId::new(), "session-1", "turn-1", request()).unwrap() }
-    fn observation(task_id: &str, status: OmegonDelegateStatus, result: Option<ManagedRunResult>) -> OmegonDelegateObservation {
+    fn run() -> ManagedAgentRun {
+        ManagedAgentRun::new(WorkerId::new(), "session-1", "turn-1", request()).unwrap()
+    }
+    fn observation(
+        task_id: &str,
+        status: OmegonDelegateStatus,
+        result: Option<ManagedRunResult>,
+    ) -> OmegonDelegateObservation {
         let result = result.map(|result| result.summary);
         OmegonDelegateObservation {
-            task_id: OmegonTaskId::parse(task_id).unwrap(), label: Some("scout/backend".into()), agent_name: Some("scout".into()),
-            task_description: "Inspect backend".into(), status, result, result_viewed: false,
-            started_at_unix_ms: 1, completed_at_unix_ms: None,
-            last_tool: Some(ToolActivityObservation { tool: "read".into(), args_summary: Some("managed_agents.rs".into()) }),
-            last_turn: Some(2), checklist: vec![ChecklistItemObservation { label: "Inspect".into(), done: true }],
-            route: Some(RouteObservation { model: Some("test:model".into()), provider: Some("test".into()), fallback_used: false }),
+            task_id: OmegonTaskId::parse(task_id).unwrap(),
+            label: Some("scout/backend".into()),
+            agent_name: Some("scout".into()),
+            task_description: "Inspect backend".into(),
+            status,
+            result,
+            result_viewed: false,
+            started_at_unix_ms: 1,
+            completed_at_unix_ms: None,
+            last_tool: Some(ToolActivityObservation {
+                tool: "read".into(),
+                args_summary: Some("managed_agents.rs".into()),
+            }),
+            last_turn: Some(2),
+            checklist: vec![ChecklistItemObservation {
+                label: "Inspect".into(),
+                done: true,
+            }],
+            route: Some(RouteObservation {
+                model: Some("test:model".into()),
+                provider: Some("test".into()),
+                fallback_used: false,
+            }),
         }
     }
 
     #[test]
     fn validates_request_and_parent_identity() {
-        assert_eq!(ManagedRunRequest::new("", WorkerProfile::Scout, BTreeSet::new(), 10), Err(ManagedAgentValidationError::EmptyDirective));
-        assert_eq!(ManagedRunRequest::new("work", WorkerProfile::Scout, BTreeSet::new(), 0), Err(ManagedAgentValidationError::ZeroSupervisorDeadline));
-        assert_eq!(ManagedAgentRun::new(WorkerId::new(), "", "turn", request()), Err(ManagedAgentValidationError::EmptyParentSessionId));
+        assert_eq!(
+            ManagedRunRequest::new("", WorkerProfile::Scout, BTreeSet::new(), 10),
+            Err(ManagedAgentValidationError::EmptyDirective)
+        );
+        assert_eq!(
+            ManagedRunRequest::new("work", WorkerProfile::Scout, BTreeSet::new(), 0),
+            Err(ManagedAgentValidationError::ZeroSupervisorDeadline)
+        );
+        assert_eq!(
+            ManagedAgentRun::new(WorkerId::new(), "", "turn", request()),
+            Err(ManagedAgentValidationError::EmptyParentSessionId)
+        );
     }
 
     #[test]
     fn dispatch_maps_distinct_auspex_and_omegon_identities() {
         let mut run = run();
         let run_id = run.run_id();
-        run.accept_dispatch(OmegonTaskId::parse("delegate_7").unwrap()).unwrap();
+        run.accept_dispatch(OmegonTaskId::parse("delegate_7").unwrap())
+            .unwrap();
         assert_eq!(run.run_id(), run_id);
         assert_eq!(run.omegon_task_id().unwrap().as_str(), "delegate_7");
         assert!(matches!(run.state(), ManagedRunState::Running));
@@ -421,27 +685,61 @@ mod tests {
     #[test]
     fn completion_is_atomic_and_requires_result() {
         let mut run = run();
-        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap()).unwrap();
-        let missing = observation("delegate_1", OmegonDelegateStatus::Completed { success: true }, None);
-        assert_eq!(run.apply_observation(missing), Err(ManagedRunTransitionError::ResultRequired));
-        let result = ManagedRunResult { summary: "done".into(), ..Default::default() };
-        run.apply_observation(observation("delegate_1", OmegonDelegateStatus::Completed { success: true }, Some(result.clone()))).unwrap();
+        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap())
+            .unwrap();
+        let missing = observation(
+            "delegate_1",
+            OmegonDelegateStatus::Completed { success: true },
+            None,
+        );
+        assert_eq!(
+            run.apply_observation(missing),
+            Err(ManagedRunTransitionError::ResultRequired)
+        );
+        let result = ManagedRunResult {
+            summary: "done".into(),
+            ..Default::default()
+        };
+        run.apply_observation(observation(
+            "delegate_1",
+            OmegonDelegateStatus::Completed { success: true },
+            Some(result.clone()),
+        ))
+        .unwrap();
         assert_eq!(run.state(), &ManagedRunState::Completed { result });
     }
 
     #[test]
     fn rejects_cross_task_observation() {
         let mut run = run();
-        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap()).unwrap();
-        assert_eq!(run.apply_observation(observation("delegate_2", OmegonDelegateStatus::Running, None)), Err(ManagedRunTransitionError::TaskIdentityMismatch));
+        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap())
+            .unwrap();
+        assert_eq!(
+            run.apply_observation(observation(
+                "delegate_2",
+                OmegonDelegateStatus::Running,
+                None
+            )),
+            Err(ManagedRunTransitionError::TaskIdentityMismatch)
+        );
     }
 
     #[test]
     fn cancellation_ack_is_not_terminal_without_termination_confirmation() {
         let mut run = run();
-        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap()).unwrap();
-        run.request_cancellation(Some("operator request".into())).unwrap();
-        run.apply_observation(observation("delegate_1", OmegonDelegateStatus::Cancelled { reason: None, termination_confirmed: false }, None)).unwrap();
+        run.accept_dispatch(OmegonTaskId::parse("delegate_1").unwrap())
+            .unwrap();
+        run.request_cancellation(Some("operator request".into()))
+            .unwrap();
+        run.apply_observation(observation(
+            "delegate_1",
+            OmegonDelegateStatus::Cancelled {
+                reason: None,
+                termination_confirmed: false,
+            },
+            None,
+        ))
+        .unwrap();
         assert!(!run.state().is_terminal());
     }
 
@@ -454,7 +752,8 @@ mod tests {
     #[test]
     fn ids_and_domain_state_round_trip_json() {
         let mut run = run();
-        run.accept_dispatch(OmegonTaskId::parse("delegate_9").unwrap()).unwrap();
+        run.accept_dispatch(OmegonTaskId::parse("delegate_9").unwrap())
+            .unwrap();
         let json = serde_json::to_string(&run).unwrap();
         let restored: ManagedAgentRun = serde_json::from_str(&json).unwrap();
         assert_eq!(restored, run);
