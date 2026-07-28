@@ -286,10 +286,10 @@ mod tests {
     use super::*;
     use crate::managed_agents::WorkerProfile;
     use std::collections::BTreeSet;
+    use styrene_mqtt::{A2aTopic, ReceivedA2aEnvelope};
 
-    #[test]
-    fn builds_canonical_managed_run_command() {
-        let config = ManagedAgentMqttConfig {
+    fn test_config() -> ManagedAgentMqttConfig {
+        ManagedAgentMqttConfig {
             tenant: "local".into(),
             host: "127.0.0.1".into(),
             port: 1883,
@@ -297,7 +297,48 @@ mod tests {
             local_agent_id: AgentId::new("styrene:agent:auspex").unwrap(),
             target_agent_id: AgentId::new("styrene:agent:omegon").unwrap(),
             session_expiry: Duration::from_secs(900),
+        }
+    }
+
+    fn outcome(
+        config: &ManagedAgentMqttConfig,
+        run_id: ManagedRunId,
+        task_id: Option<String>,
+        schema: &str,
+        value: ManagedRunA2aOutcome,
+    ) -> ReceivedA2aEnvelope {
+        let payload = ManagedRunA2aOutcomePayload {
+            managed_run_id: run_id,
+            outcome: value,
         };
+        let mut envelope = AgentEnvelope::new(
+            AgentEnvelopeKind::Result,
+            &config.target_agent_id,
+            RuntimeId::new(),
+            &config.local_agent_id,
+            &RootOperationId::new("root").unwrap(),
+            task_id,
+            run_id.to_string(),
+            1,
+            1_000,
+            schema,
+            serde_json::to_vec(&payload).unwrap(),
+        );
+        envelope.expires_at_ms = Some(10_000);
+        ReceivedA2aEnvelope {
+            topic: A2aTopic::new(
+                "local",
+                config.local_agent_id.as_str(),
+                styrene_mqtt::A2aTopicKind::Events,
+            )
+            .unwrap(),
+            envelope,
+        }
+    }
+
+    #[test]
+    fn builds_canonical_managed_run_command() {
+        let config = test_config();
         let mut bridge = ManagedAgentMqttBridge::connect(config);
         let request = ManagedRunA2aRequest {
             managed_run_id: ManagedRunId::new(),
@@ -323,5 +364,90 @@ mod tests {
             serde_json::from_slice::<ManagedRunA2aRequest>(&envelope.a2a_payload).unwrap(),
             request
         );
+    }
+
+    #[test]
+    fn decodes_all_managed_outcomes() {
+        let config = test_config();
+        let bridge = ManagedAgentMqttBridge::connect(config.clone());
+        let run_id = ManagedRunId::new();
+        let cases = [
+            ManagedRunA2aOutcome::Accepted,
+            ManagedRunA2aOutcome::Duplicate,
+            ManagedRunA2aOutcome::Completed {
+                result: "done".into(),
+            },
+            ManagedRunA2aOutcome::Failed {
+                code: "provider_error".into(),
+                safe_message: "failed".into(),
+            },
+            ManagedRunA2aOutcome::CancellationAccepted {
+                reason: Some("operator".into()),
+            },
+            ManagedRunA2aOutcome::TerminationConfirmed {
+                reason: Some("operator".into()),
+            },
+        ];
+        for value in cases {
+            let event = bridge
+                .decode_event(outcome(
+                    &config,
+                    run_id,
+                    Some(run_id.to_string()),
+                    MANAGED_RUN_OUTCOME_SCHEMA,
+                    value,
+                ))
+                .unwrap();
+            assert_eq!(event.managed_run_id(), run_id);
+        }
+    }
+
+    #[test]
+    fn rejects_invalid_outcome_envelopes() {
+        let config = test_config();
+        let bridge = ManagedAgentMqttBridge::connect(config.clone());
+        let run_id = ManagedRunId::new();
+        let mut wrong_target = outcome(
+            &config,
+            run_id,
+            Some(run_id.to_string()),
+            MANAGED_RUN_OUTCOME_SCHEMA,
+            ManagedRunA2aOutcome::Accepted,
+        );
+        wrong_target.envelope.target_agent_id = "other".into();
+        assert!(matches!(
+            bridge.decode_event(wrong_target),
+            Err(ManagedAgentMqttError::WrongTarget)
+        ));
+        assert!(matches!(
+            bridge.decode_event(outcome(
+                &config,
+                run_id,
+                Some(run_id.to_string()),
+                "wrong",
+                ManagedRunA2aOutcome::Accepted
+            )),
+            Err(ManagedAgentMqttError::UnsupportedSchema(_))
+        ));
+        assert!(matches!(
+            bridge.decode_event(outcome(
+                &config,
+                run_id,
+                None,
+                MANAGED_RUN_OUTCOME_SCHEMA,
+                ManagedRunA2aOutcome::Accepted
+            )),
+            Err(ManagedAgentMqttError::MissingTaskId)
+        ));
+        assert!(matches!(
+            bridge.decode_event(outcome(
+                &config,
+                run_id,
+                Some(ManagedRunId::new().to_string()),
+                MANAGED_RUN_OUTCOME_SCHEMA,
+                ManagedRunA2aOutcome::Accepted
+            )),
+            Err(ManagedAgentMqttError::RunIdentityMismatch)
+        ));
     }
 }
