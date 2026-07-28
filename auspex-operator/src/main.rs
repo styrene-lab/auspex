@@ -8,7 +8,7 @@ mod external;
 mod identity;
 mod reconciler;
 
-use std::{collections::BTreeMap, io::Cursor, net::SocketAddr, sync::Arc};
+use std::{collections::BTreeMap, io::Cursor, sync::Arc};
 
 use auspex_core::agent_packages::{
     AgentPackageDeployRequest, OciImageAssessment, assess_oci_image_ref, builtin_agent_packages,
@@ -41,7 +41,6 @@ use kube::{
     runtime::Controller,
 };
 use serde_json::Value;
-use styrene_mqtt::{EmbeddedBrokerBuilder, EmbeddedBrokerConfig, broker::TcpListenerConfig};
 use tokio_tungstenite::Connector;
 use tower_http::services::ServeDir;
 use tracing::{error, info, warn};
@@ -97,18 +96,9 @@ async fn main() -> anyhow::Result<()> {
 
     ensure_primary_agent(&client, watch_namespace.as_deref()).await?;
 
-    let mqtt_bind_addr: SocketAddr = std::env::var("AUSPEX_MQTT_BIND_ADDR")
-        .unwrap_or_else(|_| "0.0.0.0:1883".into())
-        .parse()?;
-    let (_mqtt_broker, _mqtt_links) = EmbeddedBrokerBuilder::new(EmbeddedBrokerConfig {
-        tcp_listener: Some(TcpListenerConfig {
-            bind_addr: mqtt_bind_addr,
-        }),
-        ..Default::default()
-    })
-    .add_link("auspex-operator")
-    .start()?;
-    info!(bind_addr = %mqtt_bind_addr, "Aether MQTT broker listening");
+    let mqtt_broker_url = std::env::var("AUSPEX_MQTT_BROKER_URL")
+        .unwrap_or_else(|_| "mqtt://127.0.0.1:1883".into());
+    info!(broker_url = %mqtt_broker_url, "using external MQTT broker");
 
     let agents: Api<OmegonAgent> = match &watch_namespace {
         Some(ns) => Api::namespaced(client.clone(), ns),

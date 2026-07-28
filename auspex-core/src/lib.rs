@@ -40,6 +40,8 @@ pub mod gateway_projection;
 pub mod host_action_policy;
 pub mod instance_registry;
 pub mod managed_agent_runtime;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_mqtt;
 pub mod managed_agent_supervisor;
 pub mod managed_agents;
 #[cfg(not(target_arch = "wasm32"))]
