@@ -816,6 +816,7 @@ impl AppController {
         worker_id: crate::managed_agents::WorkerId,
         parent: (String, String),
         request: crate::managed_agents::ManagedRunRequest,
+        target_agent_id: impl Into<String>,
         now_unix_ms: u64,
     ) -> Result<crate::managed_agents::ManagedRunId, String> {
         self.managed_agents
@@ -824,7 +825,9 @@ impl AppController {
                 parent.0,
                 parent.1,
                 request,
-                CommandTarget::default(),
+                crate::managed_agent_runtime::ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: target_agent_id.into(),
+                },
                 now_unix_ms,
             )
             .map_err(|error| format!("managed-agent MQTT preparation rejected: {error:?}"))

@@ -47,9 +47,20 @@ pub enum ManagedCommandDeliveryState {
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ManagedAgentTransportBinding {
+    OmegonControl {
+        instance_id: String,
+        target: CommandTarget,
+    },
+    StyreneA2a {
+        target_agent_id: String,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
 struct RuntimeEntry {
     run: ManagedAgentRun,
-    target: CommandTarget,
+    transport: ManagedAgentTransportBinding,
     dispatched_at_unix_ms: u64,
     dispatched_at: Instant,
     deadline_at: Instant,
@@ -69,6 +80,7 @@ pub enum SupervisorRuntimeError {
     Domain(ManagedRunTransitionError),
     Validation(ManagedAgentValidationError),
     InvalidJson(String),
+    WrongTransport,
     DeadlineExceeded,
 }
 
@@ -126,7 +138,7 @@ impl ManagedAgentSupervisorRuntime {
         parent_session_id: impl Into<String>,
         parent_turn_id: impl Into<String>,
         request: ManagedRunRequest,
-        target: CommandTarget,
+        transport: ManagedAgentTransportBinding,
         now_unix_ms: u64,
     ) -> Result<ManagedRunId, SupervisorRuntimeError> {
         let run = ManagedAgentRun::new(worker_id, parent_session_id, parent_turn_id, request)?;
@@ -144,7 +156,7 @@ impl ManagedAgentSupervisorRuntime {
             run_id,
             RuntimeEntry {
                 run,
-                target,
+                transport,
                 dispatched_at_unix_ms: now_unix_ms,
                 dispatched_at: now,
                 deadline_at,
@@ -168,7 +180,10 @@ impl ManagedAgentSupervisorRuntime {
             parent_session_id,
             parent_turn_id,
             request,
-            target.clone(),
+            ManagedAgentTransportBinding::OmegonControl {
+                instance_id: String::new(),
+                target: target.clone(),
+            },
             now_unix_ms,
         )?;
         let request = self
@@ -203,8 +218,14 @@ impl ManagedAgentSupervisorRuntime {
             .omegon_task_id()
             .ok_or(ManagedRunTransitionError::DispatchNotAccepted)?
             .clone();
-        let command = DelegateTaskRequest::new(run_id, entry.run.worker_id(), task_id)
-            .get_command(entry.target.clone())?;
+        let target = match &entry.transport {
+            ManagedAgentTransportBinding::OmegonControl { target, .. } => target.clone(),
+            ManagedAgentTransportBinding::StyreneA2a { .. } => {
+                return Err(SupervisorRuntimeError::WrongTransport);
+            }
+        };
+        let command =
+            DelegateTaskRequest::new(run_id, entry.run.worker_id(), task_id).get_command(target)?;
         self.register_command(run_id, ManagedCommandKind::Poll, command)
     }
 
@@ -227,8 +248,14 @@ impl ManagedAgentSupervisorRuntime {
             run_id,
             reason: reason.clone(),
         });
+        let target = match &entry.transport {
+            ManagedAgentTransportBinding::OmegonControl { target, .. } => target.clone(),
+            ManagedAgentTransportBinding::StyreneA2a { .. } => {
+                return Err(SupervisorRuntimeError::WrongTransport);
+            }
+        };
         let command = DelegateCancelRequest::new(run_id, entry.run.worker_id(), task_id, reason)?
-            .command(entry.target.clone())?;
+            .command(target)?;
         self.register_command(run_id, ManagedCommandKind::Cancel, command)
     }
 
@@ -462,6 +489,17 @@ impl ManagedAgentSupervisorRuntime {
             .collect()
     }
 
+    pub fn transport_binding(&self, run_id: ManagedRunId) -> Option<&ManagedAgentTransportBinding> {
+        self.runs.get(&run_id).map(|entry| &entry.transport)
+    }
+
+    pub fn is_omegon_control_run(&self, run_id: ManagedRunId) -> bool {
+        matches!(
+            self.transport_binding(run_id),
+            Some(ManagedAgentTransportBinding::OmegonControl { .. })
+        )
+    }
+
     pub fn active_run_ids(&self) -> Vec<ManagedRunId> {
         self.runs
             .iter()
@@ -689,7 +727,16 @@ mod tests {
     fn prepared_mqtt_run_has_no_control_commands() {
         let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
         let run_id = runtime
-            .prepare_run(WorkerId::new(), "session", "turn", request(), target(), 42)
+            .prepare_run(
+                WorkerId::new(),
+                "session",
+                "turn",
+                request(),
+                ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: "worker".into(),
+                },
+                42,
+            )
             .unwrap();
         assert!(runtime.run(run_id).is_some());
         assert!(runtime.commands.is_empty());
