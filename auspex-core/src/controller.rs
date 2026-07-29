@@ -200,6 +200,16 @@ impl SessionSource {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug)]
+pub enum ManagedAgentTransportAction {
+    StyreneA2aDispatch(crate::managed_agent_mqtt::ManagedRunA2aRequest),
+    StyreneA2aCancel {
+        cancellation: crate::managed_agent_mqtt::ManagedRunA2aCancel,
+        root_operation_id: String,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppController {
     session: SessionSource,
@@ -808,6 +818,64 @@ impl AppController {
         &mut self,
     ) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
         &mut self.managed_agents
+    }
+
+    pub fn prepare_styrene_a2a_dispatch(
+        &mut self,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        target_agent_id: impl Into<String>,
+        now_unix_ms: u64,
+    ) -> Result<
+        (
+            crate::managed_agents::ManagedRunId,
+            ManagedAgentTransportAction,
+        ),
+        String,
+    > {
+        let parent_copy = parent.clone();
+        let request_copy = request.clone();
+        let run_id = self.prepare_mqtt_managed_agent(
+            worker_id,
+            parent,
+            request,
+            target_agent_id,
+            now_unix_ms,
+        )?;
+        Ok((
+            run_id,
+            ManagedAgentTransportAction::StyreneA2aDispatch(
+                crate::managed_agent_mqtt::ManagedRunA2aRequest {
+                    managed_run_id: run_id,
+                    worker_id,
+                    parent_session_id: parent_copy.0,
+                    parent_turn_id: parent_copy.1,
+                    request: request_copy,
+                },
+            ),
+        ))
+    }
+
+    pub fn prepare_styrene_a2a_cancel(
+        &mut self,
+        run_id: crate::managed_agents::ManagedRunId,
+        reason: Option<String>,
+    ) -> Result<ManagedAgentTransportAction, String> {
+        let root_operation_id = self
+            .managed_agents
+            .run(run_id)
+            .ok_or_else(|| "unknown managed-agent run".to_string())?
+            .parent_session_id()
+            .to_string();
+        let cancellation = self
+            .managed_agents
+            .request_a2a_cancellation(run_id, reason)
+            .map_err(|error| format!("managed-agent A2A cancellation rejected: {error:?}"))?;
+        Ok(ManagedAgentTransportAction::StyreneA2aCancel {
+            cancellation,
+            root_operation_id,
+        })
     }
 
     #[cfg(not(target_arch = "wasm32"))]

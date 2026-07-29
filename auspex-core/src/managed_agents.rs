@@ -197,6 +197,12 @@ impl ManagedAgentRun {
     pub fn request(&self) -> &ManagedRunRequest {
         &self.request
     }
+    pub fn parent_session_id(&self) -> &str {
+        &self.parent_session_id
+    }
+    pub fn parent_turn_id(&self) -> &str {
+        &self.parent_turn_id
+    }
     pub fn state(&self) -> &ManagedRunState {
         &self.state
     }
