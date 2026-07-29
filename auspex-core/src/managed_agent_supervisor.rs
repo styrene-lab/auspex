@@ -268,7 +268,7 @@ mod tests {
     fn dispatch_encodes_authenticated_control_method_payload() {
         let (run, worker, _) = ids();
         let request = ManagedRunRequest::new("inspect", WorkerProfile::Scout, std::collections::BTreeSet::from(["src".into()]), 300).unwrap();
-        let command = DelegateDispatchRequest::new(run.clone(), worker.clone(), request).command(target()).unwrap();
+        let command = DelegateDispatchRequest::new(run, worker, request).command(target()).unwrap();
         let json: serde_json::Value = serde_json::from_str(&command.web_command_json()).unwrap();
         assert_eq!(json["type"], METHOD_DELEGATE_DISPATCH);
         assert_eq!(json["managed_run_id"], serde_json::to_value(run).unwrap());
@@ -280,7 +280,7 @@ mod tests {
     fn dispatch_response_requires_correlated_task_identity() {
         let (run, worker, task) = ids();
         let accepted = DelegateDispatchResponse {
-            schema_version: 1, managed_run_id: run.clone(), worker_id: worker.clone(), accepted: true,
+            schema_version: 1, managed_run_id: run, worker_id: worker, accepted: true,
             task_id: Some(task.clone()), effective_policy: None, rejection: None,
         };
         assert_eq!(accepted.validate_for(&run, &worker).unwrap(), &task);
@@ -292,7 +292,7 @@ mod tests {
     fn response_validation_rejects_cross_worker_and_oversized_result() {
         let (run, worker, task) = ids();
         let response = DelegateResultResponse {
-            schema_version: 1, managed_run_id: run.clone(), worker_id: worker.clone(), task_id: task.clone(), result: "12345".into(),
+            schema_version: 1, managed_run_id: run, worker_id: worker, task_id: task.clone(), result: "12345".into(),
         };
         assert_eq!(response.validate_for(&run, &WorkerId::new(), &task, 10), Err(SupervisorContractError::IdentityMismatch));
         assert_eq!(response.validate_for(&run, &worker, &task, 4), Err(SupervisorContractError::OversizedResult));
@@ -302,7 +302,7 @@ mod tests {
     fn cancellation_confirmation_requires_acknowledgement() {
         let (run, worker, task) = ids();
         let response = DelegateCancelResponse {
-            schema_version: 1, managed_run_id: run.clone(), worker_id: worker.clone(), task_id: task.clone(),
+            schema_version: 1, managed_run_id: run, worker_id: worker, task_id: task.clone(),
             acknowledged: false, termination_confirmed: true, reason: None,
         };
         assert_eq!(response.validate_for(&run, &worker, &task), Err(SupervisorContractError::IdentityMismatch));
@@ -312,7 +312,7 @@ mod tests {
     fn unsupported_schema_is_rejected() {
         let (run, worker, task) = ids();
         let response = DelegateResultResponse {
-            schema_version: 99, managed_run_id: run.clone(), worker_id: worker.clone(), task_id: task.clone(), result: String::new(),
+            schema_version: 99, managed_run_id: run, worker_id: worker, task_id: task.clone(), result: String::new(),
         };
         assert_eq!(response.validate_for(&run, &worker, &task, 10), Err(SupervisorContractError::UnsupportedSchema { received: 99 }));
     }

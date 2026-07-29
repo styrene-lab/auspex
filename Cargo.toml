@@ -9,7 +9,7 @@ edition = "2024"
 
 [package.metadata.omegon]
 minimum_version = "0.25.0"
-maximum_tested_version = "0.28.9"
+maximum_tested_version = "0.29.0-dev"
 control_plane_schema = 2
 
 [features]
