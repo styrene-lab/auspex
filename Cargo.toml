@@ -38,7 +38,7 @@ omegon-web-mock = ["web"]
 [dependencies]
 auspex-core = { path = "auspex-core", default-features = false }
 omegon-flow = "0.9.1"
-dioxus = { version = "0.7", features = ["launch", "devtools", "logger", "lib"] }
+dioxus = { version = "0.8.0-alpha.0", features = ["launch", "devtools", "logger", "lib"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 semver = "1"
