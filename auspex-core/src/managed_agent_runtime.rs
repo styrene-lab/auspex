@@ -259,6 +259,33 @@ impl ManagedAgentSupervisorRuntime {
         self.register_command(run_id, ManagedCommandKind::Cancel, command)
     }
 
+    pub fn request_a2a_cancellation(
+        &mut self,
+        run_id: ManagedRunId,
+        reason: Option<String>,
+    ) -> Result<crate::managed_agent_mqtt::ManagedRunA2aCancel, SupervisorRuntimeError> {
+        let entry = self
+            .runs
+            .get_mut(&run_id)
+            .ok_or(SupervisorRuntimeError::UnknownRun)?;
+        if !matches!(
+            entry.transport,
+            ManagedAgentTransportBinding::StyreneA2a { .. }
+        ) {
+            return Err(SupervisorRuntimeError::WrongTransport);
+        }
+        entry.run.request_cancellation(reason.clone())?;
+        entry.events.push(SupervisorEvent::CancellationRequested {
+            run_id,
+            reason: reason.clone(),
+        });
+        Ok(crate::managed_agent_mqtt::ManagedRunA2aCancel {
+            managed_run_id: run_id,
+            worker_id: entry.run.worker_id(),
+            reason,
+        })
+    }
+
     pub fn apply_receipt_json(
         &mut self,
         json: &str,

@@ -13,6 +13,7 @@ use styrene_mqtt::{MqttA2aClient, ReceivedA2aEnvelope};
 use crate::managed_agents::{ManagedRunId, ManagedRunRequest, WorkerId};
 
 pub const MANAGED_RUN_REQUEST_SCHEMA: &str = "io.styrene.auspex.managed-run-request.v1";
+pub const MANAGED_RUN_CANCEL_SCHEMA: &str = "io.styrene.auspex.managed-run-cancel.v1";
 pub const MANAGED_RUN_OUTCOME_SCHEMA: &str = "io.styrene.auspex.managed-run-outcome.v1";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -104,6 +105,13 @@ pub struct ManagedRunA2aRequest {
     pub request: ManagedRunRequest,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedRunA2aCancel {
+    pub managed_run_id: ManagedRunId,
+    pub worker_id: WorkerId,
+    pub reason: Option<String>,
+}
+
 pub struct ManagedAgentMqttBridge {
     client: MqttA2aClient,
     config: ManagedAgentMqttConfig,
@@ -163,6 +171,37 @@ impl ManagedAgentMqttBridge {
             payload,
         );
         envelope.parent_task_id = Some(command.parent_turn_id);
+        envelope.expires_at_ms = Some(now_ms.saturating_add(ttl.as_millis() as u64));
+        self.next_sequence = self
+            .next_sequence
+            .checked_add(1)
+            .ok_or(ManagedAgentMqttError::SequenceExhausted)?;
+        Ok(envelope)
+    }
+
+    pub fn cancellation_envelope(
+        &mut self,
+        cancellation: ManagedRunA2aCancel,
+        root_operation_id: &str,
+        now_ms: u64,
+        ttl: Duration,
+    ) -> Result<AgentEnvelope, ManagedAgentMqttError> {
+        let task_id = cancellation.managed_run_id.to_string();
+        let payload = serde_json::to_vec(&cancellation)?;
+        let root = RootOperationId::new(root_operation_id)?;
+        let mut envelope = AgentEnvelope::new(
+            AgentEnvelopeKind::Command,
+            &self.config.local_agent_id,
+            self.runtime_id,
+            &self.config.target_agent_id,
+            &root,
+            Some(task_id.clone()),
+            task_id,
+            self.next_sequence,
+            now_ms,
+            MANAGED_RUN_CANCEL_SCHEMA,
+            payload,
+        );
         envelope.expires_at_ms = Some(now_ms.saturating_add(ttl.as_millis() as u64));
         self.next_sequence = self
             .next_sequence

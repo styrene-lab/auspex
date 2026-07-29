@@ -9,7 +9,7 @@ use tokio::sync::mpsc;
 
 use crate::managed_agent_mqtt::{
     ManagedAgentA2aEvent, ManagedAgentMqttBridge, ManagedAgentMqttConfig, ManagedAgentMqttError,
-    ManagedRunA2aRequest,
+    ManagedRunA2aCancel, ManagedRunA2aRequest,
 };
 
 const COMMAND_CHANNEL_CAPACITY: usize = 64;
@@ -58,6 +58,10 @@ impl ManagedAgentMqttOrchestratorConfig {
 #[derive(Clone, Debug)]
 pub enum ManagedAgentMqttCommand {
     Dispatch(ManagedRunA2aRequest),
+    Cancel {
+        cancellation: ManagedRunA2aCancel,
+        root_operation_id: String,
+    },
     Shutdown,
 }
 
@@ -87,6 +91,20 @@ impl ManagedAgentMqttOrchestratorHandle {
     pub async fn dispatch(&self, request: ManagedRunA2aRequest) -> Result<(), String> {
         self.commands
             .send(ManagedAgentMqttCommand::Dispatch(request))
+            .await
+            .map_err(|_| "managed-agent MQTT orchestrator stopped".to_string())
+    }
+
+    pub async fn cancel(
+        &self,
+        cancellation: ManagedRunA2aCancel,
+        root_operation_id: String,
+    ) -> Result<(), String> {
+        self.commands
+            .send(ManagedAgentMqttCommand::Cancel {
+                cancellation,
+                root_operation_id,
+            })
             .await
             .map_err(|_| "managed-agent MQTT orchestrator stopped".to_string())
     }
@@ -148,6 +166,34 @@ async fn run_orchestrator(
             while let Ok(command) = commands.try_recv() {
                 match command {
                     ManagedAgentMqttCommand::Shutdown => break 'outer,
+                    ManagedAgentMqttCommand::Cancel {
+                        cancellation,
+                        root_operation_id,
+                    } => {
+                        let run_id = cancellation.managed_run_id;
+                        let result = publish_cancel(
+                            &mut bridge,
+                            cancellation,
+                            &root_operation_id,
+                            config.command_ttl,
+                        )
+                        .await;
+                        let event = match result {
+                            Ok(()) => ManagedAgentMqttOrchestratorEvent::CommandPublished {
+                                managed_run_id: run_id,
+                            },
+                            Err(ref error) => ManagedAgentMqttOrchestratorEvent::CommandFailed {
+                                managed_run_id: run_id,
+                                error: error.to_string(),
+                            },
+                        };
+                        if !send_event(&events, event).await {
+                            break 'outer;
+                        }
+                        if result.is_err() {
+                            continue 'outer;
+                        }
+                    }
                     ManagedAgentMqttCommand::Dispatch(request) => {
                         let run_id = request.managed_run_id;
                         let result = publish(&mut bridge, request, config.command_ttl).await;
@@ -211,6 +257,17 @@ async fn publish(
 ) -> Result<(), ManagedAgentMqttError> {
     let now = now_ms();
     let envelope = bridge.command_envelope(request, now, ttl)?;
+    bridge.publish_command(&envelope, now).await
+}
+
+async fn publish_cancel(
+    bridge: &mut ManagedAgentMqttBridge,
+    cancellation: ManagedRunA2aCancel,
+    root_operation_id: &str,
+    ttl: Duration,
+) -> Result<(), ManagedAgentMqttError> {
+    let now = now_ms();
+    let envelope = bridge.cancellation_envelope(cancellation, root_operation_id, now, ttl)?;
     bridge.publish_command(&envelope, now).await
 }
 
