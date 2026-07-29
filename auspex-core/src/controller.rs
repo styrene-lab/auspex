@@ -752,12 +752,15 @@ impl AppController {
         }
         for (instance_id, response) in control_responses {
             let parsed = serde_json::from_str::<serde_json::Value>(&response).ok();
-            if parsed
+            let response_type = parsed
                 .as_ref()
                 .and_then(|value| value.get("type"))
-                .and_then(serde_json::Value::as_str)
-                == Some("control_command_receipt")
-            {
+                .and_then(serde_json::Value::as_str);
+            if matches!(
+                response_type,
+                Some("control_command_receipt")
+                    | Some(crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK)
+            ) {
                 let command_id = parsed
                     .as_ref()
                     .and_then(|value| value.get("command_id"))
@@ -774,9 +777,16 @@ impl AppController {
                     );
                     continue;
                 }
-                if let Err(error) = self.managed_agents.apply_receipt_json(&response) {
+                let result = if response_type
+                    == Some(crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK)
+                {
+                    self.managed_agents.apply_command_ack_json(&response)
+                } else {
+                    self.managed_agents.apply_receipt_json(&response)
+                };
+                if let Err(error) = result {
                     eprintln!(
-                        "auspex: instance {instance_id}: rejected command receipt: {error:?}"
+                        "auspex: instance {instance_id}: rejected command delivery event: {error:?}"
                     );
                 }
                 continue;

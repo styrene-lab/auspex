@@ -87,7 +87,9 @@ impl InstanceSession {
 
     /// Drain the event stream inbox and apply all events to the session.
     /// Updates the activity summary. Returns true if any events were applied.
-    pub fn drain_and_apply_with_control_responses(&mut self) -> (bool, Vec<String>, Vec<SessionTransportEvent>) {
+    pub fn drain_and_apply_with_control_responses(
+        &mut self,
+    ) -> (bool, Vec<String>, Vec<SessionTransportEvent>) {
         let events = self.event_stream.inbox.drain();
         let had_events = !events.is_empty();
         let mut control_responses = Vec::new();
@@ -95,7 +97,8 @@ impl InstanceSession {
 
         for event_json in &events {
             if let Ok(value) = serde_json::from_str::<serde_json::Value>(event_json)
-                && value.get("type").and_then(serde_json::Value::as_str) == Some("auspex_transport_state")
+                && value.get("type").and_then(serde_json::Value::as_str)
+                    == Some("auspex_transport_state")
                 && let Some(state) = value.get("state").and_then(serde_json::Value::as_str)
             {
                 match state {
@@ -107,11 +110,23 @@ impl InstanceSession {
             }
             let is_managed_agent_response = serde_json::from_str::<serde_json::Value>(event_json)
                 .ok()
-                .and_then(|value| value.get("type").and_then(serde_json::Value::as_str).map(str::to_owned))
-                .is_some_and(|kind| matches!(kind.as_str(),
-                    "delegate_dispatch_result" | "delegate_get_result" |
-                    "delegate_result_result" | "delegate_cancel_result" |
-                    "control_command_receipt"));
+                .and_then(|value| {
+                    value
+                        .get("type")
+                        .and_then(serde_json::Value::as_str)
+                        .map(str::to_owned)
+                })
+                .is_some_and(|kind| {
+                    matches!(
+                        kind.as_str(),
+                        "delegate_dispatch_result"
+                            | "delegate_get_result"
+                            | "delegate_result_result"
+                            | "delegate_cancel_result"
+                            | "control_command_receipt"
+                            | crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK
+                    )
+                });
             if is_managed_agent_response {
                 control_responses.push(event_json.clone());
                 continue;
@@ -246,14 +261,27 @@ impl InstanceSessionMap {
         let mut responses = Vec::new();
         let mut transport_events = Vec::new();
         for (id, session) in &mut self.sessions {
-            let (had_events, control_responses, session_transport_events) = session.drain_and_apply_with_control_responses();
+            let (had_events, control_responses, session_transport_events) =
+                session.drain_and_apply_with_control_responses();
             if had_events {
                 active.push(id.clone());
             }
-            responses.extend(control_responses.into_iter().map(|response| (id.clone(), response)));
-            transport_events.extend(session_transport_events.into_iter().map(|event| (id.clone(), event)));
+            responses.extend(
+                control_responses
+                    .into_iter()
+                    .map(|response| (id.clone(), response)),
+            );
+            transport_events.extend(
+                session_transport_events
+                    .into_iter()
+                    .map(|event| (id.clone(), event)),
+            );
         }
-        InstanceDrainBatch { active_instance_ids: active, control_responses: responses, transport_events }
+        InstanceDrainBatch {
+            active_instance_ids: active,
+            control_responses: responses,
+            transport_events,
+        }
     }
 
     /// Drain all instance inboxes, returning the IDs of instances that had events.
@@ -353,20 +381,38 @@ mod tests {
         let handle = mock_handle("ws://localhost:7843/ws");
         let mut session =
             InstanceSession::with_handle("test-instance", "ws://localhost:7843/ws", handle.clone());
-        handle.inbox.push(serde_json::json!({"type": "turn_start", "turn": 1}).to_string());
+        handle
+            .inbox
+            .push(serde_json::json!({"type": "turn_start", "turn": 1}).to_string());
         let response = serde_json::json!({
             "type": "delegate_get_result", "schema_version": 1,
             "managed_run_id": "11111111-1111-4111-8111-111111111111",
             "worker_id": "22222222-2222-4222-8222-222222222222",
             "task_id": "delegate_7"
-        }).to_string();
+        })
+        .to_string();
         handle.inbox.push(response.clone());
+        let ack = serde_json::json!({
+            "type": crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK,
+            "schema_version": 1,
+            "command_id": "33333333-3333-4333-8333-333333333333",
+            "method": "delegate_dispatch",
+            "managed_run_id": "11111111-1111-4111-8111-111111111111",
+            "worker_id": "22222222-2222-4222-8222-222222222222",
+            "task_id": null,
+            "status": "accepted",
+            "rejection": null,
+            "accepted_at_unix_ms": 1
+        })
+        .to_string();
+        handle.inbox.push(ack.clone());
 
-        let (had_events, responses, transport_events) = session.drain_and_apply_with_control_responses();
+        let (had_events, responses, transport_events) =
+            session.drain_and_apply_with_control_responses();
 
         assert!(had_events);
         assert!(transport_events.is_empty());
-        assert_eq!(responses, vec![response]);
+        assert_eq!(responses, vec![response, ack]);
         assert!(session.is_run_active());
         assert_eq!(session.activity.turn_count, 1);
     }
