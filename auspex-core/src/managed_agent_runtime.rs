@@ -3,6 +3,57 @@ use std::time::{Duration, Instant};
 
 use serde_json::Value;
 
+#[cfg(not(target_arch = "wasm32"))]
+use crate::controller::ManagedAgentTransportAction;
+#[cfg(not(target_arch = "wasm32"))]
+use crate::managed_agent_mqtt_orchestrator::{
+    ManagedAgentMqttOrchestratorEvent, ManagedAgentMqttOrchestratorHandle,
+};
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone)]
+pub struct ManagedAgentA2aDispatcher {
+    handle: ManagedAgentMqttOrchestratorHandle,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ManagedAgentA2aDispatcher {
+    pub fn new(handle: ManagedAgentMqttOrchestratorHandle) -> Self {
+        Self { handle }
+    }
+
+    pub async fn execute(&self, action: ManagedAgentTransportAction) -> Result<(), String> {
+        match action {
+            ManagedAgentTransportAction::StyreneA2aDispatch(request) => {
+                self.handle.dispatch(request).await
+            }
+            ManagedAgentTransportAction::StyreneA2aCancel {
+                cancellation,
+                root_operation_id,
+            } => self.handle.cancel(cancellation, root_operation_id).await,
+        }
+    }
+
+    pub fn apply_event(
+        runtime: &mut ManagedAgentSupervisorRuntime,
+        event: ManagedAgentMqttOrchestratorEvent,
+    ) -> Result<(), String> {
+        match event {
+            ManagedAgentMqttOrchestratorEvent::Outcome(outcome) => runtime
+                .apply_a2a_event(&outcome)
+                .map(|_| ())
+                .map_err(|error| format!("MQTT A2A outcome rejected: {error:?}")),
+            ManagedAgentMqttOrchestratorEvent::Disconnected { error }
+            | ManagedAgentMqttOrchestratorEvent::CommandFailed { error, .. } => {
+                Err(format!("MQTT A2A transport: {error}"))
+            }
+            ManagedAgentMqttOrchestratorEvent::Connected
+            | ManagedAgentMqttOrchestratorEvent::CommandPublished { .. }
+            | ManagedAgentMqttOrchestratorEvent::Stopped => Ok(()),
+        }
+    }
+}
+
 use crate::managed_agent_supervisor::{
     ControlCommandReceipt, ControlCommandReceiptStatus, DelegateCancelRequest,
     DelegateCancelResponse, DelegateDispatchRequest, DelegateDispatchResponse,
