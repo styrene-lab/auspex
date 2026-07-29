@@ -46,15 +46,21 @@ pub enum OperatorCommand {
 pub struct ManagedCommandId(Uuid);
 
 impl ManagedCommandId {
-    pub fn new() -> Self { Self(Uuid::new_v4()) }
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
 }
 
 impl Default for ManagedCommandId {
-    fn default() -> Self { Self::new() }
+    fn default() -> Self {
+        Self::new()
+    }
 }
 
 impl std::fmt::Display for ManagedCommandId {
-    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { self.0.fmt(formatter) }
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -129,6 +135,13 @@ impl TargetedCommand {
         }
     }
 
+    pub fn method(&self) -> Option<&str> {
+        match &self.command {
+            OperatorCommand::ControlMethod { method, .. } => Some(method),
+            _ => None,
+        }
+    }
+
     pub fn web_command_json(&self) -> String {
         match &self.command {
             OperatorCommand::PromptSubmit { text } => serde_json::json!({
@@ -154,7 +167,11 @@ impl TargetedCommand {
                 "model": model,
             })
             .to_string(),
-            OperatorCommand::ControlMethod { command_id, method, payload } => {
+            OperatorCommand::ControlMethod {
+                command_id,
+                method,
+                payload,
+            } => {
                 let mut command = payload.clone();
                 if let serde_json::Value::Object(ref mut map) = command {
                     map.insert(
@@ -848,7 +865,10 @@ mod tests {
     #[test]
     fn control_method_web_command_carries_id_in_omegon_native_shape() {
         let command = TargetedCommand::control_method(
-            CommandTarget { session_key: "remote:s".into(), dispatcher_instance_id: Some("w".into()) },
+            CommandTarget {
+                session_key: "remote:s".into(),
+                dispatcher_instance_id: Some("w".into()),
+            },
             "delegate_get",
             serde_json::json!({"schema_version": 1}),
         );

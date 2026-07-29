@@ -58,7 +58,7 @@ use crate::managed_agent_supervisor::{
     ControlCommandReceipt, ControlCommandReceiptStatus, DelegateCancelRequest,
     DelegateCancelResponse, DelegateDispatchRequest, DelegateDispatchResponse,
     DelegateObservationResponse, DelegateResultResponse, DelegateTaskRequest,
-    SupervisorContractError,
+    ManagedAgentCommandAck, ManagedAgentCommandAckStatus, SupervisorContractError,
 };
 use crate::managed_agents::{
     ManagedAgentRun, ManagedAgentValidationError, ManagedRunId, ManagedRunRequest,
@@ -78,7 +78,11 @@ pub struct ManagedAgentSupervisorRuntime {
 struct PendingManagedCommand {
     command: TargetedCommand,
     kind: ManagedCommandKind,
+    run_id: ManagedRunId,
+    worker_id: WorkerId,
+    task_id: Option<crate::managed_agents::OmegonTaskId>,
     state: ManagedCommandDeliveryState,
+    attempts: u32,
     last_sent_at: Instant,
 }
 
@@ -94,7 +98,9 @@ pub enum ManagedCommandDeliveryState {
     Pending,
     Accepted,
     Duplicate,
+    RetryPending { code: String },
     Rejected { code: String },
+    ProvenByResult,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -170,13 +176,23 @@ impl ManagedAgentSupervisorRuntime {
         let command_id = command
             .managed_command_id()
             .ok_or(SupervisorRuntimeError::MissingCommandId)?;
+        let entry = self
+            .runs
+            .get(&run_id)
+            .ok_or(SupervisorRuntimeError::UnknownRun)?;
+        let worker_id = entry.run.worker_id();
+        let task_id = entry.run.omegon_task_id().cloned();
         self.command_runs.insert(command_id, run_id);
         self.commands.insert(
             command_id,
             PendingManagedCommand {
                 command: command.clone(),
                 kind,
+                run_id,
+                worker_id,
+                task_id,
                 state: ManagedCommandDeliveryState::Pending,
+                attempts: 1,
                 last_sent_at: Instant::now(),
             },
         );
@@ -368,15 +384,58 @@ impl ManagedAgentSupervisorRuntime {
         Ok(receipt.command_id)
     }
 
+    pub fn apply_command_ack_json(
+        &mut self,
+        json: &str,
+    ) -> Result<ManagedCommandId, SupervisorRuntimeError> {
+        let ack: ManagedAgentCommandAck = serde_json::from_str(json)
+            .map_err(|error| SupervisorRuntimeError::InvalidJson(error.to_string()))?;
+        ack.validate()?;
+        let pending = self
+            .commands
+            .get_mut(&ack.command_id)
+            .ok_or(SupervisorRuntimeError::UnknownCommand)?;
+        if pending.run_id != ack.managed_run_id
+            || pending.worker_id != ack.worker_id
+            || pending.task_id != ack.task_id
+            || pending.command.method() != Some(ack.method.as_str())
+        {
+            return Err(SupervisorRuntimeError::Contract(
+                SupervisorContractError::IdentityMismatch,
+            ));
+        }
+        pending.state = match ack.status {
+            ManagedAgentCommandAckStatus::Accepted => ManagedCommandDeliveryState::Accepted,
+            ManagedAgentCommandAckStatus::Rejected => {
+                let rejection = ack.rejection.expect("validated rejection exists");
+                if rejection.retryable {
+                    ManagedCommandDeliveryState::RetryPending {
+                        code: rejection.code,
+                    }
+                } else {
+                    ManagedCommandDeliveryState::Rejected {
+                        code: rejection.code,
+                    }
+                }
+            }
+        };
+        Ok(ack.command_id)
+    }
+
     pub fn replay_due_commands(&mut self, receipt_timeout: Duration) -> Vec<TargetedCommand> {
         let now = Instant::now();
         self.commands
             .values_mut()
             .filter_map(|pending| {
-                if pending.state == ManagedCommandDeliveryState::Pending
-                    && now.duration_since(pending.last_sent_at) >= receipt_timeout
+                if matches!(
+                    pending.state,
+                    ManagedCommandDeliveryState::Pending
+                        | ManagedCommandDeliveryState::RetryPending { .. }
+                ) && now.duration_since(pending.last_sent_at) >= receipt_timeout
                 {
                     pending.last_sent_at = now;
+                    pending.attempts = pending.attempts.saturating_add(1);
+                    pending.state = ManagedCommandDeliveryState::Pending;
                     Some(pending.command.clone())
                 } else {
                     None
@@ -674,7 +733,10 @@ impl ManagedAgentSupervisorRuntime {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::managed_agent_supervisor::{METHOD_DELEGATE_DISPATCH, METHOD_DELEGATE_GET};
+    use crate::managed_agent_supervisor::{
+        METHOD_DELEGATE_DISPATCH, METHOD_DELEGATE_GET, ManagedAgentCommandAck,
+        ManagedAgentCommandAckStatus,
+    };
     use crate::managed_agents::ManagedRunState;
     use crate::managed_agents::{OmegonTaskId, WorkerProfile};
     use std::collections::BTreeSet;
@@ -879,6 +941,115 @@ mod tests {
             runtime.run(run_id).unwrap().state(),
             ManagedRunState::DispatchTimedOut
         ));
+    }
+
+    fn ack_runtime() -> ManagedAgentSupervisorRuntime {
+        let worker = WorkerId::new();
+        let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
+        runtime
+            .dispatch(worker, "session", "turn", request(), target(), 1000)
+            .unwrap();
+        runtime
+    }
+
+    fn pending_command_id(runtime: &ManagedAgentSupervisorRuntime) -> ManagedCommandId {
+        *runtime
+            .commands
+            .keys()
+            .next()
+            .expect("tracked command exists")
+    }
+
+    fn command_ack(
+        runtime: &ManagedAgentSupervisorRuntime,
+        status: ManagedAgentCommandAckStatus,
+        rejection: Option<crate::managed_agent_supervisor::ManagedAgentCommandAckRejection>,
+    ) -> ManagedAgentCommandAck {
+        let pending = runtime
+            .commands
+            .values()
+            .next()
+            .expect("tracked command exists");
+        ManagedAgentCommandAck {
+            schema_version: 1,
+            command_id: pending_command_id(runtime),
+            managed_run_id: pending.run_id,
+            worker_id: pending.worker_id,
+            task_id: pending.task_id.clone(),
+            method: pending.command.method().expect("control method").into(),
+            status,
+            rejection,
+            accepted_at_unix_ms: 1,
+        }
+    }
+
+    #[test]
+    fn command_ack_acceptance_is_terminal_for_replay() {
+        let mut runtime = ack_runtime();
+        let ack = command_ack(&runtime, ManagedAgentCommandAckStatus::Accepted, None);
+
+        let command_id = runtime
+            .apply_command_ack_json(&serde_json::to_string(&ack).unwrap())
+            .unwrap();
+
+        assert_eq!(
+            runtime.command_delivery_state(command_id),
+            Some(&ManagedCommandDeliveryState::Accepted)
+        );
+        assert!(runtime.replay_due_commands(Duration::ZERO).is_empty());
+    }
+
+    #[test]
+    fn retryable_rejection_replays_same_command_identity() {
+        let mut runtime = ack_runtime();
+        let command_id = pending_command_id(&runtime);
+        let original_json = runtime.commands[&command_id].command.web_command_json();
+        let ack = command_ack(
+            &runtime,
+            ManagedAgentCommandAckStatus::Rejected,
+            Some(
+                crate::managed_agent_supervisor::ManagedAgentCommandAckRejection {
+                    code: "busy".into(),
+                    safe_message: "worker is busy".into(),
+                    retryable: true,
+                },
+            ),
+        );
+
+        runtime
+            .apply_command_ack_json(&serde_json::to_string(&ack).unwrap())
+            .unwrap();
+        assert_eq!(
+            runtime.command_delivery_state(command_id),
+            Some(&ManagedCommandDeliveryState::RetryPending {
+                code: "busy".into()
+            })
+        );
+
+        let replay = runtime.replay_due_commands(Duration::ZERO);
+        assert_eq!(replay.len(), 1);
+        assert_eq!(replay[0].managed_command_id(), Some(command_id));
+        assert_eq!(replay[0].web_command_json(), original_json);
+        assert_eq!(runtime.commands[&command_id].attempts, 2);
+    }
+
+    #[test]
+    fn command_ack_rejects_mismatched_method_without_mutation() {
+        let mut runtime = ack_runtime();
+        let command_id = pending_command_id(&runtime);
+        let mut ack = command_ack(&runtime, ManagedAgentCommandAckStatus::Accepted, None);
+        ack.method = "delegate.cancel".into();
+
+        assert_eq!(
+            runtime.apply_command_ack_json(&serde_json::to_string(&ack).unwrap()),
+            Err(SupervisorRuntimeError::Contract(
+                SupervisorContractError::IdentityMismatch
+            ))
+        );
+        assert_eq!(
+            runtime.command_delivery_state(command_id),
+            Some(&ManagedCommandDeliveryState::Pending)
+        );
     }
 
     #[test]
