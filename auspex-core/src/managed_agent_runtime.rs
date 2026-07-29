@@ -564,6 +564,29 @@ impl ManagedAgentSupervisorRuntime {
         expired
     }
 
+    pub fn expire_dispatches_for(
+        &mut self,
+        run_ids: &std::collections::HashSet<ManagedRunId>,
+        timeout: Duration,
+    ) -> Vec<ManagedRunId> {
+        let now = Instant::now();
+        let mut expired = Vec::new();
+        for run_id in run_ids {
+            let Some(entry) = self.runs.get_mut(run_id) else {
+                continue;
+            };
+            if matches!(
+                entry.run.state(),
+                crate::managed_agents::ManagedRunState::Dispatching
+            ) && now.duration_since(entry.dispatched_at) >= timeout
+                && entry.run.mark_dispatch_timed_out().is_ok()
+            {
+                expired.push(*run_id);
+            }
+        }
+        expired
+    }
+
     pub fn expire_dispatches(&mut self, timeout: Duration) -> Vec<ManagedRunId> {
         self.expire_dispatches_at(Instant::now(), timeout)
     }

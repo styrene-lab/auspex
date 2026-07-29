@@ -877,20 +877,28 @@ impl AppController {
         self.dispatch_to_instance(&instance_id, &command)
     }
 
-    /// WebSocket-owned runs only. MQTT-owned runs are deliberately absent from
-    /// `managed_agent_instances`, so they never enter control polling/replay.
+    /// Only control-owned runs enter control polling and receipt replay.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn tick_managed_agents(&mut self) -> Vec<String> {
         let mut errors = Vec::new();
+        let control_run_ids: std::collections::HashSet<_> = self
+            .managed_agents
+            .active_run_ids()
+            .into_iter()
+            .filter(|run_id| self.managed_agents.is_omegon_control_run(*run_id))
+            .collect();
         let dispatch_timeouts = self
             .managed_agents
-            .expire_dispatches(std::time::Duration::from_secs(15));
+            .expire_dispatches_for(&control_run_ids, std::time::Duration::from_secs(15));
         for run_id in dispatch_timeouts {
             errors.push(format!("run {run_id}: dispatch acceptance timed out"));
         }
         let expired: std::collections::HashSet<_> =
             self.managed_agents.expired_runs().into_iter().collect();
         for run_id in self.managed_agents.active_run_ids() {
+            if !self.managed_agents.is_omegon_control_run(run_id) {
+                continue;
+            }
             let state = self
                 .managed_agents
                 .run(run_id)
