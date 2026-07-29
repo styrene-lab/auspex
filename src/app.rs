@@ -1246,12 +1246,18 @@ pub fn App() -> Element {
     });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_transport_actions = use_signal(|| {
+        std::collections::VecDeque::<auspex_core::controller::ManagedAgentTransportAction>::new()
+    });
+    #[cfg(not(target_arch = "wasm32"))]
     let managed_agent_mqtt = use_signal(|| {
         auspex_core::managed_agent_mqtt_orchestrator::ManagedAgentMqttOrchestratorConfig::from_env()
             .ok()
             .flatten()
             .map(|config| {
-                auspex_core::managed_agent_mqtt_orchestrator::spawn_managed_agent_mqtt_orchestrator(config)
+                auspex_core::managed_agent_mqtt_orchestrator::spawn_managed_agent_mqtt_orchestrator(
+                    config,
+                )
             })
     });
     #[cfg(not(target_arch = "wasm32"))]
@@ -1416,6 +1422,38 @@ pub fn App() -> Element {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     controller.write().drain_all_instance_sessions();
+                }
+
+                // Take prepared transport actions out of Dioxus state before awaiting channel I/O.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let actions: Vec<_> =
+                        managed_agent_transport_actions.write().drain(..).collect();
+                    let handle = managed_agent_mqtt
+                        .read()
+                        .as_ref()
+                        .map(|(handle, _)| handle.clone());
+                    if let Some(handle) = handle {
+                        for action in actions {
+                            let result = match action {
+                                auspex_core::controller::ManagedAgentTransportAction::StyreneA2aDispatch(request) => {
+                                    handle.dispatch(request).await
+                                }
+                                auspex_core::controller::ManagedAgentTransportAction::StyreneA2aCancel { cancellation, root_operation_id } => {
+                                    handle.cancel(cancellation, root_operation_id).await
+                                }
+                            };
+                            if let Err(error) = result {
+                                controller.write().record_managed_agent_scheduler_errors(&[
+                                    format!("Styrene A2A action enqueue failed: {error}"),
+                                ]);
+                            }
+                        }
+                    } else if !actions.is_empty() {
+                        controller.write().record_managed_agent_scheduler_errors(&[
+                            "Styrene A2A action rejected: MQTT orchestrator is disabled".into(),
+                        ]);
+                    }
                 }
 
                 // Drain MQTT A2A events synchronously. No Dioxus signal guard crosses await.
