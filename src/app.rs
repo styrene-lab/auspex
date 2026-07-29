@@ -1297,6 +1297,8 @@ pub fn App() -> Element {
         let mut settings_open = settings_open;
         #[cfg(not(target_arch = "wasm32"))]
         let mut managed_agent_mqtt = managed_agent_mqtt;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_transport_actions = managed_agent_transport_actions;
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
@@ -1429,21 +1431,17 @@ pub fn App() -> Element {
                 {
                     let actions: Vec<_> =
                         managed_agent_transport_actions.write().drain(..).collect();
-                    let handle = managed_agent_mqtt
+                    let dispatcher = managed_agent_mqtt
                         .read()
                         .as_ref()
-                        .map(|(handle, _)| handle.clone());
-                    if let Some(handle) = handle {
+                        .map(|(handle, _)| {
+                            auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher::new(
+                                handle.clone(),
+                            )
+                        });
+                    if let Some(dispatcher) = dispatcher {
                         for action in actions {
-                            let result = match action {
-                                auspex_core::controller::ManagedAgentTransportAction::StyreneA2aDispatch(request) => {
-                                    handle.dispatch(request).await
-                                }
-                                auspex_core::controller::ManagedAgentTransportAction::StyreneA2aCancel { cancellation, root_operation_id } => {
-                                    handle.cancel(cancellation, root_operation_id).await
-                                }
-                            };
-                            if let Err(error) = result {
+                            if let Err(error) = dispatcher.execute(action).await {
                                 controller.write().record_managed_agent_scheduler_errors(&[
                                     format!("Styrene A2A action enqueue failed: {error}"),
                                 ]);
@@ -1466,26 +1464,14 @@ pub fn App() -> Element {
                         }
                     }
                     if !events.is_empty() {
-                        use auspex_core::managed_agent_mqtt_orchestrator::ManagedAgentMqttOrchestratorEvent;
+                        use auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher;
                         let mut ctrl = controller.write();
                         for event in events {
-                            match event {
-                                ManagedAgentMqttOrchestratorEvent::Outcome(outcome) => {
-                                    if let Err(error) = ctrl.managed_agent_runtime_mut().apply_a2a_event(&outcome) {
-                                        ctrl.record_managed_agent_scheduler_errors(&[format!(
-                                            "MQTT A2A outcome rejected: {error:?}"
-                                        )]);
-                                    }
-                                }
-                                ManagedAgentMqttOrchestratorEvent::Disconnected { error }
-                                | ManagedAgentMqttOrchestratorEvent::CommandFailed { error, .. } => {
-                                    ctrl.record_managed_agent_scheduler_errors(&[format!(
-                                        "MQTT A2A transport: {error}"
-                                    )]);
-                                }
-                                ManagedAgentMqttOrchestratorEvent::Connected
-                                | ManagedAgentMqttOrchestratorEvent::CommandPublished { .. }
-                                | ManagedAgentMqttOrchestratorEvent::Stopped => {}
+                            if let Err(error) = ManagedAgentA2aDispatcher::apply_event(
+                                ctrl.managed_agent_runtime_mut(),
+                                event,
+                            ) {
+                                ctrl.record_managed_agent_scheduler_errors(&[error]);
                             }
                         }
                     }

@@ -882,6 +882,25 @@ mod tests {
     }
 
     #[test]
+    fn a2a_dispatcher_maps_transport_events_to_scheduler_results() {
+        assert_eq!(
+            ManagedAgentA2aDispatcher::apply_event(
+                &mut ManagedAgentSupervisorRuntime::new(1024),
+                ManagedAgentMqttOrchestratorEvent::Connected,
+            ),
+            Ok(())
+        );
+
+        let error = ManagedAgentA2aDispatcher::apply_event(
+            &mut ManagedAgentSupervisorRuntime::new(1024),
+            ManagedAgentMqttOrchestratorEvent::Disconnected {
+                error: "broker unavailable".into(),
+            },
+        );
+        assert_eq!(error, Err("MQTT A2A transport: broker unavailable".into()));
+    }
+
+    #[test]
     fn disconnect_preserves_last_observation_and_marks_event() {
         let worker = WorkerId::new();
         let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
