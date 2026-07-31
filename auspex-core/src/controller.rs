@@ -830,6 +830,24 @@ impl AppController {
         &mut self.managed_agents
     }
 
+    pub fn managed_agent_run_projection(
+        &self,
+        run_id: crate::managed_agents::ManagedRunId,
+        parent_session_id: &str,
+    ) -> Result<crate::managed_agent_runtime::ManagedAgentRunProjection, String> {
+        self.managed_agents
+            .project_run_for_parent(run_id, parent_session_id)
+            .map_err(|error| format!("managed-agent projection rejected: {error:?}"))
+    }
+
+    pub fn managed_agent_run_projections(
+        &self,
+        parent_session_id: &str,
+    ) -> Vec<crate::managed_agent_runtime::ManagedAgentRunProjection> {
+        self.managed_agents
+            .project_runs_for_parent(parent_session_id)
+    }
+
     pub fn prepare_styrene_a2a_dispatch(
         &mut self,
         worker_id: crate::managed_agents::WorkerId,

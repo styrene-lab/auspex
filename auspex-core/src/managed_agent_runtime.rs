@@ -1,6 +1,7 @@
 use std::collections::BTreeMap;
 use std::time::{Duration, Instant};
 
+use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -101,6 +102,77 @@ pub enum ManagedCommandDeliveryState {
     RetryPending { code: String },
     Rejected { code: String },
     ProvenByResult,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedCommandProjectionKind {
+    Dispatch,
+    Poll,
+    Cancel,
+}
+
+impl From<ManagedCommandKind> for ManagedCommandProjectionKind {
+    fn from(value: ManagedCommandKind) -> Self {
+        match value {
+            ManagedCommandKind::Dispatch => Self::Dispatch,
+            ManagedCommandKind::Poll => Self::Poll,
+            ManagedCommandKind::Cancel => Self::Cancel,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum ManagedCommandDeliveryProjectionState {
+    Pending,
+    Accepted,
+    Duplicate,
+    RetryPending { code: String },
+    Rejected { code: String },
+    ProvenByResult,
+}
+
+impl From<&ManagedCommandDeliveryState> for ManagedCommandDeliveryProjectionState {
+    fn from(value: &ManagedCommandDeliveryState) -> Self {
+        match value {
+            ManagedCommandDeliveryState::Pending => Self::Pending,
+            ManagedCommandDeliveryState::Accepted => Self::Accepted,
+            ManagedCommandDeliveryState::Duplicate => Self::Duplicate,
+            ManagedCommandDeliveryState::RetryPending { code } => {
+                Self::RetryPending { code: code.clone() }
+            }
+            ManagedCommandDeliveryState::Rejected { code } => Self::Rejected { code: code.clone() },
+            ManagedCommandDeliveryState::ProvenByResult => Self::ProvenByResult,
+        }
+    }
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedCommandDeliveryProjection {
+    pub command_id: ManagedCommandId,
+    pub method: String,
+    pub command_kind: ManagedCommandProjectionKind,
+    pub attempts: u32,
+    pub state: ManagedCommandDeliveryProjectionState,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedAgentRunProjection {
+    pub schema_version: u32,
+    pub run_id: ManagedRunId,
+    pub worker_id: WorkerId,
+    pub parent_session_id: String,
+    pub parent_turn_id: String,
+    pub task_id: Option<crate::managed_agents::OmegonTaskId>,
+    pub state: crate::managed_agents::ManagedRunState,
+    pub commands: Vec<ManagedCommandDeliveryProjection>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum ManagedAgentProjectionError {
+    UnknownRun,
+    ParentSessionMismatch,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -453,6 +525,52 @@ impl ManagedAgentSupervisorRuntime {
         command_id: ManagedCommandId,
     ) -> Option<&ManagedCommandDeliveryState> {
         self.commands.get(&command_id).map(|pending| &pending.state)
+    }
+
+    pub fn project_run_for_parent(
+        &self,
+        run_id: ManagedRunId,
+        parent_session_id: &str,
+    ) -> Result<ManagedAgentRunProjection, ManagedAgentProjectionError> {
+        let entry = self
+            .runs
+            .get(&run_id)
+            .ok_or(ManagedAgentProjectionError::UnknownRun)?;
+        if entry.run.parent_session_id() != parent_session_id {
+            return Err(ManagedAgentProjectionError::ParentSessionMismatch);
+        }
+        let commands = self
+            .commands
+            .iter()
+            .filter(|(_, command)| command.run_id == run_id)
+            .map(|(command_id, command)| ManagedCommandDeliveryProjection {
+                command_id: *command_id,
+                method: command.command.method().unwrap_or_default().to_string(),
+                command_kind: command.kind.into(),
+                attempts: command.attempts,
+                state: (&command.state).into(),
+            })
+            .collect();
+        Ok(ManagedAgentRunProjection {
+            schema_version: 1,
+            run_id,
+            worker_id: entry.run.worker_id(),
+            parent_session_id: entry.run.parent_session_id().to_string(),
+            parent_turn_id: entry.run.parent_turn_id().to_string(),
+            task_id: entry.run.omegon_task_id().cloned(),
+            state: entry.run.state().clone(),
+            commands,
+        })
+    }
+
+    pub fn project_runs_for_parent(
+        &self,
+        parent_session_id: &str,
+    ) -> Vec<ManagedAgentRunProjection> {
+        self.runs
+            .keys()
+            .filter_map(|run_id| self.project_run_for_parent(*run_id, parent_session_id).ok())
+            .collect()
     }
 
     pub fn apply_response_json(
@@ -1049,6 +1167,47 @@ mod tests {
         assert_eq!(
             runtime.command_delivery_state(command_id),
             Some(&ManagedCommandDeliveryState::Pending)
+        );
+    }
+
+    #[test]
+    fn run_projection_is_serializable_bounded_and_parent_isolated() {
+        let mut runtime = ack_runtime();
+        let run_id = *runtime.runs.keys().next().unwrap();
+        let command_id = pending_command_id(&runtime);
+        let projection = runtime.project_run_for_parent(run_id, "session").unwrap();
+
+        assert_eq!(projection.schema_version, 1);
+        assert_eq!(projection.run_id, run_id);
+        assert_eq!(projection.commands.len(), 1);
+        assert_eq!(projection.commands[0].command_id, command_id);
+        assert_eq!(projection.commands[0].attempts, 1);
+        assert_eq!(
+            projection.commands[0].state,
+            ManagedCommandDeliveryProjectionState::Pending
+        );
+        let json = serde_json::to_value(&projection).unwrap();
+        assert_eq!(json["commands"][0]["state"]["kind"], "pending");
+        assert!(json.get("events").is_none());
+        assert!(json.get("latest_observation").is_none());
+
+        assert_eq!(
+            runtime.project_run_for_parent(run_id, "other-session"),
+            Err(ManagedAgentProjectionError::ParentSessionMismatch)
+        );
+        assert!(runtime.project_runs_for_parent("other-session").is_empty());
+
+        let ack = command_ack(&runtime, ManagedAgentCommandAckStatus::Accepted, None);
+        runtime
+            .apply_command_ack_json(&serde_json::to_string(&ack).unwrap())
+            .unwrap();
+        assert_eq!(
+            runtime
+                .project_run_for_parent(run_id, "session")
+                .unwrap()
+                .commands[0]
+                .state,
+            ManagedCommandDeliveryProjectionState::Accepted
         );
     }
 
