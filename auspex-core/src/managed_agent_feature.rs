@@ -10,7 +10,7 @@ use async_trait::async_trait;
 use omegon_traits::{ContentBlock, Feature, ToolDefinition, ToolResult};
 use serde_json::Value;
 
-use crate::managed_agent_runtime::ManagedAgentRunProjection;
+use crate::managed_agent_runtime::{ManagedAgentRunProjection, ManagedAgentSupervisorRuntime};
 use crate::managed_agents::ManagedRunId;
 
 pub trait ManagedAgentProjectionSource: Send + Sync {
@@ -21,6 +21,23 @@ pub trait ManagedAgentProjectionSource: Send + Sync {
     ) -> Result<Vec<ManagedAgentRunProjection>, String>;
 }
 
+impl ManagedAgentProjectionSource for ManagedAgentSupervisorRuntime {
+    fn status(
+        &self,
+        parent_session_id: &str,
+        run_id: Option<ManagedRunId>,
+    ) -> Result<Vec<ManagedAgentRunProjection>, String> {
+        match run_id {
+            Some(run_id) => self
+                .project_run_for_parent(run_id, parent_session_id)
+                .map(|projection| vec![projection])
+                .map_err(|error| format!("managed-agent projection rejected: {error:?}")),
+            None => Ok(self.project_runs_for_parent(parent_session_id)),
+        }
+    }
+}
+
+#[derive(Clone)]
 pub struct ManagedAgentFeature {
     source: Arc<dyn ManagedAgentProjectionSource>,
 }
@@ -185,5 +202,40 @@ mod tests {
             .await
             .unwrap_err();
         assert!(error.to_string().contains("parent session mismatch"));
+    }
+
+    #[test]
+    fn runtime_is_a_projection_source_without_duplicate_schema() {
+        let worker = WorkerId::new();
+        let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
+        let request = crate::managed_agents::ManagedRunRequest::new(
+            "inspect",
+            crate::managed_agents::WorkerProfile::Scout,
+            std::collections::BTreeSet::from(["src".into()]),
+            30,
+        )
+        .unwrap();
+        let run_id = runtime
+            .prepare_run(
+                worker,
+                "parent-1",
+                "turn-1",
+                request,
+                crate::managed_agent_runtime::ManagedAgentTransportBinding::OmegonControl {
+                    instance_id: "worker-instance".into(),
+                    target: crate::runtime_types::CommandTarget {
+                        session_key: "remote:s".into(),
+                        dispatcher_instance_id: Some("worker".into()),
+                    },
+                },
+                1,
+            )
+            .unwrap();
+
+        let projections =
+            ManagedAgentProjectionSource::status(&runtime, "parent-1", Some(run_id)).unwrap();
+        assert_eq!(projections.len(), 1);
+        assert_eq!(projections[0].run_id, run_id);
+        assert!(ManagedAgentProjectionSource::status(&runtime, "other", Some(run_id)).is_err());
     }
 }
