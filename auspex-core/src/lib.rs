@@ -45,6 +45,10 @@ pub mod local_agent_ports;
 pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local_omegon_probe;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_bridge;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_bridge_server;
 pub mod managed_agent_feature;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod managed_agent_mqtt;
