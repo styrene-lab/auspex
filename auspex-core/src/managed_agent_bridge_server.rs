@@ -1,7 +1,7 @@
 //! Launch-scoped Unix-domain listener for the bundled managed-agent extension.
 
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, RwLock};
+use std::sync::Arc;
 
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{UnixListener, UnixStream};
@@ -29,7 +29,7 @@ impl ManagedAgentBridgeServer {
         socket_path: impl Into<PathBuf>,
         capability: String,
         parent_session_id: String,
-        source: Arc<RwLock<dyn ManagedAgentProjectionSource>>,
+        source: Arc<dyn ManagedAgentProjectionSource>,
     ) -> Result<Self, String> {
         if capability.len() < 43 || parent_session_id.is_empty() {
             return Err("invalid launch binding".into());
@@ -73,7 +73,7 @@ async fn serve_connection(
     stream: UnixStream,
     capability: &str,
     parent_session_id: &str,
-    source: Arc<RwLock<dyn ManagedAgentProjectionSource>>,
+    source: Arc<dyn ManagedAgentProjectionSource>,
 ) -> Result<(), String> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
@@ -102,10 +102,9 @@ async fn serve_connection(
             continue;
         }
         let result = match request.operation {
-            ManagedAgentBridgeOperation::AgentsStatus { run_id } => source
-                .read()
-                .map_err(|_| "projection source lock poisoned".to_string())?
-                .status(parent_session_id, run_id),
+            ManagedAgentBridgeOperation::AgentsStatus { run_id } => {
+                source.status(parent_session_id, run_id)
+            }
         };
         let response = match result {
             Ok(runs) => ManagedAgentBridgeResponse::ok(request.request_id, runs),
@@ -186,7 +185,7 @@ mod tests {
             &path,
             capability.clone(),
             "parent-1".into(),
-            Arc::new(RwLock::new(EmptySource)),
+            Arc::new(EmptySource),
         )
         .await
         .unwrap();

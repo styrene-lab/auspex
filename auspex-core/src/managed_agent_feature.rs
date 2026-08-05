@@ -13,12 +13,80 @@ use serde_json::Value;
 use crate::managed_agent_runtime::{ManagedAgentRunProjection, ManagedAgentSupervisorRuntime};
 use crate::managed_agents::ManagedRunId;
 
+pub type SharedManagedAgentProjectionSnapshot =
+    Arc<parking_lot::RwLock<ManagedAgentProjectionSnapshot>>;
+
 pub trait ManagedAgentProjectionSource: Send + Sync {
     fn status(
         &self,
         parent_session_id: &str,
         run_id: Option<ManagedRunId>,
     ) -> Result<Vec<ManagedAgentRunProjection>, String>;
+}
+
+#[derive(Clone, Debug, Default)]
+pub struct ManagedAgentProjectionSnapshot {
+    runs_by_parent: std::collections::BTreeMap<String, Vec<ManagedAgentRunProjection>>,
+}
+
+impl ManagedAgentProjectionSnapshot {
+    pub fn replace_parent(
+        &mut self,
+        parent_session_id: impl Into<String>,
+        runs: Vec<ManagedAgentRunProjection>,
+    ) {
+        self.runs_by_parent.insert(parent_session_id.into(), runs);
+    }
+
+    pub fn clear(&mut self) {
+        self.runs_by_parent.clear();
+    }
+
+    pub fn remove_parent(&mut self, parent_session_id: &str) {
+        self.runs_by_parent.remove(parent_session_id);
+    }
+}
+
+impl ManagedAgentProjectionSource for parking_lot::RwLock<ManagedAgentProjectionSnapshot> {
+    fn status(
+        &self,
+        parent_session_id: &str,
+        run_id: Option<ManagedRunId>,
+    ) -> Result<Vec<ManagedAgentRunProjection>, String> {
+        self.read().status(parent_session_id, run_id)
+    }
+}
+
+impl ManagedAgentProjectionSource for ManagedAgentProjectionSnapshot {
+    fn status(
+        &self,
+        parent_session_id: &str,
+        run_id: Option<ManagedRunId>,
+    ) -> Result<Vec<ManagedAgentRunProjection>, String> {
+        let runs = self
+            .runs_by_parent
+            .get(parent_session_id)
+            .cloned()
+            .unwrap_or_default();
+        match run_id {
+            Some(run_id) => runs
+                .into_iter()
+                .find(|run| run.run_id == run_id)
+                .map(|run| vec![run])
+                .ok_or_else(|| "managed run is unknown or outside the parent session scope".into()),
+            None => Ok(runs),
+        }
+    }
+}
+
+impl ManagedAgentProjectionSource for SharedManagedAgentProjectionSnapshot {
+    fn status(
+        &self,
+        parent_session_id: &str,
+        run_id: Option<ManagedRunId>,
+    ) -> Result<Vec<ManagedAgentRunProjection>, String> {
+        self.read().status(parent_session_id, run_id)
+    }
 }
 
 impl ManagedAgentProjectionSource for ManagedAgentSupervisorRuntime {
@@ -163,6 +231,26 @@ mod tests {
                 }],
             },
         }))
+    }
+
+    #[test]
+    fn projection_snapshot_is_parent_scoped_and_removable() {
+        let feature = feature();
+        let projection = feature.source.status("parent-1", None).unwrap().remove(0);
+        let run_id = projection.run_id;
+        let mut snapshot = ManagedAgentProjectionSnapshot::default();
+        snapshot.replace_parent("parent-1", vec![projection]);
+
+        let shared = std::sync::Arc::new(parking_lot::RwLock::new(snapshot));
+        let source: std::sync::Arc<dyn ManagedAgentProjectionSource> = shared.clone();
+        assert_eq!(source.status("parent-1", Some(run_id)).unwrap().len(), 1);
+
+        shared.write().clear();
+        assert!(source.status("parent-1", None).unwrap().is_empty());
+
+        shared.write().replace_parent("parent-1", vec![]);
+        shared.write().remove_parent("parent-1");
+        assert!(shared.read().status("parent-1", None).unwrap().is_empty());
     }
 
     #[test]

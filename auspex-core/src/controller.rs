@@ -830,6 +830,29 @@ impl AppController {
         &mut self.managed_agents
     }
 
+    pub fn sync_managed_agent_projection_snapshot(
+        &self,
+        snapshot: &crate::managed_agent_feature::SharedManagedAgentProjectionSnapshot,
+    ) {
+        let mut snapshot = snapshot.write();
+        let parents: std::collections::BTreeSet<_> = self
+            .managed_agents
+            .active_run_ids()
+            .into_iter()
+            .filter_map(|run_id| {
+                self.managed_agents
+                    .run(run_id)
+                    .map(|run| run.parent_session_id().to_string())
+            })
+            .collect();
+        for parent in parents {
+            snapshot.replace_parent(
+                parent.clone(),
+                self.managed_agents.project_runs_for_parent(&parent),
+            );
+        }
+    }
+
     pub fn managed_agent_run_projection(
         &self,
         run_id: crate::managed_agents::ManagedRunId,
@@ -846,6 +869,19 @@ impl AppController {
     ) -> Vec<crate::managed_agent_runtime::ManagedAgentRunProjection> {
         self.managed_agents
             .project_runs_for_parent(parent_session_id)
+    }
+
+    pub fn refresh_managed_agent_projection_snapshot(
+        &self,
+        parent_session_id: &str,
+        snapshot: &std::sync::Arc<
+            parking_lot::RwLock<crate::managed_agent_feature::ManagedAgentProjectionSnapshot>,
+        >,
+    ) {
+        snapshot.write().replace_parent(
+            parent_session_id,
+            self.managed_agent_run_projections(parent_session_id),
+        );
     }
 
     pub fn prepare_styrene_a2a_dispatch(

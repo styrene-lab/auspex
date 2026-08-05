@@ -1106,7 +1106,36 @@ fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedAgentBridgeLaunchBinding {
+    pub socket_path: std::path::PathBuf,
+    pub capability: String,
+    pub parent_session_id: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ManagedAgentBridgeLaunchBinding {
+    fn apply(&self, command: &mut tokio::process::Command) {
+        command
+            .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &self.socket_path)
+            .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &self.capability)
+            .env(
+                "AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID",
+                &self.parent_session_id,
+            );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
+    spawn_and_attach_omegon_with_bridge(binary, None).await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn spawn_and_attach_omegon_with_bridge(
+    binary: &std::path::Path,
+    bridge: Option<&ManagedAgentBridgeLaunchBinding>,
+) -> BootstrapResult {
     use tokio::io::AsyncBufReadExt;
 
     if omegon_is_running_async().await {
@@ -1178,6 +1207,9 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     let agent_bundle = auspex_agent_bundle_path();
     let args = build_omegon_serve_args(agent_bundle.as_deref(), &model, control_port, &tls_args);
     command.args(args);
+    if let Some(bridge) = bridge {
+        bridge.apply(&mut command);
+    }
     let mut child = match command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -2237,6 +2269,38 @@ mod tests {
     #[test]
     fn websocket_token_env_is_opt_in() {
         let _ = websocket_token_from_env();
+    }
+
+    #[test]
+    fn launch_binding_applies_private_bridge_environment() {
+        let binding = ManagedAgentBridgeLaunchBinding {
+            socket_path: "/tmp/auspex-managed.sock".into(),
+            capability: "A".repeat(43),
+            parent_session_id: "primary-session".into(),
+        };
+        let mut command = tokio::process::Command::new("omegon");
+        binding.apply(&mut command);
+        let environment: std::collections::BTreeMap<_, _> = command
+            .as_std()
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.to_owned())))
+            .collect();
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET")),
+            Some(&std::ffi::OsString::from("/tmp/auspex-managed.sock"))
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new(
+                "AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID"
+            )),
+            Some(&std::ffi::OsString::from("primary-session"))
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new(
+                "AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY"
+            )),
+            Some(&std::ffi::OsString::from(&binding.capability))
+        );
     }
 
     #[tokio::test]

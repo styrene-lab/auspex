@@ -1261,6 +1261,13 @@ pub fn App() -> Element {
             })
     });
     #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_projection_snapshot = use_signal(|| {
+        auspex_core::managed_agent_feature::SharedManagedAgentProjectionSnapshot::default()
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_bridge_server =
+        use_signal(|| None::<auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer>);
+    #[cfg(not(target_arch = "wasm32"))]
     let mut ipc_event_stream = use_signal(|| None::<IpcEventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
     let mut command_transport = use_signal(|| None::<CommandTransport>);
@@ -1299,6 +1306,8 @@ pub fn App() -> Element {
         let mut managed_agent_mqtt = managed_agent_mqtt;
         #[cfg(not(target_arch = "wasm32"))]
         let mut managed_agent_transport_actions = managed_agent_transport_actions;
+        #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
@@ -1431,14 +1440,11 @@ pub fn App() -> Element {
                 {
                     let actions: Vec<_> =
                         managed_agent_transport_actions.write().drain(..).collect();
-                    let dispatcher = managed_agent_mqtt
-                        .read()
-                        .as_ref()
-                        .map(|(handle, _)| {
-                            auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher::new(
-                                handle.clone(),
-                            )
-                        });
+                    let dispatcher = managed_agent_mqtt.read().as_ref().map(|(handle, _)| {
+                        auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher::new(
+                            handle.clone(),
+                        )
+                    });
                     if let Some(dispatcher) = dispatcher {
                         for action in actions {
                             if let Err(error) = dispatcher.execute(action).await {
@@ -1475,6 +1481,13 @@ pub fn App() -> Element {
                             }
                         }
                     }
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    controller.read().sync_managed_agent_projection_snapshot(
+                        &managed_agent_projection_snapshot.read(),
+                    );
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1515,12 +1528,65 @@ pub fn App() -> Element {
         let mut ipc_event_stream = ipc_event_stream;
         #[cfg(not(target_arch = "wasm32"))]
         let mut command_transport = command_transport;
+        #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_bridge_server = managed_agent_bridge_server;
         async move {
             let Some(binary_str) = binary else { return };
             let binary_path = std::path::PathBuf::from(binary_str);
-            let result = auspex_core::bootstrap::spawn_and_attach_omegon(&binary_path).await;
-            if let Some(stream) = result.event_stream {
-                event_stream.set(Some(stream));
+            let parent_session_id = uuid::Uuid::new_v4().to_string();
+            let capability = format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            );
+            let socket_path = std::path::PathBuf::from(format!(
+                "/tmp/auspex-managed-{}.sock",
+                uuid::Uuid::new_v4().simple()
+            ));
+            let source: std::sync::Arc<
+                dyn auspex_core::managed_agent_feature::ManagedAgentProjectionSource,
+            > = managed_agent_projection_snapshot.read().clone();
+            let bridge =
+                match auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer::bind(
+                    &socket_path,
+                    capability.clone(),
+                    parent_session_id.clone(),
+                    source,
+                )
+                .await
+                {
+                    Ok(bridge) => bridge,
+                    Err(error) => {
+                        controller.write().set_bootstrap_note(Some(format!(
+                            "Managed-agent bridge unavailable: {error}"
+                        )));
+                        return;
+                    }
+                };
+            let binding = auspex_core::bootstrap::ManagedAgentBridgeLaunchBinding {
+                socket_path,
+                capability,
+                parent_session_id,
+            };
+            let result = auspex_core::bootstrap::spawn_and_attach_omegon_with_bridge(
+                &binary_path,
+                Some(&binding),
+            )
+            .await;
+            match result.event_stream {
+                Some(stream) => {
+                    managed_agent_bridge_server.set(Some(bridge));
+                    event_stream.set(Some(stream));
+                }
+                None => {
+                    managed_agent_projection_snapshot
+                        .read()
+                        .write()
+                        .remove_parent(&binding.parent_session_id);
+                    managed_agent_bridge_server.set(None);
+                }
             }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(stream) = result.ipc_event_stream {
