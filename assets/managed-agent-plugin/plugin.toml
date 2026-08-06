@@ -1,0 +1,14 @@
+[plugin]
+type = "extension"
+id = "dev.styrene.auspex.managed-agents"
+name = "Auspex Managed Agents"
+version = "0.1.0"
+description = "Private read-only managed-agent status bridge for the Auspex primary coordinator"
+
+[[tools]]
+name = "agents_status"
+description = "Read canonical Auspex-supervised managed-agent status for this primary session. Optionally scope the lookup to one managed run ID."
+runner = "python"
+script = "tools/agents_status.py"
+timeout_secs = 5
+parameters = { type = "object", additionalProperties = false, properties = { run_id = { type = "string", format = "uuid", description = "Optional managed run UUID" } } }

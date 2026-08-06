@@ -1767,6 +1767,31 @@ fn install_auspex_omegon_assets() {
         let _ = std::fs::set_permissions(&stub_path, std::fs::Permissions::from_mode(0o755));
     }
 
+    // ── Managed-agent bridge extension ────────────────────────────
+    let managed_plugin_dir = std::path::PathBuf::from(".omegon/plugins/auspex-managed-agents");
+    let managed_tools_dir = managed_plugin_dir.join("tools");
+    if let Err(error) = std::fs::create_dir_all(&managed_tools_dir) {
+        eprintln!("auspex: could not create managed-agent plugin directory: {error}");
+        return;
+    }
+    let managed_manifest = include_str!("../../assets/managed-agent-plugin/plugin.toml");
+    let managed_tool = include_str!("../../assets/managed-agent-plugin/tools/agents_status.py");
+    if let Err(error) = std::fs::write(managed_plugin_dir.join("plugin.toml"), managed_manifest) {
+        eprintln!("auspex: could not write managed-agent plugin manifest: {error}");
+        return;
+    }
+    let managed_tool_path = managed_tools_dir.join("agents_status.py");
+    if let Err(error) = std::fs::write(&managed_tool_path, managed_tool) {
+        eprintln!("auspex: could not write managed-agent bridge tool: {error}");
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ =
+            std::fs::set_permissions(&managed_tool_path, std::fs::Permissions::from_mode(0o700));
+    }
+
     // ── Skill (agent instructions) ─────────────────────────────────
     let skill_dir = std::path::PathBuf::from(".omegon/skills/cop-surface");
     if let Err(error) = std::fs::create_dir_all(&skill_dir) {
