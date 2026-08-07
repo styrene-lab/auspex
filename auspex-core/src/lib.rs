@@ -54,6 +54,8 @@ pub mod managed_agent_feature;
 pub mod managed_agent_mqtt;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod managed_agent_mqtt_orchestrator;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_mutation_coordinator;
 pub mod managed_agent_runtime;
 pub mod managed_agent_supervisor;
 pub mod managed_agents;

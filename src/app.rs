@@ -1266,10 +1266,11 @@ pub fn App() -> Element {
     });
     #[cfg(not(target_arch = "wasm32"))]
     let managed_agent_bridge_dispatch = use_signal(|| {
-        let (sender, receiver) = tokio::sync::mpsc::channel::<
-            auspex_core::managed_agent_bridge_server::ManagedAgentDispatchCommand,
-        >(32);
-        (sender, receiver)
+        let (sender, coordinator) =
+            auspex_core::managed_agent_mutation_coordinator::ManagedAgentMutationCoordinator::channel(
+                32,
+            );
+        (sender, coordinator)
     });
     #[cfg(not(target_arch = "wasm32"))]
     let managed_agent_bridge_server =
@@ -1320,11 +1321,6 @@ pub fn App() -> Element {
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
-            #[cfg(not(target_arch = "wasm32"))]
-            let mut bridge_dispatches = std::collections::BTreeMap::<
-                (String, String),
-                auspex_core::managed_agents::ManagedRunId,
-            >::new();
             loop {
                 #[cfg(not(target_arch = "wasm32"))]
                 let remote_probe_targets = {
@@ -1499,59 +1495,16 @@ pub fn App() -> Element {
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {
-                    while let Ok(command) = managed_agent_bridge_dispatch.write().1.try_recv() {
-                        let key = (
-                            command.parent_session_id.clone(),
-                            command.operation_id.clone(),
-                        );
-                        let result = if let Some(run_id) = bridge_dispatches.get(&key).copied() {
-                            Ok((run_id, true))
-                        } else {
-                            let mut ctrl = controller.write();
-                            let action = match command.operation {
-                                auspex_core::managed_agent_bridge_server::ManagedAgentMutation::Dispatch {
-                                    directive,
-                                    worker_profile,
-                                    scope,
-                                    supervisor_deadline_seconds,
-                                } => auspex_core::managed_agents::ManagedRunRequest::new(
-                                    directive,
-                                    worker_profile,
-                                    scope,
-                                    supervisor_deadline_seconds,
-                                )
-                                .map_err(|error| format!("invalid managed dispatch: {error:?}"))
-                                .and_then(|request| {
-                                    ctrl.prepare_styrene_a2a_dispatch(
-                                        auspex_core::managed_agents::WorkerId::new(),
-                                        (command.parent_session_id, command.operation_id),
-                                        request,
-                                        "auspex-managed-worker",
-                                        std::time::SystemTime::now()
-                                            .duration_since(std::time::UNIX_EPOCH)
-                                            .map(|duration| duration.as_millis() as u64)
-                                            .unwrap_or(0),
-                                    )
-                                }),
-                                auspex_core::managed_agent_bridge_server::ManagedAgentMutation::Cancel {
-                                    run_id,
-                                    reason,
-                                } => ctrl
-                                    .managed_agent_run_projection(run_id, &command.parent_session_id)
-                                    .map_err(|error| format!("managed cancellation rejected: {error:?}"))
-                                    .and_then(|_| {
-                                        ctrl.prepare_styrene_a2a_cancel(run_id, reason)
-                                            .map(|action| (run_id, action))
-                                    }),
-                            };
-                            action.map(|(run_id, action)| {
-                                bridge_dispatches.insert(key, run_id);
-                                managed_agent_transport_actions.write().push_back(action);
-                                (run_id, false)
-                            })
-                        };
-                        let _ = command.respond_to.send(result);
-                    }
+                    let now_unix_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_millis() as u64)
+                        .unwrap_or(0);
+                    let mut ctrl = controller.write();
+                    managed_agent_bridge_dispatch.write().1.process_pending(
+                        &mut ctrl,
+                        &mut managed_agent_transport_actions.write(),
+                        now_unix_ms,
+                    );
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
