@@ -20,3 +20,11 @@ runner = "python"
 script = "tools/agents_dispatch.py"
 timeout_secs = 15
 parameters = { type = "object", additionalProperties = false, required = ["directive"], properties = { operation_id = { type = "string", description = "Stable idempotency key; generated when omitted" }, directive = { type = "string" }, worker_profile = { type = "string", enum = ["scout", "patch", "verify"] }, scope = { type = "array", items = { type = "string" } }, supervisor_deadline_seconds = { type = "integer", minimum = 1, maximum = 86400 } } }
+
+[[tools]]
+name = "agents_cancel"
+description = "Request idempotent cancellation of an Auspex-supervised managed run in this primary session."
+runner = "python"
+script = "tools/agents_cancel.py"
+timeout_secs = 15
+parameters = { type = "object", additionalProperties = false, required = ["run_id"], properties = { operation_id = { type = "string" }, run_id = { type = "string", format = "uuid" }, reason = { type = "string" } } }

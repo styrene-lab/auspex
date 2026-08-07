@@ -1508,16 +1508,21 @@ pub fn App() -> Element {
                             Ok((run_id, true))
                         } else {
                             let mut ctrl = controller.write();
-                            let request = auspex_core::managed_agents::ManagedRunRequest::new(
-                                command.directive,
-                                command.worker_profile,
-                                command.scope,
-                                command.supervisor_deadline_seconds,
-                            )
-                            .map_err(|error| format!("invalid managed dispatch: {error:?}"));
-                            match request {
-                                Ok(request) => ctrl
-                                    .prepare_styrene_a2a_dispatch(
+                            let action = match command.operation {
+                                auspex_core::managed_agent_bridge_server::ManagedAgentMutation::Dispatch {
+                                    directive,
+                                    worker_profile,
+                                    scope,
+                                    supervisor_deadline_seconds,
+                                } => auspex_core::managed_agents::ManagedRunRequest::new(
+                                    directive,
+                                    worker_profile,
+                                    scope,
+                                    supervisor_deadline_seconds,
+                                )
+                                .map_err(|error| format!("invalid managed dispatch: {error:?}"))
+                                .and_then(|request| {
+                                    ctrl.prepare_styrene_a2a_dispatch(
                                         auspex_core::managed_agents::WorkerId::new(),
                                         (command.parent_session_id, command.operation_id),
                                         request,
@@ -1527,13 +1532,23 @@ pub fn App() -> Element {
                                             .map(|duration| duration.as_millis() as u64)
                                             .unwrap_or(0),
                                     )
-                                    .map(|(run_id, action)| {
-                                        bridge_dispatches.insert(key, run_id);
-                                        managed_agent_transport_actions.write().push_back(action);
-                                        (run_id, false)
+                                }),
+                                auspex_core::managed_agent_bridge_server::ManagedAgentMutation::Cancel {
+                                    run_id,
+                                    reason,
+                                } => ctrl
+                                    .managed_agent_run_projection(run_id, &command.parent_session_id)
+                                    .map_err(|error| format!("managed cancellation rejected: {error:?}"))
+                                    .and_then(|_| {
+                                        ctrl.prepare_styrene_a2a_cancel(run_id, reason)
+                                            .map(|action| (run_id, action))
                                     }),
-                                Err(error) => Err(error),
-                            }
+                            };
+                            action.map(|(run_id, action)| {
+                                bridge_dispatches.insert(key, run_id);
+                                managed_agent_transport_actions.write().push_back(action);
+                                (run_id, false)
+                            })
                         };
                         let _ = command.respond_to.send(result);
                     }

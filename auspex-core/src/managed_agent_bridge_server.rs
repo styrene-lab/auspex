@@ -18,11 +18,22 @@ use crate::managed_agents::{ManagedRunId, WorkerProfile};
 pub struct ManagedAgentDispatchCommand {
     pub operation_id: String,
     pub parent_session_id: String,
-    pub directive: String,
-    pub worker_profile: WorkerProfile,
-    pub scope: std::collections::BTreeSet<String>,
-    pub supervisor_deadline_seconds: u64,
+    pub operation: ManagedAgentMutation,
     pub respond_to: tokio::sync::oneshot::Sender<Result<(ManagedRunId, bool), String>>,
+}
+
+#[derive(Clone, Debug)]
+pub enum ManagedAgentMutation {
+    Dispatch {
+        directive: String,
+        worker_profile: WorkerProfile,
+        scope: std::collections::BTreeSet<String>,
+        supervisor_deadline_seconds: u64,
+    },
+    Cancel {
+        run_id: ManagedRunId,
+        reason: Option<String>,
+    },
 }
 
 pub type ManagedAgentDispatchSender = tokio::sync::mpsc::Sender<ManagedAgentDispatchCommand>;
@@ -144,10 +155,12 @@ async fn serve_connection(
                     let command = ManagedAgentDispatchCommand {
                         operation_id,
                         parent_session_id: parent_session_id.to_string(),
-                        directive,
-                        worker_profile,
-                        scope,
-                        supervisor_deadline_seconds,
+                        operation: ManagedAgentMutation::Dispatch {
+                            directive,
+                            worker_profile,
+                            scope,
+                            supervisor_deadline_seconds,
+                        },
                         respond_to,
                     };
                     match dispatch.send(command).await {
@@ -172,6 +185,43 @@ async fn serve_connection(
                     request_id,
                     ManagedAgentBridgeErrorCode::Internal,
                     "managed dispatch unavailable",
+                ),
+            },
+            ManagedAgentBridgeOperation::AgentsCancel {
+                operation_id,
+                run_id,
+                reason,
+            } => match &dispatch {
+                Some(dispatch) => {
+                    let (respond_to, response) = tokio::sync::oneshot::channel();
+                    let command = ManagedAgentDispatchCommand {
+                        operation_id,
+                        parent_session_id: parent_session_id.to_string(),
+                        operation: ManagedAgentMutation::Cancel { run_id, reason },
+                        respond_to,
+                    };
+                    match dispatch.send(command).await {
+                        Ok(()) => match response.await {
+                            Ok(Ok((run_id, duplicate))) => ManagedAgentBridgeResponse::dispatched(
+                                request_id, run_id, duplicate,
+                            ),
+                            _ => ManagedAgentBridgeResponse::error(
+                                request_id,
+                                ManagedAgentBridgeErrorCode::Internal,
+                                "managed cancellation failed",
+                            ),
+                        },
+                        Err(_) => ManagedAgentBridgeResponse::error(
+                            request_id,
+                            ManagedAgentBridgeErrorCode::Internal,
+                            "managed cancellation unavailable",
+                        ),
+                    }
+                }
+                None => ManagedAgentBridgeResponse::error(
+                    request_id,
+                    ManagedAgentBridgeErrorCode::Internal,
+                    "managed cancellation unavailable",
                 ),
             },
         };
@@ -233,6 +283,64 @@ mod tests {
                 Err("scope".into())
             }
         }
+    }
+
+    #[tokio::test]
+    async fn cancel_is_forwarded_with_server_owned_parent_scope() {
+        let path = std::path::PathBuf::from(format!(
+            "/tmp/auspex-bridge-cancel-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let capability = "C".repeat(43);
+        let (mutations, mut commands) = tokio::sync::mpsc::channel(1);
+        let server = ManagedAgentBridgeServer::bind(
+            &path,
+            capability.clone(),
+            "parent-1".into(),
+            Arc::new(EmptySource),
+            Some(mutations),
+        )
+        .await
+        .unwrap();
+        let stream = UnixStream::connect(&path).await.unwrap();
+        let (reader, mut writer) = stream.into_split();
+        let run_id = ManagedRunId::new();
+        let request = crate::managed_agent_bridge::ManagedAgentBridgeRequest {
+            schema_version: crate::managed_agent_bridge::MANAGED_AGENT_BRIDGE_SCHEMA_VERSION,
+            protocol: crate::managed_agent_bridge::MANAGED_AGENT_BRIDGE_PROTOCOL.into(),
+            request_id: "r3".into(),
+            capability,
+            operation: ManagedAgentBridgeOperation::AgentsCancel {
+                operation_id: "cancel-1".into(),
+                run_id,
+                reason: Some("operator requested".into()),
+            },
+        };
+        writer
+            .write_all(format!("{}\n", serde_json::to_string(&request).unwrap()).as_bytes())
+            .await
+            .unwrap();
+        let command = commands.recv().await.unwrap();
+        assert_eq!(command.parent_session_id, "parent-1");
+        assert!(matches!(
+            command.operation,
+            ManagedAgentMutation::Cancel {
+                run_id: forwarded,
+                reason: Some(ref reason)
+            } if forwarded == run_id && reason == "operator requested"
+        ));
+        command.respond_to.send(Ok((run_id, false))).unwrap();
+        let mut line = String::new();
+        BufReader::new(reader).read_line(&mut line).await.unwrap();
+        let response: ManagedAgentBridgeResponse = serde_json::from_str(&line).unwrap();
+        assert!(matches!(
+            response.result,
+            crate::managed_agent_bridge::ManagedAgentBridgeResult::Dispatched {
+                run_id: returned,
+                duplicate: false
+            } if returned == run_id
+        ));
+        drop(server);
     }
 
     #[tokio::test]

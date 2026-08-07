@@ -32,6 +32,11 @@ pub enum ManagedAgentBridgeOperation {
         scope: std::collections::BTreeSet<String>,
         supervisor_deadline_seconds: u64,
     },
+    AgentsCancel {
+        operation_id: String,
+        run_id: ManagedRunId,
+        reason: Option<String>,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -142,6 +147,17 @@ pub fn decode_bridge_request(
                 .iter()
                 .any(|path| path.is_empty() || path.len() > 1024)
             || !(1..=86_400).contains(supervisor_deadline_seconds))
+    {
+        return Err(ManagedAgentBridgeErrorCode::InvalidRequest);
+    }
+    if let ManagedAgentBridgeOperation::AgentsCancel {
+        operation_id,
+        reason,
+        ..
+    } = &request.operation
+        && (operation_id.trim().is_empty()
+            || operation_id.len() > 128
+            || reason.as_ref().is_some_and(|reason| reason.len() > 4096))
     {
         return Err(ManagedAgentBridgeErrorCode::InvalidRequest);
     }
