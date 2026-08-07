@@ -605,6 +605,17 @@ impl ManagedAgentSupervisorRuntime {
             });
         }
 
+        let response_kind = match response_type {
+            "delegate_dispatch_result" => ManagedCommandKind::Dispatch,
+            "delegate_get_result" | "delegate_result_result" => ManagedCommandKind::Poll,
+            "delegate_cancel_result" => ManagedCommandKind::Cancel,
+            other => {
+                return Err(SupervisorRuntimeError::UnexpectedResponseType(
+                    other.to_string(),
+                ));
+            }
+        };
+
         let entry = self
             .runs
             .get_mut(&run_id)
@@ -663,11 +674,18 @@ impl ManagedAgentSupervisorRuntime {
                 )?;
                 entry.run.complete_from_result(response.result)?;
             }
-            other => {
-                return Err(SupervisorRuntimeError::UnexpectedResponseType(
-                    other.to_string(),
-                ));
-            }
+            other => unreachable!("response kind validated above: {other}"),
+        }
+        if let Some(pending) = self.commands.values_mut().find(|pending| {
+            pending.run_id == run_id
+                && pending.kind == response_kind
+                && matches!(
+                    pending.state,
+                    ManagedCommandDeliveryState::Pending
+                        | ManagedCommandDeliveryState::RetryPending { .. }
+                )
+        }) {
+            pending.state = ManagedCommandDeliveryState::ProvenByResult;
         }
         Ok(run_id)
     }
@@ -1149,6 +1167,31 @@ mod tests {
         assert_eq!(replay[0].managed_command_id(), Some(command_id));
         assert_eq!(replay[0].web_command_json(), original_json);
         assert_eq!(runtime.commands[&command_id].attempts, 2);
+    }
+
+    #[test]
+    fn dispatch_result_proves_delivery_and_stops_replay_without_ack() {
+        let mut runtime = ack_runtime();
+        let command_id = pending_command_id(&runtime);
+        let pending = &runtime.commands[&command_id];
+        let response = serde_json::json!({
+            "type": "delegate_dispatch_result",
+            "schema_version": 1,
+            "managed_run_id": pending.run_id,
+            "worker_id": pending.worker_id,
+            "accepted": true,
+            "task_id": "delegate_1",
+            "effective_policy": null,
+            "rejection": null
+        });
+
+        runtime.apply_response_json(&response.to_string()).unwrap();
+
+        assert_eq!(
+            runtime.command_delivery_state(command_id),
+            Some(&ManagedCommandDeliveryState::ProvenByResult)
+        );
+        assert!(runtime.replay_due_commands(Duration::ZERO).is_empty());
     }
 
     #[test]
