@@ -3,7 +3,7 @@
 use serde::{Deserialize, Serialize};
 
 use crate::managed_agent_runtime::ManagedAgentRunProjection;
-use crate::managed_agents::ManagedRunId;
+use crate::managed_agents::{ManagedRunId, WorkerProfile};
 
 pub const MANAGED_AGENT_BRIDGE_SCHEMA_VERSION: u32 = 1;
 pub const MANAGED_AGENT_BRIDGE_PROTOCOL: &str = "auspex.managed-agents.v1";
@@ -22,7 +22,16 @@ pub struct ManagedAgentBridgeRequest {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 pub enum ManagedAgentBridgeOperation {
-    AgentsStatus { run_id: Option<ManagedRunId> },
+    AgentsStatus {
+        run_id: Option<ManagedRunId>,
+    },
+    AgentsDispatch {
+        operation_id: String,
+        directive: String,
+        worker_profile: WorkerProfile,
+        scope: std::collections::BTreeSet<String>,
+        supervisor_deadline_seconds: u64,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -39,6 +48,10 @@ pub struct ManagedAgentBridgeResponse {
 pub enum ManagedAgentBridgeResult {
     Ok {
         runs: Vec<ManagedAgentRunProjection>,
+    },
+    Dispatched {
+        run_id: ManagedRunId,
+        duplicate: bool,
     },
     Error {
         code: ManagedAgentBridgeErrorCode,
@@ -64,6 +77,19 @@ impl ManagedAgentBridgeResponse {
             protocol: MANAGED_AGENT_BRIDGE_PROTOCOL.into(),
             request_id: request_id.into(),
             result: ManagedAgentBridgeResult::Ok { runs },
+        }
+    }
+
+    pub fn dispatched(
+        request_id: impl Into<String>,
+        run_id: ManagedRunId,
+        duplicate: bool,
+    ) -> Self {
+        Self {
+            schema_version: MANAGED_AGENT_BRIDGE_SCHEMA_VERSION,
+            protocol: MANAGED_AGENT_BRIDGE_PROTOCOL.into(),
+            request_id: request_id.into(),
+            result: ManagedAgentBridgeResult::Dispatched { run_id, duplicate },
         }
     }
 
@@ -98,6 +124,25 @@ pub fn decode_bridge_request(
         return Err(ManagedAgentBridgeErrorCode::UnsupportedProtocol);
     }
     if request.request_id.is_empty() || request.capability.len() < 43 {
+        return Err(ManagedAgentBridgeErrorCode::InvalidRequest);
+    }
+    if let ManagedAgentBridgeOperation::AgentsDispatch {
+        operation_id,
+        directive,
+        scope,
+        supervisor_deadline_seconds,
+        ..
+    } = &request.operation
+        && (operation_id.trim().is_empty()
+            || operation_id.len() > 128
+            || directive.trim().is_empty()
+            || directive.len() > 16 * 1024
+            || scope.len() > 128
+            || scope
+                .iter()
+                .any(|path| path.is_empty() || path.len() > 1024)
+            || !(1..=86_400).contains(supervisor_deadline_seconds))
+    {
         return Err(ManagedAgentBridgeErrorCode::InvalidRequest);
     }
     Ok(request)

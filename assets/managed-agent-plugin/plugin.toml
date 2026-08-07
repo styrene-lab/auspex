@@ -12,3 +12,11 @@ runner = "python"
 script = "tools/agents_status.py"
 timeout_secs = 5
 parameters = { type = "object", additionalProperties = false, properties = { run_id = { type = "string", format = "uuid", description = "Optional managed run UUID" } } }
+
+[[tools]]
+name = "agents_dispatch"
+description = "Dispatch an idempotent Auspex-supervised managed-agent run for this primary session."
+runner = "python"
+script = "tools/agents_dispatch.py"
+timeout_secs = 15
+parameters = { type = "object", additionalProperties = false, required = ["directive"], properties = { operation_id = { type = "string", description = "Stable idempotency key; generated when omitted" }, directive = { type = "string" }, worker_profile = { type = "string", enum = ["scout", "patch", "verify"] }, scope = { type = "array", items = { type = "string" } }, supervisor_deadline_seconds = { type = "integer", minimum = 1, maximum = 86400 } } }

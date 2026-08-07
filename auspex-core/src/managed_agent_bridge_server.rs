@@ -12,6 +12,20 @@ use crate::managed_agent_bridge::{
     ManagedAgentBridgeResponse, capability_matches, decode_bridge_request,
 };
 use crate::managed_agent_feature::ManagedAgentProjectionSource;
+use crate::managed_agents::{ManagedRunId, WorkerProfile};
+
+#[derive(Debug)]
+pub struct ManagedAgentDispatchCommand {
+    pub operation_id: String,
+    pub parent_session_id: String,
+    pub directive: String,
+    pub worker_profile: WorkerProfile,
+    pub scope: std::collections::BTreeSet<String>,
+    pub supervisor_deadline_seconds: u64,
+    pub respond_to: tokio::sync::oneshot::Sender<Result<(ManagedRunId, bool), String>>,
+}
+
+pub type ManagedAgentDispatchSender = tokio::sync::mpsc::Sender<ManagedAgentDispatchCommand>;
 
 pub struct ManagedAgentBridgeBinding {
     pub socket_path: PathBuf,
@@ -30,6 +44,7 @@ impl ManagedAgentBridgeServer {
         capability: String,
         parent_session_id: String,
         source: Arc<dyn ManagedAgentProjectionSource>,
+        dispatch: Option<ManagedAgentDispatchSender>,
     ) -> Result<Self, String> {
         if capability.len() < 43 || parent_session_id.is_empty() {
             return Err("invalid launch binding".into());
@@ -49,8 +64,11 @@ impl ManagedAgentBridgeServer {
                 let source = Arc::clone(&source);
                 let capability = capability.clone();
                 let parent_session_id = parent_session_id.clone();
+                let dispatch = dispatch.clone();
                 tokio::spawn(async move {
-                    let _ = serve_connection(stream, &capability, &parent_session_id, source).await;
+                    let _ =
+                        serve_connection(stream, &capability, &parent_session_id, source, dispatch)
+                            .await;
                 });
             }
         });
@@ -74,6 +92,7 @@ async fn serve_connection(
     capability: &str,
     parent_session_id: &str,
     source: Arc<dyn ManagedAgentProjectionSource>,
+    dispatch: Option<ManagedAgentDispatchSender>,
 ) -> Result<(), String> {
     let (reader, mut writer) = stream.into_split();
     let mut lines = BufReader::new(reader).lines();
@@ -101,18 +120,60 @@ async fn serve_connection(
             .await?;
             continue;
         }
-        let result = match request.operation {
+        let request_id = request.request_id;
+        let response = match request.operation {
             ManagedAgentBridgeOperation::AgentsStatus { run_id } => {
-                source.status(parent_session_id, run_id)
+                match source.status(parent_session_id, run_id) {
+                    Ok(runs) => ManagedAgentBridgeResponse::ok(request_id, runs),
+                    Err(_) => ManagedAgentBridgeResponse::error(
+                        request_id,
+                        ManagedAgentBridgeErrorCode::ScopeDenied,
+                        "managed run unavailable",
+                    ),
+                }
             }
-        };
-        let response = match result {
-            Ok(runs) => ManagedAgentBridgeResponse::ok(request.request_id, runs),
-            Err(_) => ManagedAgentBridgeResponse::error(
-                request.request_id,
-                ManagedAgentBridgeErrorCode::ScopeDenied,
-                "managed run unavailable",
-            ),
+            ManagedAgentBridgeOperation::AgentsDispatch {
+                operation_id,
+                directive,
+                worker_profile,
+                scope,
+                supervisor_deadline_seconds,
+            } => match &dispatch {
+                Some(dispatch) => {
+                    let (respond_to, response) = tokio::sync::oneshot::channel();
+                    let command = ManagedAgentDispatchCommand {
+                        operation_id,
+                        parent_session_id: parent_session_id.to_string(),
+                        directive,
+                        worker_profile,
+                        scope,
+                        supervisor_deadline_seconds,
+                        respond_to,
+                    };
+                    match dispatch.send(command).await {
+                        Ok(()) => match response.await {
+                            Ok(Ok((run_id, duplicate))) => ManagedAgentBridgeResponse::dispatched(
+                                request_id, run_id, duplicate,
+                            ),
+                            _ => ManagedAgentBridgeResponse::error(
+                                request_id,
+                                ManagedAgentBridgeErrorCode::Internal,
+                                "managed dispatch failed",
+                            ),
+                        },
+                        Err(_) => ManagedAgentBridgeResponse::error(
+                            request_id,
+                            ManagedAgentBridgeErrorCode::Internal,
+                            "managed dispatch unavailable",
+                        ),
+                    }
+                }
+                None => ManagedAgentBridgeResponse::error(
+                    request_id,
+                    ManagedAgentBridgeErrorCode::Internal,
+                    "managed dispatch unavailable",
+                ),
+            },
         };
         write_response(&mut writer, response).await?;
     }
@@ -175,6 +236,60 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn dispatch_is_forwarded_with_server_owned_parent_scope() {
+        let path = std::path::PathBuf::from(format!(
+            "/tmp/auspex-bridge-dispatch-{}.sock",
+            uuid::Uuid::new_v4().simple()
+        ));
+        let capability = "B".repeat(43);
+        let (dispatch, mut commands) = tokio::sync::mpsc::channel(1);
+        let server = ManagedAgentBridgeServer::bind(
+            &path,
+            capability.clone(),
+            "parent-1".into(),
+            Arc::new(EmptySource),
+            Some(dispatch),
+        )
+        .await
+        .unwrap();
+        let stream = UnixStream::connect(&path).await.unwrap();
+        let (reader, mut writer) = stream.into_split();
+        let request = crate::managed_agent_bridge::ManagedAgentBridgeRequest {
+            schema_version: crate::managed_agent_bridge::MANAGED_AGENT_BRIDGE_SCHEMA_VERSION,
+            protocol: crate::managed_agent_bridge::MANAGED_AGENT_BRIDGE_PROTOCOL.into(),
+            request_id: "r2".into(),
+            capability,
+            operation: ManagedAgentBridgeOperation::AgentsDispatch {
+                operation_id: "operation-1".into(),
+                directive: "inspect runtime".into(),
+                worker_profile: WorkerProfile::Scout,
+                scope: ["src".to_string()].into_iter().collect(),
+                supervisor_deadline_seconds: 60,
+            },
+        };
+        writer
+            .write_all(format!("{}\n", serde_json::to_string(&request).unwrap()).as_bytes())
+            .await
+            .unwrap();
+        let command = commands.recv().await.unwrap();
+        assert_eq!(command.parent_session_id, "parent-1");
+        assert_eq!(command.operation_id, "operation-1");
+        let run_id = ManagedRunId::new();
+        command.respond_to.send(Ok((run_id, false))).unwrap();
+        let mut line = String::new();
+        BufReader::new(reader).read_line(&mut line).await.unwrap();
+        let response: ManagedAgentBridgeResponse = serde_json::from_str(&line).unwrap();
+        assert!(matches!(
+            response.result,
+            crate::managed_agent_bridge::ManagedAgentBridgeResult::Dispatched {
+                run_id: returned,
+                duplicate: false
+            } if returned == run_id
+        ));
+        drop(server);
+    }
+
+    #[tokio::test]
     async fn listener_authenticates_and_uses_bound_parent_scope() {
         let path = std::path::PathBuf::from(format!(
             "/tmp/auspex-bridge-{}.sock",
@@ -186,6 +301,7 @@ mod tests {
             capability.clone(),
             "parent-1".into(),
             Arc::new(EmptySource),
+            None,
         )
         .await
         .unwrap();

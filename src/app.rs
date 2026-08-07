@@ -1265,6 +1265,13 @@ pub fn App() -> Element {
         auspex_core::managed_agent_feature::SharedManagedAgentProjectionSnapshot::default()
     });
     #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_bridge_dispatch = use_signal(|| {
+        let (sender, receiver) = tokio::sync::mpsc::channel::<
+            auspex_core::managed_agent_bridge_server::ManagedAgentDispatchCommand,
+        >(32);
+        (sender, receiver)
+    });
+    #[cfg(not(target_arch = "wasm32"))]
     let managed_agent_bridge_server =
         use_signal(|| None::<auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer>);
     #[cfg(not(target_arch = "wasm32"))]
@@ -1308,9 +1315,16 @@ pub fn App() -> Element {
         let mut managed_agent_transport_actions = managed_agent_transport_actions;
         #[cfg(not(target_arch = "wasm32"))]
         let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_bridge_dispatch = managed_agent_bridge_dispatch;
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
+            #[cfg(not(target_arch = "wasm32"))]
+            let mut bridge_dispatches = std::collections::BTreeMap::<
+                (String, String),
+                auspex_core::managed_agents::ManagedRunId,
+            >::new();
             loop {
                 #[cfg(not(target_arch = "wasm32"))]
                 let remote_probe_targets = {
@@ -1485,6 +1499,48 @@ pub fn App() -> Element {
 
                 #[cfg(not(target_arch = "wasm32"))]
                 {
+                    while let Ok(command) = managed_agent_bridge_dispatch.write().1.try_recv() {
+                        let key = (
+                            command.parent_session_id.clone(),
+                            command.operation_id.clone(),
+                        );
+                        let result = if let Some(run_id) = bridge_dispatches.get(&key).copied() {
+                            Ok((run_id, true))
+                        } else {
+                            let mut ctrl = controller.write();
+                            let request = auspex_core::managed_agents::ManagedRunRequest::new(
+                                command.directive,
+                                command.worker_profile,
+                                command.scope,
+                                command.supervisor_deadline_seconds,
+                            )
+                            .map_err(|error| format!("invalid managed dispatch: {error:?}"));
+                            match request {
+                                Ok(request) => ctrl
+                                    .prepare_styrene_a2a_dispatch(
+                                        auspex_core::managed_agents::WorkerId::new(),
+                                        (command.parent_session_id, command.operation_id),
+                                        request,
+                                        "auspex-managed-worker",
+                                        std::time::SystemTime::now()
+                                            .duration_since(std::time::UNIX_EPOCH)
+                                            .map(|duration| duration.as_millis() as u64)
+                                            .unwrap_or(0),
+                                    )
+                                    .map(|(run_id, action)| {
+                                        bridge_dispatches.insert(key, run_id);
+                                        managed_agent_transport_actions.write().push_back(action);
+                                        (run_id, false)
+                                    }),
+                                Err(error) => Err(error),
+                            }
+                        };
+                        let _ = command.respond_to.send(result);
+                    }
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
                     controller.read().sync_managed_agent_projection_snapshot(
                         &managed_agent_projection_snapshot.read(),
                     );
@@ -1531,6 +1587,8 @@ pub fn App() -> Element {
         #[cfg(not(target_arch = "wasm32"))]
         let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
         #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_bridge_dispatch = managed_agent_bridge_dispatch;
+        #[cfg(not(target_arch = "wasm32"))]
         let mut managed_agent_bridge_server = managed_agent_bridge_server;
         async move {
             let Some(binary_str) = binary else { return };
@@ -1554,6 +1612,7 @@ pub fn App() -> Element {
                     capability.clone(),
                     parent_session_id.clone(),
                     source,
+                    Some(managed_agent_bridge_dispatch.read().0.clone()),
                 )
                 .await
                 {
