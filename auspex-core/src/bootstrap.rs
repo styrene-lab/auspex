@@ -551,14 +551,16 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
         };
     }
 
-    // 3. Default mode: Auspex owns an embedded local Omegon backend.
+    // 3. Default production mode: launch the pinned, TUI-free Omegon sidecar
+    // shipped by Auspex. Workspace and system discovery are development-only
+    // fallbacks; production never depends on an independently installed binary.
     if let Some(binary) = find_omegon_binary() {
         return BootstrapResult::spawning_omegon(binary);
     }
 
     // No explicit URL, no running instance, no binary found.
     BootstrapResult::startup_failure(
-        "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
+        "Auspex could not locate its pinned headless Omegon sidecar. Reinstall Auspex or set AUSPEX_OMEGON_BIN for an explicit development override.".into(),
     )
 }
 
@@ -961,64 +963,94 @@ async fn existing_omegon_is_auspex_primary(startup_url: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Locate the Omegon binary.
+/// Locate the Omegon runtime used by Auspex.
 ///
-/// Priority order:
-/// 1. `AUSPEX_OMEGON_BIN` env var — explicit override
-/// 2. `~/.local/bin/omegon` — common user-local install location
-/// 3. `~/.cargo/bin/omegon` — default `cargo install` location
-/// 4. `/usr/local/bin/omegon` and `/opt/homebrew/bin/omegon` — common system paths
-/// 5. `which omegon` — PATH lookup
+/// Production resolution is intentionally independent of an operator-installed
+/// Omegon or `PATH`:
+/// 1. `AUSPEX_OMEGON_BIN` — explicit development/test override
+/// 2. an Auspex-bundled, pinned, TUI-free sidecar beside the executable
+/// 3. workspace-local Omegon builds — development fallback only
+/// 4. user/system/PATH installs — development fallback only when
+///    `AUSPEX_ALLOW_SYSTEM_OMEGON=1`
 #[cfg(not(target_arch = "wasm32"))]
 pub fn find_omegon_binary() -> Option<PathBuf> {
     if let Some(path) = non_empty_env(OMEGON_BIN_ENV) {
         let p = PathBuf::from(path);
-        if p.exists() {
+        if p.is_file() {
             return Some(p);
         }
     }
 
-    if let Ok(home) = std::env::var("HOME") {
-        for rel in &[".local/bin/omegon", ".cargo/bin/omegon"] {
-            let p = PathBuf::from(&home).join(rel);
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    if let Some(path) = bundled_omegon_binary() {
+        return Some(path);
     }
 
     for cwd in auspex_workspace_roots() {
         for rel in &[
+            ".local/omegon-auspex-managed-bridge/target/debug/omegon",
+            ".local/omegon-auspex-managed-bridge/target/release/omegon",
             "../omegon/target/debug/omegon",
             "../omegon/target/release/omegon",
         ] {
             let p = cwd.join(rel);
-            if p.exists() {
+            if p.is_file() {
                 return Some(p);
             }
         }
     }
 
-    for abs in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
-        let p = PathBuf::from(abs);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
-    if let Ok(output) = std::process::Command::new("which").arg("omegon").output()
-        && output.status.success()
-    {
-        let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !s.is_empty() {
-            let p = PathBuf::from(s);
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    if non_empty_env("AUSPEX_ALLOW_SYSTEM_OMEGON").as_deref() == Some("1") {
+        return find_system_omegon_binary();
     }
 
     None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn bundled_omegon_binary() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let executable_dir = executable.parent()?;
+    let binary_name = if cfg!(windows) {
+        "omegon-headless.exe"
+    } else {
+        "omegon-headless"
+    };
+    let candidates = [
+        executable_dir.join(binary_name),
+        executable_dir.join("runtime").join(binary_name),
+        executable_dir
+            .join("../Resources/runtime")
+            .join(binary_name),
+        executable_dir.join("../libexec/auspex").join(binary_name),
+    ];
+    candidates.into_iter().find(|path| path.is_file())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn find_system_omegon_binary() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        for rel in &[".local/bin/omegon", ".cargo/bin/omegon"] {
+            let path = PathBuf::from(&home).join(rel);
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    for absolute in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
+        let path = PathBuf::from(absolute);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let output = std::process::Command::new("which")
+        .arg("omegon")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    path.is_file().then_some(path)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2254,6 +2286,26 @@ mod tests {
     fn find_omegon_binary_prefers_local_bin_over_cargo_bin() {
         // Structural: ensure priority order is documented.
         // Actual binary presence varies by host.
+    }
+
+    #[test]
+    fn production_discovery_does_not_implicitly_enable_system_omegon() {
+        assert_ne!(
+            non_empty_env("AUSPEX_ALLOW_SYSTEM_OMEGON").as_deref(),
+            Some("1"),
+            "test environment unexpectedly enables system Omegon discovery"
+        );
+    }
+
+    #[test]
+    fn bundled_sidecar_name_is_distinct_from_operator_install() {
+        let binary_name = if cfg!(windows) {
+            "omegon-headless.exe"
+        } else {
+            "omegon-headless"
+        };
+        assert!(binary_name.starts_with("omegon-headless"));
+        assert_ne!(binary_name, "omegon");
     }
 
     #[test]
