@@ -293,15 +293,136 @@ async fn omegon_agents_status_reaches_private_auspex_bridge() {
         "duplicate dispatch enqueued transport work"
     );
 
-    controller.refresh_managed_agent_projection_snapshot(&parent_session_id, &snapshot);
-    assert_eq!(
-        snapshot
-            .read()
-            .status(&parent_session_id, Some(run_id))
-            .unwrap()
-            .len(),
-        1
+    controller
+        .managed_agent_runtime_mut()
+        .apply_a2a_event(
+            &auspex_core::managed_agent_mqtt::ManagedAgentA2aEvent::Accepted {
+                managed_run_id: run_id,
+                task_id: "e2e-task-1".into(),
+                message_id: [7; 16],
+            },
+        )
+        .unwrap();
+
+    let cancel_script = root.join(".omegon/plugins/auspex-managed-agents/tools/agents_cancel.py");
+    let mut cancel_tool = tokio::process::Command::new("python3")
+        .arg(&cancel_script)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &socket_path)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &capability)
+        .env("AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID", &parent_session_id)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    tokio::io::AsyncWriteExt::write_all(
+        cancel_tool.stdin.as_mut().unwrap(),
+        serde_json::json!({
+            "operation_id": "e2e-cancel-1",
+            "run_id": run_id,
+            "reason": "integration complete"
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    drop(cancel_tool.stdin.take());
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if coordinator.process_pending(
+                &mut controller,
+                &mut actions,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            ) > 0
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("managed cancellation timed out");
+    assert!(matches!(
+        actions.pop_front(),
+        Some(auspex_core::controller::ManagedAgentTransportAction::StyreneA2aCancel { .. })
+    ));
+    let cancel_output = cancel_tool.wait_with_output().await.unwrap();
+    assert!(
+        cancel_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&cancel_output.stdout)
     );
+    let cancel_result: serde_json::Value = serde_json::from_slice(&cancel_output.stdout).unwrap();
+    assert_eq!(cancel_result["result"]["run_id"], run_id.to_string());
+    assert_eq!(cancel_result["result"]["duplicate"], false);
+
+    let mut duplicate_cancel = tokio::process::Command::new("python3")
+        .arg(&cancel_script)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &socket_path)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &capability)
+        .env("AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID", &parent_session_id)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    tokio::io::AsyncWriteExt::write_all(
+        duplicate_cancel.stdin.as_mut().unwrap(),
+        serde_json::json!({
+            "operation_id": "e2e-cancel-1",
+            "run_id": run_id,
+            "reason": "integration complete"
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    drop(duplicate_cancel.stdin.take());
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if coordinator.process_pending(
+                &mut controller,
+                &mut actions,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            ) > 0
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("duplicate cancellation timed out");
+    let duplicate_cancel_output = duplicate_cancel.wait_with_output().await.unwrap();
+    assert!(duplicate_cancel_output.status.success());
+    let duplicate_cancel_result: serde_json::Value =
+        serde_json::from_slice(&duplicate_cancel_output.stdout).unwrap();
+    assert_eq!(
+        duplicate_cancel_result["result"]["run_id"],
+        run_id.to_string()
+    );
+    assert_eq!(duplicate_cancel_result["result"]["duplicate"], true);
+    assert!(
+        actions.is_empty(),
+        "duplicate cancellation enqueued transport work"
+    );
+
+    controller.refresh_managed_agent_projection_snapshot(&parent_session_id, &snapshot);
+    let projection = snapshot
+        .read()
+        .status(&parent_session_id, Some(run_id))
+        .unwrap()
+        .remove(0);
+    assert!(matches!(
+        projection.state,
+        auspex_core::managed_agents::ManagedRunState::Cancelling { .. }
+    ));
 
     let _ = child.start_kill();
     let _ = child.wait().await;
