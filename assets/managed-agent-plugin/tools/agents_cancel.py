@@ -28,7 +28,7 @@ def main():
     except OSError as error: fail(f"managed-agent bridge request failed: {error}")
     try: response=json.loads(frame.split(b"\n",1)[0])
     except Exception as error: fail(f"managed-agent bridge returned invalid JSON: {error}")
-    result=response.get("result",{})
-    if response.get("request_id")!=request_id or result.get("status")!="dispatched": fail(result.get("message","managed cancellation rejected"))
+    if response.get("request_id")!=request_id or response.get("status")!="dispatched": fail(response.get("message","managed cancellation rejected"))
+    result={"status":response["status"],"run_id":response["run_id"],"duplicate":response["duplicate"]}
     print(json.dumps({"result":result,"error":None},separators=(",",":")))
 if __name__=="__main__": main()

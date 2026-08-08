@@ -45,9 +45,8 @@ def main():
     try: response = json.loads(frame.split(b"\n", 1)[0])
     except Exception as error: fail(f"managed-agent bridge returned invalid JSON: {error}")
     if response.get("request_id") != request_id: fail("managed-agent bridge returned a mismatched request ID")
-    result = response.get("result", {})
-    if result.get("status") == "error": fail(result.get("message", "managed dispatch rejected"))
-    if result.get("status") != "dispatched": fail("managed-agent bridge returned an invalid response")
-    print(json.dumps({"result": result, "error": None}, separators=(",", ":")))
+    if response.get("status") == "error": fail(response.get("message", "managed dispatch rejected"))
+    if response.get("status") != "dispatched": fail("managed-agent bridge returned an invalid response")
+    print(json.dumps({"result": {"status": response["status"], "run_id": response["run_id"], "duplicate": response["duplicate"]}, "error": None}, separators=(",", ":")))
 
 if __name__ == "__main__": main()

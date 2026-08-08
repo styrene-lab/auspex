@@ -5,8 +5,12 @@ use std::process::Stdio;
 use std::sync::Arc;
 use std::time::Duration;
 
+use auspex_core::controller::AppController;
 use auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer;
-use auspex_core::managed_agent_feature::SharedManagedAgentProjectionSnapshot;
+use auspex_core::managed_agent_feature::{
+    ManagedAgentProjectionSource, SharedManagedAgentProjectionSnapshot,
+};
+use auspex_core::managed_agent_mutation_coordinator::ManagedAgentMutationCoordinator;
 use auspex_core::omegon_control::OmegonStartupInfo;
 use futures_util::{SinkExt, StreamExt};
 use tokio::io::{AsyncBufReadExt, BufReader};
@@ -40,6 +44,16 @@ fn copy_plugin(root: &Path) {
     std::fs::write(
         plugin.join("tools/agents_status.py"),
         include_str!("../../assets/managed-agent-plugin/tools/agents_status.py"),
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("tools/agents_dispatch.py"),
+        include_str!("../../assets/managed-agent-plugin/tools/agents_dispatch.py"),
+    )
+    .unwrap();
+    std::fs::write(
+        plugin.join("tools/agents_cancel.py"),
+        include_str!("../../assets/managed-agent-plugin/tools/agents_cancel.py"),
     )
     .unwrap();
 }
@@ -81,11 +95,13 @@ async fn omegon_agents_status_reaches_private_auspex_bridge() {
         .replace_parent(parent_session_id.clone(), Vec::new());
     let source: Arc<dyn auspex_core::managed_agent_feature::ManagedAgentProjectionSource> =
         snapshot.clone();
+    let (mutations, mut coordinator) = ManagedAgentMutationCoordinator::channel(8);
     let bridge = ManagedAgentBridgeServer::bind(
         &socket_path,
         capability.clone(),
         parent_session_id.clone(),
         source,
+        Some(mutations),
     )
     .await
     .unwrap();
@@ -166,6 +182,126 @@ async fn omegon_agents_status_reaches_private_auspex_bridge() {
     assert_eq!(response["managed_run_id"], managed_run_id);
     assert_eq!(response["worker_id"], worker_id);
     assert!(response.get("status").is_some(), "response: {response}");
+
+    let mut controller = AppController::default();
+    let mut actions = std::collections::VecDeque::new();
+    let tool_script = root.join(".omegon/plugins/auspex-managed-agents/tools/agents_dispatch.py");
+    let mut tool = tokio::process::Command::new("python3")
+        .arg(&tool_script)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &socket_path)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &capability)
+        .env("AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID", &parent_session_id)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    tokio::io::AsyncWriteExt::write_all(
+        tool.stdin.as_mut().unwrap(),
+        serde_json::json!({
+            "operation_id": "e2e-operation-1",
+            "directive": "inspect the managed bridge"
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    drop(tool.stdin.take());
+    let run_id = tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            coordinator.process_pending(
+                &mut controller,
+                &mut actions,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            );
+            if let Some(run_id) = controller.managed_agent_runtime().active_run_ids().first() {
+                break *run_id;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("managed dispatch timed out");
+    assert!(matches!(
+        actions.pop_front(),
+        Some(auspex_core::controller::ManagedAgentTransportAction::StyreneA2aDispatch(_))
+    ));
+    let output = tool.wait_with_output().await.unwrap();
+    assert!(
+        output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&output.stdout)
+    );
+    let tool_result: serde_json::Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(tool_result["result"]["run_id"], run_id.to_string());
+    assert_eq!(tool_result["result"]["duplicate"], false);
+
+    let mut duplicate_tool = tokio::process::Command::new("python3")
+        .arg(&tool_script)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &socket_path)
+        .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &capability)
+        .env("AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID", &parent_session_id)
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .spawn()
+        .unwrap();
+    tokio::io::AsyncWriteExt::write_all(
+        duplicate_tool.stdin.as_mut().unwrap(),
+        serde_json::json!({
+            "operation_id": "e2e-operation-1",
+            "directive": "inspect the managed bridge"
+        })
+        .to_string()
+        .as_bytes(),
+    )
+    .await
+    .unwrap();
+    drop(duplicate_tool.stdin.take());
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            if coordinator.process_pending(
+                &mut controller,
+                &mut actions,
+                std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .unwrap_or_default()
+                    .as_millis() as u64,
+            ) > 0
+            {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("duplicate dispatch timed out");
+    let duplicate_output = duplicate_tool.wait_with_output().await.unwrap();
+    assert!(
+        duplicate_output.status.success(),
+        "{}",
+        String::from_utf8_lossy(&duplicate_output.stdout)
+    );
+    let duplicate_result: serde_json::Value =
+        serde_json::from_slice(&duplicate_output.stdout).unwrap();
+    assert_eq!(duplicate_result["result"]["run_id"], run_id.to_string());
+    assert_eq!(duplicate_result["result"]["duplicate"], true);
+    assert!(
+        actions.is_empty(),
+        "duplicate dispatch enqueued transport work"
+    );
+
+    controller.refresh_managed_agent_projection_snapshot(&parent_session_id, &snapshot);
+    assert_eq!(
+        snapshot
+            .read()
+            .status(&parent_session_id, Some(run_id))
+            .unwrap()
+            .len(),
+        1
+    );
 
     let _ = child.start_kill();
     let _ = child.wait().await;
