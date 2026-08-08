@@ -413,6 +413,25 @@ async fn omegon_agents_status_reaches_private_auspex_bridge() {
         "duplicate cancellation enqueued transport work"
     );
 
+    controller
+        .managed_agent_runtime_mut()
+        .apply_a2a_event(
+            &auspex_core::managed_agent_mqtt::ManagedAgentA2aEvent::TerminationConfirmed {
+                managed_run_id: run_id,
+                task_id: "task-cancelled".into(),
+                message_id: [9; 16],
+                reason: Some("integration complete".into()),
+            },
+        )
+        .unwrap();
+    assert!(
+        controller
+            .managed_agent_runtime_mut()
+            .replay_due_commands(Duration::ZERO)
+            .is_empty()
+    );
+    assert!(controller.tick_managed_agents().is_empty());
+
     controller.refresh_managed_agent_projection_snapshot(&parent_session_id, &snapshot);
     let projection = snapshot
         .read()
@@ -421,7 +440,7 @@ async fn omegon_agents_status_reaches_private_auspex_bridge() {
         .remove(0);
     assert!(matches!(
         projection.state,
-        auspex_core::managed_agents::ManagedRunState::Cancelling { .. }
+        auspex_core::managed_agents::ManagedRunState::Cancelled { .. }
     ));
 
     let _ = child.start_kill();
