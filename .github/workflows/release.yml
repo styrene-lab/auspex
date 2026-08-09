@@ -106,6 +106,7 @@ jobs:
           }, open('/dev/stdout', 'w'), indent=2)
           print()
           PY
+          cargo run --locked -p auspex-runtime-verify -- "$STAGING/$OMEGON_BINARY"
           tar czf "$ARCHIVE" "$STAGING"
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"

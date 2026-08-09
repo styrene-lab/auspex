@@ -983,7 +983,7 @@ struct PackagedOmegonRuntime {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
+pub fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
     let manifest_path = binary
         .parent()
         .ok_or_else(|| "packaged Omegon path has no parent directory".to_string())?

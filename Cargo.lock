@@ -302,6 +302,7 @@ dependencies = [
  "js-sys",
  "libc",
  "omegon-traits 0.20.0",
+ "parking_lot",
  "pretty_assertions",
  "reqwest",
  "rmp-serde",
@@ -311,6 +312,7 @@ dependencies = [
  "semver",
  "serde",
  "serde_json",
+ "sha2",
  "styrene-a2a",
  "styrene-mqtt",
  "styrene-policy",
@@ -367,6 +369,13 @@ dependencies = [
  "tracing-subscriber",
  "url",
  "zeroize",
+]
+
+[[package]]
+name = "auspex-runtime-verify"
+version = "0.1.0"
+dependencies = [
+ "auspex-core",
 ]
 
 [[package]]
@@ -6454,6 +6463,7 @@ dependencies = [
  "ed25519-dalek",
  "hex",
  "hkdf",
+ "minicbor",
  "rand_core 0.6.4",
  "rcgen 0.14.8",
  "sha2",
