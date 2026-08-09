@@ -74,6 +74,10 @@ jobs:
 
       - name: Create archive and checksums
         env:
+          OMEGON_REPOSITORY: ${{ steps.omegon.outputs.omegon_repository }}
+          OMEGON_BRANCH: ${{ steps.omegon.outputs.omegon_branch }}
+          OMEGON_REVISION: ${{ steps.omegon.outputs.omegon_revision }}
+          OMEGON_VERSION: ${{ steps.omegon.outputs.omegon_version }}
           OMEGON_BINARY: ${{ steps.omegon.outputs.omegon_binary }}
         run: |
           set -euo pipefail
@@ -86,6 +90,22 @@ jobs:
           install -m 0755 target/release/auspex "$STAGING/auspex"
           install -m 0755 omegon/target/release/omegon "$STAGING/$OMEGON_BINARY"
           OMEGON_SHA256="$(shasum -a 256 "$STAGING/$OMEGON_BINARY" | awk '{print $1}')"
+          export OMEGON_SHA256
+          python3 - <<'PY' > "$STAGING/runtime/omegon-runtime.json"
+          import json, os
+          json.dump({
+              "repository": os.environ["OMEGON_REPOSITORY"],
+              "branch": os.environ["OMEGON_BRANCH"],
+              "revision": os.environ["OMEGON_REVISION"],
+              "version": os.environ["OMEGON_VERSION"],
+              "binary": os.environ["OMEGON_BINARY"],
+              "sha256": os.environ["OMEGON_SHA256"],
+              "cargo_features": [],
+              "default_features": False,
+              "control_plane_schema": 2,
+          }, open('/dev/stdout', 'w'), indent=2)
+          print()
+          PY
           tar czf "$ARCHIVE" "$STAGING"
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
@@ -110,6 +130,7 @@ jobs:
               "sha256": os.environ["OMEGON_SHA256"],
               "cargo_features": [],
               "default_features": False,
+              "control_plane_schema": 2,
           }
           with open("omegon-runtime.json", "w") as output:
               json.dump(provenance, output, indent=2)

@@ -1,5 +1,7 @@
 use semver::Version;
 #[cfg(not(target_arch = "wasm32"))]
+use sha2::{Digest, Sha256};
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
@@ -963,6 +965,59 @@ async fn existing_omegon_is_auspex_primary(startup_url: &str) -> bool {
         .unwrap_or(false)
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+const PACKAGED_OMEGON_MANIFEST: &str = "omegon-runtime.json";
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, serde::Deserialize)]
+struct PackagedOmegonRuntime {
+    repository: String,
+    branch: String,
+    revision: String,
+    version: String,
+    binary: String,
+    sha256: String,
+    cargo_features: Vec<String>,
+    default_features: bool,
+    control_plane_schema: u32,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
+    let manifest_path = binary
+        .parent()
+        .ok_or_else(|| "packaged Omegon path has no parent directory".to_string())?
+        .join(PACKAGED_OMEGON_MANIFEST);
+    let encoded = fs::read_to_string(&manifest_path).map_err(|error| {
+        format!(
+            "packaged Omegon manifest {} is unavailable: {error}",
+            manifest_path.display()
+        )
+    })?;
+    let manifest: PackagedOmegonRuntime = serde_json::from_str(&encoded)
+        .map_err(|error| format!("packaged Omegon manifest is invalid: {error}"))?;
+    if manifest.repository != "https://github.com/styrene-lab/omegon.git"
+        || manifest.branch != "release/0.29"
+        || manifest.revision != "547b46097d8a04a0bd49da0f96e0c3a002d5b834"
+        || manifest.version != "0.29.0-dev"
+        || manifest.binary != "runtime/omegon-headless"
+        || manifest.control_plane_schema != 2
+        || manifest.default_features
+        || !manifest.cargo_features.is_empty()
+    {
+        return Err(
+            "packaged Omegon manifest does not match the pinned Auspex runtime contract".into(),
+        );
+    }
+    let bytes = fs::read(binary)
+        .map_err(|error| format!("packaged Omegon binary cannot be read: {error}"))?;
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    if digest != manifest.sha256 {
+        return Err("packaged Omegon binary digest does not match its manifest".into());
+    }
+    Ok(())
+}
+
 /// Locate the Omegon runtime used by Auspex.
 ///
 /// Production resolution is intentionally independent of an operator-installed
@@ -1023,7 +1078,9 @@ fn bundled_omegon_binary() -> Option<PathBuf> {
             .join(binary_name),
         executable_dir.join("../libexec/auspex").join(binary_name),
     ];
-    candidates.into_iter().find(|path| path.is_file())
+    candidates
+        .into_iter()
+        .find(|path| path.is_file() && verify_packaged_omegon(path).is_ok())
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -2001,7 +2058,7 @@ mod tests {
             auth_source: "default".into(),
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
-                    omegon_version: Some("0.25.4".into()),
+                    omegon_version: Some("0.29.0-dev".into()),
                     schema_version: 2,
                     ..Default::default()
                 }),
@@ -2181,7 +2238,7 @@ mod tests {
             .expect("fixture control plane")
             .omegon_version = Some("0.22.99".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("requires Omegon 0.25.0 or newer"));
+        assert!(err.contains("requires Omegon 0.29.0-dev or newer"));
     }
 
     #[test]
@@ -2191,7 +2248,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.29.0".into());
+            .omegon_version = Some("0.30.0".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning
@@ -2306,6 +2363,39 @@ mod tests {
         };
         assert!(binary_name.starts_with("omegon-headless"));
         assert_ne!(binary_name, "omegon");
+    }
+
+    #[test]
+    fn verifies_packaged_headless_omegon_manifest_and_digest() {
+        let root = std::env::temp_dir().join(format!(
+            "auspex-packaged-omegon-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let binary = root.join("omegon-headless");
+        std::fs::write(&binary, b"pinned omegon").unwrap();
+        let digest = format!("{:x}", Sha256::digest(b"pinned omegon"));
+        let manifest = serde_json::json!({
+            "repository": "https://github.com/styrene-lab/omegon.git",
+            "branch": "release/0.29",
+            "revision": "547b46097d8a04a0bd49da0f96e0c3a002d5b834",
+            "version": "0.29.0-dev",
+            "binary": "runtime/omegon-headless",
+            "sha256": digest,
+            "cargo_features": [],
+            "default_features": false,
+            "control_plane_schema": 2
+        });
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        assert!(verify_packaged_omegon(&binary).is_ok());
+        std::fs::write(&binary, b"tampered").unwrap();
+        assert!(verify_packaged_omegon(&binary).is_err());
+        let _ = std::fs::remove_dir_all(root);
     }
 
     #[test]

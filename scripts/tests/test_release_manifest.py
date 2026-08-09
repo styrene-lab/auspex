@@ -52,6 +52,7 @@ class ReleaseManifestTests(unittest.TestCase):
             "sha256": "feedface",
             "cargo_features": [],
             "default_features": False,
+            "control_plane_schema": 2,
         }
         manifest = build_manifest(
             "v0.2.0-rc.1", "styrene-lab/auspex", "deadbeef", [], runtime
@@ -70,6 +71,7 @@ class ReleaseManifestTests(unittest.TestCase):
             "sha256": "feedface",
             "cargo_features": [],
             "default_features": False,
+            "control_plane_schema": 2,
         }
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp)

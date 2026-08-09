@@ -76,6 +76,7 @@ def main(argv: list[str] | None = None) -> int:
                 "sha256",
                 "cargo_features",
                 "default_features",
+                "control_plane_schema",
             }
             if not isinstance(omegon_runtime, dict) or set(omegon_runtime) != required:
                 parser.error("Omegon runtime provenance has an invalid schema")
