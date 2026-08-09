@@ -42,6 +42,24 @@ class ReleaseManifestTests(unittest.TestCase):
         self.assertEqual(manifest["channel"], "prerelease")
         self.assertEqual(manifest["repository"], "styrene-lab/auspex")
 
+    def test_manifest_includes_pinned_headless_omegon_runtime(self) -> None:
+        runtime = {
+            "repository": "https://github.com/styrene-lab/omegon.git",
+            "branch": "release/0.29",
+            "revision": "547b46097d8a04a0bd49da0f96e0c3a002d5b834",
+            "version": "0.29.0-dev",
+            "binary": "runtime/omegon-headless",
+            "sha256": "feedface",
+            "cargo_features": [],
+            "default_features": False,
+        }
+        manifest = build_manifest(
+            "v0.2.0-rc.1", "styrene-lab/auspex", "deadbeef", [], runtime
+        )
+
+        self.assertEqual(manifest["omegon_runtime"], runtime)
+        self.assertFalse(manifest["omegon_runtime"]["default_features"])
+
     def test_manifest_is_json_serializable(self) -> None:
         manifest = build_manifest("v0.1.0", "styrene-lab/auspex", "deadbeef", [])
         encoded = json.dumps(manifest)
