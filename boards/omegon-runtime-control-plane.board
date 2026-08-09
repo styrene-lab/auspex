@@ -1,0 +1,164 @@
+{
+  "version": 1,
+  "theme": "default",
+  "grid": {
+    "cols": 12,
+    "rows": 12,
+    "gap": 12
+  },
+  "cells": [
+    {
+      "id": "hero",
+      "x": 0,
+      "y": 0,
+      "w": 12,
+      "h": 2,
+      "content": {
+        "kind": "component",
+        "component": "Frame",
+        "props": {
+          "body": "Auspex owns intent, approvals, lifecycle, provenance, and drift. Omegon validates native configuration, loads capabilities, and reports observed state.",
+          "padding": "lg",
+          "subtitle": "Operator control plane · pinned Omegon 0.29 sidecar",
+          "title": "Runtime Administration"
+        },
+        "variant": "hero"
+      }
+    },
+    {
+      "id": "inventory",
+      "x": 0,
+      "y": 2,
+      "w": 4,
+      "h": 4,
+      "content": {
+        "kind": "component",
+        "component": "Stack",
+        "props": {
+          "items": [
+            "Runtime inventory and health",
+            "Profiles and effective policy",
+            "Workspace registry and trust",
+            "Skills, extensions, plugins, packages",
+            "Models and permission policy"
+          ],
+          "title": "Read-only inventory — first tranche"
+        },
+        "variant": "checklist"
+      }
+    },
+    {
+      "id": "mutations",
+      "x": 4,
+      "y": 2,
+      "w": 4,
+      "h": 4,
+      "content": {
+        "kind": "component",
+        "component": "Stack",
+        "props": {
+          "items": [
+            "Create/copy/patch profile",
+            "Register or create workspace",
+            "Install/enable/update capability",
+            "Grant or revoke trust",
+            "Apply, reload, restart, stop"
+          ],
+          "title": "Mutations — reviewed follow-up"
+        },
+        "variant": "numbered"
+      }
+    },
+    {
+      "id": "launch",
+      "x": 8,
+      "y": 2,
+      "w": 4,
+      "h": 4,
+      "content": {
+        "kind": "component",
+        "component": "Panel",
+        "props": {
+          "badge": "immutable",
+          "body": "profile revision + workspace identity + capability policy + model routing + permission ceiling + secret references + limits",
+          "description": "Resolved before process creation",
+          "footer": "Launch never mutates the source profile implicitly",
+          "title": "Launch Specification"
+        },
+        "variant": "accent"
+      }
+    },
+    {
+      "id": "architecture",
+      "x": 0,
+      "y": 6,
+      "w": 12,
+      "h": 3,
+      "content": {
+        "kind": "component",
+        "component": "Columns",
+        "props": {
+          "columns": [
+            {
+              "body": "Stable action IDs, resource kinds, authority, persistence, runtime effects, confirmation, side effects.",
+              "title": "Canonical catalog"
+            },
+            {
+              "body": "Preferred typed control DTOs over ACP, IPC, WebSocket, HTTP, or local channels.",
+              "title": "Transport binding"
+            },
+            {
+              "body": "Menus are projections of catalog + capability + authority + observed resource state.",
+              "title": "Operator exposure"
+            }
+          ]
+        },
+        "variant": "three"
+      }
+    },
+    {
+      "id": "boundary",
+      "x": 0,
+      "y": 9,
+      "w": 6,
+      "h": 3,
+      "content": {
+        "kind": "component",
+        "component": "Panel",
+        "props": {
+          "badge": "release/0.29",
+          "body": "InterfaceControlRequest is the internal semantic registry. ClientControlRequestDto V1 exposes only a subset; inventory expansion requires a reviewed V2 allowlist.",
+          "description": "Verified at 547b4609",
+          "footer": "Slash commands remain compatibility aliases",
+          "title": "Omegon Boundary"
+        },
+        "variant": "muted"
+      }
+    },
+    {
+      "id": "sequence",
+      "x": 6,
+      "y": 9,
+      "w": 6,
+      "h": 3,
+      "content": {
+        "kind": "component",
+        "component": "Stack",
+        "props": {
+          "items": [
+            "Inventory DTO V2 in Omegon",
+            "Auspex runtime-resource projection",
+            "Profile revision and validation contract",
+            "Workspace trust/path contract",
+            "Capability install provenance and approvals",
+            "Resolved launch-spec digest",
+            "Observed-state drift/reconciliation",
+            "Semantic menu projection"
+          ],
+          "title": "Delivery sequence"
+        },
+        "variant": "numbered"
+      }
+    }
+  ]
+}
