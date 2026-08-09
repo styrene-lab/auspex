@@ -27,11 +27,27 @@ jobs:
         with:
           ref: ${{ inputs.tag_name || github.ref }}
 
-      - name: Check out Omegon sibling for path dependency
+      - name: Read pinned Omegon runtime metadata
+        id: omegon
+        run: python3 scripts/omegon_runtime_metadata.py --format github-output >> "$GITHUB_OUTPUT"
+
+      - name: Check out pinned Omegon release source
         uses: actions/checkout@v4
         with:
           repository: styrene-lab/omegon
+          ref: ${{ steps.omegon.outputs.omegon_revision }}
           path: omegon
+
+      - name: Verify pinned revision belongs to the declared release branch
+        working-directory: omegon
+        env:
+          OMEGON_BRANCH: ${{ steps.omegon.outputs.omegon_branch }}
+          OMEGON_REVISION: ${{ steps.omegon.outputs.omegon_revision }}
+        run: |
+          set -euo pipefail
+          git fetch --no-tags origin "refs/heads/${OMEGON_BRANCH}:refs/remotes/origin/${OMEGON_BRANCH}"
+          test "$(git rev-parse HEAD)" = "$OMEGON_REVISION"
+          git merge-base --is-ancestor "$OMEGON_REVISION" "origin/${OMEGON_BRANCH}"
 
       - name: Check out styrene-rs sibling for path dependency
         uses: actions/checkout@v4
@@ -47,18 +63,58 @@ jobs:
 
       - uses: dtolnay/rust-toolchain@stable
 
-      - name: Build release binary
-        run: cargo build --release
+      - name: Build pinned TUI-free Omegon sidecar
+        working-directory: omegon
+        env:
+          OMEGON_PACKAGE: ${{ steps.omegon.outputs.omegon_package }}
+        run: cargo build --release --locked --no-default-features -p "$OMEGON_PACKAGE"
 
-      - name: Create archive and checksum
+      - name: Build release binary
+        run: cargo build --release --locked
+
+      - name: Create archive and checksums
+        env:
+          OMEGON_BINARY: ${{ steps.omegon.outputs.omegon_binary }}
         run: |
           set -euo pipefail
           VERSION="${RELEASE_TAG#v}"
           TARGET="aarch64-apple-darwin"
           ARCHIVE="auspex-${VERSION}-${TARGET}.tar.gz"
-          tar czf "$ARCHIVE" -C target/release auspex
+          STAGING="auspex-${VERSION}-${TARGET}"
+          test "$OMEGON_BINARY" = "runtime/omegon-headless"
+          mkdir -p "$STAGING/runtime"
+          install -m 0755 target/release/auspex "$STAGING/auspex"
+          install -m 0755 omegon/target/release/omegon "$STAGING/$OMEGON_BINARY"
+          OMEGON_SHA256="$(shasum -a 256 "$STAGING/$OMEGON_BINARY" | awk '{print $1}')"
+          tar czf "$ARCHIVE" "$STAGING"
           shasum -a 256 "$ARCHIVE" > "$ARCHIVE.sha256"
           echo "ARCHIVE=$ARCHIVE" >> "$GITHUB_ENV"
+          echo "OMEGON_SHA256=$OMEGON_SHA256" >> "$GITHUB_ENV"
+
+      - name: Write sidecar provenance
+        env:
+          OMEGON_REPOSITORY: ${{ steps.omegon.outputs.omegon_repository }}
+          OMEGON_BRANCH: ${{ steps.omegon.outputs.omegon_branch }}
+          OMEGON_REVISION: ${{ steps.omegon.outputs.omegon_revision }}
+          OMEGON_VERSION: ${{ steps.omegon.outputs.omegon_version }}
+          OMEGON_BINARY: ${{ steps.omegon.outputs.omegon_binary }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          provenance = {
+              "repository": os.environ["OMEGON_REPOSITORY"],
+              "branch": os.environ["OMEGON_BRANCH"],
+              "revision": os.environ["OMEGON_REVISION"],
+              "version": os.environ["OMEGON_VERSION"],
+              "binary": os.environ["OMEGON_BINARY"],
+              "sha256": os.environ["OMEGON_SHA256"],
+              "cargo_features": [],
+              "default_features": False,
+          }
+          with open("omegon-runtime.json", "w") as output:
+              json.dump(provenance, output, indent=2)
+              output.write("\n")
+          PY
 
       - name: Upload build artifact
         uses: actions/upload-artifact@v4
@@ -67,6 +123,7 @@ jobs:
           path: |
             ${{ env.ARCHIVE }}
             ${{ env.ARCHIVE }}.sha256
+            omegon-runtime.json
 
   release:
     name: Create release
@@ -96,7 +153,8 @@ jobs:
             --checksums artifacts/checksums.sha256 \
             --output artifacts/release-manifest.json \
             --repo "${{ github.repository }}" \
-            --commit "${{ github.sha }}"
+            --commit "${{ github.sha }}" \
+            --omegon-runtime artifacts/omegon-runtime.json
           cat artifacts/release-manifest.json
 
       - name: Create GitHub Release
