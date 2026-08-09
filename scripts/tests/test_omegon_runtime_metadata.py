@@ -17,7 +17,7 @@ maximum_tested_version = "0.29.0-dev"
 control_plane_schema = 2
 source_repository = "https://github.com/styrene-lab/omegon.git"
 source_branch = "release/0.29"
-source_revision = "547b46097d8a04a0bd49da0f96e0c3a002d5b834"
+source_revision = "6c7e39f66fcc4d3576d1351175edc168fed5d982"
 package = "omegon"
 features = []
 packaged_binary = "runtime/omegon-headless"
@@ -48,7 +48,7 @@ class OmegonRuntimeMetadataTests(unittest.TestCase):
     def test_rejects_abbreviated_revision(self) -> None:
         path = self.write_manifest(
             VALID_MANIFEST.replace(
-                "547b46097d8a04a0bd49da0f96e0c3a002d5b834", "547b4609"
+                "6c7e39f66fcc4d3576d1351175edc168fed5d982", "6c7e39f6"
             )
         )
 
@@ -59,7 +59,7 @@ class OmegonRuntimeMetadataTests(unittest.TestCase):
         metadata = load_runtime_metadata(self.write_manifest(VALID_MANIFEST))
         output = github_output(metadata)
 
-        self.assertIn("omegon_revision=547b46097d8a04a0bd49da0f96e0c3a002d5b834", output)
+        self.assertIn("omegon_revision=6c7e39f66fcc4d3576d1351175edc168fed5d982", output)
         self.assertIn("omegon_features=\n", output)
 
 

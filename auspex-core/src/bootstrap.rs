@@ -998,7 +998,7 @@ pub fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
         .map_err(|error| format!("packaged Omegon manifest is invalid: {error}"))?;
     if manifest.repository != "https://github.com/styrene-lab/omegon.git"
         || manifest.branch != "release/0.29"
-        || manifest.revision != "547b46097d8a04a0bd49da0f96e0c3a002d5b834"
+        || manifest.revision != "6c7e39f66fcc4d3576d1351175edc168fed5d982"
         || manifest.version != "0.29.0-dev"
         || manifest.binary != "runtime/omegon-headless"
         || manifest.control_plane_schema != 2
@@ -2378,7 +2378,7 @@ mod tests {
         let manifest = serde_json::json!({
             "repository": "https://github.com/styrene-lab/omegon.git",
             "branch": "release/0.29",
-            "revision": "547b46097d8a04a0bd49da0f96e0c3a002d5b834",
+            "revision": "6c7e39f66fcc4d3576d1351175edc168fed5d982",
             "version": "0.29.0-dev",
             "binary": "runtime/omegon-headless",
             "sha256": digest,

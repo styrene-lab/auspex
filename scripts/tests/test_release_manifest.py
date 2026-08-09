@@ -46,7 +46,7 @@ class ReleaseManifestTests(unittest.TestCase):
         runtime = {
             "repository": "https://github.com/styrene-lab/omegon.git",
             "branch": "release/0.29",
-            "revision": "547b46097d8a04a0bd49da0f96e0c3a002d5b834",
+            "revision": "6c7e39f66fcc4d3576d1351175edc168fed5d982",
             "version": "0.29.0-dev",
             "binary": "runtime/omegon-headless",
             "sha256": "feedface",
@@ -65,7 +65,7 @@ class ReleaseManifestTests(unittest.TestCase):
         runtime = {
             "repository": "https://github.com/styrene-lab/omegon.git",
             "branch": "release/0.29",
-            "revision": "547b46097d8a04a0bd49da0f96e0c3a002d5b834",
+            "revision": "6c7e39f66fcc4d3576d1351175edc168fed5d982",
             "version": "0.29.0-dev",
             "binary": "runtime/omegon-headless",
             "sha256": "feedface",
