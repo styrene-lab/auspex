@@ -68,6 +68,7 @@ pub mod tls_config;
 pub mod cop_feature;
 pub mod instance_session;
 pub mod remote_session;
+pub mod runtime_inventory;
 pub mod state_engine;
 pub mod telemetry;
 
