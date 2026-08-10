@@ -219,6 +219,7 @@ pub struct AppController {
     managed_agent_instances:
         std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
     managed_agent_audit_sequence: u64,
+    runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
@@ -247,6 +248,7 @@ impl Default for AppController {
             ),
             managed_agent_instances: std::collections::BTreeMap::new(),
             managed_agent_audit_sequence: 0,
+            runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore::default(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -295,6 +297,7 @@ impl AppController {
             ),
             managed_agent_instances: std::collections::BTreeMap::new(),
             managed_agent_audit_sequence: 0,
+            runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore::default(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -816,6 +819,16 @@ impl AppController {
             }
         }
         !active_ids.is_empty()
+    }
+
+    pub fn runtime_inventory(&self) -> &crate::runtime_inventory::RuntimeInventoryStore {
+        &self.runtime_inventory
+    }
+
+    pub fn runtime_inventory_mut(
+        &mut self,
+    ) -> &mut crate::runtime_inventory::RuntimeInventoryStore {
+        &mut self.runtime_inventory
     }
 
     pub fn managed_agent_runtime(

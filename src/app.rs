@@ -490,6 +490,7 @@ struct SettingsPanelModel {
     system_rows: Vec<SettingsStatusRowModel>,
     control_plane_rows: Vec<SettingsStatusRowModel>,
     runtime_rows: Vec<SettingsStatusRowModel>,
+    runtime_resource_rows: Vec<SettingsStatusRowModel>,
     secrets_rows: Vec<SettingsStatusRowModel>,
     vault_rows: Vec<SettingsStatusRowModel>,
     general_actions: Vec<SettingsActionModel>,
@@ -1086,6 +1087,38 @@ fn build_settings_panel_model(
         },
     ];
 
+    let runtime_resource_rows = session
+        .instance_descriptor
+        .as_ref()
+        .map(|instance| {
+            controller
+                .runtime_inventory()
+                .resources_for(&instance.identity.instance_id)
+                .into_iter()
+                .map(|resource| SettingsStatusRowModel {
+                    label: format!("{:?}", resource.request),
+                    value: match &resource.state {
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Loading => {
+                            "loading".into()
+                        }
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Ready {
+                            response,
+                        } => response.output.clone().unwrap_or_else(|| "ready".into()),
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Stale {
+                            response,
+                        } => format!(
+                            "stale · {}",
+                            response.output.clone().unwrap_or_else(|| "cached".into())
+                        ),
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Error {
+                            message,
+                        } => format!("error · {message}"),
+                    },
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     SettingsPanelModel {
         selected_route_id,
         route_options: route_options
@@ -1103,6 +1136,7 @@ fn build_settings_panel_model(
         system_rows,
         control_plane_rows,
         runtime_rows,
+        runtime_resource_rows,
         secrets_rows,
         vault_rows,
         general_actions: vec![
@@ -2249,6 +2283,20 @@ pub fn App() -> Element {
                                 h3 { class: "settings-panel-title", "Backend / substrate" }
                                 div { class: "settings-status-list",
                                     for row in &settings_model.runtime_rows {
+                                        div { class: "settings-status-row", span { class: "settings-status-label", "{row.label}" } span { class: "settings-status-value", "{row.value}" } }
+                                    }
+                                }
+                            }
+                            section { class: "settings-panel-card settings-panel-card-system",
+                                h3 { class: "settings-panel-title", "Omegon resources" }
+                                div { class: "settings-status-list",
+                                    if settings_model.runtime_resource_rows.is_empty() {
+                                        div { class: "settings-status-row",
+                                            span { class: "settings-status-label", "Inventory" }
+                                            span { class: "settings-status-value", "not loaded" }
+                                        }
+                                    }
+                                    for row in &settings_model.runtime_resource_rows {
                                         div { class: "settings-status-row", span { class: "settings-status-label", "{row.label}" } span { class: "settings-status-value", "{row.value}" } }
                                     }
                                 }
