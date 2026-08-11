@@ -821,6 +821,40 @@ impl AppController {
         !active_ids.is_empty()
     }
 
+    pub fn runtime_inventory_refresh_commands(
+        &mut self,
+    ) -> Vec<crate::runtime_types::TargetedCommand> {
+        let target = self.current_command_target();
+        let instance_id = target
+            .dispatcher_instance_id
+            .clone()
+            .unwrap_or_else(|| target.session_key.clone());
+        crate::runtime_inventory::RuntimeInventoryRequest::ALL
+            .into_iter()
+            .map(|request| {
+                self.runtime_inventory.mark_loading(&instance_id, request);
+                request.targeted_command(target.clone())
+            })
+            .collect()
+    }
+
+    pub fn apply_runtime_inventory_event(
+        &mut self,
+        event_json: &str,
+        observed_at_unix_ms: u64,
+    ) -> Result<bool, String> {
+        let target = self.current_command_target();
+        let instance_id = target
+            .dispatcher_instance_id
+            .as_deref()
+            .unwrap_or(target.session_key.as_str());
+        self.runtime_inventory.apply_control_result_json(
+            instance_id,
+            event_json,
+            observed_at_unix_ms,
+        )
+    }
+
     pub fn runtime_inventory(&self) -> &crate::runtime_inventory::RuntimeInventoryStore {
         &self.runtime_inventory
     }

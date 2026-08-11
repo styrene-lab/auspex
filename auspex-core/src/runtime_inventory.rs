@@ -56,6 +56,12 @@ impl RuntimeInventoryRequest {
         }
     }
 
+    pub fn request_for_method(method: &str) -> Option<Self> {
+        Self::ALL
+            .into_iter()
+            .find(|request| request.method() == method)
+    }
+
     pub fn targeted_command(self, target: CommandTarget) -> TargetedCommand {
         TargetedCommand::control_method(
             target,
@@ -161,6 +167,32 @@ impl RuntimeInventoryStore {
             },
         );
         Ok(())
+    }
+
+    pub fn apply_control_result_json(
+        &mut self,
+        instance_id: &str,
+        event_json: &str,
+        observed_at_unix_ms: u64,
+    ) -> Result<bool, String> {
+        let value: serde_json::Value = serde_json::from_str(event_json)
+            .map_err(|error| format!("invalid control result JSON: {error}"))?;
+        if value.get("type").and_then(serde_json::Value::as_str) != Some("control_result") {
+            return Ok(false);
+        }
+        let Some(method) = value.get("name").and_then(serde_json::Value::as_str) else {
+            return Ok(false);
+        };
+        let Some(request) = RuntimeInventoryRequest::request_for_method(method) else {
+            return Ok(false);
+        };
+        let response = serde_json::json!({
+            "method": method,
+            "accepted": value.get("accepted").and_then(serde_json::Value::as_bool).unwrap_or(false),
+            "output": value.get("output").and_then(serde_json::Value::as_str),
+        });
+        self.apply_response(instance_id, request, response, observed_at_unix_ms)?;
+        Ok(true)
     }
 
     pub fn mark_error(
@@ -307,5 +339,29 @@ mod tests {
         )
         .unwrap_err();
         assert!(error.contains("mismatched"));
+    }
+
+    #[test]
+    fn store_ingests_inventory_control_results_and_ignores_other_events() {
+        let mut store = RuntimeInventoryStore::default();
+        assert!(store
+            .apply_control_result_json(
+                "primary",
+                r#"{"type":"control_result","name":"skills-view","accepted":true,"output":"2 skills"}"#,
+                55,
+            )
+            .unwrap());
+        assert!(matches!(
+            store
+                .resource("primary", RuntimeInventoryRequest::SkillsView)
+                .unwrap()
+                .state,
+            RuntimeInventoryResourceState::Ready { .. }
+        ));
+        assert!(
+            !store
+                .apply_control_result_json("primary", r#"{"type":"state_snapshot"}"#, 56)
+                .unwrap()
+        );
     }
 }
