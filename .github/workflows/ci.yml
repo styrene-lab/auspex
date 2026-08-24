@@ -81,3 +81,4 @@ jobs:
     with:
       paths: "src/ auspex-core/src/ auspex-operator/src/"
       threshold: 500
+      diff-threshold: 500
