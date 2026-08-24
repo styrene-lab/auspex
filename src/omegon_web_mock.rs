@@ -1060,7 +1060,10 @@ fn BackendStatusCard(
     let (auth_state, auth_note) = if crate::omegon_web_contract::active_web_token().is_some() {
         ("direct bearer", "page token → Authorization")
     } else {
-        ("proxy mediated", "Auspex proxy owns bearer + principal headers")
+        (
+            "proxy mediated",
+            "Auspex proxy owns bearer + principal headers",
+        )
     };
     let identity_state = proxy_status
         .as_ref()
@@ -1088,7 +1091,13 @@ fn BackendStatusCard(
         .unwrap_or("unknown");
     let tls_state = proxy_status
         .as_ref()
-        .map(|status| if status.browser_tls.enabled { "enabled" } else { "http-local" })
+        .map(|status| {
+            if status.browser_tls.enabled {
+                "enabled"
+            } else {
+                "http-local"
+            }
+        })
         .unwrap_or("unknown");
     let auth_live = "owm-backend-row live";
     rsx! {

@@ -96,8 +96,8 @@ async fn main() -> anyhow::Result<()> {
 
     ensure_primary_agent(&client, watch_namespace.as_deref()).await?;
 
-    let mqtt_broker_url = std::env::var("AUSPEX_MQTT_BROKER_URL")
-        .unwrap_or_else(|_| "mqtt://127.0.0.1:1883".into());
+    let mqtt_broker_url =
+        std::env::var("AUSPEX_MQTT_BROKER_URL").unwrap_or_else(|_| "mqtt://127.0.0.1:1883".into());
     info!(broker_url = %mqtt_broker_url, "using external MQTT broker");
 
     let agents: Api<OmegonAgent> = match &watch_namespace {

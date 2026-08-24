@@ -6,19 +6,18 @@ fn main() {
 #[cfg(not(target_arch = "wasm32"))]
 mod native {
     use axum::{
+        Router,
         body::Bytes,
         extract::{
+            Path as AxumPath, State,
             ws::{Message as AxumWsMessage, WebSocket, WebSocketUpgrade},
-            Path as AxumPath,
-            State,
         },
         http::{HeaderMap, Method, StatusCode, Uri},
         response::{IntoResponse, Response},
         routing::any,
-        Router,
     };
     use futures_util::{SinkExt, StreamExt};
-    use reqwest::header::{HeaderValue, AUTHORIZATION, CONTENT_TYPE};
+    use reqwest::header::{AUTHORIZATION, CONTENT_TYPE, HeaderValue};
     use serde::{Deserialize, Serialize};
     use std::{
         fs,
@@ -30,7 +29,10 @@ mod native {
     use tokio::sync::Mutex;
     use tokio_tungstenite::{
         connect_async,
-        tungstenite::{client::IntoClientRequest, http::HeaderValue as WsHeaderValue, Message as UpstreamWsMessage},
+        tungstenite::{
+            Message as UpstreamWsMessage, client::IntoClientRequest,
+            http::HeaderValue as WsHeaderValue,
+        },
     };
 
     const DEFAULT_BIND: &str = "127.0.0.1:9311";
@@ -151,7 +153,10 @@ mod native {
             return init_identity(&identity_path);
         }
         let insecure_http = std::env::args().any(|arg| arg == "--insecure-http")
-            || matches!(std::env::var("AUSPEX_WEB_PROXY_INSECURE_HTTP").as_deref(), Ok("1" | "true" | "yes"));
+            || matches!(
+                std::env::var("AUSPEX_WEB_PROXY_INSECURE_HTTP").as_deref(),
+                Ok("1" | "true" | "yes")
+            );
         let bind = std::env::var("AUSPEX_WEB_PROXY_BIND").unwrap_or_else(|_| {
             if insecure_http {
                 DEFAULT_BIND.to_string()
@@ -206,10 +211,14 @@ mod native {
             .fallback(any(proxy_ui))
             .with_state(state);
         let addr: SocketAddr = bind.parse()?;
-        if let Some(cert_paths) = browser_tls.cert_path.as_ref().map(|cert_path| LocalCertPaths {
-            cert_path: cert_path.clone(),
-            key_path: local_https_key_path(),
-        }) {
+        if let Some(cert_paths) = browser_tls
+            .cert_path
+            .as_ref()
+            .map(|cert_path| LocalCertPaths {
+                cert_path: cert_path.clone(),
+                key_path: local_https_key_path(),
+            })
+        {
             let config = axum_server::tls_rustls::RustlsConfig::from_pem_file(
                 &cert_paths.cert_path,
                 &cert_paths.key_path,
@@ -323,7 +332,9 @@ mod native {
         let reachable = state.client.get(startup_url).send().await.is_ok();
         let token_cached = state.token.lock().await.is_some();
         let strict_daemon_identity = if reachable {
-            daemon_requires_proxy_identity(&state).await.unwrap_or(false)
+            daemon_requires_proxy_identity(&state)
+                .await
+                .unwrap_or(false)
         } else {
             false
         };
@@ -349,7 +360,10 @@ mod native {
             },
             identity: IdentityProxyStatus {
                 configured: state.identity.is_some(),
-                subject: state.identity.as_ref().map(|identity| identity.subject.clone()),
+                subject: state
+                    .identity
+                    .as_ref()
+                    .map(|identity| identity.subject.clone()),
                 fingerprint: state
                     .identity
                     .as_ref()
@@ -387,10 +401,7 @@ mod native {
         headers: HeaderMap,
         body: Bytes,
     ) -> Response {
-        let path_and_query = uri
-            .path_and_query()
-            .map(|pq| pq.as_str())
-            .unwrap_or("/");
+        let path_and_query = uri.path_and_query().map(|pq| pq.as_str()).unwrap_or("/");
         let upstream_url = format!("{}{}", state.ui_base, path_and_query);
         match forward_once(&state, &method, &upstream_url, &headers, body, false).await {
             Ok(response) => response,
@@ -425,11 +436,7 @@ mod native {
         }
     }
 
-    async fn proxy_websocket(
-        ws: WebSocketUpgrade,
-        state: ProxyState,
-        path: String,
-    ) -> Response {
+    async fn proxy_websocket(ws: WebSocketUpgrade, state: ProxyState, path: String) -> Response {
         match fresh_token(&state).await {
             Ok(Some(token)) => {
                 let ws_base = state
@@ -469,13 +476,24 @@ mod native {
             .as_ref()
             .map(|identity| identity.subject.as_str())
             .unwrap_or("local-operator");
-        headers.insert("Omegon-Principal-Issuer", WsHeaderValue::from_static("auspex"));
+        headers.insert(
+            "Omegon-Principal-Issuer",
+            WsHeaderValue::from_static("auspex"),
+        );
         if let Ok(value) = WsHeaderValue::from_str(subject) {
             headers.insert("Omegon-Principal-Subject", value);
         }
-        headers.insert("Omegon-Principal-Role", WsHeaderValue::from_static("operator"));
-        headers.insert("Omegon-Principal-Client-Id", WsHeaderValue::from_static("auspex-web"));
-        if let Some(fingerprint) = identity.as_ref().map(|identity| identity.fingerprint.as_str())
+        headers.insert(
+            "Omegon-Principal-Role",
+            WsHeaderValue::from_static("operator"),
+        );
+        headers.insert(
+            "Omegon-Principal-Client-Id",
+            WsHeaderValue::from_static("auspex-web"),
+        );
+        if let Some(fingerprint) = identity
+            .as_ref()
+            .map(|identity| identity.fingerprint.as_str())
             && let Ok(value) = WsHeaderValue::from_str(fingerprint)
         {
             headers.insert("Auspex-Proxy-Identity-Fingerprint", value);
