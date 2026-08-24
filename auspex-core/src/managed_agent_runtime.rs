@@ -1034,6 +1034,140 @@ mod tests {
     }
 
     #[test]
+    fn a2a_outcomes_project_terminal_run_states() {
+        use crate::managed_agent_mqtt::ManagedAgentA2aEvent;
+
+        let mut completed = ManagedAgentSupervisorRuntime::new(1024);
+        let completed_id = completed
+            .prepare_run(
+                WorkerId::new(),
+                "session",
+                "turn",
+                request(),
+                ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: "worker".into(),
+                },
+                0,
+            )
+            .unwrap();
+        let completed_task_id = completed_id.to_string();
+        completed
+            .apply_a2a_event(&ManagedAgentA2aEvent::Accepted {
+                managed_run_id: completed_id,
+                task_id: completed_task_id.clone(),
+                message_id: [1; 16],
+            })
+            .unwrap();
+        completed
+            .apply_a2a_event(&ManagedAgentA2aEvent::Completed {
+                managed_run_id: completed_id,
+                task_id: completed_task_id,
+                message_id: [2; 16],
+                result: "done".into(),
+            })
+            .unwrap();
+        assert_eq!(
+            completed.run(completed_id).unwrap().state(),
+            &ManagedRunState::Completed {
+                result: crate::managed_agents::ManagedRunResult {
+                    summary: "done".into(),
+                    ..Default::default()
+                }
+            }
+        );
+        assert!(completed.active_run_ids().is_empty());
+        assert!(completed.pollable_run_ids().is_empty());
+
+        let mut failed = ManagedAgentSupervisorRuntime::new(1024);
+        let failed_id = failed
+            .prepare_run(
+                WorkerId::new(),
+                "session",
+                "turn",
+                request(),
+                ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: "worker".into(),
+                },
+                0,
+            )
+            .unwrap();
+        let failed_task_id = failed_id.to_string();
+        failed
+            .apply_a2a_event(&ManagedAgentA2aEvent::Accepted {
+                managed_run_id: failed_id,
+                task_id: failed_task_id.clone(),
+                message_id: [3; 16],
+            })
+            .unwrap();
+        failed
+            .apply_a2a_event(&ManagedAgentA2aEvent::Failed {
+                managed_run_id: failed_id,
+                task_id: failed_task_id,
+                message_id: [4; 16],
+                code: "worker_failed".into(),
+                safe_message: "worker stopped".into(),
+            })
+            .unwrap();
+        assert!(matches!(
+            failed.run(failed_id).unwrap().state(),
+            ManagedRunState::Failed { failure }
+                if failure.code == "worker_failed" && failure.safe_message == "worker stopped"
+        ));
+        assert!(failed.active_run_ids().is_empty());
+        assert!(failed.pollable_run_ids().is_empty());
+
+        let mut cancelled = ManagedAgentSupervisorRuntime::new(1024);
+        let cancelled_id = cancelled
+            .prepare_run(
+                WorkerId::new(),
+                "session",
+                "turn",
+                request(),
+                ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: "worker".into(),
+                },
+                0,
+            )
+            .unwrap();
+        let cancelled_task_id = cancelled_id.to_string();
+        cancelled
+            .apply_a2a_event(&ManagedAgentA2aEvent::Accepted {
+                managed_run_id: cancelled_id,
+                task_id: cancelled_task_id.clone(),
+                message_id: [5; 16],
+            })
+            .unwrap();
+        cancelled
+            .request_a2a_cancellation(cancelled_id, Some("stop".into()))
+            .unwrap();
+        cancelled
+            .apply_a2a_event(&ManagedAgentA2aEvent::CancellationAccepted {
+                managed_run_id: cancelled_id,
+                task_id: cancelled_task_id.clone(),
+                message_id: [6; 16],
+                reason: Some("stop".into()),
+            })
+            .unwrap();
+        cancelled
+            .apply_a2a_event(&ManagedAgentA2aEvent::TerminationConfirmed {
+                managed_run_id: cancelled_id,
+                task_id: cancelled_task_id,
+                message_id: [7; 16],
+                reason: Some("stop".into()),
+            })
+            .unwrap();
+        assert_eq!(
+            cancelled.run(cancelled_id).unwrap().state(),
+            &ManagedRunState::Cancelled {
+                reason: Some("stop".into()),
+                termination_confirmed: true
+            }
+        );
+        assert!(cancelled.active_run_ids().is_empty());
+        assert!(cancelled.pollable_run_ids().is_empty());
+    }
+
+    #[test]
     fn prepared_mqtt_run_has_no_control_commands() {
         let mut runtime = ManagedAgentSupervisorRuntime::new(1024);
         let run_id = runtime
