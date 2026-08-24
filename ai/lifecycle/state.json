@@ -165,6 +165,21 @@
       "bound_change": null,
       "created_at": "2026-06-25T20:04:28Z",
       "updated_at": "2026-06-25T20:04:28Z"
+    },
+    {
+      "id": "theme-token-hierarchy",
+      "title": "Tweak.cn theming port + hierarchical token system",
+      "state": "exploring",
+      "parent": null,
+      "tags": [],
+      "priority": null,
+      "issue_type": null,
+      "open_questions": [],
+      "decisions": [],
+      "overview": "",
+      "bound_change": null,
+      "created_at": "2026-07-22T19:23:15Z",
+      "updated_at": "2026-07-22T19:23:15Z"
     }
   ],
   "changes": [
@@ -475,6 +490,24 @@
       "to_state": "archived",
       "reason": null,
       "forced": false
+    },
+    {
+      "timestamp": "2026-07-22T19:23:15Z",
+      "entity_type": "node",
+      "entity_id": "theme-token-hierarchy",
+      "from_state": "(new)",
+      "to_state": "seed",
+      "reason": null,
+      "forced": false
+    },
+    {
+      "timestamp": "2026-07-22T19:23:15Z",
+      "entity_type": "node",
+      "entity_id": "theme-token-hierarchy",
+      "from_state": "seed",
+      "to_state": "exploring",
+      "reason": "initial status on create",
+      "forced": true
     }
   ]
 }
