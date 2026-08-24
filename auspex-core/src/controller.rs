@@ -931,6 +931,7 @@ impl AppController {
         );
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn prepare_styrene_a2a_dispatch(
         &mut self,
         worker_id: crate::managed_agents::WorkerId,
@@ -968,6 +969,7 @@ impl AppController {
         ))
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn prepare_styrene_a2a_cancel(
         &mut self,
         run_id: crate::managed_agents::ManagedRunId,

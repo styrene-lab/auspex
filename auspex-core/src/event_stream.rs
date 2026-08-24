@@ -80,11 +80,15 @@ impl EventStreamHandle {
         self.cancelled.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub(crate) fn push_transport_event(&self, state: &str) {
-        self.inbox.push(serde_json::json!({
-            "type": "auspex_transport_state",
-            "state": state,
-        }).to_string());
+        self.inbox.push(
+            serde_json::json!({
+                "type": "auspex_transport_state",
+                "state": state,
+            })
+            .to_string(),
+        );
     }
 
     pub fn url(&self) -> &str {

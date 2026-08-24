@@ -12,6 +12,35 @@ pub const METHOD_DELEGATE_GET: &str = "delegate_get";
 pub const METHOD_DELEGATE_RESULT: &str = "delegate_result";
 pub const METHOD_DELEGATE_CANCEL: &str = "delegate_cancel";
 
+pub const EVENT_MANAGED_AGENT_COMMAND_ACK: &str = "managed_agent_command_ack";
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum ManagedAgentCommandAckStatus {
+    Accepted,
+    Rejected,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedAgentCommandAck {
+    pub schema_version: u32,
+    pub command_id: crate::runtime_types::ManagedCommandId,
+    pub method: String,
+    pub managed_run_id: ManagedRunId,
+    pub worker_id: WorkerId,
+    pub task_id: Option<OmegonTaskId>,
+    pub status: ManagedAgentCommandAckStatus,
+    pub rejection: Option<ManagedAgentCommandAckRejection>,
+    pub accepted_at_unix_ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ManagedAgentCommandAckRejection {
+    pub code: String,
+    pub safe_message: String,
+    pub retryable: bool,
+}
+
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum ControlCommandReceiptStatus {
@@ -112,10 +141,57 @@ pub enum SupervisorContractError {
     UnsupportedSchema { received: u32 },
     IdentityMismatch,
     MissingTaskId,
+    InvalidAcknowledgement,
+    OversizedSafeMessage,
     ContradictoryDispatchResponse,
     OversizedReason,
     OversizedResult,
     Serialization(String),
+}
+
+impl ManagedAgentCommandAck {
+    pub fn validate(&self) -> Result<(), SupervisorContractError> {
+        if self.schema_version != SUPERVISOR_SCHEMA_VERSION {
+            return Err(SupervisorContractError::UnsupportedSchema {
+                received: self.schema_version,
+            });
+        }
+        if !matches!(
+            self.method.as_str(),
+            METHOD_DELEGATE_DISPATCH
+                | METHOD_DELEGATE_GET
+                | METHOD_DELEGATE_RESULT
+                | METHOD_DELEGATE_CANCEL
+        ) {
+            return Err(SupervisorContractError::InvalidAcknowledgement);
+        }
+        match (&self.status, &self.rejection) {
+            (ManagedAgentCommandAckStatus::Accepted, None) => Ok(()),
+            (ManagedAgentCommandAckStatus::Rejected, Some(rejection)) => {
+                if rejection.safe_message.len() > 1024 {
+                    return Err(SupervisorContractError::OversizedSafeMessage);
+                }
+                if rejection.code.is_empty()
+                    || matches!(
+                        rejection.code.as_str(),
+                        "unsupported_schema"
+                            | "invalid_envelope"
+                            | "unauthorized"
+                            | "unknown_method"
+                            | "command_id_conflict"
+                    ) && rejection.retryable
+                    || matches!(
+                        rejection.code.as_str(),
+                        "overloaded" | "temporarily_unavailable"
+                    ) && !rejection.retryable
+                {
+                    return Err(SupervisorContractError::InvalidAcknowledgement);
+                }
+                Ok(())
+            }
+            _ => Err(SupervisorContractError::InvalidAcknowledgement),
+        }
+    }
 }
 
 impl DelegateDispatchRequest {
@@ -262,6 +338,55 @@ mod tests {
 
     fn target() -> CommandTarget {
         CommandTarget { session_key: "remote:session".into(), dispatcher_instance_id: Some("worker".into()) }
+    }
+
+    fn rejected_ack(code: &str, retryable: bool) -> ManagedAgentCommandAck {
+        let (managed_run_id, worker_id, task_id) = ids();
+        ManagedAgentCommandAck {
+            schema_version: SUPERVISOR_SCHEMA_VERSION,
+            command_id: crate::runtime_types::ManagedCommandId::new(),
+            method: METHOD_DELEGATE_GET.into(),
+            managed_run_id,
+            worker_id,
+            task_id: Some(task_id),
+            status: ManagedAgentCommandAckStatus::Rejected,
+            rejection: Some(ManagedAgentCommandAckRejection {
+                code: code.into(),
+                safe_message: "not admitted".into(),
+                retryable,
+            }),
+            accepted_at_unix_ms: 1,
+        }
+    }
+
+    #[test]
+    fn command_ack_validation_enforces_method_and_rejection_semantics() {
+        let mut ack = rejected_ack("overloaded", true);
+        assert_eq!(ack.validate(), Ok(()));
+
+        ack.method = "private_method".into();
+        assert_eq!(
+            ack.validate(),
+            Err(SupervisorContractError::InvalidAcknowledgement)
+        );
+
+        let terminal_retry = rejected_ack("unsupported_schema", true);
+        assert_eq!(
+            terminal_retry.validate(),
+            Err(SupervisorContractError::InvalidAcknowledgement)
+        );
+
+        let retryable_without_retry = rejected_ack("temporarily_unavailable", false);
+        assert_eq!(
+            retryable_without_retry.validate(),
+            Err(SupervisorContractError::InvalidAcknowledgement)
+        );
+
+        let empty_code = rejected_ack("", false);
+        assert_eq!(
+            empty_code.validate(),
+            Err(SupervisorContractError::InvalidAcknowledgement)
+        );
     }
 
     #[test]

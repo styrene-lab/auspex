@@ -398,6 +398,7 @@ impl ManagedAgentSupervisorRuntime {
         self.register_command(run_id, ManagedCommandKind::Cancel, command)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn request_a2a_cancellation(
         &mut self,
         run_id: ManagedRunId,
@@ -475,6 +476,15 @@ impl ManagedAgentSupervisorRuntime {
             return Err(SupervisorRuntimeError::Contract(
                 SupervisorContractError::IdentityMismatch,
             ));
+        }
+        if matches!(
+            pending.state,
+            ManagedCommandDeliveryState::Accepted
+                | ManagedCommandDeliveryState::Duplicate
+                | ManagedCommandDeliveryState::Rejected { .. }
+                | ManagedCommandDeliveryState::ProvenByResult
+        ) {
+            return Ok(ack.command_id);
         }
         pending.state = match ack.status {
             ManagedAgentCommandAckStatus::Accepted => ManagedCommandDeliveryState::Accepted,
@@ -690,6 +700,7 @@ impl ManagedAgentSupervisorRuntime {
         Ok(run_id)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
     pub fn apply_a2a_event(
         &mut self,
         event: &crate::managed_agent_mqtt::ManagedAgentA2aEvent,
@@ -1195,11 +1206,50 @@ mod tests {
     }
 
     #[test]
+    fn late_retryable_ack_cannot_regress_result_proven_delivery() {
+        let mut runtime = ack_runtime();
+        let command_id = pending_command_id(&runtime);
+        let pending = &runtime.commands[&command_id];
+        let response = serde_json::json!({
+            "type": "delegate_dispatch_result",
+            "schema_version": 1,
+            "managed_run_id": pending.run_id,
+            "worker_id": pending.worker_id,
+            "accepted": true,
+            "task_id": "delegate_1",
+            "effective_policy": null,
+            "rejection": null
+        });
+        runtime.apply_response_json(&response.to_string()).unwrap();
+
+        let ack = command_ack(
+            &runtime,
+            ManagedAgentCommandAckStatus::Rejected,
+            Some(
+                crate::managed_agent_supervisor::ManagedAgentCommandAckRejection {
+                    code: "overloaded".into(),
+                    safe_message: "queue full".into(),
+                    retryable: true,
+                },
+            ),
+        );
+        runtime
+            .apply_command_ack_json(&serde_json::to_string(&ack).unwrap())
+            .unwrap();
+
+        assert_eq!(
+            runtime.command_delivery_state(command_id),
+            Some(&ManagedCommandDeliveryState::ProvenByResult)
+        );
+        assert!(runtime.replay_due_commands(Duration::ZERO).is_empty());
+    }
+
+    #[test]
     fn command_ack_rejects_mismatched_method_without_mutation() {
         let mut runtime = ack_runtime();
         let command_id = pending_command_id(&runtime);
         let mut ack = command_ack(&runtime, ManagedAgentCommandAckStatus::Accepted, None);
-        ack.method = "delegate.cancel".into();
+        ack.method = crate::managed_agent_supervisor::METHOD_DELEGATE_CANCEL.into();
 
         assert_eq!(
             runtime.apply_command_ack_json(&serde_json::to_string(&ack).unwrap()),
