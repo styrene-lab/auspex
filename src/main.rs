@@ -70,15 +70,7 @@ fn main() {
             dioxus::desktop::Config::new()
                 .with_menu(menu)
                 .with_window(window)
-                .with_custom_head(custom_head)
-                .with_on_window(|_window, _| {
-                    #[cfg(target_os = "macos")]
-                    {
-                        use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
-                        _window.set_titlebar_transparent(false);
-                        _window.set_fullsize_content_view(false);
-                    }
-                }),
+                .with_custom_head(custom_head),
         )
         .with_context(bootstrap)
         .launch(app::App);
