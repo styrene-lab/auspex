@@ -332,6 +332,63 @@ pub struct SessionTelemetryData {
     pub latest_cache_read_tokens: Option<u64>,
     pub control_plane: Option<ControlPlaneTelemetryData>,
     pub control_plane_rollups: Vec<ControlPlaneTelemetryData>,
+    pub transport: TransportTelemetryData,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum TransportAdapterData {
+    #[default]
+    Pending,
+    NativeIpc,
+    WebSocketCompatibility,
+}
+
+impl TransportAdapterData {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Pending => "pending",
+            Self::NativeIpc => "native IPC",
+            Self::WebSocketCompatibility => "HTTP/WebSocket compatibility",
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum ReconciliationStatusData {
+    #[default]
+    Unknown,
+    Authoritative,
+    Required,
+    Refreshing,
+    Reconnecting,
+    Degraded,
+}
+
+impl ReconciliationStatusData {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Unknown => "unknown",
+            Self::Authoritative => "authoritative",
+            Self::Required => "reconciliation required",
+            Self::Refreshing => "refreshing",
+            Self::Reconnecting => "reconnecting",
+            Self::Degraded => "degraded",
+        }
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct TransportTelemetryData {
+    pub negotiated_protocol: Option<u16>,
+    pub server_instance_id: Option<String>,
+    pub server_name: Option<String>,
+    pub omegon_version: Option<String>,
+    pub capabilities: Vec<String>,
+    pub active_adapter: TransportAdapterData,
+    pub fallback_reason: Option<String>,
+    pub reconciliation_status: ReconciliationStatusData,
+    pub reconciliation_detail: Option<String>,
+    pub projection_frontier: Option<u64>,
 }
 
 /// Snapshot of harness and session state for the Session power-mode screen.
@@ -357,6 +414,23 @@ pub struct SessionData {
     pub operational_profile_metadata: Option<serde_json::Value>,
     pub dispatcher_binding: Option<DispatcherBindingData>,
     pub latest_plan: Option<PlanSnapshotData>,
+    pub ipc_authority: Option<IpcSessionAuthorityData>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, Default)]
+pub struct IpcSessionAuthorityData {
+    pub server_instance_id: String,
+    pub protocol_version: u16,
+    pub capabilities: Vec<String>,
+    pub session_id: Option<String>,
+    pub session_generation: Option<u64>,
+    pub stream_id: Option<String>,
+    pub projection_status: Option<String>,
+    pub projection_frontier: Option<u64>,
+    pub context_revision: Option<u64>,
+    pub queue_depth: usize,
+    pub active_turn: Option<String>,
+    pub busy: bool,
 }
 
 // ── Chat types ───────────────────────────────────────────────
@@ -1151,6 +1225,7 @@ impl HostSessionModel for MockHostSession {
                     latest_cache_read_tokens: None,
                     control_plane: None,
                     control_plane_rollups: Vec::new(),
+                    transport: TransportTelemetryData::default(),
                 },
                 ..Default::default()
             },
@@ -1208,6 +1283,7 @@ impl HostSessionModel for MockHostSession {
                     latest_cache_read_tokens: Some(0),
                     control_plane: None,
                     control_plane_rollups: Vec::new(),
+                    transport: TransportTelemetryData::default(),
                 },
                 dispatcher_binding: Some(DispatcherBindingData {
                     session_id: "session_01HVLOCAL".into(),
@@ -1284,6 +1360,7 @@ impl HostSessionModel for MockHostSession {
                     latest_cache_read_tokens: Some(320),
                     control_plane: None,
                     control_plane_rollups: Vec::new(),
+                    transport: TransportTelemetryData::default(),
                 },
                 dispatcher_binding: Some(DispatcherBindingData {
                     session_id: "session_01HVHOME".into(),
@@ -1380,6 +1457,7 @@ impl HostSessionModel for MockHostSession {
                     latest_cache_read_tokens: Some(2_048),
                     control_plane: None,
                     control_plane_rollups: Vec::new(),
+                    transport: TransportTelemetryData::default(),
                 },
                 dispatcher_binding: Some(DispatcherBindingData {
                     session_id: "session_01HVENT".into(),
@@ -1423,6 +1501,7 @@ impl HostSessionModel for MockHostSession {
                     latest_cache_read_tokens: None,
                     control_plane: None,
                     control_plane_rollups: Vec::new(),
+                    transport: TransportTelemetryData::default(),
                 },
                 ..Default::default()
             },

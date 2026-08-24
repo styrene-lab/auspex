@@ -27,9 +27,15 @@ def parse_checksums(path: Path) -> list[dict[str, str]]:
     return entries
 
 
-def build_manifest(tag: str, repo: str, commit: str, assets: list[dict[str, str]]) -> dict[str, object]:
+def build_manifest(
+    tag: str,
+    repo: str,
+    commit: str,
+    assets: list[dict[str, str]],
+    omegon_runtime: dict[str, object] | None = None,
+) -> dict[str, object]:
     version = tag[1:] if tag.startswith("v") else tag
-    return {
+    manifest: dict[str, object] = {
         "tag": tag,
         "version": version,
         "channel": "prerelease" if "-rc." in version else "stable",
@@ -37,6 +43,9 @@ def build_manifest(tag: str, repo: str, commit: str, assets: list[dict[str, str]
         "repository": repo,
         "assets": assets,
     }
+    if omegon_runtime is not None:
+        manifest["omegon_runtime"] = omegon_runtime
+    return manifest
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -49,12 +58,31 @@ def main(argv: list[str] | None = None) -> int:
     generate.add_argument("--output", type=Path, required=True)
     generate.add_argument("--repo", required=True)
     generate.add_argument("--commit", required=True)
+    generate.add_argument("--omegon-runtime", type=Path)
 
     args = parser.parse_args(argv)
 
     if args.command == "generate":
         assets = parse_checksums(args.checksums)
-        manifest = build_manifest(args.tag, args.repo, args.commit, assets)
+        omegon_runtime = None
+        if args.omegon_runtime is not None:
+            omegon_runtime = json.loads(args.omegon_runtime.read_text())
+            required = {
+                "repository",
+                "branch",
+                "revision",
+                "version",
+                "binary",
+                "sha256",
+                "cargo_features",
+                "default_features",
+                "control_plane_schema",
+            }
+            if not isinstance(omegon_runtime, dict) or set(omegon_runtime) != required:
+                parser.error("Omegon runtime provenance has an invalid schema")
+            if omegon_runtime["default_features"] is not False:
+                parser.error("packaged Omegon runtime must disable default features")
+        manifest = build_manifest(args.tag, args.repo, args.commit, assets, omegon_runtime)
         args.output.parent.mkdir(parents=True, exist_ok=True)
         args.output.write_text(json.dumps(manifest, indent=2) + "\n")
         return 0

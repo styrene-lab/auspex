@@ -6,12 +6,18 @@ dist/
 
 # local agent/runtime artifacts
 .omegon/
+.auspex/
+.local/
+.cleave-session.json
+.cleave-session.json.lock
+ai/lifecycle/*.lock
 ai/memory/
 
 # local release/test artifacts
 *.tar.gz
 *.sha256
 release-manifest.json
+artifacts/
 __pycache__/
 scripts/__pycache__/
 scripts/tests/__pycache__/

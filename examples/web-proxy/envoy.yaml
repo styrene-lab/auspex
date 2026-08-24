@@ -1,0 +1,52 @@
+# Auspex/Omegon authority-adapter contract sketch for Envoy.
+# Use Lua/ext_authz/wasm for bearer discovery + Styrene proof injection.
+# This file documents route shape and breakpoints, not a complete deployment.
+
+static_resources:
+  listeners:
+    - name: auspex_https
+      address:
+        socket_address: { address: 127.0.0.1, port_value: 9443 }
+      filter_chains:
+        - filters:
+            - name: envoy.filters.network.http_connection_manager
+              typed_config:
+                "@type": type.googleapis.com/envoy.extensions.filters.network.http_connection_manager.v3.HttpConnectionManager
+                stat_prefix: auspex
+                upgrade_configs:
+                  - upgrade_type: websocket
+                route_config:
+                  name: local_route
+                  virtual_hosts:
+                    - name: auspex
+                      domains: ["*"]
+                      routes:
+                        - match: { prefix: "/_auspex/" }
+                          route: { cluster: auspex_reference_proxy }
+                        - match: { prefix: "/api/" }
+                          route: { cluster: omegon_daemon }
+                        - match: { prefix: "/" }
+                          route: { cluster: auspex_ui }
+                http_filters:
+                  - name: envoy.filters.http.router
+                    typed_config:
+                      "@type": type.googleapis.com/envoy.extensions.filters.http.router.v3.Router
+  clusters:
+    - name: auspex_ui
+      connect_timeout: 1s
+      type: STATIC
+      load_assignment:
+        cluster_name: auspex_ui
+        endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: 127.0.0.1, port_value: 9310 }}}}]}]
+    - name: auspex_reference_proxy
+      connect_timeout: 1s
+      type: STATIC
+      load_assignment:
+        cluster_name: auspex_reference_proxy
+        endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: 127.0.0.1, port_value: 9311 }}}}]}]
+    - name: omegon_daemon
+      connect_timeout: 1s
+      type: STATIC
+      load_assignment:
+        cluster_name: omegon_daemon
+        endpoints: [{ lb_endpoints: [{ endpoint: { address: { socket_address: { address: 127.0.0.1, port_value: 8080 }}}}]}]

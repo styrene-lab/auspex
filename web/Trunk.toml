@@ -7,7 +7,14 @@ release = true
 watch = ["../src", "../auspex-core/src", "../assets"]
 
 [[proxy]]
-# Proxy fleet API calls to the operator during local development.
-# In production, the operator serves both the WASM bundle and the API.
+# Proxy browser API calls to the Auspex local reverse proxy. The proxy owns
+# Omegon token discovery and trusted local principal headers; browser code does
+# not receive or forward the daemon bearer in this mode.
 rewrite = "/api/"
-backend = "http://localhost:8080/api/"
+backend = "http://localhost:9311/api/"
+
+[[proxy]]
+# Auspex-owned diagnostics/control plane for the local web proxy. This is not an
+# Omegon route and must stay under the _auspex namespace.
+rewrite = "/_auspex/"
+backend = "http://localhost:9311/_auspex/"

@@ -1,0 +1,47 @@
+# Auspex/Omegon authority-adapter contract sketch for Traefik.
+# Header stripping/injection shown here is illustrative only: daemon bearer
+# discovery and Styrene proof require middleware/plugin or a sidecar service.
+
+http:
+  routers:
+    auspex-ui:
+      rule: "PathPrefix(`/`)"
+      entryPoints: ["websecure"]
+      service: auspex-ui
+      tls: {}
+    auspex-status:
+      rule: "PathPrefix(`/_auspex/`)"
+      entryPoints: ["websecure"]
+      service: auspex-reference-proxy
+      tls: {}
+    omegon-api:
+      rule: "PathPrefix(`/api/`)"
+      entryPoints: ["websecure"]
+      service: omegon-daemon
+      tls: {}
+      middlewares: ["strip-browser-authority"]
+
+  middlewares:
+    strip-browser-authority:
+      headers:
+        customRequestHeaders:
+          Authorization: ""
+          Omegon-Principal-Issuer: ""
+          Omegon-Principal-Subject: ""
+          Omegon-Principal-Role: ""
+          Omegon-Principal-Client-Id: ""
+          Auspex-Proxy-Identity-Fingerprint: ""
+
+  services:
+    auspex-ui:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:9310"
+    auspex-reference-proxy:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:9311"
+    omegon-daemon:
+      loadBalancer:
+        servers:
+          - url: "http://127.0.0.1:8080"

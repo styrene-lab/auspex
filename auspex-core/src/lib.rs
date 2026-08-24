@@ -12,7 +12,6 @@ pub mod agent_packages;
 pub mod armory;
 pub mod cop_surface;
 pub mod omegon_control;
-pub mod omegon_version_pin;
 pub mod operational_profile;
 pub mod runtime_types;
 pub mod secret_grants;
@@ -41,9 +40,24 @@ pub mod host_action_policy;
 pub mod instance_registry;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod ipc_client;
+pub mod local_agent_ports;
 pub mod local_omegon_discovery;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod local_omegon_probe;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_bridge;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_bridge_server;
+pub mod managed_agent_feature;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_mqtt;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_mqtt_orchestrator;
+#[cfg(not(target_arch = "wasm32"))]
+pub mod managed_agent_mutation_coordinator;
+pub mod managed_agent_runtime;
+pub mod managed_agent_supervisor;
+pub mod managed_agents;
 #[cfg(not(target_arch = "wasm32"))]
 pub mod oci_backend;
 #[cfg(not(target_arch = "wasm32"))]
@@ -53,6 +67,7 @@ pub mod tls_config;
 pub mod cop_feature;
 pub mod instance_session;
 pub mod remote_session;
+pub mod runtime_inventory;
 pub mod state_engine;
 pub mod telemetry;
 

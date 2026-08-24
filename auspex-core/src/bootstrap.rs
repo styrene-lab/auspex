@@ -1,5 +1,7 @@
 use semver::Version;
 #[cfg(not(target_arch = "wasm32"))]
+use sha2::{Digest, Sha256};
+#[cfg(not(target_arch = "wasm32"))]
 use std::env;
 #[cfg(not(target_arch = "wasm32"))]
 use std::fs;
@@ -220,6 +222,9 @@ pub const STARTUP_URL_ENV: &str = "AUSPEX_OMEGON_STARTUP_URL";
 #[cfg(not(target_arch = "wasm32"))]
 pub const OMEGON_BIN_ENV: &str = "AUSPEX_OMEGON_BIN";
 pub const DEFAULT_STATE_URL: &str = "http://127.0.0.1:7842/api/state";
+
+#[cfg(not(target_arch = "wasm32"))]
+const DEFAULT_CONTROL_PORT: u16 = 7842;
 #[cfg(not(target_arch = "wasm32"))]
 const DEFAULT_TLS_STATE_URL: &str = "https://127.0.0.1:7842/api/state";
 pub const AUSPEX_PRIMARY_DEFAULT_POSTURE: &str = "architect";
@@ -343,6 +348,16 @@ struct CargoManifest {
 struct OmegonCompatibilityManifest {
     minimum_version: String,
     maximum_tested_version: String,
+    #[serde(default)]
+    source_repository: String,
+    #[serde(default)]
+    source_branch: String,
+    #[serde(default)]
+    source_revision: String,
+    #[serde(default)]
+    features: Vec<String>,
+    #[serde(default)]
+    packaged_binary: String,
     #[serde(default)]
     control_plane_schema: u32,
     #[serde(default)]
@@ -548,14 +563,16 @@ pub fn bootstrap_controller_from_env() -> BootstrapResult {
         };
     }
 
-    // 3. Default mode: Auspex owns an embedded local Omegon backend.
+    // 3. Default production mode: launch the pinned, TUI-free Omegon sidecar
+    // shipped by Auspex. Workspace and system discovery are development-only
+    // fallbacks; production never depends on an independently installed binary.
     if let Some(binary) = find_omegon_binary() {
         return BootstrapResult::spawning_omegon(binary);
     }
 
     // No explicit URL, no running instance, no binary found.
     BootstrapResult::startup_failure(
-        "Auspex could not locate its owned Omegon backend. Set AUSPEX_OMEGON_BIN or bundle the binary with the app.".into(),
+        "Auspex could not locate its pinned headless Omegon sidecar. Reinstall Auspex or set AUSPEX_OMEGON_BIN for an explicit development override.".into(),
     )
 }
 
@@ -583,6 +600,52 @@ pub fn bootstrap_controller_for_web() -> BootstrapResult {
         note: None,
         event_stream: None,
     }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+async fn negotiate_native_ipc(
+    startup: Option<&crate::omegon_control::OmegonStartupInfo>,
+) -> Result<
+    (
+        String,
+        omegon_traits::HelloResponse,
+        omegon_traits::IpcStateSnapshot,
+    ),
+    String,
+> {
+    let socket_path = startup
+        .and_then(|startup| startup.instance_descriptor.as_ref())
+        .and_then(|instance| instance.control_plane.as_ref())
+        .and_then(|control_plane| control_plane.ipc_socket_path.clone())
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| "runtime did not advertise an IPC socket".to_string())?;
+    let client = IpcCommandClient::new(socket_path.clone());
+    if !client.is_available() {
+        return Err(format!(
+            "advertised IPC socket is unavailable: {socket_path}"
+        ));
+    }
+    let hello = client
+        .inspect()
+        .await
+        .map_err(|error| format!("IPC handshake failed: {error}"))?;
+    for capability in ["state.snapshot", "events.stream"] {
+        if !hello
+            .capabilities
+            .iter()
+            .any(|advertised| advertised == capability)
+        {
+            return Err(format!("IPC server did not advertise {capability}"));
+        }
+    }
+    let snapshot = client
+        .get_state()
+        .await
+        .map_err(|error| format!("initial IPC state failed: {error}"))?;
+    if snapshot.instance.control_plane.server_instance_id != hello.server_instance_id {
+        return Err("IPC hello and initial state reported different server identities".into());
+    }
+    Ok((socket_path, hello, snapshot))
 }
 
 /// Async bootstrap from an HTTP state endpoint.
@@ -659,54 +722,59 @@ pub async fn bootstrap_from_http_state_async(
                 .replace("/api/state", "/ws")
         });
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_socket_path = startup
-        .as_ref()
-        .and_then(|startup| startup.instance_descriptor.as_ref())
-        .and_then(|instance| instance.control_plane.as_ref())
-        .and_then(|control_plane| control_plane.ipc_socket_path.clone())
-        .filter(|path| !path.is_empty());
+    let (ipc_connection, ipc_fallback_reason) = match negotiate_native_ipc(startup.as_ref()).await {
+        Ok((socket_path, hello, snapshot)) => {
+            controller.report_ipc_connected(&hello);
+            let _ = controller.apply_ipc_state_snapshot(&snapshot);
+            (
+                Some(crate::ipc_client::spawn_ipc_connection(socket_path)),
+                None,
+            )
+        }
+        Err(reason) => {
+            controller.report_websocket_compatibility(Some(reason.clone()));
+            (None, Some(reason))
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    controller.report_websocket_compatibility(None);
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_client = ipc_socket_path
-        .clone()
-        .map(IpcCommandClient::new)
-        .filter(|client| client.is_available());
+    let (ipc_command_client, ipc_event_stream) = match ipc_connection {
+        Some((client, stream)) => (Some(client), Some(stream)),
+        None => (None, None),
+    };
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_event_stream = ipc_socket_path
-        .filter(|_| ipc_client.is_some())
-        .map(crate::ipc_client::spawn_ipc_event_stream);
-    // Always create the WebSocket event stream — it handles command
-    // dispatch even when IPC is the primary event transport.
-    #[cfg(not(target_arch = "wasm32"))]
-    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
+    let event_stream = ipc_event_stream
+        .is_none()
+        .then(|| spawn_websocket_event_stream(&ws_url));
     #[cfg(target_arch = "wasm32")]
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
-    // Command transport: always use WebSocket for commands. The IPC socket
-    // uses a single-controller model that conflicts with the event stream
-    // connection. IPC is used for event streaming only; commands go via
-    // the multiplexed WebSocket endpoint.
     #[cfg(not(target_arch = "wasm32"))]
-    let command_transport = Some(CommandTransport::EventStream);
+    let command_transport = Some(match ipc_command_client {
+        Some(client) => CommandTransport::Ipc(client),
+        None => CommandTransport::EventStream,
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let transport_note = if ipc_event_stream.is_some() {
+        "State, events, and commands use negotiated multiplexed IPC".to_string()
+    } else {
+        format!(
+            "State, events, and commands use HTTP/WebSocket compatibility ({})",
+            ipc_fallback_reason.as_deref().unwrap_or("IPC unavailable")
+        )
+    };
+    #[cfg(target_arch = "wasm32")]
+    let transport_note =
+        "State, events, and commands use browser HTTP/WebSocket compatibility".to_string();
     let note = startup
         .as_ref()
         .map(|startup| {
-            #[cfg(not(target_arch = "wasm32"))]
-            let control_mode = if command_transport
-                .as_ref()
-                .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
-            {
-                "Control via IPC event stream"
-            } else {
-                "Control via degraded websocket bridge until Styrene RPC is established"
-            };
-            #[cfg(target_arch = "wasm32")]
-            let control_mode = "Control via WebSocket";
             let mut note = format!(
-                "Attached via Omegon startup discovery at {} (auth: {} via {}). {}. Streaming events from {}",
+                "Attached via Omegon startup discovery at {} (auth: {} via {}). {}.",
                 startup_url_from_state_url(url),
                 startup.auth_mode,
                 startup.auth_source,
-                control_mode,
-                ws_url
+                transport_note,
             );
             if let Some(warning) = compatibility_warning.as_deref() {
                 note.push_str(" Warning: ");
@@ -715,9 +783,8 @@ pub async fn bootstrap_from_http_state_async(
             note
         })
         .unwrap_or_else(|| {
-            let mut note = format!(
-                "Attached to Omegon state endpoint at {state_url}. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from {ws_url}"
-            );
+            let mut note =
+                format!("Attached to Omegon state endpoint at {state_url}. {transport_note}.");
             if let Some(warning) = compatibility_warning.as_deref() {
                 note.push_str(" Warning: ");
                 note.push_str(warning);
@@ -958,64 +1025,150 @@ async fn existing_omegon_is_auspex_primary(startup_url: &str) -> bool {
         .unwrap_or(false)
 }
 
-/// Locate the Omegon binary.
+#[cfg(not(target_arch = "wasm32"))]
+const PACKAGED_OMEGON_MANIFEST: &str = "omegon-runtime.json";
+
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Debug, serde::Deserialize)]
+struct PackagedOmegonRuntime {
+    repository: String,
+    branch: String,
+    revision: String,
+    version: String,
+    binary: String,
+    sha256: String,
+    cargo_features: Vec<String>,
+    default_features: bool,
+    control_plane_schema: u32,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
+    let manifest_path = binary
+        .parent()
+        .ok_or_else(|| "packaged Omegon path has no parent directory".to_string())?
+        .join(PACKAGED_OMEGON_MANIFEST);
+    let encoded = fs::read_to_string(&manifest_path).map_err(|error| {
+        format!(
+            "packaged Omegon manifest {} is unavailable: {error}",
+            manifest_path.display()
+        )
+    })?;
+    let manifest: PackagedOmegonRuntime = serde_json::from_str(&encoded)
+        .map_err(|error| format!("packaged Omegon manifest is invalid: {error}"))?;
+    let pinned = OmegonCompatibilityManifest::parse();
+    if manifest.repository != pinned.source_repository
+        || manifest.branch != pinned.source_branch
+        || manifest.revision != pinned.source_revision
+        || manifest.version != pinned.maximum_tested_version
+        || manifest.binary != pinned.packaged_binary
+        || manifest.control_plane_schema != pinned.control_plane_schema
+        || manifest.default_features
+        || manifest.cargo_features != pinned.features
+    {
+        return Err(
+            "packaged Omegon manifest does not match the pinned Auspex runtime contract".into(),
+        );
+    }
+    let bytes = fs::read(binary)
+        .map_err(|error| format!("packaged Omegon binary cannot be read: {error}"))?;
+    let digest = format!("{:x}", Sha256::digest(bytes));
+    if digest != manifest.sha256 {
+        return Err("packaged Omegon binary digest does not match its manifest".into());
+    }
+    Ok(())
+}
+
+/// Locate the Omegon runtime used by Auspex.
 ///
-/// Priority order:
-/// 1. `AUSPEX_OMEGON_BIN` env var — explicit override
-/// 2. `~/.local/bin/omegon` — common user-local install location
-/// 3. `~/.cargo/bin/omegon` — default `cargo install` location
-/// 4. `/usr/local/bin/omegon` and `/opt/homebrew/bin/omegon` — common system paths
-/// 5. `which omegon` — PATH lookup
+/// Production resolution is intentionally independent of an operator-installed
+/// Omegon or `PATH`:
+/// 1. `AUSPEX_OMEGON_BIN` — explicit development/test override
+/// 2. an Auspex-bundled, pinned, TUI-free sidecar beside the executable
+/// 3. workspace-local Omegon builds — development fallback only
+/// 4. user/system/PATH installs — development fallback only when
+///    `AUSPEX_ALLOW_SYSTEM_OMEGON=1`
 #[cfg(not(target_arch = "wasm32"))]
 pub fn find_omegon_binary() -> Option<PathBuf> {
     if let Some(path) = non_empty_env(OMEGON_BIN_ENV) {
         let p = PathBuf::from(path);
-        if p.exists() {
+        if p.is_file() {
             return Some(p);
         }
     }
 
-    if let Ok(home) = std::env::var("HOME") {
-        for rel in &[".local/bin/omegon", ".cargo/bin/omegon"] {
-            let p = PathBuf::from(&home).join(rel);
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    if let Some(path) = bundled_omegon_binary() {
+        return Some(path);
     }
 
     for cwd in auspex_workspace_roots() {
         for rel in &[
+            ".local/omegon-auspex-managed-bridge/target/debug/omegon",
+            ".local/omegon-auspex-managed-bridge/target/release/omegon",
             "../omegon/target/debug/omegon",
             "../omegon/target/release/omegon",
         ] {
             let p = cwd.join(rel);
-            if p.exists() {
+            if p.is_file() {
                 return Some(p);
             }
         }
     }
 
-    for abs in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
-        let p = PathBuf::from(abs);
-        if p.exists() {
-            return Some(p);
-        }
-    }
-
-    if let Ok(output) = std::process::Command::new("which").arg("omegon").output()
-        && output.status.success()
-    {
-        let s = String::from_utf8_lossy(&output.stdout).trim().to_string();
-        if !s.is_empty() {
-            let p = PathBuf::from(s);
-            if p.exists() {
-                return Some(p);
-            }
-        }
+    if non_empty_env("AUSPEX_ALLOW_SYSTEM_OMEGON").as_deref() == Some("1") {
+        return find_system_omegon_binary();
     }
 
     None
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn bundled_omegon_binary() -> Option<PathBuf> {
+    let executable = std::env::current_exe().ok()?;
+    let executable_dir = executable.parent()?;
+    let binary_name = if cfg!(windows) {
+        "omegon-headless.exe"
+    } else {
+        "omegon-headless"
+    };
+    let candidates = [
+        executable_dir.join(binary_name),
+        executable_dir.join("runtime").join(binary_name),
+        executable_dir
+            .join("../Resources/runtime")
+            .join(binary_name),
+        executable_dir.join("../libexec/auspex").join(binary_name),
+    ];
+    candidates
+        .into_iter()
+        .find(|path| path.is_file() && verify_packaged_omegon(path).is_ok())
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn find_system_omegon_binary() -> Option<PathBuf> {
+    if let Ok(home) = std::env::var("HOME") {
+        for rel in &[".local/bin/omegon", ".cargo/bin/omegon"] {
+            let path = PathBuf::from(&home).join(rel);
+            if path.is_file() {
+                return Some(path);
+            }
+        }
+    }
+    for absolute in &["/usr/local/bin/omegon", "/opt/homebrew/bin/omegon"] {
+        let path = PathBuf::from(absolute);
+        if path.is_file() {
+            return Some(path);
+        }
+    }
+    let output = std::process::Command::new("which")
+        .arg("omegon")
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    let path = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+    path.is_file().then_some(path)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1103,7 +1256,36 @@ fn startup_state_url(startup: &OmegonStartupInfo) -> Option<String> {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ManagedAgentBridgeLaunchBinding {
+    pub socket_path: std::path::PathBuf,
+    pub capability: String,
+    pub parent_session_id: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+impl ManagedAgentBridgeLaunchBinding {
+    fn apply(&self, command: &mut tokio::process::Command) {
+        command
+            .env("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET", &self.socket_path)
+            .env("AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY", &self.capability)
+            .env(
+                "AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID",
+                &self.parent_session_id,
+            );
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
 pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResult {
+    spawn_and_attach_omegon_with_bridge(binary, None).await
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+pub async fn spawn_and_attach_omegon_with_bridge(
+    binary: &std::path::Path,
+    bridge: Option<&ManagedAgentBridgeLaunchBinding>,
+) -> BootstrapResult {
     use tokio::io::AsyncBufReadExt;
 
     if omegon_is_running_async().await {
@@ -1120,7 +1302,15 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
             match bootstrap_from_http_state_async(&default_state_url, &ConnectHints::from_env())
                 .await
             {
-                Ok(result) => return result,
+                Ok(result) => {
+                    // Attached to an existing Auspex primary on the
+                    // default port. Sweep orphans stranded on fallback
+                    // ports by earlier SIGKILLed sessions — the pid file
+                    // only remembers the most recent child, so this is
+                    // the only place they get found.
+                    reap_orphaned_omegon_serves(Some(DEFAULT_CONTROL_PORT));
+                    return result;
+                }
                 Err(error) => {
                     eprintln!(
                         "auspex: existing Auspex primary Omegon at {default_state_url} failed bootstrap ({error}); reaping and spawning fresh one"
@@ -1135,8 +1325,18 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
         }
     }
 
+    // Sweep every orphaned Auspex-owned serve process (any port) before
+    // picking a port, so a TERM'd orphan on the default port doesn't
+    // force this launch up the fallback range.
+    if reap_orphaned_omegon_serves(None) > 0 {
+        for _ in 0..10 {
+            if port_is_free(DEFAULT_CONTROL_PORT).await {
+                break;
+            }
+            tokio::time::sleep(SPAWN_POLL).await;
+        }
+    }
     let control_port = choose_auspex_control_port().await;
-    reap_owned_omegon_child();
     ensure_omegon_profile_for_auspex();
     validate_deploy_prerequisites();
     install_auspex_omegon_assets();
@@ -1157,6 +1357,9 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     let agent_bundle = auspex_agent_bundle_path();
     let args = build_omegon_serve_args(agent_bundle.as_deref(), &model, control_port, &tls_args);
     command.args(args);
+    if let Some(bridge) = bridge {
+        bridge.apply(&mut command);
+    }
     let mut child = match command
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -1171,10 +1374,15 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     };
 
     record_owned_omegon_pid(child.id());
+    register_owned_omegon_exit_reaper();
 
     let stdout = match child.stdout.take() {
         Some(stdout) => stdout,
         None => {
+            // Kill the child we just spawned — returning a failure while
+            // it keeps running is exactly the orphan leak.
+            let _ = child.start_kill();
+            clear_owned_omegon_pid();
             return BootstrapResult::startup_failure(
                 "Owned Omegon backend spawned but stdout was not captured.".into(),
             );
@@ -1236,6 +1444,10 @@ pub async fn spawn_and_attach_omegon(binary: &std::path::Path) -> BootstrapResul
     }
 
     let Some(info) = startup_info else {
+        // Startup timed out or stdout closed without a handshake. Do not
+        // leave the half-started child running behind a failure result.
+        let _ = child.start_kill();
+        clear_owned_omegon_pid();
         let stderr_tail = if startup_stderr.is_empty() {
             String::new()
         } else {
@@ -1368,7 +1580,19 @@ fn clear_owned_omegon_pid() {
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn owned_omegon_pids() -> Vec<u32> {
+fn command_is_owned_omegon_serve(command: &str) -> bool {
+    // Match the shape produced by build_omegon_serve_args():
+    //   omegon --posture <p> serve --agent <...>/agents/auspex-agent --control-port <port> --strict-port --model <m>
+    // The agent bundle path is the ownership signal; the port varies
+    // (7842 plus fallbacks), so it must not be part of the match.
+    command.contains("omegon")
+        && command.contains(" serve ")
+        && command.contains(AUSPEX_AGENT_BUNDLE_REL)
+        && command.contains("--strict-port")
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn owned_omegon_processes() -> Vec<(u32, String)> {
     let output = match std::process::Command::new("ps")
         .args(["ax", "-o", "pid=,command="])
         .output()
@@ -1386,14 +1610,103 @@ fn owned_omegon_pids() -> Vec<u32> {
         .filter_map(|line| {
             let trimmed = line.trim();
             let (pid, command) = trimmed.split_once(' ')?;
-            if !(command.contains("omegon serve --control-port 7842 --strict-port")
-                || command.contains("omegon serve --strict-port --control-port 7842"))
-            {
+            if !command_is_owned_omegon_serve(command) {
                 return None;
             }
-            pid.parse::<u32>().ok()
+            Some((pid.parse::<u32>().ok()?, command.to_string()))
         })
         .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn owned_omegon_pids() -> Vec<u32> {
+    owned_omegon_processes()
+        .into_iter()
+        .map(|(pid, _)| pid)
+        .collect()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn command_is_on_control_port(command: &str, port: u16) -> bool {
+    let with_space = format!("--control-port {port} ");
+    let at_end = format!("--control-port {port}");
+    command.contains(&with_space) || command.ends_with(&at_end)
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn parent_pid_of(pid: u32) -> Option<u32> {
+    let output = std::process::Command::new("ps")
+        .args(["-o", "ppid=", "-p", &pid.to_string()])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u32>()
+        .ok()
+        .filter(|ppid| *ppid > 1)
+}
+
+/// Pids that must never be swept: this process and its ancestor chain.
+/// If Auspex (or a test harness) is itself hosted under an owned
+/// `omegon serve`, killing that ancestor kills the session doing the
+/// cleanup.
+#[cfg(not(target_arch = "wasm32"))]
+fn protected_pids() -> Vec<u32> {
+    let mut protected = vec![std::process::id()];
+    let mut current = std::process::id();
+    // Bounded walk — ancestor chains are short; avoid loops on ps quirks.
+    for _ in 0..16 {
+        match parent_pid_of(current) {
+            Some(ppid) if !protected.contains(&ppid) => {
+                protected.push(ppid);
+                current = ppid;
+            }
+            _ => break,
+        }
+    }
+    protected
+}
+
+/// Kill every Auspex-owned `omegon serve` process except the one bound to
+/// `keep_port` (the primary being attached to, if any). Returns the number
+/// of processes killed.
+///
+/// Orphans accumulate on fallback ports when an Auspex process dies
+/// without running its exit reaper (SIGKILL, crash): the pid file only
+/// remembers the most recent child, so a matcher-based sweep is the only
+/// way to find the rest.
+#[cfg(not(target_arch = "wasm32"))]
+fn reap_orphaned_omegon_serves(keep_port: Option<u16>) -> usize {
+    let candidates = owned_omegon_processes();
+    if candidates.is_empty() {
+        return 0;
+    }
+    let protected = protected_pids();
+    let mut kept_any = false;
+    let mut killed = 0;
+    for (pid, command) in candidates {
+        if protected.contains(&pid) {
+            kept_any = true;
+            continue;
+        }
+        if let Some(port) = keep_port
+            && command_is_on_control_port(&command, port)
+        {
+            kept_any = true;
+            continue;
+        }
+        let _ = std::process::Command::new("kill")
+            .args(["-TERM", &pid.to_string()])
+            .status();
+        killed += 1;
+    }
+    if !kept_any {
+        clear_owned_omegon_pid();
+    }
+    killed
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1401,6 +1714,25 @@ fn pid_is_owned_omegon(pid: u32) -> bool {
     owned_omegon_pids()
         .into_iter()
         .any(|candidate| candidate == pid)
+}
+
+/// Kill the owned Omegon child when the Auspex process exits.
+///
+/// Dioxus's desktop event loop terminates the process from inside
+/// `launch()` (it never returns), so ordinary post-loop teardown code is
+/// unreachable. `atexit` handlers still run on that normal-exit path
+/// (including `std::process::exit`), which makes this the one reliable
+/// hook for reaping the child on Cmd+Q. SIGKILL still leaks — the
+/// launch-time reap in `spawn_and_attach_omegon` covers that case.
+#[cfg(not(target_arch = "wasm32"))]
+fn register_owned_omegon_exit_reaper() {
+    extern "C" fn reap_on_exit() {
+        reap_owned_omegon_child();
+    }
+    static HOOK: std::sync::Once = std::sync::Once::new();
+    HOOK.call_once(|| unsafe {
+        libc::atexit(reap_on_exit);
+    });
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1585,6 +1917,31 @@ fn install_auspex_omegon_assets() {
         let _ = std::fs::set_permissions(&stub_path, std::fs::Permissions::from_mode(0o755));
     }
 
+    // ── Managed-agent bridge extension ────────────────────────────
+    let managed_plugin_dir = std::path::PathBuf::from(".omegon/plugins/auspex-managed-agents");
+    let managed_tools_dir = managed_plugin_dir.join("tools");
+    if let Err(error) = std::fs::create_dir_all(&managed_tools_dir) {
+        eprintln!("auspex: could not create managed-agent plugin directory: {error}");
+        return;
+    }
+    let managed_manifest = include_str!("../../assets/managed-agent-plugin/plugin.toml");
+    let managed_tool = include_str!("../../assets/managed-agent-plugin/tools/agents_status.py");
+    if let Err(error) = std::fs::write(managed_plugin_dir.join("plugin.toml"), managed_manifest) {
+        eprintln!("auspex: could not write managed-agent plugin manifest: {error}");
+        return;
+    }
+    let managed_tool_path = managed_tools_dir.join("agents_status.py");
+    if let Err(error) = std::fs::write(&managed_tool_path, managed_tool) {
+        eprintln!("auspex: could not write managed-agent bridge tool: {error}");
+        return;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ =
+            std::fs::set_permissions(&managed_tool_path, std::fs::Permissions::from_mode(0o700));
+    }
+
     // ── Skill (agent instructions) ─────────────────────────────────
     let skill_dir = std::path::PathBuf::from(".omegon/skills/cop-surface");
     if let Err(error) = std::fs::create_dir_all(&skill_dir) {
@@ -1695,12 +2052,7 @@ fn default_omegon_control_port_pids() -> Vec<u32> {
 
 #[cfg(not(target_arch = "wasm32"))]
 fn reap_conflicting_omegon_children() {
-    for pid in owned_omegon_pids() {
-        let _ = std::process::Command::new("kill")
-            .args(["-TERM", &pid.to_string()])
-            .status();
-    }
-    clear_owned_omegon_pid();
+    reap_orphaned_omegon_serves(None);
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -1767,7 +2119,7 @@ mod tests {
             auth_source: "default".into(),
             instance_descriptor: Some(crate::omegon_control::OmegonInstanceDescriptor {
                 control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
-                    omegon_version: Some("0.25.4".into()),
+                    omegon_version: Some("0.29.0-dev".into()),
                     schema_version: 2,
                     ..Default::default()
                 }),
@@ -1775,6 +2127,60 @@ mod tests {
             }),
             ..Default::default()
         }
+    }
+
+    #[test]
+    fn command_matcher_accepts_real_spawn_shape_on_any_port() {
+        let real = "/Users/x/omegon/target/release/omegon --posture architect serve \
+                    --agent /Users/x/auspex/agents/auspex-agent --control-port 7883 \
+                    --strict-port --model openai-codex:gpt-5.5";
+        assert!(command_is_owned_omegon_serve(real));
+    }
+
+    #[test]
+    fn control_port_filter_matches_exact_port_only() {
+        let primary = "omegon --posture architect serve --agent /x/agents/auspex-agent \
+                       --control-port 7842 --strict-port --model m";
+        assert!(command_is_on_control_port(primary, 7842));
+        // Prefix of a longer port number must not match.
+        assert!(!command_is_on_control_port(primary, 784));
+        assert!(!command_is_on_control_port(primary, 7843));
+
+        // Port as the final token (no trailing args).
+        let fallback = "omegon serve --agent /x/agents/auspex-agent --control-port 7843";
+        assert!(command_is_on_control_port(fallback, 7843));
+        assert!(!command_is_on_control_port(fallback, 7842));
+    }
+
+    #[test]
+    fn protected_pids_includes_self_and_walks_ancestors() {
+        let protected = protected_pids();
+        assert!(protected.contains(&std::process::id()));
+        // The test process always has a live parent (cargo test runner).
+        assert!(
+            protected.len() >= 2,
+            "expected at least self + one ancestor, got {protected:?}"
+        );
+        // Never protect pid 1 or 0 — filter guards against sweeping init,
+        // and against a degenerate chain.
+        assert!(!protected.contains(&0));
+        assert!(!protected.contains(&1));
+    }
+
+    #[test]
+    fn command_matcher_rejects_foreign_omegon_processes() {
+        // An omegon serve not launched with the auspex agent bundle is not ours.
+        assert!(!command_is_owned_omegon_serve(
+            "omegon serve --control-port 7842 --strict-port"
+        ));
+        // Non-serve omegon invocations are never ours.
+        assert!(!command_is_owned_omegon_serve(
+            "omegon auth login openai-codex"
+        ));
+        // Unrelated processes mentioning the bundle path are not serve commands.
+        assert!(!command_is_owned_omegon_serve(
+            "vim /Users/x/auspex/agents/auspex-agent/manifest.toml"
+        ));
     }
 
     #[test]
@@ -1893,7 +2299,7 @@ mod tests {
             .expect("fixture control plane")
             .omegon_version = Some("0.22.99".into());
         let err = validate_startup_info(&info).unwrap_err();
-        assert!(err.contains("requires Omegon 0.25.0 or newer"));
+        assert!(err.contains("requires Omegon 0.29.0-dev or newer"));
     }
 
     #[test]
@@ -1903,7 +2309,7 @@ mod tests {
             .as_mut()
             .and_then(|descriptor| descriptor.control_plane.as_mut())
             .expect("fixture control plane")
-            .omegon_version = Some("0.26.99".into());
+            .omegon_version = Some("0.30.0".into());
         let warning = validate_startup_info(&info).unwrap();
         assert!(
             warning
@@ -2001,6 +2407,72 @@ mod tests {
     }
 
     #[test]
+    fn production_discovery_does_not_implicitly_enable_system_omegon() {
+        assert_ne!(
+            non_empty_env("AUSPEX_ALLOW_SYSTEM_OMEGON").as_deref(),
+            Some("1"),
+            "test environment unexpectedly enables system Omegon discovery"
+        );
+    }
+
+    #[test]
+    fn bundled_sidecar_name_is_distinct_from_operator_install() {
+        let binary_name = if cfg!(windows) {
+            "omegon-headless.exe"
+        } else {
+            "omegon-headless"
+        };
+        assert!(binary_name.starts_with("omegon-headless"));
+        assert_ne!(binary_name, "omegon");
+    }
+
+    #[test]
+    fn verifies_packaged_headless_omegon_manifest_and_digest() {
+        let root = std::env::temp_dir().join(format!(
+            "auspex-packaged-omegon-{}",
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let binary = root.join("omegon-headless");
+        std::fs::write(&binary, b"pinned omegon").unwrap();
+        let digest = format!("{:x}", Sha256::digest(b"pinned omegon"));
+        let manifest = serde_json::json!({
+            "repository": "https://github.com/styrene-lab/omegon.git",
+            "branch": "design/kernel-plugin-decomposition",
+            "revision": "227f73502c9c7218ef76ffbb2a020980568c7103",
+            "version": "0.29.0-dev",
+            "binary": "runtime/omegon-headless",
+            "sha256": digest,
+            "cargo_features": [],
+            "default_features": false,
+            "control_plane_schema": 2
+        });
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+
+        assert!(verify_packaged_omegon(&binary).is_ok());
+        let mut stale_manifest = manifest.clone();
+        stale_manifest["revision"] = serde_json::json!("6c7e39f66fcc4d3576d1351175edc168fed5d982");
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&stale_manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_packaged_omegon(&binary).is_err());
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
+        std::fs::write(&binary, b"tampered").unwrap();
+        assert!(verify_packaged_omegon(&binary).is_err());
+        let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[test]
     fn owned_omegon_pid_round_trips() {
         clear_owned_omegon_pid();
         record_owned_omegon_pid(Some(4242));
@@ -2038,6 +2510,38 @@ mod tests {
     #[test]
     fn websocket_token_env_is_opt_in() {
         let _ = websocket_token_from_env();
+    }
+
+    #[test]
+    fn launch_binding_applies_private_bridge_environment() {
+        let binding = ManagedAgentBridgeLaunchBinding {
+            socket_path: "/tmp/auspex-managed.sock".into(),
+            capability: "A".repeat(43),
+            parent_session_id: "primary-session".into(),
+        };
+        let mut command = tokio::process::Command::new("omegon");
+        binding.apply(&mut command);
+        let environment: std::collections::BTreeMap<_, _> = command
+            .as_std()
+            .get_envs()
+            .filter_map(|(key, value)| value.map(|value| (key.to_owned(), value.to_owned())))
+            .collect();
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new("AUSPEX_MANAGED_AGENT_BRIDGE_SOCKET")),
+            Some(&std::ffi::OsString::from("/tmp/auspex-managed.sock"))
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new(
+                "AUSPEX_MANAGED_AGENT_PARENT_SESSION_ID"
+            )),
+            Some(&std::ffi::OsString::from("primary-session"))
+        );
+        assert_eq!(
+            environment.get(std::ffi::OsStr::new(
+                "AUSPEX_MANAGED_AGENT_BRIDGE_CAPABILITY"
+            )),
+            Some(&std::ffi::OsString::from(&binding.capability))
+        );
     }
 
     #[tokio::test]

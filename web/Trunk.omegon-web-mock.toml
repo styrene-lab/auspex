@@ -1,0 +1,26 @@
+[build]
+target = "omegon-web-mock.html"
+dist = "../dist-omegon-web-mock"
+release = true
+
+[watch]
+watch = ["../src", "../auspex-core/src", "../assets"]
+
+[[proxy]]
+# WebSocket surface stream must be proxied with upgrade support. Route it
+# through the Auspex local authority proxy so browser code never receives the
+# daemon bearer.
+backend = "ws://localhost:9311/api/sessions/default/surfaces/stream"
+rewrite = "/api/sessions/default/surfaces/stream"
+ws = true
+
+[[proxy]]
+# Proxy daemon API calls through the Auspex local authority proxy. The proxy owns
+# token discovery and trusted local principal headers.
+rewrite = "/api/"
+backend = "http://localhost:9311/api/"
+
+[[proxy]]
+# Auspex-owned diagnostics/control plane for the local web proxy.
+rewrite = "/_auspex/"
+backend = "http://localhost:9311/_auspex/"

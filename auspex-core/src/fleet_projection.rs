@@ -214,7 +214,7 @@ mod tests {
     #[test]
     fn projection_summarizes_compatibility_and_readiness() {
         let projection = FleetRuntimeProjection::from_instances(&[
-            record("ok", "0.25.4", true),
+            record("ok", "0.29.0-dev", true),
             record("old", "0.23.0", false),
         ]);
 

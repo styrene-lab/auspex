@@ -1,6 +1,7 @@
 #![allow(dead_code)]
 
 use serde::{Deserialize, Serialize};
+use uuid::Uuid;
 
 use crate::secret_grants::SecretGrantPrincipal;
 
@@ -34,9 +35,32 @@ pub enum OperatorCommand {
         model: Option<String>,
     },
     ControlMethod {
+        command_id: ManagedCommandId,
         method: String,
         payload: serde_json::Value,
     },
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[serde(transparent)]
+pub struct ManagedCommandId(Uuid);
+
+impl ManagedCommandId {
+    pub fn new() -> Self {
+        Self(Uuid::new_v4())
+    }
+}
+
+impl Default for ManagedCommandId {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl std::fmt::Display for ManagedCommandId {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        self.0.fmt(formatter)
+    }
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
@@ -97,9 +121,24 @@ impl TargetedCommand {
         Self {
             target,
             command: OperatorCommand::ControlMethod {
+                command_id: ManagedCommandId::new(),
                 method: method.into(),
                 payload,
             },
+        }
+    }
+
+    pub fn managed_command_id(&self) -> Option<ManagedCommandId> {
+        match self.command {
+            OperatorCommand::ControlMethod { command_id, .. } => Some(command_id),
+            _ => None,
+        }
+    }
+
+    pub fn method(&self) -> Option<&str> {
+        match &self.command {
+            OperatorCommand::ControlMethod { method, .. } => Some(method),
+            _ => None,
         }
     }
 
@@ -128,12 +167,20 @@ impl TargetedCommand {
                 "model": model,
             })
             .to_string(),
-            OperatorCommand::ControlMethod { method, payload } => {
+            OperatorCommand::ControlMethod {
+                command_id,
+                method,
+                payload,
+            } => {
                 let mut command = payload.clone();
                 if let serde_json::Value::Object(ref mut map) = command {
                     map.insert(
                         "type".to_string(),
                         serde_json::Value::String(method.clone()),
+                    );
+                    map.insert(
+                        "command_id".to_string(),
+                        serde_json::to_value(command_id).expect("command id serializes"),
                     );
                 }
                 command.to_string()
@@ -813,6 +860,23 @@ mod tests {
             command.transport_json().unwrap(),
             r#"{"target":{"session_key":"remote:session_01HVDEMO","dispatcher_instance_id":"omg_primary_01HVDEMO"},"command":{"kind":"dispatcher_switch","request_id":"dispatcher-switch-1","profile":"supervisor-heavy","model":"openai:gpt-4.1"}}"#
         );
+    }
+
+    #[test]
+    fn control_method_web_command_carries_id_in_omegon_native_shape() {
+        let command = TargetedCommand::control_method(
+            CommandTarget {
+                session_key: "remote:s".into(),
+                dispatcher_instance_id: Some("w".into()),
+            },
+            "delegate_get",
+            serde_json::json!({"schema_version": 1}),
+        );
+        let id = command.managed_command_id().unwrap();
+        let value: serde_json::Value = serde_json::from_str(&command.web_command_json()).unwrap();
+        assert_eq!(value["type"], "delegate_get");
+        assert_eq!(value["command_id"], id.to_string());
+        assert_eq!(value["schema_version"], 1);
     }
 
     #[test]

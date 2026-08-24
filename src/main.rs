@@ -1,4 +1,8 @@
 mod app;
+#[cfg(feature = "omegon-web-mock")]
+mod omegon_web_contract;
+#[cfg(all(target_arch = "wasm32", feature = "omegon-web-mock"))]
+mod omegon_web_mock;
 mod screens;
 #[allow(dead_code)]
 mod workflow;
@@ -66,15 +70,7 @@ fn main() {
             dioxus::desktop::Config::new()
                 .with_menu(menu)
                 .with_window(window)
-                .with_custom_head(custom_head)
-                .with_on_window(|_window, _| {
-                    #[cfg(target_os = "macos")]
-                    {
-                        use dioxus::desktop::tao::platform::macos::WindowExtMacOS;
-                        _window.set_titlebar_transparent(false);
-                        _window.set_fullsize_content_view(false);
-                    }
-                }),
+                .with_custom_head(custom_head),
         )
         .with_context(bootstrap)
         .launch(app::App);
@@ -82,12 +78,20 @@ fn main() {
 
 #[cfg(target_arch = "wasm32")]
 fn main() {
-    let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
     inject_web_styles();
 
-    dioxus::LaunchBuilder::web()
-        .with_context(bootstrap)
-        .launch(app::App);
+    #[cfg(feature = "omegon-web-mock")]
+    {
+        dioxus::LaunchBuilder::web().launch(omegon_web_mock::OmegonWebMockApp);
+    }
+
+    #[cfg(not(feature = "omegon-web-mock"))]
+    {
+        let bootstrap = auspex_core::bootstrap::bootstrap_controller_for_web();
+        dioxus::LaunchBuilder::web()
+            .with_context(bootstrap)
+            .launch(app::App);
+    }
 }
 
 #[cfg(target_arch = "wasm32")]

@@ -80,6 +80,17 @@ impl EventStreamHandle {
         self.cancelled.load(std::sync::atomic::Ordering::Relaxed)
     }
 
+    #[cfg(not(target_arch = "wasm32"))]
+    pub(crate) fn push_transport_event(&self, state: &str) {
+        self.inbox.push(
+            serde_json::json!({
+                "type": "auspex_transport_state",
+                "state": state,
+            })
+            .to_string(),
+        );
+    }
+
     pub fn url(&self) -> &str {
         match &self.source {
             EventStreamSource::WebSocket { url } => url,
@@ -192,12 +203,14 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
 
             match connect_result {
                 Err(error) => {
+                    worker_handle.push_transport_event("disconnected");
                     worker_handle.push_system_notice(format!(
                         "Could not connect to Omegon event stream at {}: {error}",
                         worker_handle.url()
                     ));
                 }
                 Ok((ws_stream, _response)) => {
+                    worker_handle.push_transport_event("connected");
                     backoff = Duration::from_secs(1);
                     worker_handle.push_system_notice(format!(
                         "Connected to Omegon event stream at {}",
@@ -228,6 +241,7 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                                 );
                             }
                             Ok(Some(Ok(Message::Close(_)))) => {
+                                worker_handle.push_transport_event("disconnected");
                                 worker_handle.push_system_notice(
                                     "Omegon event stream closed by server. Will reconnect.",
                                 );
@@ -237,12 +251,14 @@ pub fn spawn_websocket_event_stream(url: &str) -> EventStreamHandle {
                                 Message::Ping(_) | Message::Pong(_) | Message::Frame(_),
                             ))) => {}
                             Ok(Some(Err(error))) => {
+                                worker_handle.push_transport_event("disconnected");
                                 worker_handle.push_system_notice(format!(
                                     "Omegon event stream error: {error}. Will reconnect."
                                 ));
                                 break;
                             }
                             Ok(None) => {
+                                worker_handle.push_transport_event("disconnected");
                                 worker_handle.push_system_notice(
                                     "Omegon event stream ended. Will reconnect.",
                                 );

@@ -1,0 +1,30 @@
+[plugin]
+type = "extension"
+id = "dev.styrene.auspex.managed-agents"
+name = "Auspex Managed Agents"
+version = "0.1.0"
+description = "Private read-only managed-agent status bridge for the Auspex primary coordinator"
+
+[[tools]]
+name = "agents_status"
+description = "Read canonical Auspex-supervised managed-agent status for this primary session. Optionally scope the lookup to one managed run ID."
+runner = "python"
+script = "tools/agents_status.py"
+timeout_secs = 5
+parameters = { type = "object", additionalProperties = false, properties = { run_id = { type = "string", format = "uuid", description = "Optional managed run UUID" } } }
+
+[[tools]]
+name = "agents_dispatch"
+description = "Dispatch an idempotent Auspex-supervised managed-agent run for this primary session."
+runner = "python"
+script = "tools/agents_dispatch.py"
+timeout_secs = 15
+parameters = { type = "object", additionalProperties = false, required = ["directive"], properties = { operation_id = { type = "string", description = "Stable idempotency key; generated when omitted" }, directive = { type = "string" }, worker_profile = { type = "string", enum = ["scout", "patch", "verify"] }, scope = { type = "array", items = { type = "string" } }, supervisor_deadline_seconds = { type = "integer", minimum = 1, maximum = 86400 } } }
+
+[[tools]]
+name = "agents_cancel"
+description = "Request idempotent cancellation of an Auspex-supervised managed run in this primary session."
+runner = "python"
+script = "tools/agents_cancel.py"
+timeout_secs = 15
+parameters = { type = "object", additionalProperties = false, required = ["run_id"], properties = { operation_id = { type = "string" }, run_id = { type = "string", format = "uuid" }, reason = { type = "string" } } }

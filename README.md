@@ -32,7 +32,7 @@ Current reality:
 Prerequisites:
 - Rust stable
 - Node.js 22+ for the site scaffold
-- sibling Omegon checkout at `../omegon` because `omegon-traits` is a path dependency
+- network access to fetch the revision-pinned `omegon-traits` dependency on first build
 
 Typical commands:
 ```bash
@@ -42,14 +42,14 @@ just validate
 cargo run
 ```
 
-## CI and path dependency note
+## Omegon dependency boundary
 
-Auspex depends on:
+Auspex consumes Omegon's shared IPC types from an immutable source revision:
 ```toml
-omegon-traits = { path = "../omegon/core/crates/omegon-traits" }
+omegon-traits = { git = "https://github.com/styrene-lab/omegon.git", rev = "227f73502c9c7218ef76ffbb2a020980568c7103" }
 ```
 
-That means local development and CI both need a sibling `omegon` checkout. GitHub Actions handles this by checking out `styrene-lab/omegon` and symlinking it into the expected sibling path before running Cargo.
+Normal development and CI do not require a sibling Omegon checkout. Release packaging separately checks out and builds the Omegon runtime revision declared in `[package.metadata.omegon]`.
 
 ## Bootstrap paths
 

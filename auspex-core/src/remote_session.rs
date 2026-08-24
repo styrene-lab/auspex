@@ -3,8 +3,8 @@ use crate::fixtures::{
     DispatcherBindingData, DispatcherOptionData, DispatcherSwitchStateData, GraphData,
     HostSessionSummary, InstanceControlPlaneData, InstanceDescriptorData, InstanceIdentityData,
     InstancePolicyData, InstanceRuntimeData, InstanceSessionDescriptorData, InstanceWorkspaceData,
-    MessageRole, OriginKind, PlanSnapshotData, ProviderInfo, SessionData, ShellState,
-    SystemNoticeKind, TranscriptData, WorkData, WorkNode,
+    IpcSessionAuthorityData, MessageRole, OriginKind, PlanSnapshotData, ProviderInfo, SessionData,
+    ShellState, SystemNoticeKind, TranscriptData, WorkData, WorkNode,
 };
 use crate::omegon_control::{
     HarnessStatusSnapshot, OmegonEvent, OmegonInstanceDescriptor, OmegonStateSnapshot,
@@ -31,6 +31,8 @@ pub struct RemoteHostSession {
     pending_role: Option<MessageRole>,
     pending_text: String,
     pending_user_prompt: Option<String>,
+    prompt_ingress_acknowledged: bool,
+    cancellation_ingress_acknowledged: bool,
     run_active: bool,
     next_dispatcher_request_id: u64,
     latest_turn_telemetry: LatestTurnTelemetry,
@@ -46,6 +48,7 @@ pub struct RemoteHostSession {
     context_window: Option<u64>,
     dispatcher_binding: Option<crate::omegon_control::DispatcherBindingSnapshot>,
     latest_plan: Option<PlanSnapshotData>,
+    ipc_authority: Option<IpcSessionAuthorityData>,
     transcript: TranscriptData,
 }
 
@@ -112,6 +115,8 @@ impl RemoteHostSession {
             pending_role: None,
             pending_text: String::new(),
             pending_user_prompt: None,
+            prompt_ingress_acknowledged: false,
+            cancellation_ingress_acknowledged: false,
             run_active: false,
             next_dispatcher_request_id: 1,
             latest_turn_telemetry: LatestTurnTelemetry::default(),
@@ -129,6 +134,7 @@ impl RemoteHostSession {
             context_window: None,
             dispatcher_binding: snapshot.dispatcher,
             latest_plan: None,
+            ipc_authority: None,
             transcript: TranscriptData::default(),
         }
     }
@@ -271,10 +277,147 @@ impl RemoteHostSession {
     }
 
     pub fn refresh_from_ipc_state(&mut self, snapshot: &IpcStateSnapshot) -> bool {
-        self.apply_snapshot(project_ipc_state_snapshot(
+        let authority = project_ipc_session_authority(snapshot);
+        if ipc_snapshot_is_stale(self.ipc_authority.as_ref(), &authority) {
+            return false;
+        }
+
+        let generation_changed = self.ipc_authority.as_ref().is_some_and(|current| {
+            current.server_instance_id != authority.server_instance_id
+                || current.session_generation != authority.session_generation
+                || current.session_id != authority.session_id
+        });
+        if generation_changed {
+            self.pending_role = None;
+            self.pending_text.clear();
+            self.pending_user_prompt = None;
+            self.prompt_ingress_acknowledged = false;
+            self.cancellation_ingress_acknowledged = false;
+            self.transcript.turns.clear();
+            self.transcript.active_turn = None;
+        }
+
+        let applied = self.apply_snapshot(project_ipc_state_snapshot(
             snapshot,
             self.dispatcher_binding.clone(),
-        ))
+        ));
+        self.run_active =
+            authority.busy || authority.active_turn.is_some() || authority.queue_depth > 0;
+        if self.cancellation_ingress_acknowledged {
+            if authority.busy || authority.active_turn.is_some() {
+                self.summary.activity =
+                    "Cancellation acknowledged; awaiting authoritative turn termination".into();
+                self.summary.activity_kind = ActivityKind::Waiting;
+            } else {
+                self.cancellation_ingress_acknowledged = false;
+                self.summary.activity = "Cancellation confirmed by Omegon state".into();
+                self.summary.activity_kind = ActivityKind::Completed;
+            }
+        } else if self.pending_user_prompt.is_some() {
+            if authority.busy || authority.active_turn.is_some() {
+                self.summary.activity = "Prompt admitted; Omegon turn is active".into();
+                self.summary.activity_kind = ActivityKind::Running;
+            } else if authority.queue_depth > 0 {
+                self.summary.activity = format!(
+                    "Prompt admitted to Omegon queue (depth {})",
+                    authority.queue_depth
+                );
+                self.summary.activity_kind = ActivityKind::Waiting;
+            } else if self.prompt_ingress_acknowledged {
+                self.summary.activity =
+                    "Prompt ingress acknowledged; awaiting authoritative queue state".into();
+                self.summary.activity_kind = ActivityKind::Waiting;
+            }
+        }
+        self.ipc_authority = Some(authority);
+        applied
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_command_outcome(
+        &mut self,
+        outcome: crate::ipc_client::IpcCommandOutcome,
+    ) -> bool {
+        use crate::ipc_client::{IpcCommandKind, IpcCommandOutcomeStatus};
+
+        match (outcome.command, outcome.status) {
+            (IpcCommandKind::PromptSubmit, IpcCommandOutcomeStatus::Accepted) => {
+                if self.pending_user_prompt.is_none() {
+                    return false;
+                }
+                self.prompt_ingress_acknowledged = true;
+                self.summary.activity =
+                    "Prompt ingress acknowledged; awaiting authoritative queue state".into();
+                self.summary.activity_kind = ActivityKind::Waiting;
+            }
+            (IpcCommandKind::PromptSubmit, status) => {
+                let Some(prompt) = self.pending_user_prompt.take() else {
+                    return false;
+                };
+                self.prompt_ingress_acknowledged = false;
+                if self.composer.draft().is_empty() {
+                    self.composer.set_draft(prompt);
+                }
+                self.report_ingress_failure("Prompt", status);
+            }
+            (IpcCommandKind::TurnCancel, IpcCommandOutcomeStatus::Accepted) => {
+                if self.run_active {
+                    self.cancellation_ingress_acknowledged = true;
+                    self.summary.activity =
+                        "Cancellation acknowledged; awaiting authoritative turn termination".into();
+                    self.summary.activity_kind = ActivityKind::Waiting;
+                } else {
+                    self.cancellation_ingress_acknowledged = false;
+                    self.summary.activity =
+                        "Cancellation acknowledged after authoritative turn termination".into();
+                    self.summary.activity_kind = ActivityKind::Completed;
+                }
+            }
+            (IpcCommandKind::TurnCancel, status) => {
+                self.cancellation_ingress_acknowledged = false;
+                self.report_ingress_failure("Cancellation", status);
+            }
+        }
+        true
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_disconnected(&mut self, error: &str) -> bool {
+        self.summary.connection = "IPC disconnected; reconnecting".into();
+        self.push_system_notice(
+            format!("Omegon IPC disconnected; work state is unchanged: {error}"),
+            Some(BlockOrigin {
+                kind: OriginKind::System,
+                label: "System".into(),
+            }),
+            SystemNoticeKind::Failure,
+        );
+        true
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn report_ingress_failure(
+        &mut self,
+        label: &str,
+        status: crate::ipc_client::IpcCommandOutcomeStatus,
+    ) {
+        use crate::ipc_client::IpcCommandOutcomeStatus;
+
+        let detail = match status {
+            IpcCommandOutcomeStatus::Rejected => "rejected by Omegon".to_string(),
+            IpcCommandOutcomeStatus::Failed(error) => format!("failed: {error}"),
+            IpcCommandOutcomeStatus::Accepted => return,
+        };
+        self.summary.activity = format!("{label} ingress {detail}");
+        self.summary.activity_kind = ActivityKind::Failure;
+        self.push_system_notice(
+            format!("{label} ingress {detail}"),
+            Some(BlockOrigin {
+                kind: OriginKind::System,
+                label: "System".into(),
+            }),
+            SystemNoticeKind::Failure,
+        );
     }
 
     #[cfg(test)]
@@ -420,6 +563,7 @@ impl RemoteHostSession {
                 }
                 self.pending_text.clear();
                 self.run_active = false;
+                self.cancellation_ingress_acknowledged = false;
                 self.summary.activity = "Message aborted".into();
                 self.summary.activity_kind = ActivityKind::Failure;
                 true
@@ -470,6 +614,9 @@ impl RemoteHostSession {
                 );
                 self.pending_role = None;
                 self.pending_text.clear();
+                self.pending_user_prompt = None;
+                self.prompt_ingress_acknowledged = false;
+                self.cancellation_ingress_acknowledged = false;
                 self.run_active = false;
                 self.transcript.turns.clear();
                 self.transcript.active_turn = None;
@@ -478,6 +625,7 @@ impl RemoteHostSession {
             SessionEvent::TurnStarted { turn } => {
                 self.transcript.active_turn = Some(turn);
                 self.run_active = true;
+                self.prompt_ingress_acknowledged = false;
                 self.summary.activity = format!("Turn {turn} in progress");
                 self.summary.activity_kind = ActivityKind::Running;
                 self.transcript.turns.push(crate::fixtures::Turn {
@@ -520,6 +668,7 @@ impl RemoteHostSession {
                 }
                 self.transcript.active_turn = None;
                 self.run_active = false;
+                self.cancellation_ingress_acknowledged = false;
                 self.summary.activity = format!("Turn {turn} completed");
                 self.summary.activity_kind = ActivityKind::Completed;
                 self.latest_turn_telemetry = LatestTurnTelemetry {
@@ -602,6 +751,7 @@ impl RemoteHostSession {
             }
             SessionEvent::AgentCompleted => {
                 self.run_active = false;
+                self.cancellation_ingress_acknowledged = false;
                 self.summary.activity = "Agent turn finished".into();
                 self.summary.activity_kind = ActivityKind::Completed;
                 true
@@ -664,6 +814,7 @@ impl RemoteHostSession {
             }
             SessionEvent::HarnessChanged => false,
             SessionEvent::StateChanged { sections: _ } => false,
+            SessionEvent::StateReconciled { snapshot } => self.refresh_from_ipc_state(&snapshot),
         }
     }
 
@@ -719,6 +870,7 @@ impl HostSessionModel for RemoteHostSession {
 
     fn can_submit(&self) -> bool {
         !self.run_active
+            && self.pending_user_prompt.is_none()
             && matches!(self.shell_state, ShellState::Ready | ShellState::Degraded)
             && harness_can_execute_prompts(
                 self.harness_snapshot.as_ref(),
@@ -943,6 +1095,7 @@ impl HostSessionModel for RemoteHostSession {
                 }
             }),
             latest_plan: self.latest_plan.clone(),
+            ipc_authority: self.ipc_authority.clone(),
         }
     }
 
@@ -1001,10 +1154,58 @@ impl HostSessionModel for RemoteHostSession {
 
         self.push_chat_message(MessageRole::User, text.clone());
         self.pending_user_prompt = Some(text);
+        self.prompt_ingress_acknowledged = false;
         self.summary.activity = "Submitting prompt to Omegon remote session".into();
         self.summary.activity_kind = ActivityKind::Waiting;
         self.composer.clear();
         true
+    }
+}
+
+fn project_ipc_session_authority(snapshot: &IpcStateSnapshot) -> IpcSessionAuthorityData {
+    IpcSessionAuthorityData {
+        server_instance_id: snapshot.instance.control_plane.server_instance_id.clone(),
+        protocol_version: snapshot.instance.control_plane.protocol_version,
+        capabilities: snapshot.instance.control_plane.capabilities.clone(),
+        session_id: snapshot.session.session_id.clone(),
+        session_generation: snapshot.session.session_generation,
+        stream_id: snapshot.session.stream_id.clone(),
+        projection_status: snapshot.session.projection_status.clone(),
+        projection_frontier: snapshot.session.projection_frontier,
+        context_revision: snapshot.session.context_revision,
+        queue_depth: snapshot.session.queue_depth,
+        active_turn: snapshot.session.active_turn.clone(),
+        busy: snapshot.session.busy,
+    }
+}
+
+fn ipc_snapshot_is_stale(
+    current: Option<&IpcSessionAuthorityData>,
+    incoming: &IpcSessionAuthorityData,
+) -> bool {
+    let Some(current) = current else {
+        return false;
+    };
+    if current.server_instance_id != incoming.server_instance_id {
+        return false;
+    }
+    match (current.session_generation, incoming.session_generation) {
+        (Some(_), None) => return true,
+        (Some(current), Some(incoming)) if incoming < current => return true,
+        _ => {}
+    }
+    if current.session_generation != incoming.session_generation {
+        return false;
+    }
+    optional_counter_regresses(current.projection_frontier, incoming.projection_frontier)
+        || optional_counter_regresses(current.context_revision, incoming.context_revision)
+}
+
+fn optional_counter_regresses(current: Option<u64>, incoming: Option<u64>) -> bool {
+    match (current, incoming) {
+        (Some(_), None) => true,
+        (Some(current), Some(incoming)) => incoming < current,
+        _ => false,
     }
 }
 
@@ -2083,6 +2284,7 @@ mod tests {
             session.apply_ipc_event(omegon_traits::IpcEventPayload::ToolStarted {
                 id: "tool-1".into(),
                 name: "read".into(),
+                provenance: Default::default(),
                 args: serde_json::json!({"path":"Cargo.toml"}),
             })
         );
@@ -2090,6 +2292,7 @@ mod tests {
             session.apply_ipc_event(omegon_traits::IpcEventPayload::ToolEnded {
                 id: "tool-1".into(),
                 name: "read".into(),
+                provenance: Default::default(),
                 is_error: false,
                 summary: Some("ok".into()),
             })
@@ -2109,11 +2312,8 @@ mod tests {
         }
     }
 
-    #[test]
-    fn ipc_state_refresh_updates_authoritative_sections_in_place() {
-        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
-
-        let ipc_state = omegon_traits::IpcStateSnapshot {
+    fn sample_ipc_state() -> omegon_traits::IpcStateSnapshot {
+        omegon_traits::IpcStateSnapshot {
             schema_version: 1,
             omegon_version: "0.16.0".into(),
             instance: omegon_traits::OmegonInstanceDescriptor {
@@ -2170,6 +2370,7 @@ mod tests {
                     context_class: Some("Squad".into()),
                     thinking_level: Some("high".into()),
                     capability_tier: Some("gloriana".into()),
+                    execution_substrate: None,
                 },
             },
             session: omegon_traits::IpcSessionSnapshot {
@@ -2179,10 +2380,17 @@ mod tests {
                 turns: 22,
                 tool_calls: 55,
                 compactions: 3,
-                busy: false,
+                busy: true,
                 git_branch: Some("main".into()),
                 git_detached: false,
                 session_id: Some("session_01HVTEST".into()),
+                session_generation: Some(3),
+                stream_id: Some("stream-3".into()),
+                projection_status: Some("exact".into()),
+                projection_frontier: Some(20),
+                context_revision: Some(5),
+                queue_depth: 2,
+                active_turn: Some("turn-22".into()),
             },
             design_tree: omegon_traits::IpcDesignTreeSnapshot {
                 counts: omegon_traits::IpcDesignCounts {
@@ -2277,6 +2485,7 @@ mod tests {
                 active_persona: None,
                 active_tone: None,
                 active_delegate_count: 3,
+                execution_substrate: None,
             },
             health: omegon_traits::IpcHealthSnapshot {
                 state: omegon_traits::IpcHealthState::Ready,
@@ -2284,7 +2493,16 @@ mod tests {
                 provider_ok: true,
                 checked_at: "2026-04-07T00:00:10Z".into(),
             },
-        };
+            presentation: None,
+            operation_episodes: vec![],
+            runtime_lifecycle: None,
+        }
+    }
+
+    #[test]
+    fn ipc_state_refresh_updates_authoritative_sections_in_place() {
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+        let ipc_state = sample_ipc_state();
 
         assert!(session.refresh_from_ipc_state(&ipc_state));
 
@@ -2295,6 +2513,15 @@ mod tests {
         assert_eq!(data.capability_tier, "gloriana");
         assert_eq!(data.active_delegate_count, 3);
         assert_eq!(data.providers[0].model.as_deref(), Some("claude-opus"));
+        let authority = data.ipc_authority.as_ref().unwrap();
+        assert_eq!(authority.server_instance_id, "server-1");
+        assert_eq!(authority.session_generation, Some(3));
+        assert_eq!(authority.stream_id.as_deref(), Some("stream-3"));
+        assert_eq!(authority.projection_frontier, Some(20));
+        assert_eq!(authority.context_revision, Some(5));
+        assert_eq!(authority.queue_depth, 2);
+        assert_eq!(authority.active_turn.as_deref(), Some("turn-22"));
+        assert!(session.is_run_active());
         assert_eq!(
             data.dispatcher_binding
                 .as_ref()
@@ -2302,6 +2529,182 @@ mod tests {
                 .expected_model
                 .as_deref(),
             Some("anthropic:claude-sonnet-4-6")
+        );
+
+        let mut stale_generation = ipc_state.clone();
+        stale_generation.session.session_generation = Some(2);
+        stale_generation.session.turns = 99;
+        assert!(!session.refresh_from_ipc_state(&stale_generation));
+        assert_eq!(session.session_data().session_turns, 22);
+
+        let mut stale_frontier = ipc_state.clone();
+        stale_frontier.session.projection_frontier = Some(19);
+        stale_frontier.session.turns = 99;
+        assert!(!session.refresh_from_ipc_state(&stale_frontier));
+        assert_eq!(session.session_data().session_turns, 22);
+
+        let mut reconciled = ipc_state;
+        reconciled.session.session_generation = Some(4);
+        reconciled.session.stream_id = Some("stream-4".into());
+        reconciled.session.projection_frontier = Some(1);
+        reconciled.session.context_revision = Some(1);
+        reconciled.session.busy = false;
+        reconciled.session.queue_depth = 0;
+        reconciled.session.active_turn = None;
+        reconciled.session.turns = 23;
+        let mut replacement = reconciled.clone();
+        replacement.instance.control_plane.server_instance_id = "server-2".into();
+        replacement.session.session_generation = Some(1);
+        replacement.session.stream_id = Some("replacement-stream-1".into());
+        replacement.session.turns = 24;
+        assert!(
+            session.apply_ipc_event(omegon_traits::IpcEventPayload::StateReconciled {
+                snapshot: Box::new(reconciled),
+            })
+        );
+        assert_eq!(session.session_data().session_turns, 23);
+        assert_eq!(
+            session
+                .session_data()
+                .ipc_authority
+                .unwrap()
+                .session_generation,
+            Some(4)
+        );
+        assert!(!session.is_run_active());
+
+        assert!(session.refresh_from_ipc_state(&replacement));
+        let replacement_data = session.session_data();
+        assert_eq!(replacement_data.session_turns, 24);
+        assert_eq!(
+            replacement_data
+                .ipc_authority
+                .as_ref()
+                .unwrap()
+                .server_instance_id,
+            "server-2"
+        );
+        assert_eq!(
+            replacement_data.ipc_authority.unwrap().session_generation,
+            Some(1)
+        );
+    }
+
+    #[test]
+    fn prompt_acknowledgement_waits_for_authoritative_queue_admission() {
+        use crate::ipc_client::{IpcCommandKind, IpcCommandOutcome, IpcCommandOutcomeStatus};
+
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+        session.composer_mut().set_draft("inspect queue semantics");
+        assert!(session.submit());
+        assert!(!session.can_submit());
+
+        assert!(session.apply_ipc_command_outcome(IpcCommandOutcome {
+            target: Default::default(),
+            command: IpcCommandKind::PromptSubmit,
+            status: IpcCommandOutcomeStatus::Accepted,
+        }));
+        assert!(!session.is_run_active());
+        assert_eq!(
+            session.summary().activity,
+            "Prompt ingress acknowledged; awaiting authoritative queue state"
+        );
+
+        let mut queued = sample_ipc_state();
+        queued.session.busy = false;
+        queued.session.active_turn = None;
+        queued.session.queue_depth = 1;
+        assert!(session.refresh_from_ipc_state(&queued));
+        assert!(session.is_run_active());
+        assert_eq!(
+            session.summary().activity,
+            "Prompt admitted to Omegon queue (depth 1)"
+        );
+
+        assert!(session.apply_session_event(SessionEvent::TurnStarted { turn: 23 }));
+        assert_eq!(
+            session
+                .transcript()
+                .turns
+                .last()
+                .unwrap()
+                .user_prompt
+                .as_deref(),
+            Some("inspect queue semantics")
+        );
+    }
+
+    #[test]
+    fn rejected_prompt_restores_composer_without_claiming_admission() {
+        use crate::ipc_client::{IpcCommandKind, IpcCommandOutcome, IpcCommandOutcomeStatus};
+
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+        session.composer_mut().set_draft("retry this prompt");
+        assert!(session.submit());
+
+        assert!(session.apply_ipc_command_outcome(IpcCommandOutcome {
+            target: Default::default(),
+            command: IpcCommandKind::PromptSubmit,
+            status: IpcCommandOutcomeStatus::Rejected,
+        }));
+        assert_eq!(session.composer().draft(), "retry this prompt");
+        assert!(session.can_submit());
+        assert_eq!(
+            session.summary().activity,
+            "Prompt ingress rejected by Omegon"
+        );
+    }
+
+    #[test]
+    fn cancel_ack_and_disconnect_do_not_complete_active_turn() {
+        use crate::ipc_client::{IpcCommandKind, IpcCommandOutcome, IpcCommandOutcomeStatus};
+
+        let mut session = RemoteHostSession::from_snapshot_json(SNAPSHOT_JSON).unwrap();
+        let active = sample_ipc_state();
+        assert!(session.refresh_from_ipc_state(&active));
+        assert!(session.is_run_active());
+
+        assert!(session.apply_ipc_command_outcome(IpcCommandOutcome {
+            target: Default::default(),
+            command: IpcCommandKind::TurnCancel,
+            status: IpcCommandOutcomeStatus::Accepted,
+        }));
+        assert!(session.is_run_active());
+        assert!(
+            session
+                .summary()
+                .activity
+                .contains("awaiting authoritative")
+        );
+
+        assert!(session.mark_ipc_disconnected("connection reset"));
+        assert!(session.is_run_active());
+        assert_eq!(
+            session.summary().connection,
+            "IPC disconnected; reconnecting"
+        );
+
+        let mut idle = active;
+        idle.session.projection_frontier = Some(21);
+        idle.session.busy = false;
+        idle.session.active_turn = None;
+        idle.session.queue_depth = 0;
+        assert!(session.refresh_from_ipc_state(&idle));
+        assert!(!session.is_run_active());
+        assert_eq!(
+            session.summary().activity,
+            "Cancellation confirmed by Omegon state"
+        );
+
+        assert!(session.apply_ipc_command_outcome(IpcCommandOutcome {
+            target: Default::default(),
+            command: IpcCommandKind::TurnCancel,
+            status: IpcCommandOutcomeStatus::Accepted,
+        }));
+        assert!(!session.is_run_active());
+        assert_eq!(
+            session.summary().activity,
+            "Cancellation acknowledged after authoritative turn termination"
         );
     }
 

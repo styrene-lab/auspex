@@ -1,7 +1,8 @@
 use crate::audit_timeline::{AuditTimelineQuery, AuditTimelineStore, AuditTimelineView};
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
-    HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
+    HostSessionSummary, MockHostSession, ReconciliationStatusData, SessionData,
+    SessionTelemetryData, ShellState, TransportAdapterData, TransportTelemetryData, WorkData,
 };
 use crate::instance_registry::InstanceRegistryStore;
 #[cfg(not(target_arch = "wasm32"))]
@@ -200,11 +201,26 @@ impl SessionSource {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+#[derive(Clone, Debug)]
+pub enum ManagedAgentTransportAction {
+    StyreneA2aDispatch(crate::managed_agent_mqtt::ManagedRunA2aRequest),
+    StyreneA2aCancel {
+        cancellation: crate::managed_agent_mqtt::ManagedRunA2aCancel,
+        root_operation_id: String,
+    },
+}
+
 #[derive(Clone, Debug, PartialEq)]
 pub struct AppController {
     session: SessionSource,
     #[cfg(not(target_arch = "wasm32"))]
     instance_sessions: crate::instance_session::InstanceSessionMap,
+    managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime,
+    managed_agent_instances:
+        std::collections::BTreeMap<crate::managed_agents::ManagedRunId, String>,
+    managed_agent_audit_sequence: u64,
+    runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore,
     focused_instance_id: Option<String>,
     bootstrap_note: Option<String>,
     transcript_auto_expand: bool,
@@ -212,6 +228,7 @@ pub struct AppController {
     instance_registry: InstanceRegistryStore,
     attached_instance_engine: AttachedInstanceStateEngine,
     telemetry_snapshot: SessionTelemetryData,
+    transport_telemetry: TransportTelemetryData,
     last_audited_telemetry_snapshot: SessionTelemetryData,
     telemetry_audit_sequence: u64,
     #[cfg(not(target_arch = "wasm32"))]
@@ -228,6 +245,12 @@ impl Default for AppController {
             session: SessionSource::default(),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(
+                1024 * 1024,
+            ),
+            managed_agent_instances: std::collections::BTreeMap::new(),
+            managed_agent_audit_sequence: 0,
+            runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore::default(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -235,6 +258,7 @@ impl Default for AppController {
             instance_registry: InstanceRegistryStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             telemetry_snapshot: SessionTelemetryData::default(),
+            transport_telemetry: TransportTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
@@ -271,6 +295,12 @@ impl AppController {
             session: SessionSource::Remote(Box::new(session)),
             #[cfg(not(target_arch = "wasm32"))]
             instance_sessions: crate::instance_session::InstanceSessionMap::default(),
+            managed_agents: crate::managed_agent_runtime::ManagedAgentSupervisorRuntime::new(
+                1024 * 1024,
+            ),
+            managed_agent_instances: std::collections::BTreeMap::new(),
+            managed_agent_audit_sequence: 0,
+            runtime_inventory: crate::runtime_inventory::RuntimeInventoryStore::default(),
             focused_instance_id: None,
             bootstrap_note: None,
             transcript_auto_expand: true,
@@ -278,6 +308,7 @@ impl AppController {
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             instance_registry,
             telemetry_snapshot: SessionTelemetryData::default(),
+            transport_telemetry: TransportTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
@@ -382,21 +413,21 @@ impl AppController {
         let mut store = InstanceRegistryStore::default();
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "coding-agent-primary",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             true,
             &["state.snapshot", "events.stream", "omegon/context/status"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "coding-agent-worker",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             true,
             &["state.snapshot", "events.stream", "omegon/dispatch/worker"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "discord-bot",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             false,
             &["state.snapshot", "discord.gateway", "discord.messages.send"],
@@ -443,37 +474,54 @@ impl AppController {
             .iter()
             .find(|candidate| candidate.startup_url.is_some())
             .cloned()?;
+        Some(self.attach_local_omegon_candidate(&candidate))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn attach_local_omegon_candidate(
+        &mut self,
+        candidate: &crate::local_omegon_discovery::LocalOmegonCandidate,
+    ) -> crate::local_omegon_probe::LocalOmegonProbeResult {
         let result = crate::local_omegon_probe::probe_local_omegon_candidate_read_only(
-            &candidate,
+            candidate,
             crate::authorization::attach_probe_principal(),
         );
-        if let Some(controller) = result.controller.as_ref() {
-            self.instance_registry = controller.instance_registry.clone();
-            if let Some(record) = self.instance_registry.instances.first().cloned() {
-                let route_id = format!("instance:{}", record.identity.instance_id);
-                self.attached_instance_engine
-                    .attach_instance(AttachedInstanceRecord {
-                        instance_id: record.identity.instance_id.clone(),
-                        route_id: route_id.clone(),
-                        role: record.identity.role.label().into(),
-                        profile: record.identity.profile.clone(),
-                        session_key: format!("instance:{}", record.identity.instance_id),
-                        base_url: Some(record.observed.control_plane.base_url.clone())
-                            .filter(|url| !url.is_empty()),
-                        model: record.desired.policy.model.clone(),
-                        dispatcher_instance_id: None,
-                        registry_record: Some(record),
-                    });
-                self.attached_instance_engine.select_command_route(route_id);
-                self.instance_registry = self.attached_instance_engine.registry_store().clone();
-            } else {
-                self.rebuild_attached_instances();
-            }
-            self.refresh_telemetry_snapshot();
-            self.persist_instance_registry();
-        }
+        self.apply_local_omegon_probe_attachment(&result);
         crate::cop_surface::apply_local_omegon_probe_result(&mut self.cop_state, &result);
-        Some(result)
+        result
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn apply_local_omegon_probe_attachment(
+        &mut self,
+        result: &crate::local_omegon_probe::LocalOmegonProbeResult,
+    ) {
+        let Some(controller) = result.controller.as_ref() else {
+            return;
+        };
+        self.instance_registry = controller.instance_registry.clone();
+        if let Some(record) = self.instance_registry.instances.first().cloned() {
+            let route_id = format!("instance:{}", record.identity.instance_id);
+            self.attached_instance_engine
+                .attach_instance(AttachedInstanceRecord {
+                    instance_id: record.identity.instance_id.clone(),
+                    route_id: route_id.clone(),
+                    role: record.identity.role.label().into(),
+                    profile: record.identity.profile.clone(),
+                    session_key: format!("instance:{}", record.identity.instance_id),
+                    base_url: Some(record.observed.control_plane.base_url.clone())
+                        .filter(|url| !url.is_empty()),
+                    model: record.desired.policy.model.clone(),
+                    dispatcher_instance_id: None,
+                    registry_record: Some(record),
+                });
+            self.attached_instance_engine.select_command_route(route_id);
+            self.instance_registry = self.attached_instance_engine.registry_store().clone();
+        } else {
+            self.rebuild_attached_instances();
+        }
+        self.refresh_telemetry_snapshot();
+        self.persist_instance_registry();
     }
     pub fn apply_instance_descriptor(
         &mut self,
@@ -685,13 +733,431 @@ impl AppController {
     /// Increments unread counts for non-focused instances that had events.
     #[cfg(not(target_arch = "wasm32"))]
     pub fn drain_all_instance_sessions(&mut self) -> bool {
-        let active_ids = self.instance_sessions.drain_all_with_ids();
+        let drained = self.instance_sessions.drain_all_with_control_responses();
+        let active_ids = drained.active_instance_ids;
+        let control_responses = drained.control_responses;
+        let transport_events = drained.transport_events;
+        for (instance_id, event) in transport_events {
+            let worker_ids: Vec<_> = self
+                .managed_agent_instances
+                .iter()
+                .filter(|(_, target)| *target == &instance_id)
+                .filter_map(|(run_id, _)| {
+                    self.managed_agents.run(*run_id).map(|run| run.worker_id())
+                })
+                .collect();
+            for worker_id in worker_ids {
+                match event {
+                    crate::instance_session::SessionTransportEvent::Connected => {
+                        self.managed_agents.mark_worker_reconnected(worker_id)
+                    }
+                    crate::instance_session::SessionTransportEvent::Disconnected => {
+                        self.managed_agents.mark_worker_disconnected(worker_id)
+                    }
+                }
+            }
+        }
+        for (instance_id, response) in control_responses {
+            let parsed = serde_json::from_str::<serde_json::Value>(&response).ok();
+            let response_type = parsed
+                .as_ref()
+                .and_then(|value| value.get("type"))
+                .and_then(serde_json::Value::as_str);
+            if matches!(
+                response_type,
+                Some("control_command_receipt")
+                    | Some(crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK)
+            ) {
+                let command_id = parsed
+                    .as_ref()
+                    .and_then(|value| value.get("command_id"))
+                    .cloned()
+                    .and_then(|value| {
+                        serde_json::from_value::<crate::runtime_types::ManagedCommandId>(value).ok()
+                    });
+                let routed_instance = command_id
+                    .and_then(|id| self.managed_agents.command_run_id(id))
+                    .and_then(|run_id| self.managed_agent_instances.get(&run_id));
+                if routed_instance != Some(&instance_id) {
+                    eprintln!(
+                        "auspex: instance {instance_id}: rejected cross-instance command receipt"
+                    );
+                    continue;
+                }
+                let result = if response_type
+                    == Some(crate::managed_agent_supervisor::EVENT_MANAGED_AGENT_COMMAND_ACK)
+                {
+                    self.managed_agents.apply_command_ack_json(&response)
+                } else {
+                    self.managed_agents.apply_receipt_json(&response)
+                };
+                if let Err(error) = result {
+                    eprintln!(
+                        "auspex: instance {instance_id}: rejected command delivery event: {error:?}"
+                    );
+                }
+                continue;
+            }
+            let response_run_id = parsed
+                .and_then(|value| value.get("managed_run_id").cloned())
+                .and_then(|value| {
+                    serde_json::from_value::<crate::managed_agents::ManagedRunId>(value).ok()
+                });
+            if response_run_id.and_then(|run_id| self.managed_agent_instances.get(&run_id))
+                != Some(&instance_id)
+            {
+                eprintln!(
+                    "auspex: instance {instance_id}: rejected cross-instance managed-agent response"
+                );
+                continue;
+            }
+            if let Err(error) = self.managed_agents.apply_response_json(&response) {
+                eprintln!(
+                    "auspex: instance {instance_id}: rejected managed-agent response: {error:?}"
+                );
+            }
+        }
         for id in &active_ids {
             if self.focused_instance_id.as_deref() != Some(id.as_str()) {
                 *self.unread_counts.entry(id.clone()).or_insert(0) += 1;
             }
         }
         !active_ids.is_empty()
+    }
+
+    pub fn runtime_inventory_refresh_commands(
+        &mut self,
+    ) -> Vec<crate::runtime_types::TargetedCommand> {
+        let target = self.current_command_target();
+        let instance_id = target
+            .dispatcher_instance_id
+            .clone()
+            .unwrap_or_else(|| target.session_key.clone());
+        crate::runtime_inventory::RuntimeInventoryRequest::ALL
+            .into_iter()
+            .map(|request| {
+                self.runtime_inventory.mark_loading(&instance_id, request);
+                request.targeted_command(target.clone())
+            })
+            .collect()
+    }
+
+    pub fn apply_runtime_inventory_event(
+        &mut self,
+        event_json: &str,
+        observed_at_unix_ms: u64,
+    ) -> Result<bool, String> {
+        let target = self.current_command_target();
+        let instance_id = target
+            .dispatcher_instance_id
+            .as_deref()
+            .unwrap_or(target.session_key.as_str());
+        self.runtime_inventory.apply_control_result_json(
+            instance_id,
+            event_json,
+            observed_at_unix_ms,
+        )
+    }
+
+    pub fn runtime_inventory(&self) -> &crate::runtime_inventory::RuntimeInventoryStore {
+        &self.runtime_inventory
+    }
+
+    pub fn runtime_inventory_mut(
+        &mut self,
+    ) -> &mut crate::runtime_inventory::RuntimeInventoryStore {
+        &mut self.runtime_inventory
+    }
+
+    pub fn managed_agent_runtime(
+        &self,
+    ) -> &crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+        &self.managed_agents
+    }
+
+    pub fn managed_agent_runtime_mut(
+        &mut self,
+    ) -> &mut crate::managed_agent_runtime::ManagedAgentSupervisorRuntime {
+        &mut self.managed_agents
+    }
+
+    pub fn sync_managed_agent_projection_snapshot(
+        &self,
+        snapshot: &crate::managed_agent_feature::SharedManagedAgentProjectionSnapshot,
+    ) {
+        let mut snapshot = snapshot.write();
+        let parents: std::collections::BTreeSet<_> = self
+            .managed_agents
+            .active_run_ids()
+            .into_iter()
+            .filter_map(|run_id| {
+                self.managed_agents
+                    .run(run_id)
+                    .map(|run| run.parent_session_id().to_string())
+            })
+            .collect();
+        for parent in parents {
+            snapshot.replace_parent(
+                parent.clone(),
+                self.managed_agents.project_runs_for_parent(&parent),
+            );
+        }
+    }
+
+    pub fn managed_agent_run_projection(
+        &self,
+        run_id: crate::managed_agents::ManagedRunId,
+        parent_session_id: &str,
+    ) -> Result<crate::managed_agent_runtime::ManagedAgentRunProjection, String> {
+        self.managed_agents
+            .project_run_for_parent(run_id, parent_session_id)
+            .map_err(|error| format!("managed-agent projection rejected: {error:?}"))
+    }
+
+    pub fn managed_agent_run_projections(
+        &self,
+        parent_session_id: &str,
+    ) -> Vec<crate::managed_agent_runtime::ManagedAgentRunProjection> {
+        self.managed_agents
+            .project_runs_for_parent(parent_session_id)
+    }
+
+    pub fn refresh_managed_agent_projection_snapshot(
+        &self,
+        parent_session_id: &str,
+        snapshot: &std::sync::Arc<
+            parking_lot::RwLock<crate::managed_agent_feature::ManagedAgentProjectionSnapshot>,
+        >,
+    ) {
+        snapshot.write().replace_parent(
+            parent_session_id,
+            self.managed_agent_run_projections(parent_session_id),
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn prepare_styrene_a2a_dispatch(
+        &mut self,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        target_agent_id: impl Into<String>,
+        now_unix_ms: u64,
+    ) -> Result<
+        (
+            crate::managed_agents::ManagedRunId,
+            ManagedAgentTransportAction,
+        ),
+        String,
+    > {
+        let parent_copy = parent.clone();
+        let request_copy = request.clone();
+        let run_id = self.prepare_mqtt_managed_agent(
+            worker_id,
+            parent,
+            request,
+            target_agent_id,
+            now_unix_ms,
+        )?;
+        Ok((
+            run_id,
+            ManagedAgentTransportAction::StyreneA2aDispatch(
+                crate::managed_agent_mqtt::ManagedRunA2aRequest {
+                    managed_run_id: run_id,
+                    worker_id,
+                    parent_session_id: parent_copy.0,
+                    parent_turn_id: parent_copy.1,
+                    request: request_copy,
+                },
+            ),
+        ))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn prepare_styrene_a2a_cancel(
+        &mut self,
+        run_id: crate::managed_agents::ManagedRunId,
+        reason: Option<String>,
+    ) -> Result<ManagedAgentTransportAction, String> {
+        let root_operation_id = self
+            .managed_agents
+            .run(run_id)
+            .ok_or_else(|| "unknown managed-agent run".to_string())?
+            .parent_session_id()
+            .to_string();
+        let cancellation = self
+            .managed_agents
+            .request_a2a_cancellation(run_id, reason)
+            .map_err(|error| format!("managed-agent A2A cancellation rejected: {error:?}"))?;
+        Ok(ManagedAgentTransportAction::StyreneA2aCancel {
+            cancellation,
+            root_operation_id,
+        })
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn prepare_mqtt_managed_agent(
+        &mut self,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        target_agent_id: impl Into<String>,
+        now_unix_ms: u64,
+    ) -> Result<crate::managed_agents::ManagedRunId, String> {
+        self.managed_agents
+            .prepare_run(
+                worker_id,
+                parent.0,
+                parent.1,
+                request,
+                crate::managed_agent_runtime::ManagedAgentTransportBinding::StyreneA2a {
+                    target_agent_id: target_agent_id.into(),
+                },
+                now_unix_ms,
+            )
+            .map_err(|error| format!("managed-agent MQTT preparation rejected: {error:?}"))
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn dispatch_managed_agent(
+        &mut self,
+        instance_id: &str,
+        worker_id: crate::managed_agents::WorkerId,
+        parent: (String, String),
+        request: crate::managed_agents::ManagedRunRequest,
+        target: CommandTarget,
+        now_unix_ms: u64,
+    ) -> Result<crate::managed_agents::ManagedRunId, String> {
+        if !self.instance_sessions.is_connected(instance_id) {
+            return Err(format!("no session for instance {instance_id}"));
+        }
+        let (run_id, command) = self
+            .managed_agents
+            .dispatch(worker_id, parent.0, parent.1, request, target, now_unix_ms)
+            .map_err(|error| format!("managed-agent dispatch rejected: {error:?}"))?;
+        if let Err(error) = self.dispatch_to_instance(instance_id, &command) {
+            self.managed_agents.remove_run(run_id);
+            return Err(error);
+        }
+        self.managed_agent_instances
+            .insert(run_id, instance_id.to_string());
+        Ok(run_id)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn cancel_managed_agent(
+        &mut self,
+        run_id: crate::managed_agents::ManagedRunId,
+        reason: Option<String>,
+    ) -> Result<(), String> {
+        let instance_id = self
+            .managed_agent_instances
+            .get(&run_id)
+            .cloned()
+            .ok_or_else(|| format!("run {run_id} has no target instance"))?;
+        let command = self
+            .managed_agents
+            .cancel_command(run_id, reason)
+            .map_err(|error| format!("managed-agent cancellation rejected: {error:?}"))?;
+        self.dispatch_to_instance(&instance_id, &command)
+    }
+
+    /// Only control-owned runs enter control polling and receipt replay.
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn tick_managed_agents(&mut self) -> Vec<String> {
+        let mut errors = Vec::new();
+        let control_run_ids: std::collections::HashSet<_> = self
+            .managed_agents
+            .active_run_ids()
+            .into_iter()
+            .filter(|run_id| self.managed_agents.is_omegon_control_run(*run_id))
+            .collect();
+        let dispatch_timeouts = self
+            .managed_agents
+            .expire_dispatches_for(&control_run_ids, std::time::Duration::from_secs(15));
+        for run_id in dispatch_timeouts {
+            errors.push(format!("run {run_id}: dispatch acceptance timed out"));
+        }
+        let expired: std::collections::HashSet<_> =
+            self.managed_agents.expired_runs().into_iter().collect();
+        for run_id in self.managed_agents.active_run_ids() {
+            if !self.managed_agents.is_omegon_control_run(run_id) {
+                continue;
+            }
+            let state = self
+                .managed_agents
+                .run(run_id)
+                .map(|run| run.state().clone());
+            if matches!(
+                state,
+                Some(
+                    crate::managed_agents::ManagedRunState::Disconnected { .. }
+                        | crate::managed_agents::ManagedRunState::Cancelling { .. }
+                )
+            ) {
+                continue;
+            }
+            let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
+                errors.push(format!("run {run_id} has no target instance"));
+                continue;
+            };
+            let command = if expired.contains(&run_id) {
+                self.managed_agents
+                    .cancel_command(run_id, Some("supervisor deadline exceeded".into()))
+            } else {
+                self.managed_agents.poll_command(run_id)
+            };
+            match command {
+                Ok(command) => {
+                    if let Err(error) = self.dispatch_to_instance(&instance_id, &command) {
+                        errors.push(error);
+                    }
+                }
+                Err(crate::managed_agent_runtime::SupervisorRuntimeError::Domain(
+                    crate::managed_agents::ManagedRunTransitionError::DispatchNotAccepted,
+                )) => {}
+                Err(error) => errors.push(format!("run {run_id}: {error:?}")),
+            }
+        }
+        let replay_commands = self
+            .managed_agents
+            .replay_due_commands(std::time::Duration::from_secs(3));
+        for command in replay_commands {
+            let Some(command_id) = command.managed_command_id() else {
+                continue;
+            };
+            let Some(run_id) = self.managed_agents.command_run_id(command_id) else {
+                continue;
+            };
+            let Some(instance_id) = self.managed_agent_instances.get(&run_id).cloned() else {
+                errors.push(format!("command {command_id} has no target instance"));
+                continue;
+            };
+            if let Err(error) = self.dispatch_to_instance(&instance_id, &command) {
+                errors.push(error);
+            }
+        }
+        errors
+    }
+
+    pub fn record_managed_agent_scheduler_errors(&mut self, errors: &[String]) {
+        if errors.is_empty() {
+            return;
+        }
+        let session_key = self.session_audit_key();
+        for error in errors {
+            self.managed_agent_audit_sequence += 1;
+            let entry = crate::audit_timeline::AuditEntry::telemetry(
+                &session_key,
+                &format!(
+                    "managed-agent-scheduler-{}",
+                    self.managed_agent_audit_sequence
+                ),
+                "Managed agent · Scheduler error",
+                error,
+            );
+            let _ = self.audit_timeline.append_entry(entry);
+        }
     }
 
     /// Send a command to a specific instance's WebSocket.
@@ -1134,6 +1600,61 @@ impl AppController {
 
     pub fn set_bootstrap_note(&mut self, note: Option<String>) {
         self.bootstrap_note = note;
+    }
+
+    pub fn report_websocket_compatibility(&mut self, fallback_reason: Option<String>) {
+        self.transport_telemetry = TransportTelemetryData {
+            active_adapter: TransportAdapterData::WebSocketCompatibility,
+            fallback_reason,
+            reconciliation_status: ReconciliationStatusData::Authoritative,
+            reconciliation_detail: Some("state and events use HTTP/WebSocket compatibility".into()),
+            ..Default::default()
+        };
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn report_ipc_connected(&mut self, hello: &omegon_traits::HelloResponse) {
+        self.transport_telemetry.negotiated_protocol = Some(hello.protocol_version);
+        self.transport_telemetry.server_instance_id = Some(hello.server_instance_id.clone());
+        self.transport_telemetry.server_name = Some(hello.server_name.clone());
+        self.transport_telemetry.omegon_version = Some(hello.omegon_version.clone());
+        self.transport_telemetry.capabilities = hello.capabilities.clone();
+        self.transport_telemetry.active_adapter = TransportAdapterData::NativeIpc;
+        self.transport_telemetry.fallback_reason = None;
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Refreshing;
+        self.transport_telemetry.reconciliation_detail =
+            Some("IPC handshake complete; applying authoritative state".into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_required(&mut self, reason: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Required;
+        self.transport_telemetry.reconciliation_detail = Some(reason.into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_refreshing(&mut self) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Refreshing;
+        self.transport_telemetry.reconciliation_detail =
+            Some("refreshing authoritative IPC snapshot".into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_failed(&mut self, error: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Degraded;
+        self.transport_telemetry.reconciliation_detail = Some(error.into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconnecting(&mut self, error: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Reconnecting;
+        self.transport_telemetry.reconciliation_detail = Some(error.into());
+        self.refresh_telemetry_snapshot();
     }
 
     pub fn is_remote(&self) -> bool {
@@ -1702,6 +2223,48 @@ impl AppController {
                 telemetry.latest_turn_summary.clone(),
             ),
         ];
+        entries.push(crate::audit_timeline::AuditEntry::telemetry(
+            session_key,
+            &format!("transport-authority-{sequence}"),
+            "Telemetry · Transport authority",
+            format!(
+                "adapter: {}\nprotocol: {}\nserver: {}\ncapabilities: {}\nfallback: {}\nreconciliation: {}\ndetail: {}\nfrontier: {}",
+                telemetry.transport.active_adapter.label(),
+                telemetry
+                    .transport
+                    .negotiated_protocol
+                    .map(|value| value.to_string())
+                    .as_deref()
+                    .unwrap_or("not negotiated"),
+                telemetry
+                    .transport
+                    .server_instance_id
+                    .as_deref()
+                    .unwrap_or("not reported"),
+                if telemetry.transport.capabilities.is_empty() {
+                    "none".to_string()
+                } else {
+                    telemetry.transport.capabilities.join(", ")
+                },
+                telemetry
+                    .transport
+                    .fallback_reason
+                    .as_deref()
+                    .unwrap_or("none"),
+                telemetry.transport.reconciliation_status.label(),
+                telemetry
+                    .transport
+                    .reconciliation_detail
+                    .as_deref()
+                    .unwrap_or("none"),
+                telemetry
+                    .transport
+                    .projection_frontier
+                    .map(|value| value.to_string())
+                    .as_deref()
+                    .unwrap_or("not reported"),
+            ),
+        ));
 
         for (index, provider) in telemetry.provider_rollups.iter().enumerate() {
             entries.push(crate::audit_timeline::AuditEntry::telemetry(
@@ -1803,7 +2366,17 @@ impl AppController {
             &self.attached_instance_engine.selected_command_route_id(),
             telemetry.control_plane.as_ref(),
         );
+        telemetry.transport = self.transport_telemetry.clone();
         self.telemetry_snapshot = telemetry;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn mark_ipc_reconciled(&mut self, projection_frontier: Option<u64>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Authoritative;
+        self.transport_telemetry.reconciliation_detail =
+            Some("authoritative IPC state is current".into());
+        self.transport_telemetry.projection_frontier = projection_frontier;
+        self.refresh_telemetry_snapshot();
     }
 
     fn persist_instance_registry(&self) {
@@ -1916,8 +2489,55 @@ impl AppController {
         &mut self,
         event: omegon_traits::IpcEventPayload,
     ) -> Result<bool, String> {
+        let reconciled_frontier = match &event {
+            omegon_traits::IpcEventPayload::StateReconciled { snapshot } => {
+                snapshot.session.projection_frontier
+            }
+            _ => None,
+        };
         let normalized: SessionEvent = event.into();
-        self.apply_session_event(normalized)
+        let applied = self.apply_session_event(normalized)?;
+        if applied && reconciled_frontier.is_some() {
+            self.mark_ipc_reconciled(reconciled_frontier);
+        }
+        Ok(applied)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_command_outcome(
+        &mut self,
+        outcome: crate::ipc_client::IpcCommandOutcome,
+    ) -> Result<bool, String> {
+        if outcome.target != self.command_target() {
+            return Ok(false);
+        }
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let applied = session.apply_ipc_command_outcome(outcome);
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_disconnect(&mut self, error: &str) -> Result<bool, String> {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Reconnecting;
+        self.transport_telemetry.reconciliation_detail = Some(error.to_string());
+        self.refresh_telemetry_snapshot();
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let applied = session.mark_ipc_disconnected(error);
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
     }
 
     pub fn apply_session_event(&mut self, normalized: SessionEvent) -> Result<bool, String> {
@@ -1945,6 +2565,8 @@ impl AppController {
             event,
             omegon_traits::IpcEventPayload::HarnessChanged
                 | omegon_traits::IpcEventPayload::StateChanged { .. }
+                | omegon_traits::IpcEventPayload::RuntimeQueueUpdated { .. }
+                | omegon_traits::IpcEventPayload::RuntimeLifecycleUpdated { .. }
         )
     }
 
@@ -1958,6 +2580,7 @@ impl AppController {
                 let applied = session.refresh_from_ipc_state(snapshot);
                 if applied {
                     self.handle_session_mutation();
+                    self.mark_ipc_reconciled(snapshot.session.projection_frontier);
                 }
                 Ok(applied)
             }
@@ -2684,7 +3307,7 @@ mod tests {
         controller.update_draft("hello audit");
         assert!(controller.submit_prompt());
 
-        assert_eq!(controller.audit_timeline().entries.len(), 6);
+        assert_eq!(controller.audit_timeline().entries.len(), 7);
         assert_eq!(
             controller.audit_timeline().entries[0].block_id,
             "mock:ready:turn-1-block-0"
@@ -3355,7 +3978,7 @@ mod tests {
         let descriptor = crate::omegon_control::OmegonInstanceDescriptor {
             control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
                 schema_version: 2,
-                omegon_version: Some("0.25.4".into()),
+                omegon_version: Some("0.29.0-dev".into()),
                 capabilities: vec!["state.snapshot".into()],
                 ..Default::default()
             }),
@@ -3479,7 +4102,7 @@ mod tests {
         controller.apply_remote_probe_results(&[(
             "remote:styrene-discord".into(),
             true,
-            "0.25.4".into(),
+            "0.29.0-dev".into(),
             vec!["state.snapshot".into()],
         )]);
 
@@ -3599,6 +4222,7 @@ mod tests {
         let ipc_event = omegon_traits::IpcEventPayload::ToolStarted {
             id: "tool-cop-2".into(),
             name: "cop_write".into(),
+            provenance: Default::default(),
             args: serde_json::json!({
                 "region": "center",
                 "content_type": "metric",
@@ -3654,7 +4278,7 @@ mod tests {
     fn project_gateway_fleet_to_cop_uses_registry_projection() {
         let control_plane = crate::runtime_types::ObservedControlPlane {
             schema_version: 2,
-            omegon_version: "0.25.6".into(),
+            omegon_version: "0.29.0-dev".into(),
             base_url: "http://127.0.0.1:7842".into(),
             ..Default::default()
         };
@@ -3727,5 +4351,77 @@ mod tests {
         });
         let _ = controller.apply_remote_event_json(&tool_event.to_string());
         assert!(controller.cop_state().is_empty());
+    }
+
+    #[test]
+    fn ipc_handshake_and_reconciliation_are_reported_in_session_telemetry() {
+        let mut controller = AppController::default();
+        controller.report_ipc_connected(&omegon_traits::HelloResponse {
+            protocol_version: omegon_traits::IPC_PROTOCOL_VERSION,
+            omegon_version: "0.29.0-dev".into(),
+            server_name: "omegon".into(),
+            server_pid: 42,
+            cwd: "/tmp".into(),
+            server_instance_id: "server-1".into(),
+            started_at: "2026-08-23T00:00:00Z".into(),
+            session_id: Some("session-1".into()),
+            session_generation: Some(3),
+            capabilities: vec!["state.snapshot".into(), "events.stream".into()],
+        });
+        controller.mark_ipc_reconciliation_required("event queue saturated");
+
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.active_adapter,
+            crate::fixtures::TransportAdapterData::NativeIpc
+        );
+        assert_eq!(
+            transport.negotiated_protocol,
+            Some(omegon_traits::IPC_PROTOCOL_VERSION)
+        );
+        assert_eq!(transport.server_instance_id.as_deref(), Some("server-1"));
+        assert_eq!(
+            transport.capabilities,
+            vec!["state.snapshot", "events.stream"]
+        );
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Required
+        );
+        assert_eq!(
+            transport.reconciliation_detail.as_deref(),
+            Some("event queue saturated")
+        );
+
+        controller.mark_ipc_reconnecting("socket disconnected");
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Reconnecting
+        );
+        assert_eq!(
+            transport.reconciliation_detail.as_deref(),
+            Some("socket disconnected")
+        );
+    }
+
+    #[test]
+    fn websocket_compatibility_reports_its_fallback_reason() {
+        let mut controller = AppController::default();
+        controller.report_websocket_compatibility(Some("native IPC socket unavailable".into()));
+
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.active_adapter,
+            crate::fixtures::TransportAdapterData::WebSocketCompatibility
+        );
+        assert_eq!(
+            transport.fallback_reason.as_deref(),
+            Some("native IPC socket unavailable")
+        );
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Authoritative
+        );
     }
 }

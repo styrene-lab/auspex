@@ -121,6 +121,7 @@ pub fn build_session_telemetry(
                 })
             }),
         control_plane_rollups: Vec::new(),
+        transport: Default::default(),
     }
 }
 

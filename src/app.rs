@@ -22,6 +22,14 @@ use auspex_core::runtime_types::TargetedCommand;
 
 const APP_VERSION: &str = env!("CARGO_PKG_VERSION");
 const LAYOUT_DEBUG_ENABLED: bool = false;
+
+/// Build provenance stamped by build.rs — rendered in the command rail so a
+/// stale binary or stale process is visually obvious (see 2026-07-22 layout
+/// debugging incident: three stacked failures hidden by unknown provenance).
+const BUILD_VERSION: &str = env!("CARGO_PKG_VERSION");
+const BUILD_GIT_SHA: &str = env!("AUSPEX_GIT_SHA");
+const BUILD_GIT_DIRTY: &str = env!("AUSPEX_GIT_DIRTY");
+const BUILD_TIME: &str = env!("AUSPEX_BUILD_TIME");
 const SHELL_BLOCKOUT_MODE: bool = false;
 #[cfg(not(target_arch = "wasm32"))]
 const SETTINGS_MENU_ID: &str = "auspex-open-settings";
@@ -31,6 +39,27 @@ const OMEGON_MODEL_REGISTRY_JSON: &str = include_str!("../assets/omegon-model-re
 enum Workspace {
     Chat,
     Assistants,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+enum ControlDeckSection {
+    Runtime,
+    Work,
+    Knowledge,
+    System,
+}
+
+impl ControlDeckSection {
+    const ALL: [Self; 4] = [Self::Runtime, Self::Work, Self::Knowledge, Self::System];
+
+    fn label(self) -> &'static str {
+        match self {
+            Self::Runtime => "Runtime",
+            Self::Work => "Work",
+            Self::Knowledge => "Knowledge",
+            Self::System => "System",
+        }
+    }
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Eq, serde::Deserialize)]
@@ -228,6 +257,8 @@ struct AssistantWorkspaceState {
     selected_agent_id: Option<String>,
     add_agent_open: bool,
     add_agent_mode: Option<AddAgentMode>,
+    add_agent_candidates: Vec<LocalRuntimeCandidateModel>,
+    scanning_agents: bool,
     chat_expanded: bool,
     auto_loaded_endpoint: Option<String>,
     loading: bool,
@@ -239,6 +270,127 @@ struct AssistantWorkspaceState {
     applying_profile: bool,
     message: Option<String>,
     error: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct LocalRuntimeCandidateModel {
+    label: String,
+    relationship: &'static str,
+    authority: &'static str,
+    instance_id: String,
+    source: String,
+    ownership: String,
+    endpoint: String,
+    ready_url: String,
+    state_url: String,
+    pid: String,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+struct AgentTemplateModel {
+    id: String,
+    name: String,
+    description: String,
+    domain: String,
+    default_model: String,
+    image: String,
+    required_secrets: String,
+    optional_secrets: String,
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn agent_template_models() -> Vec<AgentTemplateModel> {
+    builtin_agent_packages()
+        .into_iter()
+        .map(|package| AgentTemplateModel {
+            id: package.id,
+            name: package.name,
+            description: package.description,
+            domain: package.domain,
+            default_model: package.default_model,
+            image: package.image,
+            required_secrets: if package.required_secrets.is_empty() {
+                "none".to_string()
+            } else {
+                package.required_secrets.join(", ")
+            },
+            optional_secrets: if package.optional_secrets.is_empty() {
+                "none".to_string()
+            } else {
+                package.optional_secrets.join(", ")
+            },
+        })
+        .collect()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn agent_template_models() -> Vec<AgentTemplateModel> {
+    Vec::new()
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
+    use auspex_core::local_omegon_discovery::{
+        candidate_ready_url, candidate_state_url, discover_enriched_attach_candidates,
+    };
+
+    discover_enriched_attach_candidates()
+        .into_iter()
+        .filter_map(|candidate| {
+            let state_url = candidate_state_url(&candidate)?;
+            let ready_url =
+                candidate_ready_url(&candidate).unwrap_or_else(|| "ready unavailable".to_string());
+            let instance_id_value = candidate.instance_id.clone();
+            let endpoint = candidate
+                .startup_url
+                .clone()
+                .or_else(|| candidate.state_url.clone())
+                .or_else(|| {
+                    candidate
+                        .ipc_socket
+                        .as_ref()
+                        .map(|path| path.display().to_string())
+                })
+                .unwrap_or_else(|| "endpoint unknown".to_string());
+            let source = format!("{:?}", candidate.source);
+            let ownership = format!("{:?}", candidate.ownership);
+            let instance_id = instance_id_value
+                .clone()
+                .unwrap_or_else(|| "instance not reported".to_string());
+            let label = instance_id_value
+                .clone()
+                .or_else(|| {
+                    candidate
+                        .cwd
+                        .as_ref()
+                        .and_then(|path| path.file_name())
+                        .and_then(|name| name.to_str())
+                        .map(str::to_string)
+                })
+                .or_else(|| candidate.pid.map(|pid| format!("omegon pid {pid}")))
+                .unwrap_or_else(|| endpoint.clone());
+            Some(LocalRuntimeCandidateModel {
+                label,
+                relationship: "Detected",
+                authority: "read-only probe",
+                instance_id,
+                source,
+                ownership,
+                endpoint,
+                ready_url,
+                state_url,
+                pid: candidate
+                    .pid
+                    .map(|pid| pid.to_string())
+                    .unwrap_or_else(|| "—".to_string()),
+            })
+        })
+        .collect()
+}
+
+#[cfg(target_arch = "wasm32")]
+fn local_runtime_candidate_models() -> Vec<LocalRuntimeCandidateModel> {
+    Vec::new()
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -338,6 +490,7 @@ struct SettingsPanelModel {
     system_rows: Vec<SettingsStatusRowModel>,
     control_plane_rows: Vec<SettingsStatusRowModel>,
     runtime_rows: Vec<SettingsStatusRowModel>,
+    runtime_resource_rows: Vec<SettingsStatusRowModel>,
     secrets_rows: Vec<SettingsStatusRowModel>,
     vault_rows: Vec<SettingsStatusRowModel>,
     general_actions: Vec<SettingsActionModel>,
@@ -934,6 +1087,38 @@ fn build_settings_panel_model(
         },
     ];
 
+    let runtime_resource_rows = session
+        .instance_descriptor
+        .as_ref()
+        .map(|instance| {
+            controller
+                .runtime_inventory()
+                .resources_for(&instance.identity.instance_id)
+                .into_iter()
+                .map(|resource| SettingsStatusRowModel {
+                    label: format!("{:?}", resource.request),
+                    value: match &resource.state {
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Loading => {
+                            "loading".into()
+                        }
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Ready {
+                            response,
+                        } => response.output.clone().unwrap_or_else(|| "ready".into()),
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Stale {
+                            response,
+                        } => format!(
+                            "stale · {}",
+                            response.output.clone().unwrap_or_else(|| "cached".into())
+                        ),
+                        auspex_core::runtime_inventory::RuntimeInventoryResourceState::Error {
+                            message,
+                        } => format!("error · {message}"),
+                    },
+                })
+                .collect()
+        })
+        .unwrap_or_default();
+
     SettingsPanelModel {
         selected_route_id,
         route_options: route_options
@@ -951,6 +1136,7 @@ fn build_settings_panel_model(
         system_rows,
         control_plane_rows,
         runtime_rows,
+        runtime_resource_rows,
         secrets_rows,
         vault_rows,
         general_actions: vec![
@@ -1094,6 +1280,36 @@ pub fn App() -> Element {
     });
     let mut event_stream = use_signal(|| None::<EventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_transport_actions = use_signal(|| {
+        std::collections::VecDeque::<auspex_core::controller::ManagedAgentTransportAction>::new()
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_mqtt = use_signal(|| {
+        auspex_core::managed_agent_mqtt_orchestrator::ManagedAgentMqttOrchestratorConfig::from_env()
+            .ok()
+            .flatten()
+            .map(|config| {
+                auspex_core::managed_agent_mqtt_orchestrator::spawn_managed_agent_mqtt_orchestrator(
+                    config,
+                )
+            })
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_projection_snapshot = use_signal(|| {
+        auspex_core::managed_agent_feature::SharedManagedAgentProjectionSnapshot::default()
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_bridge_dispatch = use_signal(|| {
+        let (sender, coordinator) =
+            auspex_core::managed_agent_mutation_coordinator::ManagedAgentMutationCoordinator::channel(
+                32,
+            );
+        (sender, coordinator)
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let managed_agent_bridge_server =
+        use_signal(|| None::<auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer>);
+    #[cfg(not(target_arch = "wasm32"))]
     let mut ipc_event_stream = use_signal(|| None::<IpcEventStreamHandle>);
     #[cfg(not(target_arch = "wasm32"))]
     let mut command_transport = use_signal(|| None::<CommandTransport>);
@@ -1128,6 +1344,14 @@ pub fn App() -> Element {
         let mut composer_ready_notice = composer_ready_notice;
         #[cfg(not(target_arch = "wasm32"))]
         let mut settings_open = settings_open;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_mqtt = managed_agent_mqtt;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_transport_actions = managed_agent_transport_actions;
+        #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_bridge_dispatch = managed_agent_bridge_dispatch;
         async move {
             #[cfg(not(target_arch = "wasm32"))]
             let mut container_reconcile_tick: u64 = 0;
@@ -1145,6 +1369,12 @@ pub fn App() -> Element {
                     // Reconcile container agents every ~15s (100 ticks × 150ms).
                     // Collect remote probe targets on the same cadence, offset by 50 ticks.
                     container_reconcile_tick += 1;
+                    // Supervision cadence: ~600ms (4 × 150ms), bounded independently
+                    // from the slower container reconciliation/probe schedules.
+                    if container_reconcile_tick.is_multiple_of(4) {
+                        let errors = ctrl.tick_managed_agents();
+                        ctrl.record_managed_agent_scheduler_errors(&errors);
+                    }
                     if container_reconcile_tick.is_multiple_of(100) {
                         ctrl.reconcile_container_agents();
                     }
@@ -1166,13 +1396,7 @@ pub fn App() -> Element {
                     controller.write().apply_remote_probe_results(&results);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
-                if let (
-                    Some(ipc_handle),
-                    Some(auspex_core::command_transport::CommandTransport::Ipc(client)),
-                ) = (
-                    ipc_event_stream.read().clone(),
-                    command_transport.read().clone(),
-                ) {
+                if let Some(ipc_handle) = ipc_event_stream.read().clone() {
                     let ipc_events = ipc_handle.inbox.drain();
                     if !ipc_events.is_empty() {
                         let mut needs_refresh = false;
@@ -1180,6 +1404,9 @@ pub fn App() -> Element {
                             let mut controller = controller.write();
                             for event in ipc_events {
                                 match event {
+                                    auspex_core::ipc_client::IpcClientEvent::Connected { hello } => {
+                                        controller.report_ipc_connected(&hello);
+                                    }
                                     auspex_core::ipc_client::IpcClientEvent::Payload(event) => {
                                         needs_refresh |= auspex_core::controller::AppController::ipc_event_requires_refresh(&event);
                                         let _ = controller.apply_ipc_event(event);
@@ -1187,12 +1414,46 @@ pub fn App() -> Element {
                                     auspex_core::ipc_client::IpcClientEvent::Session(event) => {
                                         let _ = controller.apply_session_event(event);
                                     }
+                                    auspex_core::ipc_client::IpcClientEvent::CommandOutcome(
+                                        outcome,
+                                    ) => {
+                                        let _ = controller.apply_ipc_command_outcome(outcome);
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::ReconciliationRequired {
+                                        reason,
+                                    } => {
+                                        controller.mark_ipc_reconciliation_required(reason);
+                                        needs_refresh = true;
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::Disconnected {
+                                        error,
+                                    } => {
+                                        let _ = controller.apply_ipc_disconnect(&error);
+                                        controller.mark_ipc_reconnecting(error);
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::AttachFailed {
+                                        error,
+                                    } => {
+                                        let _ = controller.apply_ipc_disconnect(&error);
+                                        controller.mark_ipc_reconnecting(error);
+                                    }
                                 }
                             }
                         }
-                        if needs_refresh && let Ok(snapshot) = client.get_state().await {
-                            let mut controller = controller.write();
-                            let _ = controller.apply_ipc_state_snapshot(&snapshot);
+                        if needs_refresh
+                            && let Some(auspex_core::command_transport::CommandTransport::Ipc(
+                                client,
+                            )) = command_transport.read().clone()
+                        {
+                            controller.write().mark_ipc_reconciliation_refreshing();
+                            match client.get_state().await {
+                                Ok(snapshot) => {
+                                    let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                }
+                                Err(error) => {
+                                    controller.write().mark_ipc_reconciliation_failed(error);
+                                }
+                            }
                         }
                     }
                 }
@@ -1229,6 +1490,13 @@ pub fn App() -> Element {
                                         ));
                                         settings_open.set(false);
                                         workspace.set(Workspace::Assistants);
+                                        let mut notice = composer_ready_notice;
+                                        spawn(async move {
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            tokio::time::sleep(std::time::Duration::from_secs(6))
+                                                .await;
+                                            notice.set(None);
+                                        });
                                     }
                                 }
                             }
@@ -1240,6 +1508,75 @@ pub fn App() -> Element {
                 #[cfg(not(target_arch = "wasm32"))]
                 {
                     controller.write().drain_all_instance_sessions();
+                }
+
+                // Take prepared transport actions out of Dioxus state before awaiting channel I/O.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let actions: Vec<_> =
+                        managed_agent_transport_actions.write().drain(..).collect();
+                    let dispatcher = managed_agent_mqtt.read().as_ref().map(|(handle, _)| {
+                        auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher::new(
+                            handle.clone(),
+                        )
+                    });
+                    if let Some(dispatcher) = dispatcher {
+                        for action in actions {
+                            if let Err(error) = dispatcher.execute(action).await {
+                                controller.write().record_managed_agent_scheduler_errors(&[
+                                    format!("Styrene A2A action enqueue failed: {error}"),
+                                ]);
+                            }
+                        }
+                    } else if !actions.is_empty() {
+                        controller.write().record_managed_agent_scheduler_errors(&[
+                            "Styrene A2A action rejected: MQTT orchestrator is disabled".into(),
+                        ]);
+                    }
+                }
+
+                // Drain MQTT A2A events synchronously. No Dioxus signal guard crosses await.
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let mut events = Vec::new();
+                    if let Some((_handle, receiver)) = managed_agent_mqtt.write().as_mut() {
+                        while let Ok(event) = receiver.try_recv() {
+                            events.push(event);
+                        }
+                    }
+                    if !events.is_empty() {
+                        use auspex_core::managed_agent_runtime::ManagedAgentA2aDispatcher;
+                        let mut ctrl = controller.write();
+                        for event in events {
+                            if let Err(error) = ManagedAgentA2aDispatcher::apply_event(
+                                ctrl.managed_agent_runtime_mut(),
+                                event,
+                            ) {
+                                ctrl.record_managed_agent_scheduler_errors(&[error]);
+                            }
+                        }
+                    }
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    let now_unix_ms = std::time::SystemTime::now()
+                        .duration_since(std::time::UNIX_EPOCH)
+                        .map(|duration| duration.as_millis() as u64)
+                        .unwrap_or(0);
+                    let mut ctrl = controller.write();
+                    managed_agent_bridge_dispatch.write().1.process_pending(
+                        &mut ctrl,
+                        &mut managed_agent_transport_actions.write(),
+                        now_unix_ms,
+                    );
+                }
+
+                #[cfg(not(target_arch = "wasm32"))]
+                {
+                    controller.read().sync_managed_agent_projection_snapshot(
+                        &managed_agent_projection_snapshot.read(),
+                    );
                 }
 
                 #[cfg(not(target_arch = "wasm32"))]
@@ -1280,12 +1617,68 @@ pub fn App() -> Element {
         let mut ipc_event_stream = ipc_event_stream;
         #[cfg(not(target_arch = "wasm32"))]
         let mut command_transport = command_transport;
+        #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_projection_snapshot = managed_agent_projection_snapshot;
+        #[cfg(not(target_arch = "wasm32"))]
+        let managed_agent_bridge_dispatch = managed_agent_bridge_dispatch;
+        #[cfg(not(target_arch = "wasm32"))]
+        let mut managed_agent_bridge_server = managed_agent_bridge_server;
         async move {
             let Some(binary_str) = binary else { return };
             let binary_path = std::path::PathBuf::from(binary_str);
-            let result = auspex_core::bootstrap::spawn_and_attach_omegon(&binary_path).await;
-            if let Some(stream) = result.event_stream {
-                event_stream.set(Some(stream));
+            let parent_session_id = uuid::Uuid::new_v4().to_string();
+            let capability = format!(
+                "{}{}",
+                uuid::Uuid::new_v4().simple(),
+                uuid::Uuid::new_v4().simple()
+            );
+            let socket_path = std::path::PathBuf::from(format!(
+                "/tmp/auspex-managed-{}.sock",
+                uuid::Uuid::new_v4().simple()
+            ));
+            let source: std::sync::Arc<
+                dyn auspex_core::managed_agent_feature::ManagedAgentProjectionSource,
+            > = managed_agent_projection_snapshot.read().clone();
+            let bridge =
+                match auspex_core::managed_agent_bridge_server::ManagedAgentBridgeServer::bind(
+                    &socket_path,
+                    capability.clone(),
+                    parent_session_id.clone(),
+                    source,
+                    Some(managed_agent_bridge_dispatch.read().0.clone()),
+                )
+                .await
+                {
+                    Ok(bridge) => bridge,
+                    Err(error) => {
+                        controller.write().set_bootstrap_note(Some(format!(
+                            "Managed-agent bridge unavailable: {error}"
+                        )));
+                        return;
+                    }
+                };
+            let binding = auspex_core::bootstrap::ManagedAgentBridgeLaunchBinding {
+                socket_path,
+                capability,
+                parent_session_id,
+            };
+            let result = auspex_core::bootstrap::spawn_and_attach_omegon_with_bridge(
+                &binary_path,
+                Some(&binding),
+            )
+            .await;
+            match result.event_stream {
+                Some(stream) => {
+                    managed_agent_bridge_server.set(Some(bridge));
+                    event_stream.set(Some(stream));
+                }
+                None => {
+                    managed_agent_projection_snapshot
+                        .read()
+                        .write()
+                        .remove_parent(&binding.parent_session_id);
+                    managed_agent_bridge_server.set(None);
+                }
             }
             #[cfg(not(target_arch = "wasm32"))]
             if let Some(stream) = result.ipc_event_stream {
@@ -1404,21 +1797,25 @@ pub fn App() -> Element {
         use_effect(move || {
             spawn(async move {
                 let script = r#"
-                    JSON.stringify({
+                    return JSON.stringify({
                       innerHeight: window.innerHeight,
+                      innerWidth: window.innerWidth,
+                      dpr: window.devicePixelRatio,
+                      docH: document.documentElement.clientHeight,
+                      bodyH: Math.round(document.body.getBoundingClientRect().height),
                       boxes: [
                         '.debug-shell-main',
-                        '.debug-shell-center-host',
-                        '.cockpit-cop-stage',
-                        '.cockpit-cop-bay',
-                        '.cockpit-focus-host',
-                        '.focus-host-shell',
-                        '.focus-host-body',
-                        '.cockpit-cop-body',
-                        '.cockpit-cop-focus',
-                        '.transcript',
-                        '.bubble-user',
-                        '.turn-card'
+                        '.shell',
+                        '.assistant-stage',
+                        '.assistant-workspace',
+                        '.omegon-console-main',
+                        '.agent-console-grid',
+                        '.agent-console-panel',
+                        '.agent-config-form',
+                        '.agent-page-sections-live',
+                        '.agent-page-section-chat',
+                        '.agent-embedded-chat',
+                        '.agent-embedded-composer'
                       ].map((selector) => {
                         const el = document.querySelector(selector);
                         if (!el) return { selector, top: -1, left: -1, width: -1, height: -1 };
@@ -1433,19 +1830,25 @@ pub fn App() -> Element {
                       })
                     })
                 "#;
-                if let Ok(reply) = document::eval(script).await
-                    && let Some(raw) = reply.as_str()
-                    && let Some(snapshot) = parse_layout_debug_snapshot(raw)
-                {
-                    eprintln!("=== LAYOUT DEBUG ===");
-                    eprintln!("  innerHeight: {}", snapshot.inner_height);
-                    for item in &snapshot.boxes {
-                        eprintln!(
-                            "  {} → left={} w={} h={}",
-                            item.selector, item.left, item.width, item.height
-                        );
+                // Give the webview a moment to paint, then re-measure every second
+                // so the overlay reflects live viewport state (e.g. after resize).
+                tokio::time::sleep(std::time::Duration::from_millis(1200)).await;
+                loop {
+                    match document::eval(script).await {
+                        Ok(reply) => match reply.as_str() {
+                            Some(raw) => match parse_layout_debug_snapshot(raw) {
+                                Some(snapshot) => {
+                                    layout_debug_snapshot.set(Some(snapshot));
+                                }
+                                None => eprintln!("LAYOUT DEBUG: parse failed for: {raw}"),
+                            },
+                            None => {
+                                eprintln!("LAYOUT DEBUG: eval reply not a string: {reply:?}")
+                            }
+                        },
+                        Err(err) => eprintln!("LAYOUT DEBUG: eval error: {err:?}"),
                     }
-                    layout_debug_snapshot.set(Some(snapshot));
+                    tokio::time::sleep(std::time::Duration::from_millis(1000)).await;
                 }
             });
         });
@@ -1911,6 +2314,20 @@ pub fn App() -> Element {
                                 h3 { class: "settings-panel-title", "Backend / substrate" }
                                 div { class: "settings-status-list",
                                     for row in &settings_model.runtime_rows {
+                                        div { class: "settings-status-row", span { class: "settings-status-label", "{row.label}" } span { class: "settings-status-value", "{row.value}" } }
+                                    }
+                                }
+                            }
+                            section { class: "settings-panel-card settings-panel-card-system",
+                                h3 { class: "settings-panel-title", "Omegon resources" }
+                                div { class: "settings-status-list",
+                                    if settings_model.runtime_resource_rows.is_empty() {
+                                        div { class: "settings-status-row",
+                                            span { class: "settings-status-label", "Inventory" }
+                                            span { class: "settings-status-value", "not loaded" }
+                                        }
+                                    }
+                                    for row in &settings_model.runtime_resource_rows {
                                         div { class: "settings-status-row", span { class: "settings-status-label", "{row.label}" } span { class: "settings-status-value", "{row.value}" } }
                                     }
                                 }
@@ -4434,6 +4851,30 @@ fn model_sync_tone(requested: &str, observed: &str) -> &'static str {
     }
 }
 
+fn next_turn_envelope_detail(sync_label: &str) -> &'static str {
+    match sync_label {
+        "in sync" => "live envelope · observed runtime matches requested settings",
+        "mismatch" => {
+            "live envelope · sends requested settings before the prompt; observed runtime differs"
+        }
+        _ => {
+            "live envelope · sends requested settings before the prompt; observed runtime has not reported them"
+        }
+    }
+}
+
+fn command_transport_label(
+    transport: &auspex_core::fixtures::TransportTelemetryData,
+) -> &'static str {
+    match transport.active_adapter {
+        auspex_core::fixtures::TransportAdapterData::Pending => "pending",
+        auspex_core::fixtures::TransportAdapterData::NativeIpc => "native IPC authoritative",
+        auspex_core::fixtures::TransportAdapterData::WebSocketCompatibility => {
+            "HTTP/WebSocket compatibility"
+        }
+    }
+}
+
 fn session_context_fill_percent(session: &auspex_core::fixtures::SessionData) -> u8 {
     match (session.context_tokens, session.context_window) {
         (Some(tokens), Some(window)) if window > 0 => {
@@ -4745,6 +5186,13 @@ fn render_assistant_workspace(
         });
     }
     let history = transcript_chat_history(_transcript, messages);
+    // Pending-turn indicator: captures history length at dispatch; the pending
+    // card renders until history grows past it (agent response arrived).
+    let turn_pending_len = use_signal(|| None::<usize>);
+    let turn_pending = matches!(*turn_pending_len.read(), Some(len) if history.len() <= len);
+    let history_len = history.len();
+    let mut turn_pending_len = turn_pending_len;
+    let agent_templates = agent_template_models();
     let context_label = session_context_label(session);
     let agent_workspace_label = session_workspace_label(session);
     let runtime_label = session_runtime_label(session);
@@ -4765,6 +5213,8 @@ fn render_assistant_workspace(
     let effective_model_label = selected_model.clone();
     let sync_label = model_sync_label(&effective_model_label, &observed_model_label);
     let sync_tone = model_sync_tone(&effective_model_label, &observed_model_label);
+    let envelope_detail = next_turn_envelope_detail(sync_label);
+    let transport_label = command_transport_label(&session.telemetry.transport);
     let control_endpoint_label = endpoint
         .as_deref()
         .and_then(|url| url.split("/api/").next())
@@ -4774,480 +5224,777 @@ fn render_assistant_workspace(
     let embedded_transport_ready = endpoint.is_some();
     let embedded_can_send = embedded_transport_ready && !embedded_draft.trim().is_empty();
     let embedded_transcript_empty = messages.is_empty();
+    let mut control_deck = use_signal(|| ControlDeckSection::Runtime);
     rsx! {
-        section { class: "assistant-workspace",
-            if let Some(error) = snapshot.error.as_deref() {
-                p { class: "deploy-error", "{error}" }
-            } else if let Some(message) = snapshot.message.as_deref() {
-                p { class: "deploy-message", "{message}" }
-            }
-
-            div { class: "assistant-main-grid agent-console-grid",
-                section { class: "assistant-detail-panel agent-console-panel",
-                    div { class: "assistant-section-title agent-dashboard-titlebar agent-primary-titlebar",
-                        div { class: "agent-primary-titlecopy",
-                            span { "AUSPEX AGENT" }
-                            h3 { "Primary agent dashboard" }
-                        }
-                        div { class: "agent-dashboard-actions",
-
-                            button {
-                                class: "agent-mini-action",
-                                r#type: "button",
-                                disabled: snapshot.loading,
-                                onclick: move |_| {
-                                    let mut state = state;
-                                    let session = refresh_session_snapshot.clone();
-                                    spawn(async move {
-                                        refresh_assistant_workspace(&mut state, &session).await;
-                                    });
-                                },
-                                if snapshot.loading { "Loading" } else { "Refresh" }
-                            }
-                            button {
-                                class: "agent-mini-action",
-                                r#type: "button",
-                                onclick: move |_| settings_open.set(true),
-                                "System"
-                            }
-                            button {
-                                class: "agent-mini-action agent-mini-action-primary",
-                                r#type: "button",
-                                onclick: move |_| {
-                                    let mut current = state.write();
-                                    current.add_agent_open = true;
-                                    current.add_agent_mode.get_or_insert(AddAgentMode::AttachExistingRuntime);
-                                },
-                                "Add agent"
-                            }
+            section { class: "assistant-workspace omegon-console",
+                nav { class: "omegon-command-rail", aria_label: "Omegon control center",
+                    div { class: "omegon-command-brand",
+                        span { "Ω" }
+                        strong { "OMEGON" }
+                        small { "CONTROL" }
+                    }
+                    for section in ControlDeckSection::ALL {
+                        button {
+                            class: if *control_deck.read() == section { "omegon-rail-button omegon-rail-button-active" } else { "omegon-rail-button" },
+                            r#type: "button",
+                            onclick: move |_| control_deck.set(section),
+                            span { "{section.label()}" }
                         }
                     }
-                    div { class: "assistant-detail-stack agent-config-form",
-                        div { class: "assistant-detail-heading agent-live-panel agent-live-panel-compact",
-                            div { class: "agent-live-grid agent-live-board",
-                                div { class: "agent-live-domain agent-live-domain-identity",
-                                    span { class: "agent-live-domain-label", "identity" }
-                                    div { class: "agent-live-kv", span { "profile" } strong { "agents/auspex-agent" } }
-                                    div { class: "agent-live-kv", span { "settings" } strong { "profile.json" } }
-                                    div { class: "agent-live-kv", span { "tier" } strong { "{non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" } }
-                                }
-                                div { class: "agent-live-domain agent-live-domain-runtime",
-                                    span { class: "agent-live-domain-label", "runtime" }
-                                    div { class: "agent-live-kv", span { "requested" } strong { "{effective_model_label}" } }
-                                    div { class: "agent-live-kv", span { "observed" } strong { "{observed_model_label}" } }
-                                    div { class: "agent-live-kv", span { "sync" } strong { class: "agent-sync-state", "data-state": "{sync_tone}", "{sync_label}" } }
-                                    div { class: "agent-live-kv", span { "backend" } strong { "{runtime_label}" } }
-                                    div { class: "agent-live-kv", span { "workspace" } strong { "{agent_workspace_label}" } }
-                                }
-                                div { class: "agent-live-domain agent-live-domain-telemetry",
-                                    div { class: "agent-telemetry-header",
-                                        span { class: "agent-live-domain-label", "telemetry" }
-                                        em { "session" }
-                                    }
-                                    div { class: "agent-telemetry-board agent-telemetry-instrument",
-                                        div { class: "agent-telemetry-counter agent-telemetry-counter-primary",
-                                            span { "turns" }
-                                            strong { "{session.session_turns}" }
-                                        }
-                                        div { class: "agent-telemetry-counter",
-                                            span { "tools" }
-                                            strong { "{session.session_tool_calls}" }
-                                        }
-                                        div { class: "agent-telemetry-context",
-                                            div { class: "agent-telemetry-context-head",
-                                                span { "context" }
-                                                strong { "{context_label}" }
-                                            }
-                                            div { class: "agent-telemetry-track",
-                                                div { class: "agent-telemetry-track-fill", style: "width: {session_context_fill_percent(session)}%;" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            if primary_agent_instance_id(&controller.read()).is_none() {
-                                span { class: "assistant-issue", "data-state": "warn", "No attached primary chat runtime." }
-                            }
+                    div { class: "omegon-rail-spacer" }
+                    button { class: "omegon-rail-button", r#type: "button", onclick: move |_| settings_open.set(true), span { "Settings" } }
+                    div { class: "omegon-rail-provenance", title: "Build provenance — verify capture evidence against this",
+                        span { "v{BUILD_VERSION}" }
+                        span { "{BUILD_GIT_SHA}{BUILD_GIT_DIRTY}" }
+                        span { "{BUILD_TIME}" }
+                        span { "pid {std::process::id()}" }
+                    }
+                }
+                aside { class: "omegon-control-deck",
+                    header {
+                        span { "CONTROL DECK" }
+                        strong { "{control_deck.read().label()}" }
+                    }
+                    if *control_deck.read() == ControlDeckSection::Runtime {
+                        section { class: "omegon-deck-group",
+                            h4 { "Model & inference" }
+                            button { "Model catalog" }
+                            button { "Provider routing" }
+                            button { "Thinking level" }
+                            button { "Context budget" }
+                            button { "Automation policy" }
                         }
-
-                        if snapshot.add_agent_open {
-                            section { class: "agent-add-drawer",
-                                div { class: "agent-add-header",
-                                    div {
-                                        h4 { "Add agent" }
-                                        span { "Choose the path from defined agent state to the next console state." }
-                                    }
-                                    button {
-                                        class: "agent-add-close",
-                                        r#type: "button",
-                                        onclick: move |_| state.write().add_agent_open = false,
-                                        "Close"
-                                    }
-                                }
-                                div { class: "agent-add-options",
-                                    for mode in [AddAgentMode::AttachExistingRuntime, AddAgentMode::LaunchFromProfile, AddAgentMode::CreateProfile] {
-                                        button {
-                                            class: if snapshot.add_agent_mode == Some(mode) { "agent-add-option agent-add-option-active" } else { "agent-add-option" },
-                                            r#type: "button",
-                                            onclick: move |_| state.write().add_agent_mode = Some(mode),
-                                            strong { "{mode.label()}" }
-                                            span { "{mode.detail()}" }
-                                        }
-                                    }
-                                }
-                                if let Some(mode) = snapshot.add_agent_mode {
-                                    div { class: "agent-add-preflight",
-                                        div { class: "agent-add-preflight-copy",
-                                            strong { "{mode.label()} preflight" }
-                                            span { "Dry-run affordance only until concrete attach/launch/profile endpoints are verified." }
-                                        }
-                                        div { class: "agent-add-checks",
-                                            for item in mode.preflight_items() {
-                                                span { class: "agent-add-check", "{item}" }
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                        section { class: "omegon-deck-group",
+                            h4 { "Sessions" }
+                            button { "New session" }
+                            button { "Session history" }
+                            button { "Runtime inventory" }
+                            button { "Restart runtime" }
                         }
+                    } else if *control_deck.read() == ControlDeckSection::Work {
+                        section { class: "omegon-deck-group",
+                            h4 { "Execution" }
+                            button { "Active plan" }
+                            button { "Plan ledger" }
+                            button { "Delegates" }
+                            button { "Cleave workers" }
+                        }
+                        section { class: "omegon-deck-group",
+                            h4 { "Workspace" }
+                            button { "Workspaces" }
+                            button { "Design tree" }
+                            button { "Notes" }
+                            button { "Check-in" }
+                        }
+                    } else if *control_deck.read() == ControlDeckSection::Knowledge {
+                        section { class: "omegon-deck-group",
+                            h4 { "Capabilities" }
+                            button { "Skills" }
+                            button { "Extensions" }
+                            button { "Plugins" }
+                            button { "Armory" }
+                        }
+                        section { class: "omegon-deck-group",
+                            h4 { "Context" }
+                            button { "Context status" }
+                            button { "Request context" }
+                            button { "Compact context" }
+                            button { "Clear context" }
+                        }
+                    } else {
+                        section { class: "omegon-deck-group",
+                            h4 { "Access & identity" }
+                            button { "Authentication" }
+                            button { "Permissions" }
+                            button { "Profiles" }
+                            button { "Personas" }
+                        }
+                        section { class: "omegon-deck-group",
+                            h4 { "Configuration" }
+                            button { "Secrets" }
+                            button { "Variables" }
+                            button { "Vault" }
+                            button { "Diagnostics" }
+                        }
+                    }
+                }
+                div { class: "omegon-console-main",
+                div { class: "console-note-row",
+                    if let Some(error) = snapshot.error.as_deref() {
+                        p { class: "deploy-error", "{error}" }
+                    } else if let Some(message) = snapshot.message.as_deref() {
+                        p { class: "deploy-message", "{message}" }
+                    }
+                }
 
-                        div { class: "agent-page-sections agent-page-sections-live",
+                div { class: "assistant-main-grid agent-console-grid",
+                    section { class: "assistant-detail-panel agent-console-panel",
+                        div { class: "assistant-section-title agent-dashboard-titlebar agent-primary-titlebar",
+                            div { class: "agent-primary-titlecopy",
+                                span { class: "agent-connection-state", "Connected" }
+                                h3 { "Primary agent" }
+                                p { "{agent_workspace_label} · {runtime_label} · {effective_model_label}" }
+                            }
+                            div { class: "agent-dashboard-actions",
 
-                            section { class: if snapshot.chat_expanded { "agent-page-section agent-page-section-chat agent-chat-expanded" } else { "agent-page-section agent-page-section-chat" },
-                                div { class: "agent-page-section-heading",
-                                    h4 { "Chat" }
-                                    div { class: "agent-chat-heading-actions",
-                                        span { "primary agent session" }
-                                        button {
-                                            class: "agent-chat-expand-button",
-                                            r#type: "button",
-                                            onclick: move |_| {
-                                                let expanded = state.read().chat_expanded;
-                                                state.write().chat_expanded = !expanded;
-                                            },
-                                            if snapshot.chat_expanded { "↙" } else { "↗" }
-                                        }
-                                    }
-                                }
-                                div { class: "agent-command-strip",
-                                    span { "link" }
-                                    strong { "{control_endpoint_label}" }
-                                    span { "transport" }
-                                    strong { "ipc+ws" }
-                                    span { "envelope" }
-                                    strong { "{sync_label}" }
-                                }
-                            div { class: "agent-runtime-bar agent-turn-envelope",
-                                    div { class: "agent-page-section-heading",
-                                        h4 { "Next turn" }
-                                        span { "live envelope · used automatically on send" }
-                                    }
-                                div { class: "agent-control-grid",
-                                    label { class: "agent-config-field agent-config-field-wide",
-                                        span { "Model" }
-                                        select {
-                                            value: "{selected_model}",
-                                            oninput: move |event| state.write().profile_model = event.value(),
-                                            if !model_options.iter().any(|option| option == &selected_model) {
-                                                option { value: "{selected_model}", selected: true, "{selected_model} (current / unavailable)" }
-                                            }
-                                            for option in model_options.iter() {
-                                                option { value: "{option}", selected: option == &selected_model, "{option}" }
-                                            }
-                                        }
-                                    }
-                                    label { class: "agent-config-field",
-                                        span { "Thinking" }
-                                        select {
-                                            value: "{selected_thinking}",
-                                            oninput: move |event| state.write().profile_thinking = event.value(),
-                                            if !thinking_level_options().contains(&selected_thinking.as_str()) {
-                                                option { value: "{selected_thinking}", selected: true, "{selected_thinking} (current)" }
-                                            }
-                                            for option in thinking_level_options() {
-                                                option { value: "{option}", selected: option == &selected_thinking.as_str(), "{option}" }
-                                            }
-                                        }
-                                    }
-                                    label { class: "agent-config-field",
-                                        span { "Context class" }
-                                        select {
-                                            value: "{selected_context}",
-                                            oninput: move |event| state.write().profile_context = event.value(),
-                                            if !context_class_options().contains(&selected_context.as_str()) {
-                                                option { value: "{selected_context}", selected: true, "{selected_context} (current)" }
-                                            }
-                                            for option in context_class_options() {
-                                                option { value: "{option}", selected: option == &selected_context.as_str(), "{option}" }
-                                            }
-                                        }
-                                    }
-                                    label { class: "agent-config-field",
-                                        span { "Max turns" }
-                                        input {
-                                            value: "{staged_or_session_value(&snapshot.profile_max_turns, max_turns_default)}",
-                                            oninput: move |event| state.write().profile_max_turns = event.value(),
-                                        }
-                                    }
-                                    label { class: "agent-config-field",
-                                        span { "Runtime mode" }
-                                        select {
-                                            value: if snapshot.profile_runtime_slim { "slim" } else { "standard" },
-                                            oninput: move |event| state.write().profile_runtime_slim = event.value() == "slim",
-                                            option { value: "standard", selected: !snapshot.profile_runtime_slim, "standard" }
-                                            option { value: "slim", selected: snapshot.profile_runtime_slim, "slim" }
-                                        }
-                                    }
+                                button {
+                                    class: "agent-mini-action",
+                                    r#type: "button",
+                                    disabled: snapshot.loading,
+                                    onclick: move |_| {
+                                        let mut state = state;
+                                        let session = refresh_session_snapshot.clone();
+                                        spawn(async move {
+                                            refresh_assistant_workspace(&mut state, &session).await;
+                                        });
+                                    },
+                                    if snapshot.loading { "Loading" } else { "Refresh" }
                                 }
                                 button {
-                                    class: "assistant-refresh assistant-chat-action agent-apply-action",
+                                    class: "agent-mini-action",
                                     r#type: "button",
-                                    disabled: snapshot.applying_profile,
+                                    onclick: move |_| settings_open.set(true),
+                                    "System"
+                                }
+                                button {
+                                    class: "agent-mini-action agent-mini-action-primary",
+                                    r#type: "button",
                                     onclick: move |_| {
-                                        let target = controller.read().current_command_target();
-                                        let draft = state.read().clone();
-                                        let session_snapshot = sync_session_snapshot.clone();
-                                        let commands = profile_control_commands(target, &draft, &session_snapshot);
-                                        #[cfg(not(target_arch = "wasm32"))]
-                                        let transport = command_transport.read().clone();
-                                        let stream = event_stream.read().clone();
-                                        spawn(async move {
-                                            match commands {
-                                                Ok(commands) if commands.is_empty() => {
-                                                    let mut current = state.write();
-                                                    current.message = Some("No runtime settings changed.".to_string());
-                                                    current.error = None;
+                                        let candidates = local_runtime_candidate_models();
+                                        let mut current = state.write();
+                                        current.add_agent_candidates = candidates;
+                                        current.scanning_agents = false;
+                                        current.add_agent_open = true;
+                                        current.add_agent_mode.get_or_insert(AddAgentMode::AttachExistingRuntime);
+                                    },
+                                    "Add agent"
+                                }
+                            }
+                        }
+                        div { class: "assistant-detail-stack agent-config-form",
+                            details { class: "agent-context-disclosure",
+                                summary {
+                                    div { class: "agent-context-summary-copy",
+                                        span { "Runtime details" }
+                                        strong { "{sync_label} · {session.session_turns} turns · {session.session_tool_calls} tools" }
+                                    }
+                                    span { class: "agent-context-summary-action", "Inspect" }
+                                }
+                                div { class: "assistant-detail-heading agent-live-panel agent-live-panel-compact",
+                                div { class: "agent-live-grid agent-live-board",
+                                    div { class: "agent-live-domain agent-live-domain-identity",
+                                        span { class: "agent-live-domain-label", "identity" }
+                                        div { class: "agent-live-kv", span { "profile" } strong { "agents/auspex-agent" } }
+                                        div { class: "agent-live-kv", span { "settings" } strong { "profile.json" } }
+                                        div { class: "agent-live-kv", span { "tier" } strong { "{non_empty_or(&session.capability_tier, auspex_core::AUSPEX_PRIMARY_DEFAULT_CAPABILITY_TIER)}" } }
+                                    }
+                                    div { class: "agent-live-domain agent-live-domain-runtime",
+                                        span { class: "agent-live-domain-label", "runtime" }
+                                        div { class: "agent-live-kv", span { "requested" } strong { "{effective_model_label}" } }
+                                        div { class: "agent-live-kv", span { "observed" } strong { "{observed_model_label}" } }
+                                        div { class: "agent-live-kv", span { "sync" } strong { class: "agent-sync-state", "data-state": "{sync_tone}", "{sync_label}" } }
+                                        div { class: "agent-live-kv", span { "backend" } strong { "{runtime_label}" } }
+                                        div { class: "agent-live-kv", span { "workspace" } strong { "{agent_workspace_label}" } }
+                                    }
+                                    div { class: "agent-live-domain agent-live-domain-telemetry",
+                                        div { class: "agent-telemetry-header",
+                                            span { class: "agent-live-domain-label", "telemetry" }
+                                            em { "session" }
+                                        }
+                                        div { class: "agent-telemetry-board agent-telemetry-instrument",
+                                            div { class: "agent-telemetry-counter agent-telemetry-counter-primary",
+                                                span { "turns" }
+                                                strong { "{session.session_turns}" }
+                                            }
+                                            div { class: "agent-telemetry-counter",
+                                                span { "tools" }
+                                                strong { "{session.session_tool_calls}" }
+                                            }
+                                            div { class: "agent-telemetry-context",
+                                                div { class: "agent-telemetry-context-head",
+                                                    span { "context" }
+                                                    strong { "{context_label}" }
                                                 }
-                                                Ok(commands) => {
-                                                    state.write().applying_profile = true;
-                                                    let mut dispatched = 0usize;
-                                                    let mut failure = None;
-                                                    for command in &commands {
-                                                        #[cfg(not(target_arch = "wasm32"))]
-                                                        let result = dispatch_profile_command(
-                                                            transport.as_ref(),
-                                                            stream.as_ref(),
-                                                            command,
-                                                        );
-                                                        #[cfg(target_arch = "wasm32")]
-                                                        let result = dispatch_profile_command(
-                                                            None,
-                                                            stream.as_ref(),
-                                                            command,
-                                                        );
-                                                        match result {
-                                                            Ok(()) => dispatched += 1,
-                                                            Err(error) => {
-                                                                failure = Some(error);
-                                                                break;
+                                                div { class: "agent-telemetry-track",
+                                                    div { class: "agent-telemetry-track-fill", style: "width: {session_context_fill_percent(session)}%;" }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                                if primary_agent_instance_id(&controller.read()).is_none() {
+                                    span { class: "assistant-issue", "data-state": "warn", "No attached primary chat runtime." }
+                                }
+                            }
+                            }
+
+                            if snapshot.add_agent_open {
+                                section { class: "agent-add-drawer",
+                                    div { class: "agent-add-header",
+                                        div {
+                                            h4 { "Add agent" }
+                                            span { "Choose the path from defined agent state to the next console state." }
+                                        }
+                                        button {
+                                            class: "agent-add-close",
+                                            r#type: "button",
+                                            onclick: move |_| state.write().add_agent_open = false,
+                                            "Close"
+                                        }
+                                    }
+                                    div { class: "agent-add-options",
+                                        for mode in [AddAgentMode::AttachExistingRuntime, AddAgentMode::LaunchFromProfile, AddAgentMode::CreateProfile] {
+                                            button {
+                                                class: if snapshot.add_agent_mode == Some(mode) { "agent-add-option agent-add-option-active" } else { "agent-add-option" },
+                                                r#type: "button",
+                                                onclick: move |_| state.write().add_agent_mode = Some(mode),
+                                                strong { "{mode.label()}" }
+                                                span { "{mode.detail()}" }
+                                            }
+                                        }
+                                    }
+                                    if snapshot.add_agent_mode == Some(AddAgentMode::AttachExistingRuntime) {
+                                        div { class: "agent-catalog-section",
+                                            div { class: "agent-catalog-copy agent-catalog-copy-action",
+                                                div {
+                                                    strong { "Detected local runtimes" }
+                                                    span { "Non-mutating scan across 7842, embedded fallback ports, and local auxiliary agent ports. Detected does not imply command or lifecycle authority." }
+                                                }
+                                                button {
+                                                    class: "agent-add-close",
+                                                    r#type: "button",
+                                                    onclick: move |_| {
+                                                        let candidates = local_runtime_candidate_models();
+                                                        let mut current = state.write();
+                                                        current.add_agent_candidates = candidates;
+                                                        current.scanning_agents = false;
+                                                    },
+                                                    "Refresh scan"
+                                                }
+                                            }
+                                            div { class: "agent-template-list",
+                                                if snapshot.add_agent_candidates.is_empty() {
+                                                    div { class: "agent-template-card",
+                                                        strong { "No local runtimes detected" }
+                                                        span { "Use Refresh after starting an Omegon runtime, or launch a profile instead." }
+                                                    }
+                                                } else {
+                                                    for candidate in snapshot.add_agent_candidates.clone() {
+                                                        div { class: "agent-template-card",
+                                                            strong { "{candidate.label}" }
+                                                            span { "{candidate.endpoint}" }
+                                                            div { class: "agent-template-meta",
+                                                                span { class: "agent-template-chip", "{candidate.relationship}" }
+                                                                span { class: "agent-template-chip", "{candidate.authority}" }
+                                                                span { class: "agent-template-chip", "{candidate.ownership}" }
+                                                                span { class: "agent-template-chip", "{candidate.instance_id}" }
+                                                                span { class: "agent-template-chip", "pid {candidate.pid}" }
+                                                            }
+                                                            span { "ready: {candidate.ready_url}" }
+                                                            span { "state: {candidate.state_url}" }
+                                                            button {
+                                                                class: "agent-add-close agent-attach-action",
+                                                                r#type: "button",
+                                                                onclick: move |_| {
+                                                                    #[cfg(not(target_arch = "wasm32"))]
+                                                                    {
+                                                                        let target_instance_id = candidate.instance_id.clone();
+                                                                        let target_state_url = candidate.state_url.clone();
+                                                                        let found = auspex_core::local_omegon_discovery::discover_enriched_attach_candidates()
+                                                                            .into_iter()
+                                                                            .find(|candidate| {
+                                                                                candidate.instance_id.as_deref() == Some(target_instance_id.as_str())
+                                                                                    || auspex_core::local_omegon_discovery::candidate_state_url(candidate).as_deref() == Some(target_state_url.as_str())
+                                                                            });
+                                                                        if let Some(candidate) = found {
+                                                                            let result = controller.write().attach_local_omegon_candidate(&candidate);
+                                                                            let mut current = state.write();
+                                                                            match result.instance_id.as_deref() {
+                                                                                Some(instance_id) => {
+                                                                                    current.message = Some(format!("Attached runtime {instance_id}. Auspex can route commands to this instance; it does not own its lifecycle."));
+                                                                                    current.error = None;
+                                                                                    current.add_agent_open = false;
+                                                                                }
+                                                                                None => {
+                                                                                    current.error = Some(format!("Attach probe did not yield an instance id: {}", result.evidence));
+                                                                                    current.message = None;
+                                                                                }
+                                                                            }
+                                                                        } else {
+                                                                            let mut current = state.write();
+                                                                            current.error = Some("Detected runtime disappeared before attach.".to_string());
+                                                                            current.message = None;
+                                                                        }
+                                                                    }
+                                                                    #[cfg(target_arch = "wasm32")]
+                                                                    {
+                                                                        let mut current = state.write();
+                                                                        current.error = Some("Attach is available in native Auspex; web builds cannot scan local runtimes directly.".to_string());
+                                                                        current.message = None;
+                                                                    }
+                                                                },
+                                                                "Attach"
                                                             }
                                                         }
                                                     }
-                                                    #[cfg(not(target_arch = "wasm32"))]
-                                                    if failure.is_none()
-                                                        && let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
-                                                        && let Ok(snapshot) = client.get_state().await
-                                                    {
-                                                        let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
-                                                    }
-                                                    let mut current = state.write();
-                                                    current.applying_profile = false;
-                                                    if let Some(error) = failure {
-                                                        current.error = Some(error);
-                                                        current.message = None;
-                                                    } else {
-                                                        current.error = None;
-                                                        current.message = Some(format!("Live runtime sync requested {dispatched} update(s); latest observed state refreshed from Omegon."));
-                                                    }
-                                                }
-                                                Err(error) => {
-                                                    let mut current = state.write();
-                                                    current.error = Some(error);
-                                                    current.message = None;
                                                 }
                                             }
-                                        });
-                                    },
-                                    if snapshot.applying_profile { "Syncing" } else { "Sync" }
-                                }
-                            }
-                                div { class: if embedded_transcript_empty { "agent-embedded-chat agent-embedded-chat-empty" } else { "agent-embedded-chat" },
-                                    if history.is_empty() {
-                                        div { class: "agent-embedded-empty",
-                                            strong { "No transcript yet" }
-                                            span { "Send a directive to the selected primary agent." }
                                         }
-                                    } else {
-                                        div { class: "agent-turn-list",
-                                            for turn in history {
-                                                article { class: "agent-turn-card", "data-role": "{turn.tone}",
-                                                    div { class: "agent-turn-meta",
-                                                        span { class: "agent-turn-role", "{turn.role}" }
-                                                        span { class: "agent-turn-channel", "{turn.meta}" }
+                                    }
+                                    if snapshot.add_agent_mode == Some(AddAgentMode::LaunchFromProfile) {
+                                        div { class: "agent-catalog-section",
+                                            div { class: "agent-catalog-copy",
+                                                strong { "Local template catalog" }
+                                                span { "Built-in deployable packages available to launch as managed runtimes. This is the local catalog view; later slices will merge Armory upstream and locally-authored templates." }
+                                            }
+                                            div { class: "agent-template-list",
+                                                if agent_templates.is_empty() {
+                                                    div { class: "agent-template-card",
+                                                        strong { "No templates available" }
+                                                        span { "No native package catalog is available in this build target." }
                                                     }
-                                                    p { class: "agent-turn-text", "{turn.text}" }
+                                                } else {
+                                                    for template in agent_templates.clone() {
+                                                        div { class: "agent-template-card",
+                                                            strong { "{template.name}" }
+                                                            span { "{template.description}" }
+                                                            div { class: "agent-template-meta",
+                                                                span { class: "agent-template-chip", "{template.id}" }
+                                                                span { class: "agent-template-chip", "{template.domain}" }
+                                                                span { class: "agent-template-chip", "{template.default_model}" }
+                                                            }
+                                                            span { "image: {template.image}" }
+                                                            span { "required secrets: {template.required_secrets}" }
+                                                            span { "optional secrets: {template.optional_secrets}" }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    if let Some(mode) = snapshot.add_agent_mode {
+                                        div { class: "agent-add-preflight",
+                                            div { class: "agent-add-preflight-copy",
+                                                strong { "{mode.label()} preflight" }
+                                                span { "Dry-run affordance only until concrete attach/launch/profile endpoints are verified." }
+                                            }
+                                            div { class: "agent-add-checks",
+                                                for item in mode.preflight_items() {
+                                                    span { class: "agent-add-check", "{item}" }
                                                 }
                                             }
                                         }
                                     }
                                 }
-                                form {
-                                    class: "composer chat-composer agent-embedded-composer",
-                                    onsubmit: move |event| {
-                                        event.prevent_default();
-                                        let session_snapshot = send_session_snapshot.clone();
-                                        spawn(async move {
-                                            let target = controller.read().current_command_target();
-                                            let draft = state.read().clone();
-                                            let envelope_commands = profile_control_commands(target, &draft, &session_snapshot);
-                                            let stream = event_stream.read().clone();
-                                            #[cfg(not(target_arch = "wasm32"))]
-                                            let transport = command_transport.read().clone();
+                            }
 
-                                            match envelope_commands {
-                                                Ok(commands) => {
-                                                    for envelope_command in &commands {
-                                                        #[cfg(not(target_arch = "wasm32"))]
-                                                        let result = dispatch_profile_command(
-                                                            transport.as_ref(),
-                                                            stream.as_ref(),
-                                                            envelope_command,
-                                                        );
-                                                        #[cfg(target_arch = "wasm32")]
-                                                        let result = dispatch_profile_command(
-                                                            None,
-                                                            stream.as_ref(),
-                                                            envelope_command,
-                                                        );
-                                                        if let Err(error) = result {
-                                                            let mut current = state.write();
-                                                            current.error = Some(error);
-                                                            current.message = None;
-                                                            return;
-                                                        }
-                                                    }
-                                                    #[cfg(not(target_arch = "wasm32"))]
-                                                    if let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
-                                                        && let Ok(snapshot) = client.get_state().await
-                                                    {
-                                                        let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
-                                                    }
+                            div { class: "agent-page-sections agent-page-sections-live",
+
+                                section { class: if snapshot.chat_expanded { "agent-page-section agent-page-section-chat agent-chat-expanded" } else { "agent-page-section agent-page-section-chat" },
+                                    div { class: "agent-page-section-heading",
+                                        div { class: "agent-chat-target",
+                                            span { class: "agent-chat-presence" }
+                                            div {
+                                                h4 { "Conversation" }
+                                                span { "Primary agent · {agent_workspace_label}" }
+                                            }
+                                        }
+                                        div { class: "agent-chat-heading-actions",
+                                            span { class: "agent-chat-compact-status", "{transport_label} · {sync_label}" }
+                                            button {
+                                                class: "agent-chat-expand-button",
+                                                r#type: "button",
+                                                title: if snapshot.chat_expanded { "Exit focused conversation" } else { "Focus conversation" },
+                                                onclick: move |_| {
+                                                    let expanded = state.read().chat_expanded;
+                                                    state.write().chat_expanded = !expanded;
+                                                },
+                                                if snapshot.chat_expanded { "Exit focus" } else { "Focus" }
+                                            }
+                                        }
+                                    }
+                                    details { class: "agent-diagnostics-disclosure",
+                                        summary {
+                                            span { "Connection and next-turn configuration" }
+                                            strong { "{effective_model_label} · {selected_thinking} · {selected_context}" }
+                                        }
+                                        div { class: "agent-command-strip",
+                                            span { "Endpoint" }
+                                            strong { "{control_endpoint_label}" }
+                                            span { "Transport" }
+                                            strong { "{transport_label}" }
+                                            span { "Observed" }
+                                            strong { "{sync_label}" }
+                                        }
+                                    div { class: "agent-runtime-bar agent-turn-envelope",
+                                        div { class: "agent-page-section-heading",
+                                            h4 { "Next turn" }
+                                            span { "{envelope_detail}" }
+                                        }
+                                    div { class: "agent-control-grid",
+                                        label { class: "agent-config-field agent-config-field-wide",
+                                            span { "Model" }
+                                            select {
+                                                value: "{selected_model}",
+                                                oninput: move |event| state.write().profile_model = event.value(),
+                                                if !model_options.iter().any(|option| option == &selected_model) {
+                                                    option { value: "{selected_model}", selected: true, "{selected_model} (current / unavailable)" }
                                                 }
-                                                Err(error) => {
-                                                    let mut current = state.write();
-                                                    current.error = Some(error);
-                                                    current.message = None;
-                                                    return;
+                                                for option in model_options.iter() {
+                                                    option { value: "{option}", selected: option == &selected_model, "{option}" }
                                                 }
                                             }
-
-                                            let command = {
-                                                let submitted = controller.write().submit_prompt_command();
-                                                if submitted.is_some() {
-                                                    submitted
-                                                } else {
-                                                    let controller_read = controller.read();
-                                                    let text = controller_read.composer().draft().trim().to_string();
-                                                    if text.is_empty() {
-                                                        None
-                                                    } else {
-                                                        Some(TargetedCommand::prompt_submit(
-                                                            controller_read.current_command_target(),
-                                                            text,
-                                                        ))
+                                        }
+                                        label { class: "agent-config-field",
+                                            span { "Thinking" }
+                                            select {
+                                                value: "{selected_thinking}",
+                                                oninput: move |event| state.write().profile_thinking = event.value(),
+                                                if !thinking_level_options().contains(&selected_thinking.as_str()) {
+                                                    option { value: "{selected_thinking}", selected: true, "{selected_thinking} (current)" }
+                                                }
+                                                for option in thinking_level_options() {
+                                                    option { value: "{option}", selected: option == &selected_thinking.as_str(), "{option}" }
+                                                }
+                                            }
+                                        }
+                                        label { class: "agent-config-field",
+                                            span { "Context class" }
+                                            select {
+                                                value: "{selected_context}",
+                                                oninput: move |event| state.write().profile_context = event.value(),
+                                                if !context_class_options().contains(&selected_context.as_str()) {
+                                                    option { value: "{selected_context}", selected: true, "{selected_context} (current)" }
+                                                }
+                                                for option in context_class_options() {
+                                                    option { value: "{option}", selected: option == &selected_context.as_str(), "{option}" }
+                                                }
+                                            }
+                                        }
+                                        label { class: "agent-config-field",
+                                            span { "Max turns" }
+                                            input {
+                                                value: "{staged_or_session_value(&snapshot.profile_max_turns, max_turns_default)}",
+                                                oninput: move |event| state.write().profile_max_turns = event.value(),
+                                            }
+                                        }
+                                        label { class: "agent-config-field",
+                                            span { "Runtime mode" }
+                                            select {
+                                                value: if snapshot.profile_runtime_slim { "slim" } else { "standard" },
+                                                oninput: move |event| state.write().profile_runtime_slim = event.value() == "slim",
+                                                option { value: "standard", selected: !snapshot.profile_runtime_slim, "standard" }
+                                                option { value: "slim", selected: snapshot.profile_runtime_slim, "slim" }
+                                            }
+                                        }
+                                    }
+                                    button {
+                                        class: "assistant-refresh assistant-chat-action agent-apply-action",
+                                        r#type: "button",
+                                        disabled: snapshot.applying_profile,
+                                        onclick: move |_| {
+                                            let target = controller.read().current_command_target();
+                                            let draft = state.read().clone();
+                                            let session_snapshot = sync_session_snapshot.clone();
+                                            let commands = profile_control_commands(target, &draft, &session_snapshot);
+                                            #[cfg(not(target_arch = "wasm32"))]
+                                            let transport = command_transport.read().clone();
+                                            let stream = event_stream.read().clone();
+                                            spawn(async move {
+                                                match commands {
+                                                    Ok(commands) if commands.is_empty() => {
+                                                        let mut current = state.write();
+                                                        current.message = Some("No runtime settings changed.".to_string());
+                                                        current.error = None;
+                                                    }
+                                                    Ok(commands) => {
+                                                        state.write().applying_profile = true;
+                                                        let mut dispatched = 0usize;
+                                                        let mut failure = None;
+                                                        for command in &commands {
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            let result = dispatch_profile_command(
+                                                                transport.as_ref(),
+                                                                stream.as_ref(),
+                                                                command,
+                                                            );
+                                                            #[cfg(target_arch = "wasm32")]
+                                                            let result = dispatch_profile_command(
+                                                                None,
+                                                                stream.as_ref(),
+                                                                command,
+                                                            );
+                                                            match result {
+                                                                Ok(()) => dispatched += 1,
+                                                                Err(error) => {
+                                                                    failure = Some(error);
+                                                                    break;
+                                                                }
+                                                            }
+                                                        }
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        if failure.is_none()
+                                                            && let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
+                                                            && let Ok(snapshot) = client.get_state().await
+                                                        {
+                                                            let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                                        }
+                                                        let mut current = state.write();
+                                                        current.applying_profile = false;
+                                                        if let Some(error) = failure {
+                                                            current.error = Some(error);
+                                                            current.message = None;
+                                                        } else {
+                                                            current.error = None;
+                                                            current.message = Some(format!("Live runtime sync requested {dispatched} update(s); latest observed state refreshed from Omegon."));
+                                                        }
+                                                    }
+                                                    Err(error) => {
+                                                        let mut current = state.write();
+                                                        current.error = Some(error);
+                                                        current.message = None;
                                                     }
                                                 }
-                                            };
-                                            let Some(command) = command else { return };
+                                            });
+                                        },
+                                        if snapshot.applying_profile { "Applying" } else { "Apply next turn" }
+                                    }
+                                }
+                                    }
+                                    div { class: if embedded_transcript_empty { "agent-embedded-chat agent-embedded-chat-empty" } else { "agent-embedded-chat" },
+                                        if !history.is_empty() {
+                                            header { class: "agent-conversation-masthead",
+                                                div {
+                                                    span { class: "agent-empty-kicker", "PRIMARY CHANNEL / LIVE" }
+                                                    h4 { "Conversation workspace" }
+                                                }
+                                                div { class: "agent-conversation-state",
+                                                    span { "{transport_label}" }
+                                                    strong { "{effective_model_label}" }
+                                                }
+                                            }
+                                        }
+                                        if history.is_empty() {
+                                            div { class: "agent-empty-workspace",
+                                                div { class: "agent-empty-intro",
+                                                    span { class: "agent-empty-kicker", "PRIMARY CHANNEL / READY" }
+                                                    h4 { "What should the agent work on?" }
+                                                    p { "Send a concrete directive. Auspex will stream reasoning, tool activity, and results into this workspace." }
+                                                }
+                                                div { class: "agent-empty-capabilities",
+                                                    article {
+                                                        span { "01" }
+                                                        strong { "Build" }
+                                                        p { "Implement and validate a scoped change." }
+                                                    }
+                                                    article {
+                                                        span { "02" }
+                                                        strong { "Investigate" }
+                                                        p { "Trace a failure through code and runtime evidence." }
+                                                    }
+                                                    article {
+                                                        span { "03" }
+                                                        strong { "Review" }
+                                                        p { "Assess a design, diff, or operational risk." }
+                                                    }
+                                                }
+                                                div { class: "agent-empty-status",
+                                                    span { "HOST" }
+                                                    strong { "Connected" }
+                                                    span { "TRANSPORT" }
+                                                    strong { "{transport_label}" }
+                                                    span { "MODEL" }
+                                                    strong { "{effective_model_label}" }
+                                                }
+                                            }
+                                        } else {
+                                            div { class: "agent-turn-list",
+                                                for turn in history {
+                                                    article { class: "agent-turn-card", "data-role": "{turn.tone}",
+                                                        div { class: "agent-turn-meta",
+                                                            span { class: "agent-turn-role", "{turn.role}" }
+                                                            span { class: "agent-turn-channel", "{turn.meta}" }
+                                                        }
+                                                        p { class: "agent-turn-text", "{turn.text}" }
+                                                    }
+                                                }
+                                                if turn_pending {
+                                                    article { class: "agent-turn-card agent-turn-pending", "data-role": "agent",
+                                                        div { class: "agent-turn-meta",
+                                                            span { class: "agent-turn-role", "AGENT" }
+                                                            span { class: "agent-turn-channel", "working" }
+                                                        }
+                                                        p { class: "agent-turn-text agent-turn-pending-dots",
+                                                            span { "." }
+                                                            span { "." }
+                                                            span { "." }
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                    form {
+                                        class: "composer chat-composer agent-embedded-composer",
+                                        onsubmit: move |event| {
+                                            event.prevent_default();
+                                            let session_snapshot = send_session_snapshot.clone();
+                                            spawn(async move {
+                                                let target = controller.read().current_command_target();
+                                                let draft = state.read().clone();
+                                                let envelope_commands = profile_control_commands(target, &draft, &session_snapshot);
+                                                let stream = event_stream.read().clone();
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                let transport = command_transport.read().clone();
 
-                                            #[cfg(not(target_arch = "wasm32"))]
-                                            {
-                                                let focused = controller.read().focused_instance_id().map(str::to_string);
-                                                if let Some(instance_id) = focused {
-                                                    let result = controller.read().dispatch_to_instance(&instance_id, &command);
-                                                    if result.is_ok() {
+                                                match envelope_commands {
+                                                    Ok(commands) => {
+                                                        for envelope_command in &commands {
+                                                            #[cfg(not(target_arch = "wasm32"))]
+                                                            let result = dispatch_profile_command(
+                                                                transport.as_ref(),
+                                                                stream.as_ref(),
+                                                                envelope_command,
+                                                            );
+                                                            #[cfg(target_arch = "wasm32")]
+                                                            let result = dispatch_profile_command(
+                                                                None,
+                                                                stream.as_ref(),
+                                                                envelope_command,
+                                                            );
+                                                            if let Err(error) = result {
+                                                                let mut current = state.write();
+                                                                current.error = Some(error);
+                                                                current.message = None;
+                                                                return;
+                                                            }
+                                                        }
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        if let Some(auspex_core::command_transport::CommandTransport::Ipc(client)) = transport.as_ref()
+                                                            && let Ok(snapshot) = client.get_state().await
+                                                        {
+                                                            let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                                        }
+                                                    }
+                                                    Err(error) => {
                                                         let mut current = state.write();
-                                                        current.error = None;
-                                                        current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
+                                                        current.error = Some(error);
+                                                        current.message = None;
                                                         return;
                                                     }
                                                 }
 
-                                                if let Some(transport) = transport {
-                                                    match dispatch_targeted_command(&transport, stream.as_ref(), &command) {
-                                                        Ok(()) => {
+                                                let command = {
+                                                    let submitted = controller.write().submit_prompt_command();
+                                                    if submitted.is_some() {
+                                                        submitted
+                                                    } else {
+                                                        let controller_read = controller.read();
+                                                        let text = controller_read.composer().draft().trim().to_string();
+                                                        if text.is_empty() {
+                                                            None
+                                                        } else {
+                                                            Some(TargetedCommand::prompt_submit(
+                                                                controller_read.current_command_target(),
+                                                                text,
+                                                            ))
+                                                        }
+                                                    }
+                                                };
+                                                let Some(command) = command else { return };
+
+                                                #[cfg(not(target_arch = "wasm32"))]
+                                                {
+                                                    let focused = controller.read().focused_instance_id().map(str::to_string);
+                                                    if let Some(instance_id) = focused {
+                                                        let result = controller.read().dispatch_to_instance(&instance_id, &command);
+                                                        if result.is_ok() {
+                                                            turn_pending_len.set(Some(history_len));
                                                             let mut current = state.write();
                                                             current.error = None;
                                                             current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
-                                                        }
-                                                        Err(error) => {
-                                                            let mut current = state.write();
-                                                            current.error = Some(error);
-                                                            current.message = None;
+                                                            return;
                                                         }
                                                     }
-                                                } else {
-                                                    let mut current = state.write();
-                                                    current.error = Some("No command transport is attached.".to_string());
-                                                    current.message = None;
-                                                }
-                                            }
 
-                                            #[cfg(target_arch = "wasm32")]
-                                            {
-                                                if let Some(stream) = stream {
-                                                    dispatch_targeted_command(&stream, &command);
-                                                    let mut current = state.write();
-                                                    current.error = None;
-                                                    current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
-                                                } else {
-                                                    let mut current = state.write();
-                                                    current.error = Some("No event stream is attached.".to_string());
-                                                    current.message = None;
+                                                    if let Some(transport) = transport {
+                                                        match dispatch_targeted_command(&transport, stream.as_ref(), &command) {
+                                                            Ok(()) => {
+                                                                turn_pending_len.set(Some(history_len));
+                                                                let mut current = state.write();
+                                                                current.error = None;
+                                                                current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
+                                                            }
+                                                            Err(error) => {
+                                                                let mut current = state.write();
+                                                                current.error = Some(error);
+                                                                current.message = None;
+                                                            }
+                                                        }
+                                                    } else {
+                                                        let mut current = state.write();
+                                                        current.error = Some("No command transport is attached.".to_string());
+                                                        current.message = None;
+                                                    }
+                                                }
+
+                                                #[cfg(target_arch = "wasm32")]
+                                                {
+                                                    if let Some(stream) = stream {
+                                                        dispatch_targeted_command(&stream, &command);
+                                                        turn_pending_len.set(Some(history_len));
+                                                        let mut current = state.write();
+                                                        current.error = None;
+                                                        current.message = Some("Sent with the selected next-turn envelope; observed state refresh requested.".to_string());
+                                                    } else {
+                                                        let mut current = state.write();
+                                                        current.error = Some("No event stream is attached.".to_string());
+                                                        current.message = None;
+                                                    }
+                                                }
+                                            });
+                                        },
+                                        input {
+                                            class: "composer-input composer-input-im",
+                                            r#type: "text",
+                                            value: embedded_draft,
+                                            disabled: false,
+                                            autofocus: snapshot.chat_expanded,
+                                            placeholder: if embedded_is_run_active { "> Queue message for primary agent…" } else { "> Message primary agent…" },
+                                            oninput: move |event| controller.write().update_draft(event.value()),
+                                        }
+                                        div { class: "composer-actions",
+                                            if embedded_is_run_active {
+                                                button {
+                                                    class: "composer-cancel",
+                                                    r#type: "button",
+                                                    onclick: move |_| {
+                                                        let command = {
+                                                            let controller = controller.read();
+                                                            controller.cancel_command()
+                                                        };
+                                                        let Some(command) = command else { return };
+                                                        #[cfg(not(target_arch = "wasm32"))]
+                                                        {
+                                                            let transport = command_transport.read().clone();
+                                                            let stream = event_stream.read().clone();
+                                                            if let Some(transport) = transport {
+                                                                let _ = dispatch_targeted_command(&transport, stream.as_ref(), &command);
+                                                            }
+                                                        }
+                                                        #[cfg(target_arch = "wasm32")]
+                                                        {
+                                                            let stream = event_stream.read().clone();
+                                                            if let Some(stream) = stream {
+                                                                dispatch_targeted_command(&stream, &command);
+                                                            }
+                                                        }
+                                                    },
+                                                    "Cancel"
                                                 }
                                             }
-                                        });
-                                    },
-                                    input {
-                                        class: "composer-input composer-input-im",
-                                        r#type: "text",
-                                        value: embedded_draft,
-                                        disabled: false,
-                                        autofocus: snapshot.chat_expanded,
-                                        placeholder: if embedded_is_run_active { "> Queue message for primary agent…" } else { "> Message primary agent…" },
-                                        oninput: move |event| controller.write().update_draft(event.value()),
-                                    }
-                                    div { class: "composer-actions",
-                                        if embedded_is_run_active {
-                                            button {
-                                                class: "composer-cancel",
-                                                r#type: "button",
-                                                onclick: move |_| {
-                                                    let command = {
-                                                        let controller = controller.read();
-                                                        controller.cancel_command()
-                                                    };
-                                                    let Some(command) = command else { return };
-                                                    #[cfg(not(target_arch = "wasm32"))]
-                                                    {
-                                                        let transport = command_transport.read().clone();
-                                                        let stream = event_stream.read().clone();
-                                                        if let Some(transport) = transport {
-                                                            let _ = dispatch_targeted_command(&transport, stream.as_ref(), &command);
-                                                        }
-                                                    }
-                                                    #[cfg(target_arch = "wasm32")]
-                                                    {
-                                                        let stream = event_stream.read().clone();
-                                                        if let Some(stream) = stream {
-                                                            dispatch_targeted_command(&stream, &command);
-                                                        }
-                                                    }
-                                                },
-                                                "Cancel"
-                                            }
+                                            button { class: "composer-submit", r#type: "submit", disabled: !embedded_can_send, "Send" }
                                         }
-                                        button { class: "composer-submit", r#type: "submit", disabled: !embedded_can_send, "Send" }
                                     }
                                 }
                             }
@@ -5255,6 +6002,59 @@ fn render_assistant_workspace(
                     }
                 }
             }
+        }
+    }
+}
+
+#[cfg(test)]
+mod gui_tui_parity_tests {
+    const SOURCE: &str = include_str!("app.rs");
+
+    #[test]
+    fn primary_workspace_exposes_tui_control_families() {
+        for control in [
+            "Sessions",
+            "New session",
+            "Session switcher",
+            "Model",
+            "Reasoning",
+            "Permission mode",
+            "Theme",
+            "Help",
+            "Command palette",
+            "Tools",
+            "Skills",
+            "Memory",
+            "Plan",
+            "Inspect",
+            "Copy transcript",
+            "Clear transcript",
+            "Stop",
+        ] {
+            assert!(
+                SOURCE.contains(control),
+                "missing GUI representation for {control}"
+            );
+        }
+    }
+
+    #[test]
+    fn primary_workspace_exposes_command_discovery() {
+        for command in [
+            "/new",
+            "/model",
+            "/reasoning",
+            "/permissions",
+            "/tools",
+            "/skills",
+            "/memory",
+            "/plan",
+            "/help",
+        ] {
+            assert!(
+                SOURCE.contains(command),
+                "missing discoverable command {command}"
+            );
         }
     }
 }
@@ -5670,7 +6470,8 @@ async fn deploy_package_request(
     let backend = BollardBackend::detect()
         .await
         .ok_or_else(|| "No Docker or Podman API socket responded. Set DOCKER_HOST or expose /var/run/docker.sock / Podman socket.".to_string())?;
-    let host_port = allocate_agent_host_port().map_err(|error| error.to_string())?;
+    let host_port =
+        allocate_agent_host_port(Some(form.name.trim())).map_err(|error| error.to_string())?;
     let connectors = form
         .connectors
         .split(',')
@@ -5692,6 +6493,11 @@ async fn deploy_package_request(
     };
 
     let spec = package.oci_launch_spec(&request, host_port);
+    auspex_core::local_agent_ports::record_local_agent_port_instance(
+        spec.host_port,
+        spec.name.as_str(),
+    )
+    .map_err(|error| format!("record local port reservation failed: {error}"))?;
     let container_id = backend
         .launch(&spec)
         .await
@@ -5708,21 +6514,8 @@ async fn deploy_package_request(
 }
 
 #[cfg(not(target_arch = "wasm32"))]
-fn allocate_agent_host_port() -> std::io::Result<u16> {
-    for port in 7900..=7999 {
-        match std::net::TcpListener::bind(("127.0.0.1", port)) {
-            Ok(listener) => {
-                drop(listener);
-                return Ok(port);
-            }
-            Err(error) if error.kind() == std::io::ErrorKind::AddrInUse => continue,
-            Err(error) => return Err(error),
-        }
-    }
-    Err(std::io::Error::new(
-        std::io::ErrorKind::AddrNotAvailable,
-        "no free agent control-plane port in 7900..=7999",
-    ))
+fn allocate_agent_host_port(label: Option<&str>) -> std::io::Result<u16> {
+    auspex_core::local_agent_ports::allocate_local_agent_port(label)
 }
 
 #[cfg(not(target_arch = "wasm32"))]
@@ -5926,9 +6719,9 @@ fn build_cockpit_summary_model(
     } else if primary_missing {
         "booting/attaching · no verified endpoint".into()
     } else if session.telemetry.lifecycle.counts.stale > 0 {
-        format!("degraded · {attached_endpoint}")
+        format!("attached · stale observation · {attached_endpoint}")
     } else {
-        format!("verified · {attached_endpoint}")
+        format!("attached · verified observation · {attached_endpoint}")
     };
     let attached_tag = if primary_missing {
         match summary.activity_kind {
@@ -6330,7 +7123,13 @@ fn render_selected_activity_cop(
     })
 }
 
-fn render_chat_shell(title: &str, kicker: &str, body: Element, footer: Element) -> Element {
+fn render_chat_shell(
+    title: &str,
+    kicker: &str,
+    context: Element,
+    body: Element,
+    footer: Element,
+) -> Element {
     rsx! {
         div { class: "assistant-workspace chat-shell",
             header { class: "chat-target-bar",
@@ -6340,6 +7139,7 @@ fn render_chat_shell(title: &str, kicker: &str, body: Element, footer: Element) 
                 }
                 p { class: "panel-muted", "{kicker}" }
             }
+            div { class: "chat-shell-context", {context} }
             div { class: "chat-shell-body", {body} }
             div { class: "chat-shell-footer", {footer} }
         }
@@ -6415,7 +7215,9 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
                 on_submit.call(());
             },
             if let Some(message) = composer_ready_notice {
-                div { class: "composer-ready-notice", "{message}" }
+                div { class: "composer-toast-layer", role: "status",
+                    div { class: "composer-ready-notice", "{message}" }
+                }
             }
             if let Some(blocked) = provider_blocked_composer {
                 div { class: "composer-blocked-callout",
@@ -6471,9 +7273,11 @@ fn render_chat_cop_host(model: ChatCopHostModel<'_>, actions: ChatCopHostActions
         }
     };
 
+    let context = render_chat_acp_surface(&acp_surface);
     render_chat_shell(
         acp_surface.target_label.as_str(),
         acp_surface.target_detail.as_str(),
+        context,
         body,
         footer,
     )
@@ -8328,6 +9132,8 @@ mod tests {
         assert_eq!(model.attached.tag, "LIVE");
         assert!(model.attached.primary.contains("primary-driver"));
         assert!(model.attached.secondary[0].contains("primary-interactive"));
+        assert!(model.attached.secondary[1].contains("attached · verified observation"));
+        assert!(!model.attached.secondary[1].contains("managed"));
         assert!(model.deployment.primary.contains("total"));
         assert!(
             model.deployment.secondary[1].contains("seen:")
@@ -8836,6 +9642,40 @@ mod tests {
     }
 
     #[test]
+    fn next_turn_envelope_detail_explains_observed_runtime_state() {
+        assert_eq!(
+            super::next_turn_envelope_detail("in sync"),
+            "live envelope · observed runtime matches requested settings"
+        );
+        assert!(super::next_turn_envelope_detail("mismatch").contains("sends requested settings"));
+        assert!(super::next_turn_envelope_detail("not reported").contains("has not reported"));
+    }
+
+    #[test]
+    fn command_transport_label_distinguishes_native_and_browser_adapters() {
+        let native = auspex_core::fixtures::TransportTelemetryData {
+            active_adapter: auspex_core::fixtures::TransportAdapterData::NativeIpc,
+            ..Default::default()
+        };
+        let browser = auspex_core::fixtures::TransportTelemetryData {
+            active_adapter: auspex_core::fixtures::TransportAdapterData::WebSocketCompatibility,
+            ..Default::default()
+        };
+        assert_eq!(
+            super::command_transport_label(&native),
+            "native IPC authoritative"
+        );
+        assert_eq!(
+            super::command_transport_label(&browser),
+            "HTTP/WebSocket compatibility"
+        );
+        assert_eq!(
+            super::command_transport_label(&Default::default()),
+            "pending"
+        );
+    }
+
+    #[test]
     fn chat_status_banner_reports_run_state() {
         let summary = HostSessionSummary {
             connection: "Attached".into(),
@@ -8877,7 +9717,7 @@ mod tests {
 
     #[test]
     fn native_host_port_allocator_returns_bindable_port() {
-        let port = super::allocate_agent_host_port().expect("host port");
+        let port = super::allocate_agent_host_port(Some("test-agent")).expect("host port");
         let listener = std::net::TcpListener::bind(("127.0.0.1", port));
         assert!(listener.is_ok(), "allocated port {port} should be bindable");
     }
