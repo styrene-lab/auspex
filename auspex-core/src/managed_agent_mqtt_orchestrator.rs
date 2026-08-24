@@ -216,29 +216,33 @@ async fn run_orchestrator(
                 }
             }
 
-            match tokio::time::timeout(RECEIVE_SLICE, bridge.receive_event(now_ms())).await {
-                Ok(Ok(event)) => {
-                    if !send_event(&events, ManagedAgentMqttOrchestratorEvent::Outcome(event)).await
-                    {
-                        break 'outer;
+            if let Ok(receive_result) =
+                tokio::time::timeout(RECEIVE_SLICE, bridge.receive_event(now_ms())).await
+            {
+                match receive_result {
+                    Ok(event) => {
+                        if !send_event(&events, ManagedAgentMqttOrchestratorEvent::Outcome(event))
+                            .await
+                        {
+                            break 'outer;
+                        }
+                    }
+                    Err(error) => {
+                        if !send_event(
+                            &events,
+                            ManagedAgentMqttOrchestratorEvent::Disconnected {
+                                error: error.to_string(),
+                            },
+                        )
+                        .await
+                        {
+                            break 'outer;
+                        }
+                        tokio::time::sleep(delay).await;
+                        delay = (delay * 2).min(MAX_RECONNECT_DELAY);
+                        continue 'outer;
                     }
                 }
-                Ok(Err(error)) => {
-                    if !send_event(
-                        &events,
-                        ManagedAgentMqttOrchestratorEvent::Disconnected {
-                            error: error.to_string(),
-                        },
-                    )
-                    .await
-                    {
-                        break 'outer;
-                    }
-                    tokio::time::sleep(delay).await;
-                    delay = (delay * 2).min(MAX_RECONNECT_DELAY);
-                    continue 'outer;
-                }
-                Err(_) => {}
             }
             if commands.is_closed() {
                 break 'outer;

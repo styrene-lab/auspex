@@ -53,13 +53,22 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: styrene-lab/styrene-rs
-          ref: feat/conversations-pages
+          ref: 7cfa906e146684277a2cb4d3bd8623ef3e4904d5
           path: styrene-rs
+
+      - name: Check out styrene-rs policy worktree for path dependency
+        uses: actions/checkout@v4
+        with:
+          repository: styrene-lab/styrene-rs
+          ref: 781fd11c03c349109d05ef7a9bf80ab895a89093
+          path: worktrees/styrene-rs-policy
 
       - name: Link Omegon at expected sibling path
         run: |
+          mkdir -p "$GITHUB_WORKSPACE/../worktrees"
           ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
           ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../styrene-rs"
+          ln -sfn "$GITHUB_WORKSPACE/worktrees/styrene-rs-policy" "$GITHUB_WORKSPACE/../worktrees/styrene-rs-policy"
 
       - uses: dtolnay/rust-toolchain@stable
 

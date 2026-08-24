@@ -195,25 +195,48 @@ impl ManagedAgentCommandAck {
 }
 
 impl DelegateDispatchRequest {
-    pub fn new(managed_run_id: ManagedRunId, worker_id: WorkerId, request: ManagedRunRequest) -> Self {
-        Self { schema_version: SUPERVISOR_SCHEMA_VERSION, managed_run_id, worker_id, request }
+    pub fn new(
+        managed_run_id: ManagedRunId,
+        worker_id: WorkerId,
+        request: ManagedRunRequest,
+    ) -> Self {
+        Self {
+            schema_version: SUPERVISOR_SCHEMA_VERSION,
+            managed_run_id,
+            worker_id,
+            request,
+        }
     }
 
-    pub fn command(&self, target: CommandTarget) -> Result<TargetedCommand, SupervisorContractError> {
+    pub fn command(
+        &self,
+        target: CommandTarget,
+    ) -> Result<TargetedCommand, SupervisorContractError> {
         encode_command(target, METHOD_DELEGATE_DISPATCH, self)
     }
 }
 
 impl DelegateTaskRequest {
     pub fn new(managed_run_id: ManagedRunId, worker_id: WorkerId, task_id: OmegonTaskId) -> Self {
-        Self { schema_version: SUPERVISOR_SCHEMA_VERSION, managed_run_id, worker_id, task_id }
+        Self {
+            schema_version: SUPERVISOR_SCHEMA_VERSION,
+            managed_run_id,
+            worker_id,
+            task_id,
+        }
     }
 
-    pub fn get_command(&self, target: CommandTarget) -> Result<TargetedCommand, SupervisorContractError> {
+    pub fn get_command(
+        &self,
+        target: CommandTarget,
+    ) -> Result<TargetedCommand, SupervisorContractError> {
         encode_command(target, METHOD_DELEGATE_GET, self)
     }
 
-    pub fn result_command(&self, target: CommandTarget) -> Result<TargetedCommand, SupervisorContractError> {
+    pub fn result_command(
+        &self,
+        target: CommandTarget,
+    ) -> Result<TargetedCommand, SupervisorContractError> {
         encode_command(target, METHOD_DELEGATE_RESULT, self)
     }
 }
@@ -228,10 +251,19 @@ impl DelegateCancelRequest {
         if reason.as_ref().is_some_and(|value| value.len() > 1024) {
             return Err(SupervisorContractError::OversizedReason);
         }
-        Ok(Self { schema_version: SUPERVISOR_SCHEMA_VERSION, managed_run_id, worker_id, task_id, reason })
+        Ok(Self {
+            schema_version: SUPERVISOR_SCHEMA_VERSION,
+            managed_run_id,
+            worker_id,
+            task_id,
+            reason,
+        })
     }
 
-    pub fn command(&self, target: CommandTarget) -> Result<TargetedCommand, SupervisorContractError> {
+    pub fn command(
+        &self,
+        target: CommandTarget,
+    ) -> Result<TargetedCommand, SupervisorContractError> {
         encode_command(target, METHOD_DELEGATE_CANCEL, self)
     }
 }
@@ -242,8 +274,18 @@ impl DelegateDispatchResponse {
         expected_run: &ManagedRunId,
         expected_worker: &WorkerId,
     ) -> Result<&OmegonTaskId, SupervisorContractError> {
-        validate_envelope(self.schema_version, &self.managed_run_id, &self.worker_id, expected_run, expected_worker)?;
-        match (self.accepted, self.task_id.as_ref(), self.rejection.as_ref()) {
+        validate_envelope(
+            self.schema_version,
+            &self.managed_run_id,
+            &self.worker_id,
+            expected_run,
+            expected_worker,
+        )?;
+        match (
+            self.accepted,
+            self.task_id.as_ref(),
+            self.rejection.as_ref(),
+        ) {
             (true, Some(task_id), None) => Ok(task_id),
             (true, None, _) => Err(SupervisorContractError::MissingTaskId),
             (false, None, Some(_)) => Err(SupervisorContractError::ContradictoryDispatchResponse),
@@ -259,7 +301,13 @@ impl DelegateObservationResponse {
         expected_worker: &WorkerId,
         expected_task: &OmegonTaskId,
     ) -> Result<(), SupervisorContractError> {
-        validate_envelope(self.schema_version, &self.managed_run_id, &self.worker_id, expected_run, expected_worker)?;
+        validate_envelope(
+            self.schema_version,
+            &self.managed_run_id,
+            &self.worker_id,
+            expected_run,
+            expected_worker,
+        )?;
         if &self.observation.task_id != expected_task {
             return Err(SupervisorContractError::IdentityMismatch);
         }
@@ -275,7 +323,13 @@ impl DelegateResultResponse {
         expected_task: &OmegonTaskId,
         max_result_bytes: usize,
     ) -> Result<(), SupervisorContractError> {
-        validate_envelope(self.schema_version, &self.managed_run_id, &self.worker_id, expected_run, expected_worker)?;
+        validate_envelope(
+            self.schema_version,
+            &self.managed_run_id,
+            &self.worker_id,
+            expected_run,
+            expected_worker,
+        )?;
         if &self.task_id != expected_task {
             return Err(SupervisorContractError::IdentityMismatch);
         }
@@ -293,7 +347,13 @@ impl DelegateCancelResponse {
         expected_worker: &WorkerId,
         expected_task: &OmegonTaskId,
     ) -> Result<(), SupervisorContractError> {
-        validate_envelope(self.schema_version, &self.managed_run_id, &self.worker_id, expected_run, expected_worker)?;
+        validate_envelope(
+            self.schema_version,
+            &self.managed_run_id,
+            &self.worker_id,
+            expected_run,
+            expected_worker,
+        )?;
         if &self.task_id != expected_task || (self.termination_confirmed && !self.acknowledged) {
             return Err(SupervisorContractError::IdentityMismatch);
         }
@@ -309,7 +369,9 @@ fn validate_envelope(
     expected_worker: &WorkerId,
 ) -> Result<(), SupervisorContractError> {
     if schema_version != SUPERVISOR_SCHEMA_VERSION {
-        return Err(SupervisorContractError::UnsupportedSchema { received: schema_version });
+        return Err(SupervisorContractError::UnsupportedSchema {
+            received: schema_version,
+        });
     }
     if run != expected_run || worker != expected_worker {
         return Err(SupervisorContractError::IdentityMismatch);
@@ -333,11 +395,18 @@ mod tests {
     use crate::managed_agents::{ManagedRunRequest, WorkerProfile};
 
     fn ids() -> (ManagedRunId, WorkerId, OmegonTaskId) {
-        (ManagedRunId::new(), WorkerId::new(), OmegonTaskId::parse("delegate_7").unwrap())
+        (
+            ManagedRunId::new(),
+            WorkerId::new(),
+            OmegonTaskId::parse("delegate_7").unwrap(),
+        )
     }
 
     fn target() -> CommandTarget {
-        CommandTarget { session_key: "remote:session".into(), dispatcher_instance_id: Some("worker".into()) }
+        CommandTarget {
+            session_key: "remote:session".into(),
+            dispatcher_instance_id: Some("worker".into()),
+        }
     }
 
     fn rejected_ack(code: &str, retryable: bool) -> ManagedAgentCommandAck {
@@ -392,8 +461,16 @@ mod tests {
     #[test]
     fn dispatch_encodes_authenticated_control_method_payload() {
         let (run, worker, _) = ids();
-        let request = ManagedRunRequest::new("inspect", WorkerProfile::Scout, std::collections::BTreeSet::from(["src".into()]), 300).unwrap();
-        let command = DelegateDispatchRequest::new(run, worker, request).command(target()).unwrap();
+        let request = ManagedRunRequest::new(
+            "inspect",
+            WorkerProfile::Scout,
+            std::collections::BTreeSet::from(["src".into()]),
+            300,
+        )
+        .unwrap();
+        let command = DelegateDispatchRequest::new(run, worker, request)
+            .command(target())
+            .unwrap();
         let json: serde_json::Value = serde_json::from_str(&command.web_command_json()).unwrap();
         assert_eq!(json["type"], METHOD_DELEGATE_DISPATCH);
         assert_eq!(json["managed_run_id"], serde_json::to_value(run).unwrap());
@@ -405,41 +482,77 @@ mod tests {
     fn dispatch_response_requires_correlated_task_identity() {
         let (run, worker, task) = ids();
         let accepted = DelegateDispatchResponse {
-            schema_version: 1, managed_run_id: run, worker_id: worker, accepted: true,
-            task_id: Some(task.clone()), effective_policy: None, rejection: None,
+            schema_version: 1,
+            managed_run_id: run,
+            worker_id: worker,
+            accepted: true,
+            task_id: Some(task.clone()),
+            effective_policy: None,
+            rejection: None,
         };
         assert_eq!(accepted.validate_for(&run, &worker).unwrap(), &task);
-        let malformed = DelegateDispatchResponse { task_id: None, ..accepted };
-        assert_eq!(malformed.validate_for(&run, &worker), Err(SupervisorContractError::MissingTaskId));
+        let malformed = DelegateDispatchResponse {
+            task_id: None,
+            ..accepted
+        };
+        assert_eq!(
+            malformed.validate_for(&run, &worker),
+            Err(SupervisorContractError::MissingTaskId)
+        );
     }
 
     #[test]
     fn response_validation_rejects_cross_worker_and_oversized_result() {
         let (run, worker, task) = ids();
         let response = DelegateResultResponse {
-            schema_version: 1, managed_run_id: run, worker_id: worker, task_id: task.clone(), result: "12345".into(),
+            schema_version: 1,
+            managed_run_id: run,
+            worker_id: worker,
+            task_id: task.clone(),
+            result: "12345".into(),
         };
-        assert_eq!(response.validate_for(&run, &WorkerId::new(), &task, 10), Err(SupervisorContractError::IdentityMismatch));
-        assert_eq!(response.validate_for(&run, &worker, &task, 4), Err(SupervisorContractError::OversizedResult));
+        assert_eq!(
+            response.validate_for(&run, &WorkerId::new(), &task, 10),
+            Err(SupervisorContractError::IdentityMismatch)
+        );
+        assert_eq!(
+            response.validate_for(&run, &worker, &task, 4),
+            Err(SupervisorContractError::OversizedResult)
+        );
     }
 
     #[test]
     fn cancellation_confirmation_requires_acknowledgement() {
         let (run, worker, task) = ids();
         let response = DelegateCancelResponse {
-            schema_version: 1, managed_run_id: run, worker_id: worker, task_id: task.clone(),
-            acknowledged: false, termination_confirmed: true, reason: None,
+            schema_version: 1,
+            managed_run_id: run,
+            worker_id: worker,
+            task_id: task.clone(),
+            acknowledged: false,
+            termination_confirmed: true,
+            reason: None,
         };
-        assert_eq!(response.validate_for(&run, &worker, &task), Err(SupervisorContractError::IdentityMismatch));
+        assert_eq!(
+            response.validate_for(&run, &worker, &task),
+            Err(SupervisorContractError::IdentityMismatch)
+        );
     }
 
     #[test]
     fn unsupported_schema_is_rejected() {
         let (run, worker, task) = ids();
         let response = DelegateResultResponse {
-            schema_version: 99, managed_run_id: run, worker_id: worker, task_id: task.clone(), result: String::new(),
+            schema_version: 99,
+            managed_run_id: run,
+            worker_id: worker,
+            task_id: task.clone(),
+            result: String::new(),
         };
-        assert_eq!(response.validate_for(&run, &worker, &task, 10), Err(SupervisorContractError::UnsupportedSchema { received: 99 }));
+        assert_eq!(
+            response.validate_for(&run, &worker, &task, 10),
+            Err(SupervisorContractError::UnsupportedSchema { received: 99 })
+        );
     }
 
     #[test]
@@ -467,7 +580,10 @@ mod tests {
         ))
         .unwrap();
         dispatch
-            .validate_for(&dispatch.managed_run_id.clone(), &dispatch.worker_id.clone())
+            .validate_for(
+                &dispatch.managed_run_id.clone(),
+                &dispatch.worker_id.clone(),
+            )
             .unwrap();
 
         let result: DelegateResultResponse = serde_json::from_str(include_str!(

@@ -1122,7 +1122,10 @@ mod tests {
         })
         .await;
         assert_eq!(initial.len(), 2);
-        assert!(matches!(initial.first(), Some(IpcClientEvent::Connected { .. })));
+        assert!(matches!(
+            initial.first(),
+            Some(IpcClientEvent::Connected { .. })
+        ));
         assert!(matches!(
             initial.get(1),
             Some(IpcClientEvent::Payload(

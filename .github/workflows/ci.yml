@@ -23,14 +23,14 @@ jobs:
         uses: actions/checkout@v4
         with:
           repository: styrene-lab/styrene-rs
-          ref: feat/conversations-pages
+          ref: 7cfa906e146684277a2cb4d3bd8623ef3e4904d5
           path: styrene-rs
 
       - name: Check out styrene-rs policy worktree for path dependency
         uses: actions/checkout@v4
         with:
           repository: styrene-lab/styrene-rs
-          ref: feature/styrene-policy-crate
+          ref: 781fd11c03c349109d05ef7a9bf80ab895a89093
           path: worktrees/styrene-rs-policy
 
       - name: Link path dependencies at expected sibling paths
