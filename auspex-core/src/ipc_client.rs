@@ -1121,11 +1121,13 @@ mod tests {
             })
         })
         .await;
+        assert_eq!(initial.len(), 2);
+        assert!(matches!(initial.first(), Some(IpcClientEvent::Connected { .. })));
         assert!(matches!(
-            initial.as_slice(),
-            [IpcClientEvent::Payload(
+            initial.get(1),
+            Some(IpcClientEvent::Payload(
                 IpcEventPayload::StateReconciled { .. }
-            )]
+            ))
         ));
         let initial_turns = client
             .get_state()
