@@ -475,10 +475,10 @@ mod native {
         }
         headers.insert("Omegon-Principal-Role", WsHeaderValue::from_static("operator"));
         headers.insert("Omegon-Principal-Client-Id", WsHeaderValue::from_static("auspex-web"));
-        if let Some(fingerprint) = identity.as_ref().map(|identity| identity.fingerprint.as_str()) {
-            if let Ok(value) = WsHeaderValue::from_str(fingerprint) {
-                headers.insert("Auspex-Proxy-Identity-Fingerprint", value);
-            }
+        if let Some(fingerprint) = identity.as_ref().map(|identity| identity.fingerprint.as_str())
+            && let Ok(value) = WsHeaderValue::from_str(fingerprint)
+        {
+            headers.insert("Auspex-Proxy-Identity-Fingerprint", value);
         }
         let (upstream, _response) = match connect_async(request).await {
             Ok(upstream) => upstream,
