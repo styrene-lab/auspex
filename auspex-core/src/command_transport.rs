@@ -1,5 +1,7 @@
 #[cfg(not(target_arch = "wasm32"))]
-use crate::ipc_client::IpcCommandClient;
+use crate::ipc_client::{
+    IpcCommandClient, IpcCommandKind, IpcCommandOutcome, IpcCommandOutcomeStatus,
+};
 use crate::runtime_types::TargetedCommand;
 
 #[derive(Clone, Debug)]
@@ -24,18 +26,7 @@ impl CommandTransport {
                 Ok(())
             }
             #[cfg(not(target_arch = "wasm32"))]
-            Self::Ipc(client) => {
-                let result = dispatch_over_ipc(client, command);
-                if result.is_err() {
-                    // IPC failed (broken pipe, etc.) — fall back to WebSocket.
-                    if let Some(stream) = event_stream {
-                        eprintln!("auspex: IPC dispatch failed, falling back to WebSocket");
-                        stream.send_targeted_command(command);
-                        return Ok(());
-                    }
-                }
-                result
-            }
+            Self::Ipc(client) => dispatch_over_ipc(client, command),
         }
     }
 }
@@ -49,27 +40,27 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
         crate::runtime_types::OperatorCommand::PromptSubmit { text } => {
             let client = client.clone();
             let text = text.clone();
+            let target = command.target.clone();
             runtime.spawn(async move {
-                match client.submit_prompt(&text).await {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        eprintln!("auspex: IPC submit_prompt was rejected by Omegon");
-                    }
-                    Err(error) => eprintln!("auspex: IPC submit_prompt failed: {error}"),
-                }
+                let status = ingress_status(client.submit_prompt(&text).await);
+                client.publish_command_outcome(IpcCommandOutcome {
+                    target,
+                    command: IpcCommandKind::PromptSubmit,
+                    status,
+                });
             });
             Ok(())
         }
         crate::runtime_types::OperatorCommand::TurnCancel => {
             let client = client.clone();
+            let target = command.target.clone();
             runtime.spawn(async move {
-                match client.cancel().await {
-                    Ok(true) => {}
-                    Ok(false) => {
-                        eprintln!("auspex: IPC cancel was rejected by Omegon");
-                    }
-                    Err(error) => eprintln!("auspex: IPC cancel failed: {error}"),
-                }
+                let status = ingress_status(client.cancel().await);
+                client.publish_command_outcome(IpcCommandOutcome {
+                    target,
+                    command: IpcCommandKind::TurnCancel,
+                    status,
+                });
             });
             Ok(())
         }
@@ -93,10 +84,14 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
             });
             Ok(())
         }
-        crate::runtime_types::OperatorCommand::ControlMethod { method, payload, .. } => {
+        crate::runtime_types::OperatorCommand::ControlMethod {
+            command_id,
+            method,
+            payload,
+        } => {
             let client = client.clone();
             let method = method.clone();
-            let payload = payload.clone();
+            let payload = control_method_payload(command_id, payload.clone());
             runtime.spawn(async move {
                 match client.control_method(&method, payload).await {
                     Ok(true) => {}
@@ -134,6 +129,29 @@ fn dispatch_over_ipc(client: &IpcCommandClient, command: &TargetedCommand) -> Re
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+fn ingress_status(result: Result<bool, String>) -> IpcCommandOutcomeStatus {
+    match result {
+        Ok(true) => IpcCommandOutcomeStatus::Accepted,
+        Ok(false) => IpcCommandOutcomeStatus::Rejected,
+        Err(error) => IpcCommandOutcomeStatus::Failed(error),
+    }
+}
+
+#[cfg(not(target_arch = "wasm32"))]
+fn control_method_payload(
+    command_id: &crate::runtime_types::ManagedCommandId,
+    mut payload: serde_json::Value,
+) -> serde_json::Value {
+    if let serde_json::Value::Object(fields) = &mut payload {
+        fields.insert(
+            "command_id".into(),
+            serde_json::to_value(command_id).expect("managed command identity must serialize"),
+        );
+    }
+    payload
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -159,5 +177,48 @@ mod tests {
             commands,
             vec![r#"{"text":"hello","type":"user_prompt"}"#.to_string()]
         );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn ipc_control_payload_preserves_managed_command_identity() {
+        let command_id = crate::runtime_types::ManagedCommandId::new();
+        let payload =
+            control_method_payload(&command_id, serde_json::json!({ "schema_version": 1 }));
+
+        assert_eq!(
+            payload["command_id"],
+            serde_json::to_value(command_id).unwrap()
+        );
+        assert_eq!(payload["schema_version"], 1);
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn ipc_boolean_response_is_only_an_ingress_outcome() {
+        assert_eq!(ingress_status(Ok(true)), IpcCommandOutcomeStatus::Accepted);
+        assert_eq!(ingress_status(Ok(false)), IpcCommandOutcomeStatus::Rejected);
+        assert_eq!(
+            ingress_status(Err("disconnected".into())),
+            IpcCommandOutcomeStatus::Failed("disconnected".into())
+        );
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    #[test]
+    fn ipc_dispatch_failure_does_not_fall_back_to_websocket() {
+        let transport = CommandTransport::Ipc(IpcCommandClient::new("/missing/omegon.sock"));
+        let websocket = crate::event_stream::EventStreamHandle::websocket("ws://127.0.0.1:1/ws");
+        let command = TargetedCommand::turn_cancel(crate::runtime_types::CommandTarget {
+            session_key: "remote:session-1".into(),
+            dispatcher_instance_id: None,
+        });
+
+        assert!(
+            transport
+                .dispatch_targeted_command(Some(&websocket), &command)
+                .is_err()
+        );
+        assert!(websocket.debug_drain_outbox().is_empty());
     }
 }

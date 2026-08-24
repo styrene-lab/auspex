@@ -1,7 +1,8 @@
 use crate::audit_timeline::{AuditTimelineQuery, AuditTimelineStore, AuditTimelineView};
 use crate::fixtures::{
     AppSurfaceKind, AppSurfaceNotice, ChatMessage, ComposerState, DevScenario, GraphData,
-    HostSessionSummary, MockHostSession, SessionData, SessionTelemetryData, ShellState, WorkData,
+    HostSessionSummary, MockHostSession, ReconciliationStatusData, SessionData,
+    SessionTelemetryData, ShellState, TransportAdapterData, TransportTelemetryData, WorkData,
 };
 use crate::instance_registry::InstanceRegistryStore;
 #[cfg(not(target_arch = "wasm32"))]
@@ -227,6 +228,7 @@ pub struct AppController {
     instance_registry: InstanceRegistryStore,
     attached_instance_engine: AttachedInstanceStateEngine,
     telemetry_snapshot: SessionTelemetryData,
+    transport_telemetry: TransportTelemetryData,
     last_audited_telemetry_snapshot: SessionTelemetryData,
     telemetry_audit_sequence: u64,
     #[cfg(not(target_arch = "wasm32"))]
@@ -256,6 +258,7 @@ impl Default for AppController {
             instance_registry: InstanceRegistryStore::default(),
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             telemetry_snapshot: SessionTelemetryData::default(),
+            transport_telemetry: TransportTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
@@ -305,6 +308,7 @@ impl AppController {
             attached_instance_engine: AttachedInstanceStateEngine::default(),
             instance_registry,
             telemetry_snapshot: SessionTelemetryData::default(),
+            transport_telemetry: TransportTelemetryData::default(),
             last_audited_telemetry_snapshot: SessionTelemetryData::default(),
             telemetry_audit_sequence: 0,
             #[cfg(not(target_arch = "wasm32"))]
@@ -409,21 +413,21 @@ impl AppController {
         let mut store = InstanceRegistryStore::default();
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "coding-agent-primary",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             true,
             &["state.snapshot", "events.stream", "omegon/context/status"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "coding-agent-worker",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             true,
             &["state.snapshot", "events.stream", "omegon/dispatch/worker"],
         ));
         store.upsert(crate::gateway_projection::fixtures::demo_instance(
             "discord-bot",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             false,
             &["state.snapshot", "discord.gateway", "discord.messages.send"],
@@ -1598,6 +1602,61 @@ impl AppController {
         self.bootstrap_note = note;
     }
 
+    pub fn report_websocket_compatibility(&mut self, fallback_reason: Option<String>) {
+        self.transport_telemetry = TransportTelemetryData {
+            active_adapter: TransportAdapterData::WebSocketCompatibility,
+            fallback_reason,
+            reconciliation_status: ReconciliationStatusData::Authoritative,
+            reconciliation_detail: Some("state and events use HTTP/WebSocket compatibility".into()),
+            ..Default::default()
+        };
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn report_ipc_connected(&mut self, hello: &omegon_traits::HelloResponse) {
+        self.transport_telemetry.negotiated_protocol = Some(hello.protocol_version);
+        self.transport_telemetry.server_instance_id = Some(hello.server_instance_id.clone());
+        self.transport_telemetry.server_name = Some(hello.server_name.clone());
+        self.transport_telemetry.omegon_version = Some(hello.omegon_version.clone());
+        self.transport_telemetry.capabilities = hello.capabilities.clone();
+        self.transport_telemetry.active_adapter = TransportAdapterData::NativeIpc;
+        self.transport_telemetry.fallback_reason = None;
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Refreshing;
+        self.transport_telemetry.reconciliation_detail =
+            Some("IPC handshake complete; applying authoritative state".into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_required(&mut self, reason: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Required;
+        self.transport_telemetry.reconciliation_detail = Some(reason.into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_refreshing(&mut self) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Refreshing;
+        self.transport_telemetry.reconciliation_detail =
+            Some("refreshing authoritative IPC snapshot".into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconciliation_failed(&mut self, error: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Degraded;
+        self.transport_telemetry.reconciliation_detail = Some(error.into());
+        self.refresh_telemetry_snapshot();
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn mark_ipc_reconnecting(&mut self, error: impl Into<String>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Reconnecting;
+        self.transport_telemetry.reconciliation_detail = Some(error.into());
+        self.refresh_telemetry_snapshot();
+    }
+
     pub fn is_remote(&self) -> bool {
         self.session_mode() == SessionMode::Live
     }
@@ -2164,6 +2223,48 @@ impl AppController {
                 telemetry.latest_turn_summary.clone(),
             ),
         ];
+        entries.push(crate::audit_timeline::AuditEntry::telemetry(
+            session_key,
+            &format!("transport-authority-{sequence}"),
+            "Telemetry · Transport authority",
+            format!(
+                "adapter: {}\nprotocol: {}\nserver: {}\ncapabilities: {}\nfallback: {}\nreconciliation: {}\ndetail: {}\nfrontier: {}",
+                telemetry.transport.active_adapter.label(),
+                telemetry
+                    .transport
+                    .negotiated_protocol
+                    .map(|value| value.to_string())
+                    .as_deref()
+                    .unwrap_or("not negotiated"),
+                telemetry
+                    .transport
+                    .server_instance_id
+                    .as_deref()
+                    .unwrap_or("not reported"),
+                if telemetry.transport.capabilities.is_empty() {
+                    "none".to_string()
+                } else {
+                    telemetry.transport.capabilities.join(", ")
+                },
+                telemetry
+                    .transport
+                    .fallback_reason
+                    .as_deref()
+                    .unwrap_or("none"),
+                telemetry.transport.reconciliation_status.label(),
+                telemetry
+                    .transport
+                    .reconciliation_detail
+                    .as_deref()
+                    .unwrap_or("none"),
+                telemetry
+                    .transport
+                    .projection_frontier
+                    .map(|value| value.to_string())
+                    .as_deref()
+                    .unwrap_or("not reported"),
+            ),
+        ));
 
         for (index, provider) in telemetry.provider_rollups.iter().enumerate() {
             entries.push(crate::audit_timeline::AuditEntry::telemetry(
@@ -2265,7 +2366,17 @@ impl AppController {
             &self.attached_instance_engine.selected_command_route_id(),
             telemetry.control_plane.as_ref(),
         );
+        telemetry.transport = self.transport_telemetry.clone();
         self.telemetry_snapshot = telemetry;
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    fn mark_ipc_reconciled(&mut self, projection_frontier: Option<u64>) {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Authoritative;
+        self.transport_telemetry.reconciliation_detail =
+            Some("authoritative IPC state is current".into());
+        self.transport_telemetry.projection_frontier = projection_frontier;
+        self.refresh_telemetry_snapshot();
     }
 
     fn persist_instance_registry(&self) {
@@ -2378,8 +2489,55 @@ impl AppController {
         &mut self,
         event: omegon_traits::IpcEventPayload,
     ) -> Result<bool, String> {
+        let reconciled_frontier = match &event {
+            omegon_traits::IpcEventPayload::StateReconciled { snapshot } => {
+                snapshot.session.projection_frontier
+            }
+            _ => None,
+        };
         let normalized: SessionEvent = event.into();
-        self.apply_session_event(normalized)
+        let applied = self.apply_session_event(normalized)?;
+        if applied && reconciled_frontier.is_some() {
+            self.mark_ipc_reconciled(reconciled_frontier);
+        }
+        Ok(applied)
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_command_outcome(
+        &mut self,
+        outcome: crate::ipc_client::IpcCommandOutcome,
+    ) -> Result<bool, String> {
+        if outcome.target != self.command_target() {
+            return Ok(false);
+        }
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let applied = session.apply_ipc_command_outcome(outcome);
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
+    }
+
+    #[cfg(not(target_arch = "wasm32"))]
+    pub fn apply_ipc_disconnect(&mut self, error: &str) -> Result<bool, String> {
+        self.transport_telemetry.reconciliation_status = ReconciliationStatusData::Reconnecting;
+        self.transport_telemetry.reconciliation_detail = Some(error.to_string());
+        self.refresh_telemetry_snapshot();
+        match &mut self.session {
+            SessionSource::Remote(session) => {
+                let applied = session.mark_ipc_disconnected(error);
+                if applied {
+                    self.handle_session_mutation();
+                }
+                Ok(applied)
+            }
+            SessionSource::Mock(_) => Ok(false),
+        }
     }
 
     pub fn apply_session_event(&mut self, normalized: SessionEvent) -> Result<bool, String> {
@@ -2407,6 +2565,8 @@ impl AppController {
             event,
             omegon_traits::IpcEventPayload::HarnessChanged
                 | omegon_traits::IpcEventPayload::StateChanged { .. }
+                | omegon_traits::IpcEventPayload::RuntimeQueueUpdated { .. }
+                | omegon_traits::IpcEventPayload::RuntimeLifecycleUpdated { .. }
         )
     }
 
@@ -2420,6 +2580,7 @@ impl AppController {
                 let applied = session.refresh_from_ipc_state(snapshot);
                 if applied {
                     self.handle_session_mutation();
+                    self.mark_ipc_reconciled(snapshot.session.projection_frontier);
                 }
                 Ok(applied)
             }
@@ -3146,7 +3307,7 @@ mod tests {
         controller.update_draft("hello audit");
         assert!(controller.submit_prompt());
 
-        assert_eq!(controller.audit_timeline().entries.len(), 6);
+        assert_eq!(controller.audit_timeline().entries.len(), 7);
         assert_eq!(
             controller.audit_timeline().entries[0].block_id,
             "mock:ready:turn-1-block-0"
@@ -3817,7 +3978,7 @@ mod tests {
         let descriptor = crate::omegon_control::OmegonInstanceDescriptor {
             control_plane: Some(crate::omegon_control::OmegonControlPlaneDescriptor {
                 schema_version: 2,
-                omegon_version: Some("0.25.4".into()),
+                omegon_version: Some("0.29.0-dev".into()),
                 capabilities: vec!["state.snapshot".into()],
                 ..Default::default()
             }),
@@ -3941,7 +4102,7 @@ mod tests {
         controller.apply_remote_probe_results(&[(
             "remote:styrene-discord".into(),
             true,
-            "0.25.4".into(),
+            "0.29.0-dev".into(),
             vec!["state.snapshot".into()],
         )]);
 
@@ -4061,6 +4222,7 @@ mod tests {
         let ipc_event = omegon_traits::IpcEventPayload::ToolStarted {
             id: "tool-cop-2".into(),
             name: "cop_write".into(),
+            provenance: Default::default(),
             args: serde_json::json!({
                 "region": "center",
                 "content_type": "metric",
@@ -4116,7 +4278,7 @@ mod tests {
     fn project_gateway_fleet_to_cop_uses_registry_projection() {
         let control_plane = crate::runtime_types::ObservedControlPlane {
             schema_version: 2,
-            omegon_version: "0.25.6".into(),
+            omegon_version: "0.29.0-dev".into(),
             base_url: "http://127.0.0.1:7842".into(),
             ..Default::default()
         };
@@ -4189,5 +4351,77 @@ mod tests {
         });
         let _ = controller.apply_remote_event_json(&tool_event.to_string());
         assert!(controller.cop_state().is_empty());
+    }
+
+    #[test]
+    fn ipc_handshake_and_reconciliation_are_reported_in_session_telemetry() {
+        let mut controller = AppController::default();
+        controller.report_ipc_connected(&omegon_traits::HelloResponse {
+            protocol_version: omegon_traits::IPC_PROTOCOL_VERSION,
+            omegon_version: "0.29.0-dev".into(),
+            server_name: "omegon".into(),
+            server_pid: 42,
+            cwd: "/tmp".into(),
+            server_instance_id: "server-1".into(),
+            started_at: "2026-08-23T00:00:00Z".into(),
+            session_id: Some("session-1".into()),
+            session_generation: Some(3),
+            capabilities: vec!["state.snapshot".into(), "events.stream".into()],
+        });
+        controller.mark_ipc_reconciliation_required("event queue saturated");
+
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.active_adapter,
+            crate::fixtures::TransportAdapterData::NativeIpc
+        );
+        assert_eq!(
+            transport.negotiated_protocol,
+            Some(omegon_traits::IPC_PROTOCOL_VERSION)
+        );
+        assert_eq!(transport.server_instance_id.as_deref(), Some("server-1"));
+        assert_eq!(
+            transport.capabilities,
+            vec!["state.snapshot", "events.stream"]
+        );
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Required
+        );
+        assert_eq!(
+            transport.reconciliation_detail.as_deref(),
+            Some("event queue saturated")
+        );
+
+        controller.mark_ipc_reconnecting("socket disconnected");
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Reconnecting
+        );
+        assert_eq!(
+            transport.reconciliation_detail.as_deref(),
+            Some("socket disconnected")
+        );
+    }
+
+    #[test]
+    fn websocket_compatibility_reports_its_fallback_reason() {
+        let mut controller = AppController::default();
+        controller.report_websocket_compatibility(Some("native IPC socket unavailable".into()));
+
+        let transport = controller.session_data().telemetry.transport;
+        assert_eq!(
+            transport.active_adapter,
+            crate::fixtures::TransportAdapterData::WebSocketCompatibility
+        );
+        assert_eq!(
+            transport.fallback_reason.as_deref(),
+            Some("native IPC socket unavailable")
+        );
+        assert_eq!(
+            transport.reconciliation_status,
+            crate::fixtures::ReconciliationStatusData::Authoritative
+        );
     }
 }

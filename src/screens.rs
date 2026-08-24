@@ -449,10 +449,50 @@ pub fn SessionScreen(
             {render_temporary_dispatches_widget(&data, on_transcript_focus)}
             {render_session_stats_widget(&data, true)}
             {render_provider_status_widget(&data, provider_expanded)}
+            {render_transport_authority_widget(&data)}
             {render_control_plane_widget(&data, control_plane_expanded)}
             {render_session_harness_widget(&data, shell_expanded)}
         }
     }
+}
+
+fn render_transport_authority_widget(data: &SessionData) -> Element {
+    let transport = &data.telemetry.transport;
+    let expanded = transport.fallback_reason.is_some()
+        || transport.reconciliation_status
+            != auspex_core::fixtures::ReconciliationStatusData::Authoritative;
+    let capabilities = if transport.capabilities.is_empty() {
+        "none negotiated".to_string()
+    } else {
+        transport.capabilities.join(", ")
+    };
+
+    render_widget_section(
+        "Transport authority",
+        expanded,
+        rsx! {
+            div { class: "kv-grid widget-kv-grid",
+                {kv_row("Adapter", transport.active_adapter.label())}
+                {kv_row("Reconciliation", transport.reconciliation_status.label())}
+                if let Some(protocol) = transport.negotiated_protocol {
+                    {kv_row("Protocol", &protocol.to_string())}
+                }
+                if let Some(server_instance_id) = transport.server_instance_id.as_deref() {
+                    {kv_row("Server", server_instance_id)}
+                }
+                if let Some(frontier) = transport.projection_frontier {
+                    {kv_row("Frontier", &frontier.to_string())}
+                }
+                {kv_row("Capabilities", &capabilities)}
+                if let Some(reason) = transport.fallback_reason.as_deref() {
+                    {kv_row("Fallback", reason)}
+                }
+                if let Some(detail) = transport.reconciliation_detail.as_deref() {
+                    {kv_row("Health detail", detail)}
+                }
+            }
+        },
+    )
 }
 
 #[allow(dead_code)]

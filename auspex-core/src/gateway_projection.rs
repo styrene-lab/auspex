@@ -535,7 +535,7 @@ mod tests {
     fn golden_instances_list_json_excludes_raw_registry_shape() {
         let response =
             GatewayInstancesListResponse::from_fleet(FleetRuntimeProjection::from_instances(&[
-                instance("primary", "0.25.6", true, &["state.snapshot"]),
+                instance("primary", "0.29.0-dev", true, &["state.snapshot"]),
             ]));
         let actual = serde_json::to_value(&response).unwrap();
 
@@ -551,8 +551,8 @@ mod tests {
     #[test]
     fn golden_capability_query_json_is_stable_and_namespaced() {
         let fleet = FleetRuntimeProjection::from_instances(&[
-            instance("primary", "0.25.6", true, &["omegon/context/status"]),
-            instance("worker", "0.25.6", true, &["events.stream"]),
+            instance("primary", "0.29.0-dev", true, &["omegon/context/status"]),
+            instance("worker", "0.29.0-dev", true, &["events.stream"]),
         ]);
         let response = GatewayCapabilitiesQueryResponse::from_fleet(
             &fleet,
@@ -626,7 +626,7 @@ mod tests {
 
     #[test]
     fn missing_profile_and_hostaction_support_degrade_projection() {
-        let mut record = instance("primary", "0.25.6", true, &["state.snapshot"]);
+        let mut record = instance("primary", "0.29.0-dev", true, &["state.snapshot"]);
         record.observed.operational_profile = None;
         let fleet = FleetRuntimeProjection::from_instances(&[record]);
         let response = GatewayProjectionResponse::fleet_status(fleet);
@@ -651,7 +651,7 @@ mod tests {
     fn fleet_status_serializes_stable_method_and_schema() {
         let fleet = FleetRuntimeProjection::from_instances(&[instance(
             "primary",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             &["state.snapshot"],
         )]);
@@ -681,7 +681,7 @@ mod tests {
     fn compatible_ready_fleet_has_full_projection() {
         let fleet = FleetRuntimeProjection::from_instances(&[instance(
             "primary",
-            "0.25.6",
+            "0.29.0-dev",
             true,
             &["state.snapshot"],
         )]);
@@ -694,7 +694,7 @@ mod tests {
     #[test]
     fn unsupported_instance_degrades_projection() {
         let fleet = FleetRuntimeProjection::from_instances(&[
-            instance("primary", "0.25.6", true, &["state.snapshot"]),
+            instance("primary", "0.29.0-dev", true, &["state.snapshot"]),
             instance("old", "0.23.0", false, &[]),
         ]);
         let response = GatewayProjectionResponse::fleet_status(fleet);
@@ -712,8 +712,8 @@ mod tests {
     #[test]
     fn capabilities_query_returns_matching_instances_only() {
         let fleet = FleetRuntimeProjection::from_instances(&[
-            instance("primary", "0.25.6", true, &["state.snapshot"]),
-            instance("worker", "0.25.6", true, &["events.stream"]),
+            instance("primary", "0.29.0-dev", true, &["state.snapshot"]),
+            instance("worker", "0.29.0-dev", true, &["events.stream"]),
         ]);
         let response = GatewayCapabilitiesQueryResponse::from_fleet(
             &fleet,

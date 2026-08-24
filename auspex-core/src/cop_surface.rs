@@ -765,7 +765,7 @@ mod tests {
             crate::fleet_projection::FleetRuntimeProjection::from_instances(&[
                 crate::gateway_projection::fixtures::demo_instance(
                     "primary",
-                    "0.25.6",
+                    "0.29.0-dev",
                     true,
                     true,
                     &["state.snapshot"],

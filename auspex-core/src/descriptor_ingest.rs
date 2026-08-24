@@ -152,7 +152,7 @@ mod tests {
         let descriptor = OmegonInstanceDescriptor {
             control_plane: Some(OmegonControlPlaneDescriptor {
                 schema_version: 2,
-                omegon_version: Some("0.25.4".into()),
+                omegon_version: Some("0.29.0-dev".into()),
                 base_url: Some("http://127.0.0.1:7842".into()),
                 capabilities: vec!["state.snapshot".into(), "events.stream".into()],
                 ..Default::default()
@@ -163,7 +163,7 @@ mod tests {
 
         apply_descriptor_to_observed_state("omg-1", &mut observed, &descriptor);
 
-        assert_eq!(observed.control_plane.omegon_version, "0.25.4");
+        assert_eq!(observed.control_plane.omegon_version, "0.29.0-dev");
         assert_eq!(
             observed
                 .compatibility
@@ -185,7 +185,7 @@ mod tests {
         let descriptor = OmegonInstanceDescriptor {
             control_plane: Some(OmegonControlPlaneDescriptor {
                 schema_version: 2,
-                omegon_version: Some("0.25.4".into()),
+                omegon_version: Some("0.29.0-dev".into()),
                 ..Default::default()
             }),
             ..Default::default()

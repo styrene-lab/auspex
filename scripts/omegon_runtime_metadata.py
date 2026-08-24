@@ -39,8 +39,8 @@ def load_runtime_metadata(path: Path) -> dict[str, object]:
     if not isinstance(revision, str) or not re.fullmatch(r"[0-9a-f]{40}", revision):
         raise ValueError("source_revision must be a full lowercase 40-character Git SHA")
     branch = metadata["source_branch"]
-    if not isinstance(branch, str) or not branch.startswith("release/"):
-        raise ValueError("source_branch must name a release branch")
+    if not isinstance(branch, str) or not branch.startswith(("release/", "design/")):
+        raise ValueError("source_branch must name an approved release or design branch")
     features = metadata["features"]
     if not isinstance(features, list) or not all(isinstance(item, str) for item in features):
         raise ValueError("features must be a list of Cargo feature names")

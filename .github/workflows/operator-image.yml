@@ -42,12 +42,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Check out Omegon sibling for path dependency
-        uses: actions/checkout@v4
-        with:
-          repository: styrene-lab/omegon
-          path: omegon
-
       - name: Check out styrene-rs sibling for path dependency
         uses: actions/checkout@v4
         with:
@@ -65,7 +59,6 @@ jobs:
       - name: Link path dependencies at expected sibling paths
         run: |
           mkdir -p "$GITHUB_WORKSPACE/../worktrees"
-          ln -sfn "$GITHUB_WORKSPACE/omegon" "$GITHUB_WORKSPACE/../omegon"
           ln -sfn "$GITHUB_WORKSPACE/styrene-rs" "$GITHUB_WORKSPACE/../styrene-rs"
           ln -sfn "$GITHUB_WORKSPACE/worktrees/styrene-rs-policy" "$GITHUB_WORKSPACE/../worktrees/styrene-rs-policy"
 
@@ -79,7 +72,6 @@ jobs:
         with:
           workspaces: |
             .
-            omegon
             styrene-rs
             worktrees/styrene-rs-policy
 
@@ -130,7 +122,6 @@ jobs:
           rm -rf "$context"
           mkdir -p "$context"
           cp -a . "$context/auspex"
-          cp -a omegon "$context/omegon"
           cp -a styrene-rs "$context/styrene-rs"
           mkdir -p "$context/worktrees"
           cp -a worktrees/styrene-rs-policy "$context/worktrees/styrene-rs-policy"

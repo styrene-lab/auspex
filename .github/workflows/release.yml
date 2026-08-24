@@ -69,6 +69,14 @@ jobs:
           OMEGON_PACKAGE: ${{ steps.omegon.outputs.omegon_package }}
         run: cargo build --release --locked --no-default-features -p "$OMEGON_PACKAGE"
 
+      - name: Test pinned Omegon IPC contract
+        env:
+          AUSPEX_CANONICAL_OMEGON_BIN: ${{ github.workspace }}/omegon/target/release/omegon
+        run: >-
+          cargo test -p auspex-core --lib
+          ipc_client::tests::canonical_omegon_runtime_queues_and_cancels_over_multiplexed_ipc
+          -- --ignored --exact
+
       - name: Build release binary
         run: cargo build --release --locked
 

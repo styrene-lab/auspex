@@ -31,6 +31,9 @@ pub enum SessionEvent {
     StateChanged {
         sections: Vec<String>,
     },
+    StateReconciled {
+        snapshot: Box<omegon_traits::IpcStateSnapshot>,
+    },
     SessionReset,
     TurnStarted {
         turn: u32,
@@ -192,7 +195,7 @@ impl From<IpcEventPayload> for SessionEvent {
             IpcEventPayload::MessageDelta { text } => Self::MessageDelta { text },
             IpcEventPayload::ThinkingDelta { text } => Self::ThinkingDelta { text },
             IpcEventPayload::MessageCompleted => Self::MessageCompleted,
-            IpcEventPayload::ToolStarted { id, name, args } => Self::ToolStarted {
+            IpcEventPayload::ToolStarted { id, name, args, .. } => Self::ToolStarted {
                 id,
                 name,
                 args: Some(args),
@@ -203,6 +206,7 @@ impl From<IpcEventPayload> for SessionEvent {
                 name,
                 is_error,
                 summary,
+                ..
             } => Self::ToolEnded {
                 id,
                 name: Some(name),
@@ -211,20 +215,32 @@ impl From<IpcEventPayload> for SessionEvent {
             },
             IpcEventPayload::AgentCompleted => Self::AgentCompleted,
             IpcEventPayload::PhaseChanged { phase } => Self::PhaseChanged { phase },
-            IpcEventPayload::DecompositionStarted { children } => {
+            IpcEventPayload::DecompositionStarted { children, .. } => {
                 Self::DecompositionStarted { children }
             }
-            IpcEventPayload::DecompositionChildCompleted { label, success } => {
+            IpcEventPayload::DecompositionChildCompleted { label, success, .. } => {
                 Self::DecompositionChildCompleted { label, success }
             }
-            IpcEventPayload::DecompositionCompleted { merged } => {
+            IpcEventPayload::DecompositionCompleted { merged, .. } => {
                 Self::DecompositionCompleted { merged }
             }
             IpcEventPayload::FamilyVitalSignsUpdated { .. } => Self::SystemNotification {
                 message: "Family vital signs updated".into(),
             },
             IpcEventPayload::HarnessChanged => Self::HarnessChanged,
+            IpcEventPayload::PlanUpdated { snapshot } => Self::PlanUpdated { snapshot },
+            IpcEventPayload::StreamIdle { message, .. }
+            | IpcEventPayload::ProviderRouteChanged { message, .. } => {
+                Self::SystemNotification { message }
+            }
+            IpcEventPayload::RuntimeQueueUpdated { .. } => Self::StateChanged {
+                sections: vec!["session".into()],
+            },
             IpcEventPayload::StateChanged { sections } => Self::StateChanged { sections },
+            IpcEventPayload::StateReconciled { snapshot } => Self::StateReconciled { snapshot },
+            IpcEventPayload::RuntimeLifecycleUpdated { .. } => Self::StateChanged {
+                sections: vec!["runtime_lifecycle".into()],
+            },
             IpcEventPayload::SystemNotification { message } => Self::SystemNotification { message },
             IpcEventPayload::SessionReset => Self::SessionReset,
         }
@@ -254,6 +270,7 @@ mod tests {
         let event = IpcEventPayload::ToolEnded {
             id: "tool-1".into(),
             name: "read".into(),
+            provenance: Default::default(),
             is_error: false,
             summary: Some("ok".into()),
         };

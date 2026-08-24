@@ -1,10 +1,10 @@
 # Omegon Compatibility Manifest
 
-Auspex targets the Omegon 0.25 release line and newer compatible 0.x releases that preserve the declared control-plane contract. Older incompatible releases are unsupported rather than degraded.
+Auspex targets the revision-pinned Omegon 0.29 decomposition surface. Older monolithic control-plane releases are unsupported rather than degraded.
 
 ```toml
 [omegon]
-minimum_version = "0.25.0"
+minimum_version = "0.29.0-dev"
 maximum_tested_version = "0.29.0-dev"
 web_startup_schema = 2
 instance_descriptor_schema = 1
@@ -27,19 +27,19 @@ Auspex should not attach blindly to arbitrary Omegon instances. It declares the 
 
 ## Current stance
 
-- Minimum Omegon: `0.25.0`
+- Minimum Omegon: `0.29.0-dev`
 - Maximum tested Omegon: `0.29.0-dev`
 - Web startup schema: `2`
 - Instance descriptor schema: `1`
 - Control-plane protocol/schema: `1`
-- Older Omegon versions, including `0.23.x`, are unsupported.
+- Older Omegon versions are unsupported.
 
 ## Rationale
 
-The parity upgrade depends on Omegon 0.25 surfaces:
+The native integration depends on the canonical Omegon 0.29 surfaces:
 
-- `package.install@1` HostAction support;
-- read-only `nex_capability` resolver;
-- extension initialize metadata surfaced through ACP/session info.
+- `omegon serve` startup and readiness discovery;
+- versioned MessagePack IPC with capability negotiation;
+- generation-aware session snapshots, queue state, and lag reconciliation.
 
-Maintaining compatibility shims for pre-0.25 instances would increase workload while preserving a weaker orchestration contract. Auspex should fail clearly instead.
+Maintaining compatibility shims for pre-decomposition instances would preserve competing sources of session authority. Auspex should fail clearly instead.

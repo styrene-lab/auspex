@@ -1396,13 +1396,7 @@ pub fn App() -> Element {
                     controller.write().apply_remote_probe_results(&results);
                 }
                 #[cfg(not(target_arch = "wasm32"))]
-                if let (
-                    Some(ipc_handle),
-                    Some(auspex_core::command_transport::CommandTransport::Ipc(client)),
-                ) = (
-                    ipc_event_stream.read().clone(),
-                    command_transport.read().clone(),
-                ) {
+                if let Some(ipc_handle) = ipc_event_stream.read().clone() {
                     let ipc_events = ipc_handle.inbox.drain();
                     if !ipc_events.is_empty() {
                         let mut needs_refresh = false;
@@ -1410,6 +1404,9 @@ pub fn App() -> Element {
                             let mut controller = controller.write();
                             for event in ipc_events {
                                 match event {
+                                    auspex_core::ipc_client::IpcClientEvent::Connected { hello } => {
+                                        controller.report_ipc_connected(&hello);
+                                    }
                                     auspex_core::ipc_client::IpcClientEvent::Payload(event) => {
                                         needs_refresh |= auspex_core::controller::AppController::ipc_event_requires_refresh(&event);
                                         let _ = controller.apply_ipc_event(event);
@@ -1417,12 +1414,46 @@ pub fn App() -> Element {
                                     auspex_core::ipc_client::IpcClientEvent::Session(event) => {
                                         let _ = controller.apply_session_event(event);
                                     }
+                                    auspex_core::ipc_client::IpcClientEvent::CommandOutcome(
+                                        outcome,
+                                    ) => {
+                                        let _ = controller.apply_ipc_command_outcome(outcome);
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::ReconciliationRequired {
+                                        reason,
+                                    } => {
+                                        controller.mark_ipc_reconciliation_required(reason);
+                                        needs_refresh = true;
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::Disconnected {
+                                        error,
+                                    } => {
+                                        let _ = controller.apply_ipc_disconnect(&error);
+                                        controller.mark_ipc_reconnecting(error);
+                                    }
+                                    auspex_core::ipc_client::IpcClientEvent::AttachFailed {
+                                        error,
+                                    } => {
+                                        let _ = controller.apply_ipc_disconnect(&error);
+                                        controller.mark_ipc_reconnecting(error);
+                                    }
                                 }
                             }
                         }
-                        if needs_refresh && let Ok(snapshot) = client.get_state().await {
-                            let mut controller = controller.write();
-                            let _ = controller.apply_ipc_state_snapshot(&snapshot);
+                        if needs_refresh
+                            && let Some(auspex_core::command_transport::CommandTransport::Ipc(
+                                client,
+                            )) = command_transport.read().clone()
+                        {
+                            controller.write().mark_ipc_reconciliation_refreshing();
+                            match client.get_state().await {
+                                Ok(snapshot) => {
+                                    let _ = controller.write().apply_ipc_state_snapshot(&snapshot);
+                                }
+                                Err(error) => {
+                                    controller.write().mark_ipc_reconciliation_failed(error);
+                                }
+                            }
                         }
                     }
                 }
@@ -4832,11 +4863,15 @@ fn next_turn_envelope_detail(sync_label: &str) -> &'static str {
     }
 }
 
-fn command_transport_label(endpoint: Option<&str>) -> &'static str {
-    if endpoint.is_some() {
-        "ipc+ws ready"
-    } else {
-        "pending"
+fn command_transport_label(
+    transport: &auspex_core::fixtures::TransportTelemetryData,
+) -> &'static str {
+    match transport.active_adapter {
+        auspex_core::fixtures::TransportAdapterData::Pending => "pending",
+        auspex_core::fixtures::TransportAdapterData::NativeIpc => "native IPC authoritative",
+        auspex_core::fixtures::TransportAdapterData::WebSocketCompatibility => {
+            "HTTP/WebSocket compatibility"
+        }
     }
 }
 
@@ -5179,7 +5214,7 @@ fn render_assistant_workspace(
     let sync_label = model_sync_label(&effective_model_label, &observed_model_label);
     let sync_tone = model_sync_tone(&effective_model_label, &observed_model_label);
     let envelope_detail = next_turn_envelope_detail(sync_label);
-    let transport_label = command_transport_label(endpoint.as_deref());
+    let transport_label = command_transport_label(&session.telemetry.transport);
     let control_endpoint_label = endpoint
         .as_deref()
         .and_then(|url| url.split("/api/").next())
@@ -9617,12 +9652,27 @@ mod tests {
     }
 
     #[test]
-    fn command_transport_label_reports_pending_without_endpoint() {
+    fn command_transport_label_distinguishes_native_and_browser_adapters() {
+        let native = auspex_core::fixtures::TransportTelemetryData {
+            active_adapter: auspex_core::fixtures::TransportAdapterData::NativeIpc,
+            ..Default::default()
+        };
+        let browser = auspex_core::fixtures::TransportTelemetryData {
+            active_adapter: auspex_core::fixtures::TransportAdapterData::WebSocketCompatibility,
+            ..Default::default()
+        };
         assert_eq!(
-            super::command_transport_label(Some("http://127.0.0.1:7842/api/startup")),
-            "ipc+ws ready"
+            super::command_transport_label(&native),
+            "native IPC authoritative"
         );
-        assert_eq!(super::command_transport_label(None), "pending");
+        assert_eq!(
+            super::command_transport_label(&browser),
+            "HTTP/WebSocket compatibility"
+        );
+        assert_eq!(
+            super::command_transport_label(&Default::default()),
+            "pending"
+        );
     }
 
     #[test]

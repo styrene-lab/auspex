@@ -5,8 +5,8 @@ use serde::{Deserialize, Serialize};
 
 use crate::runtime_types::ObservedControlPlane;
 
-pub const MINIMUM_OMEGON_VERSION: &str = "0.25.0";
-pub const MAXIMUM_TESTED_OMEGON_VERSION: &str = "0.25.4";
+pub const MINIMUM_OMEGON_VERSION: &str = "0.29.0-dev";
+pub const MAXIMUM_TESTED_OMEGON_VERSION: &str = "0.29.0-dev";
 pub const WEB_STARTUP_SCHEMA_VERSION: u32 = 2;
 pub const INSTANCE_DESCRIPTOR_SCHEMA_VERSION: u32 = 1;
 pub const CONTROL_PLANE_PROTOCOL_VERSION: u32 = 1;
@@ -88,7 +88,7 @@ impl CompatibilityAssessment {
 }
 
 /// Assess the compatibility of an observed Omegon web startup/control-plane
-/// surface using the local Omegon 0.25 source contract.
+/// surface using the pinned canonical Omegon source contract.
 ///
 /// `ObservedControlPlane.schema_version` historically represented the web
 /// startup schema in Auspex records. Local Omegon source shows that this should
@@ -187,8 +187,8 @@ mod tests {
     }
 
     #[test]
-    fn omegon_0254_with_web_startup_schema_2_is_compatible() {
-        let assessment = assess_observed_control_plane(&observed("0.25.4", 2));
+    fn canonical_omegon_with_web_startup_schema_2_is_compatible() {
+        let assessment = assess_observed_control_plane(&observed("0.29.0-dev", 2));
 
         assert!(assessment.is_compatible());
         assert_eq!(assessment.expected_web_startup_schema, 2);
@@ -197,8 +197,8 @@ mod tests {
     }
 
     #[test]
-    fn pre_025_is_unsupported_not_degraded() {
-        let assessment = assess_observed_control_plane(&observed("0.23.0", 2));
+    fn pre_029_is_unsupported_not_degraded() {
+        let assessment = assess_observed_control_plane(&observed("0.28.0", 2));
 
         assert_eq!(assessment.status, CompatibilityStatus::Unsupported);
         assert!(
@@ -211,7 +211,7 @@ mod tests {
 
     #[test]
     fn wrong_web_startup_schema_is_unsupported() {
-        let assessment = assess_observed_control_plane(&observed("0.25.4", 1));
+        let assessment = assess_observed_control_plane(&observed("0.29.0-dev", 1));
 
         assert_eq!(assessment.status, CompatibilityStatus::Unsupported);
         assert!(

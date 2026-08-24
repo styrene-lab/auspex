@@ -349,6 +349,16 @@ struct OmegonCompatibilityManifest {
     minimum_version: String,
     maximum_tested_version: String,
     #[serde(default)]
+    source_repository: String,
+    #[serde(default)]
+    source_branch: String,
+    #[serde(default)]
+    source_revision: String,
+    #[serde(default)]
+    features: Vec<String>,
+    #[serde(default)]
+    packaged_binary: String,
+    #[serde(default)]
     control_plane_schema: u32,
     #[serde(default)]
     web_startup_schema: u32,
@@ -592,6 +602,52 @@ pub fn bootstrap_controller_for_web() -> BootstrapResult {
     }
 }
 
+#[cfg(not(target_arch = "wasm32"))]
+async fn negotiate_native_ipc(
+    startup: Option<&crate::omegon_control::OmegonStartupInfo>,
+) -> Result<
+    (
+        String,
+        omegon_traits::HelloResponse,
+        omegon_traits::IpcStateSnapshot,
+    ),
+    String,
+> {
+    let socket_path = startup
+        .and_then(|startup| startup.instance_descriptor.as_ref())
+        .and_then(|instance| instance.control_plane.as_ref())
+        .and_then(|control_plane| control_plane.ipc_socket_path.clone())
+        .filter(|path| !path.is_empty())
+        .ok_or_else(|| "runtime did not advertise an IPC socket".to_string())?;
+    let client = IpcCommandClient::new(socket_path.clone());
+    if !client.is_available() {
+        return Err(format!(
+            "advertised IPC socket is unavailable: {socket_path}"
+        ));
+    }
+    let hello = client
+        .inspect()
+        .await
+        .map_err(|error| format!("IPC handshake failed: {error}"))?;
+    for capability in ["state.snapshot", "events.stream"] {
+        if !hello
+            .capabilities
+            .iter()
+            .any(|advertised| advertised == capability)
+        {
+            return Err(format!("IPC server did not advertise {capability}"));
+        }
+    }
+    let snapshot = client
+        .get_state()
+        .await
+        .map_err(|error| format!("initial IPC state failed: {error}"))?;
+    if snapshot.instance.control_plane.server_instance_id != hello.server_instance_id {
+        return Err("IPC hello and initial state reported different server identities".into());
+    }
+    Ok((socket_path, hello, snapshot))
+}
+
 /// Async bootstrap from an HTTP state endpoint.
 pub async fn bootstrap_from_http_state_async(
     url: &str,
@@ -666,54 +722,59 @@ pub async fn bootstrap_from_http_state_async(
                 .replace("/api/state", "/ws")
         });
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_socket_path = startup
-        .as_ref()
-        .and_then(|startup| startup.instance_descriptor.as_ref())
-        .and_then(|instance| instance.control_plane.as_ref())
-        .and_then(|control_plane| control_plane.ipc_socket_path.clone())
-        .filter(|path| !path.is_empty());
+    let (ipc_connection, ipc_fallback_reason) = match negotiate_native_ipc(startup.as_ref()).await {
+        Ok((socket_path, hello, snapshot)) => {
+            controller.report_ipc_connected(&hello);
+            let _ = controller.apply_ipc_state_snapshot(&snapshot);
+            (
+                Some(crate::ipc_client::spawn_ipc_connection(socket_path)),
+                None,
+            )
+        }
+        Err(reason) => {
+            controller.report_websocket_compatibility(Some(reason.clone()));
+            (None, Some(reason))
+        }
+    };
+    #[cfg(target_arch = "wasm32")]
+    controller.report_websocket_compatibility(None);
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_client = ipc_socket_path
-        .clone()
-        .map(IpcCommandClient::new)
-        .filter(|client| client.is_available());
+    let (ipc_command_client, ipc_event_stream) = match ipc_connection {
+        Some((client, stream)) => (Some(client), Some(stream)),
+        None => (None, None),
+    };
     #[cfg(not(target_arch = "wasm32"))]
-    let ipc_event_stream = ipc_socket_path
-        .filter(|_| ipc_client.is_some())
-        .map(crate::ipc_client::spawn_ipc_event_stream);
-    // Always create the WebSocket event stream — it handles command
-    // dispatch even when IPC is the primary event transport.
-    #[cfg(not(target_arch = "wasm32"))]
-    let event_stream = Some(spawn_websocket_event_stream(&ws_url));
+    let event_stream = ipc_event_stream
+        .is_none()
+        .then(|| spawn_websocket_event_stream(&ws_url));
     #[cfg(target_arch = "wasm32")]
     let event_stream = Some(spawn_websocket_event_stream(&ws_url));
-    // Command transport: always use WebSocket for commands. The IPC socket
-    // uses a single-controller model that conflicts with the event stream
-    // connection. IPC is used for event streaming only; commands go via
-    // the multiplexed WebSocket endpoint.
     #[cfg(not(target_arch = "wasm32"))]
-    let command_transport = Some(CommandTransport::EventStream);
+    let command_transport = Some(match ipc_command_client {
+        Some(client) => CommandTransport::Ipc(client),
+        None => CommandTransport::EventStream,
+    });
+    #[cfg(not(target_arch = "wasm32"))]
+    let transport_note = if ipc_event_stream.is_some() {
+        "State, events, and commands use negotiated multiplexed IPC".to_string()
+    } else {
+        format!(
+            "State, events, and commands use HTTP/WebSocket compatibility ({})",
+            ipc_fallback_reason.as_deref().unwrap_or("IPC unavailable")
+        )
+    };
+    #[cfg(target_arch = "wasm32")]
+    let transport_note =
+        "State, events, and commands use browser HTTP/WebSocket compatibility".to_string();
     let note = startup
         .as_ref()
         .map(|startup| {
-            #[cfg(not(target_arch = "wasm32"))]
-            let control_mode = if command_transport
-                .as_ref()
-                .is_some_and(|transport| matches!(transport, CommandTransport::Ipc(_)))
-            {
-                "Control via IPC event stream"
-            } else {
-                "Control via degraded websocket bridge until Styrene RPC is established"
-            };
-            #[cfg(target_arch = "wasm32")]
-            let control_mode = "Control via WebSocket";
             let mut note = format!(
-                "Attached via Omegon startup discovery at {} (auth: {} via {}). {}. Streaming events from {}",
+                "Attached via Omegon startup discovery at {} (auth: {} via {}). {}.",
                 startup_url_from_state_url(url),
                 startup.auth_mode,
                 startup.auth_source,
-                control_mode,
-                ws_url
+                transport_note,
             );
             if let Some(warning) = compatibility_warning.as_deref() {
                 note.push_str(" Warning: ");
@@ -722,9 +783,8 @@ pub async fn bootstrap_from_http_state_async(
             note
         })
         .unwrap_or_else(|| {
-            let mut note = format!(
-                "Attached to Omegon state endpoint at {state_url}. Control via degraded websocket bridge until Styrene RPC is established. Streaming events from {ws_url}"
-            );
+            let mut note =
+                format!("Attached to Omegon state endpoint at {state_url}. {transport_note}.");
             if let Some(warning) = compatibility_warning.as_deref() {
                 note.push_str(" Warning: ");
                 note.push_str(warning);
@@ -996,14 +1056,15 @@ pub fn verify_packaged_omegon(binary: &std::path::Path) -> Result<(), String> {
     })?;
     let manifest: PackagedOmegonRuntime = serde_json::from_str(&encoded)
         .map_err(|error| format!("packaged Omegon manifest is invalid: {error}"))?;
-    if manifest.repository != "https://github.com/styrene-lab/omegon.git"
-        || manifest.branch != "release/0.29"
-        || manifest.revision != "6c7e39f66fcc4d3576d1351175edc168fed5d982"
-        || manifest.version != "0.29.0-dev"
-        || manifest.binary != "runtime/omegon-headless"
-        || manifest.control_plane_schema != 2
+    let pinned = OmegonCompatibilityManifest::parse();
+    if manifest.repository != pinned.source_repository
+        || manifest.branch != pinned.source_branch
+        || manifest.revision != pinned.source_revision
+        || manifest.version != pinned.maximum_tested_version
+        || manifest.binary != pinned.packaged_binary
+        || manifest.control_plane_schema != pinned.control_plane_schema
         || manifest.default_features
-        || !manifest.cargo_features.is_empty()
+        || manifest.cargo_features != pinned.features
     {
         return Err(
             "packaged Omegon manifest does not match the pinned Auspex runtime contract".into(),
@@ -2377,8 +2438,8 @@ mod tests {
         let digest = format!("{:x}", Sha256::digest(b"pinned omegon"));
         let manifest = serde_json::json!({
             "repository": "https://github.com/styrene-lab/omegon.git",
-            "branch": "release/0.29",
-            "revision": "6c7e39f66fcc4d3576d1351175edc168fed5d982",
+            "branch": "design/kernel-plugin-decomposition",
+            "revision": "227f73502c9c7218ef76ffbb2a020980568c7103",
             "version": "0.29.0-dev",
             "binary": "runtime/omegon-headless",
             "sha256": digest,
@@ -2393,6 +2454,19 @@ mod tests {
         .unwrap();
 
         assert!(verify_packaged_omegon(&binary).is_ok());
+        let mut stale_manifest = manifest.clone();
+        stale_manifest["revision"] = serde_json::json!("6c7e39f66fcc4d3576d1351175edc168fed5d982");
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&stale_manifest).unwrap(),
+        )
+        .unwrap();
+        assert!(verify_packaged_omegon(&binary).is_err());
+        std::fs::write(
+            root.join(PACKAGED_OMEGON_MANIFEST),
+            serde_json::to_vec(&manifest).unwrap(),
+        )
+        .unwrap();
         std::fs::write(&binary, b"tampered").unwrap();
         assert!(verify_packaged_omegon(&binary).is_err());
         let _ = std::fs::remove_dir_all(root);
